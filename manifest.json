@@ -55,6 +55,9 @@
 	"subfiles_extension": [
 		"Addon_AI_ChatGPT.js",
 		"Addon_AI_Claude.js",
+		"Addon_AI_CLI_ClaudeCode.js",
+		"Addon_AI_CLI_CodexCLI.js",
+		"Addon_AI_CLI_GeminiCLI.js",
 		"Addon_AI_Gemini.js",
 		"Addon_AI_Groq.js",
 		"Addon_AI_OpenRouter.js",
