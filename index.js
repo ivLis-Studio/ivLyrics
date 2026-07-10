@@ -5785,6 +5785,17 @@ class LyricsContainer extends react.Component {
           console.error("[Mode2] Error:", error);
           // 실패해도 계속 진행
         });
+
+      // 두 번역이 모두 실패/무결과로 끝나면 원문 가사라도 오버레이에 전송
+      // (그렇지 않으면 lyrics-ready가 한 번도 발생하지 않아 오버레이가 빈 채로 남는다)
+      Promise.allSettled([promise1, promise2]).then(() => {
+        if (!isActivePresentation() || !this._dmResults?.[currentUri]) {
+          return;
+        }
+        if (!lyricsMode1 && !lyricsMode2) {
+          updateCombinedLyrics();
+        }
+      });
     } else if (mode1Active) {
       // Mode1만 활성화: Mode1 완료 시 바로 업데이트
       // Mode2는 비활성화되었으므로 null로 설정
