@@ -560,6 +560,10 @@
 
                     // 0. IndexedDB 캐시 확인
                     let result = null;
+                    let cacheHit = false;
+                    let providerFetched = false;
+                    let syncDataAppliedThisCall = false;
+                    let pseudoKaraokeChanged = false;
                     if (lyricsCacheId && window.LyricsService?.getCachedLyrics) {
                         try {
                             const cached = await window.LyricsService.getCachedLyrics(lyricsCacheId, provider.id);
@@ -568,6 +572,7 @@
                                 || cached.syncDataRendererVersion === SYNC_DATA_RENDERER_VERSION;
                             if (isProviderCacheCurrent && isSyncDataRendererCurrent) {
                                 result = cached;
+                                cacheHit = true;
                                 window.__ivLyricsDebugLog?.(`[LyricsAddonManager] Cache hit for ${provider.id}`);
                             } else if (isProviderCacheCurrent && !isSyncDataRendererCurrent) {
                                 window.__ivLyricsDebugLog?.(`[LyricsAddonManager] Sync-data renderer cache mismatch for ${provider.id}, refetching...`);
@@ -582,6 +587,7 @@
                     // 1. 캐시 miss 시 Provider에서 가사 가져오기
                     if (!result) {
                         result = await provider.getLyrics(info);
+                        providerFetched = true;
                     }
 
                     // 디버그 타이머 종료
@@ -602,7 +608,10 @@
                     });
 
                     // 2. karaoke가 필요한데 없으면 sync-data 조회
-                    const needsKaraoke = allowKaraoke && !result.karaoke;
+                    const needsKaraoke = allowKaraoke && (
+                        !result.karaoke
+                        || window.PseudoKaraokeService?.isPseudoSource?.(result.karaokeSource)
+                    );
                     const hasBaseLyrics = result.synced || result.unsynced;
                     console.info('[ivLyrics sync-data]', 'LyricsAddonManager:sync-check', {
                         providerId: provider.id,
@@ -650,9 +659,12 @@
 
                                     if (karaoke && karaoke.length > 0) {
                                         result.karaoke = karaoke;
+                                        result.karaokeSource = 'sync-data';
+                                        delete result.pseudoKaraokeCacheVersion;
                                         result.syncDataApplied = true;
                                         result.syncDataProvider = syncProvider;
                                         result.syncDataRendererVersion = SYNC_DATA_RENDERER_VERSION;
+                                        syncDataAppliedThisCall = true;
 
                                         // 기여자 정보 추가
                                         if (syncData.contributors || syncData.syncData?.contributors) {
@@ -678,9 +690,17 @@
                             // 레거시 방식: LyricsService.applyIvLyricsSyncData 사용
                             window.__ivLyricsDebugLog?.(`[LyricsAddonManager] Using legacy applyIvLyricsSyncData for ${provider.id}...`);
                             try {
+                                const karaokeBeforeSyncData = result.karaoke;
+                                const syncedBeforeSyncData = result.synced;
+                                const syncDataAppliedBefore = result.syncDataApplied;
                                 const syncResult = await window.LyricsService.applyIvLyricsSyncData(result);
                                 if (syncResult) {
                                     Object.assign(result, syncResult);
+                                    syncDataAppliedThisCall = !!result.syncDataApplied && (
+                                        result.karaoke !== karaokeBeforeSyncData
+                                        || result.synced !== syncedBeforeSyncData
+                                        || result.syncDataApplied !== syncDataAppliedBefore
+                                    );
                                     window.__ivLyricsDebugLog?.(`[LyricsAddonManager] Legacy sync-data applied, hasKaraoke: ${!!result.karaoke}`);
                                 }
                             } catch (e) {
@@ -692,10 +712,16 @@
                     // 3. line-synced 가사에 대한 pseudo karaoke를 중앙 서비스에서 합성
                     if (window.PseudoKaraokeService?.applyToResult) {
                         try {
+                            const karaokeBeforePseudo = result.karaoke;
+                            const karaokeSourceBeforePseudo = result.karaokeSource;
+                            const pseudoCacheVersionBeforePseudo = result.pseudoKaraokeCacheVersion;
                             const pseudoResult = await window.PseudoKaraokeService.applyToResult(result, info);
                             if (pseudoResult) {
                                 Object.assign(result, pseudoResult);
                             }
+                            pseudoKaraokeChanged = result.karaoke !== karaokeBeforePseudo
+                                || result.karaokeSource !== karaokeSourceBeforePseudo
+                                || result.pseudoKaraokeCacheVersion !== pseudoCacheVersionBeforePseudo;
                         } catch (e) {
                             console.warn(`[LyricsAddonManager] Failed to apply pseudo karaoke:`, e);
                         }
@@ -741,8 +767,14 @@
                         });
 
                         // IndexedDB에 캐시 저장
-                        if (lyricsCacheId && window.LyricsService?.cacheLyrics && !finalResult.skipCache) {
-                            const cachePayload = { ...finalResult };
+                        const shouldUpdateCache = (!cacheHit && providerFetched)
+                            || syncDataAppliedThisCall
+                            || pseudoKaraokeChanged;
+                        if (lyricsCacheId && window.LyricsService?.cacheLyrics && !result.skipCache && shouldUpdateCache) {
+                            const cachePayload = { ...result };
+                            if (cachePayload.syncDataApplied) {
+                                cachePayload.syncDataRendererVersion = SYNC_DATA_RENDERER_VERSION;
+                            }
                             delete cachePayload.skipCache;
                             window.LyricsService.cacheLyrics(lyricsCacheId, provider.id, cachePayload);
                         }

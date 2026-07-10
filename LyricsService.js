@@ -5489,6 +5489,7 @@
 
         return {
             isEnabled,
+            isPseudoSource: (source) => PSEUDO_SOURCES.has(source),
             getCacheVersion,
             applyToResult,
             clearPseudoKaraoke
