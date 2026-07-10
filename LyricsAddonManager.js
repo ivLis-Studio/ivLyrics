@@ -23,6 +23,10 @@
         UNSYNCED: 'unsynced'    // 일반 가사 (타이밍 없음)
     };
 
+    function hasLyricsContent(lines) {
+        return Array.isArray(lines) && lines.length > 0;
+    }
+
     // ============================================
     // LyricsAddonManager Class
     // ============================================
@@ -600,28 +604,32 @@
                         continue;
                     }
 
+                    const resultHasKaraoke = hasLyricsContent(result.karaoke);
+                    const resultHasSynced = hasLyricsContent(result.synced);
+                    const resultHasUnsynced = hasLyricsContent(result.unsynced);
+
                     window.__ivLyricsDebugLog?.(`[LyricsAddonManager] Got lyrics from: ${provider.id}`, {
-                        hasKaraoke: !!result.karaoke,
-                        hasSynced: !!result.synced,
-                        hasUnsynced: !!result.unsynced,
+                        hasKaraoke: resultHasKaraoke,
+                        hasSynced: resultHasSynced,
+                        hasUnsynced: resultHasUnsynced,
                         provider: result.provider
                     });
 
                     // 2. karaoke가 필요한데 없으면 sync-data 조회
                     const needsKaraoke = allowKaraoke && (
-                        !result.karaoke
+                        !resultHasKaraoke
                         || window.PseudoKaraokeService?.isPseudoSource?.(result.karaokeSource)
                     );
-                    const hasBaseLyrics = result.synced || result.unsynced;
+                    const hasBaseLyrics = resultHasSynced || resultHasUnsynced;
                     console.info('[ivLyrics sync-data]', 'LyricsAddonManager:sync-check', {
                         providerId: provider.id,
                         resultProvider: result.provider || null,
                         allowKaraoke,
-                        hasKaraoke: !!result.karaoke,
-                        hasSynced: !!result.synced,
-                        hasUnsynced: !!result.unsynced,
+                        hasKaraoke: resultHasKaraoke,
+                        hasSynced: resultHasSynced,
+                        hasUnsynced: resultHasUnsynced,
                         needsKaraoke,
-                        hasBaseLyrics: !!hasBaseLyrics,
+                        hasBaseLyrics,
                         isrc: trackIsrc || null,
                         hasSyncDataService: !!window.SyncDataService?.getSyncData
                     });
@@ -651,13 +659,13 @@
                                     window.__ivLyricsDebugLog?.(`[LyricsAddonManager] Found sync-data, applying...`);
 
                                     // sync-data를 가사에 적용하여 karaoke 생성
-                                    const baseLyrics = result.synced || result.unsynced;
+                                    const baseLyrics = resultHasSynced ? result.synced : result.unsynced;
                                     const karaoke = window.SyncDataService.applySyncDataToLyrics(baseLyrics, syncData, {
                                         durationMs: info.durationMs || info.duration_ms || info.duration,
                                         trackInfo: info
                                     });
 
-                                    if (karaoke && karaoke.length > 0) {
+                                    if (hasLyricsContent(karaoke)) {
                                         result.karaoke = karaoke;
                                         result.karaokeSource = 'sync-data';
                                         delete result.pseudoKaraokeCacheVersion;
@@ -673,7 +681,7 @@
                                         // sync-data에서 synced도 업데이트 (더 정확한 타이밍)
                                         if (window.SyncDataService.convertKaraokeToSynced) {
                                             const syncedFromKaraoke = window.SyncDataService.convertKaraokeToSynced(karaoke);
-                                            if (syncedFromKaraoke) {
+                                            if (hasLyricsContent(syncedFromKaraoke)) {
                                                 result.synced = syncedFromKaraoke;
                                             }
                                         }
@@ -701,7 +709,7 @@
                                         || result.synced !== syncedBeforeSyncData
                                         || result.syncDataApplied !== syncDataAppliedBefore
                                     );
-                                    window.__ivLyricsDebugLog?.(`[LyricsAddonManager] Legacy sync-data applied, hasKaraoke: ${!!result.karaoke}`);
+                                    window.__ivLyricsDebugLog?.(`[LyricsAddonManager] Legacy sync-data applied, hasKaraoke: ${hasLyricsContent(result.karaoke)}`);
                                 }
                             } catch (e) {
                                 console.warn(`[LyricsAddonManager] Failed to apply legacy sync data:`, e);
@@ -736,22 +744,26 @@
                     if (!allowSynced) finalResult.synced = null;
                     if (!allowUnsynced) finalResult.unsynced = null;
 
+                    const hasKaraoke = hasLyricsContent(finalResult.karaoke);
+                    const hasSynced = hasLyricsContent(finalResult.synced);
+                    const hasUnsynced = hasLyricsContent(finalResult.unsynced);
+
                     window.__ivLyricsDebugLog?.(`[LyricsAddonManager] After filtering for ${provider.id}:`, {
-                        hasKaraoke: !!finalResult.karaoke,
-                        hasSynced: !!finalResult.synced,
-                        hasUnsynced: !!finalResult.unsynced
+                        hasKaraoke,
+                        hasSynced,
+                        hasUnsynced
                     });
 
                     // 5. 허용된 가사가 있으면 반환
-                    if (finalResult.karaoke || finalResult.synced || finalResult.unsynced) {
+                    if (hasKaraoke || hasSynced || hasUnsynced) {
                         // 디버그 타이머 종료
                         if (window.AddonDebug?.isEnabled()) {
                             window.AddonDebug.timeEnd('lyrics', 'getLyrics:total');
                             window.AddonDebug.log('lyrics', 'getLyrics success', {
                                 provider: finalResult.provider,
-                                hasKaraoke: !!finalResult.karaoke,
-                                hasSynced: !!finalResult.synced,
-                                hasUnsynced: !!finalResult.unsynced,
+                                hasKaraoke,
+                                hasSynced,
+                                hasUnsynced,
                                 syncDataApplied: finalResult.syncDataApplied || false
                             });
                         }
@@ -760,9 +772,9 @@
                         this.emit('lyrics:fetch:success', {
                             uri: info.uri,
                             provider: finalResult.provider,
-                            hasKaraoke: !!finalResult.karaoke,
-                            hasSynced: !!finalResult.synced,
-                            hasUnsynced: !!finalResult.unsynced,
+                            hasKaraoke,
+                            hasSynced,
+                            hasUnsynced,
                             syncDataApplied: finalResult.syncDataApplied || false
                         });
 
