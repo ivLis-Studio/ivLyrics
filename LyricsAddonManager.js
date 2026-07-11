@@ -14,6 +14,12 @@
     // ============================================
 
     const STORAGE_PREFIX = 'ivLyrics:lyrics:';
+    const getStoredValue = (key) => window.ivLyricsStoragePersistence
+        ? window.ivLyricsStoragePersistence.getItem(key)
+        : Spicetify.LocalStorage.get(key);
+    const setStoredValue = (key, value) => window.ivLyricsStoragePersistence
+        ? window.ivLyricsStoragePersistence.setItem(key, value)
+        : Spicetify.LocalStorage.set(key, value);
     const SYNC_DATA_RENDERER_VERSION = '2026-05-23-source-line-shape-1';
 
     // 가사 유형
@@ -327,7 +333,7 @@
          * @param {string[]} order - Provider ID 순서
          */
         setProviderOrder(order) {
-            Spicetify.LocalStorage.set(STORAGE_PREFIX + 'provider-order', JSON.stringify(order));
+            setStoredValue(STORAGE_PREFIX + 'provider-order', JSON.stringify(order));
             window.__ivLyricsDebugLog?.('[LyricsAddonManager] Provider order saved:', order);
 
             // 이벤트 발생
@@ -343,7 +349,7 @@
          */
         getProviderOrder() {
             let order = [];
-            const stored = Spicetify.LocalStorage.get(STORAGE_PREFIX + 'provider-order');
+            const stored = getStoredValue(STORAGE_PREFIX + 'provider-order');
 
             if (stored) {
                 try {
@@ -379,7 +385,7 @@
          * @param {boolean} enabled - 활성화 여부
          */
         setProviderEnabled(addonId, enabled) {
-            Spicetify.LocalStorage.set(STORAGE_PREFIX + `enabled:${addonId}`, enabled ? 'true' : 'false');
+            setStoredValue(STORAGE_PREFIX + `enabled:${addonId}`, enabled ? 'true' : 'false');
 
             // 이벤트 발생
             this.emit('provider:enabled:changed', { id: addonId, enabled });
@@ -394,7 +400,7 @@
          * @returns {boolean}
          */
         isProviderEnabled(addonId) {
-            const stored = Spicetify.LocalStorage.get(STORAGE_PREFIX + `enabled:${addonId}`);
+            const stored = getStoredValue(STORAGE_PREFIX + `enabled:${addonId}`);
             // 기본값은 true
             return stored !== 'false';
         }
@@ -423,7 +429,7 @@
         setAddonSetting(addonId, key, value) {
             const storageKey = `${STORAGE_PREFIX}addon:${addonId}:${key}`;
             const serialized = typeof value === 'string' ? value : JSON.stringify(value);
-            Spicetify.LocalStorage.set(storageKey, serialized);
+            setStoredValue(storageKey, serialized);
 
             // 이벤트 발생 (설정 변경 알림)
             this.emit('addon:setting:changed', { id: addonId, key, value });
@@ -443,7 +449,7 @@
          */
         getAddonSetting(addonId, key, defaultValue = null) {
             const storageKey = `${STORAGE_PREFIX}addon:${addonId}:${key}`;
-            const value = Spicetify.LocalStorage.get(storageKey);
+            const value = getStoredValue(storageKey);
 
             if (value === null || value === undefined) {
                 return defaultValue;

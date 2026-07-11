@@ -1198,92 +1198,92 @@ div.lyrics-tabBar-headerItemLink {
 
 .lyrics-karaoke-part.speaker-male-1,
 .lyrics-lyricsContainer-LyricsLine.speaker-male-1 {
-  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-male-1, #e6f2ff);
-  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-male-1, #e6f2ff) 52%, transparent);
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-male-1, #a8ccff);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-male-1, #a8ccff) 52%, transparent);
 }
 
 .lyrics-karaoke-part.speaker-male-2,
 .lyrics-lyricsContainer-LyricsLine.speaker-male-2 {
-  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-male-2, #d7ecff);
-  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-male-2, #d7ecff) 50%, transparent);
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-male-2, #9ae8d4);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-male-2, #9ae8d4) 50%, transparent);
 }
 
 .lyrics-karaoke-part.speaker-male-3,
 .lyrics-lyricsContainer-LyricsLine.speaker-male-3 {
-  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-male-3, #edf7ff);
-  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-male-3, #edf7ff) 50%, transparent);
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-male-3, #bfe8ff);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-male-3, #bfe8ff) 50%, transparent);
 }
 
 .lyrics-karaoke-part.speaker-male-4,
 .lyrics-lyricsContainer-LyricsLine.speaker-male-4 {
-  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-male-4, #dbe7ff);
-  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-male-4, #dbe7ff) 50%, transparent);
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-male-4, #7fb5e6);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-male-4, #7fb5e6) 50%, transparent);
 }
 
 .lyrics-karaoke-part.speaker-male-5,
 .lyrics-lyricsContainer-LyricsLine.speaker-male-5 {
-  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-male-5, #e2f8ff);
-  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-male-5, #e2f8ff) 50%, transparent);
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-male-5, #6cb8b8);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-male-5, #6cb8b8) 50%, transparent);
 }
 
 .lyrics-karaoke-part.speaker-female-1,
 .lyrics-lyricsContainer-LyricsLine.speaker-female-1 {
-  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-female-1, #ffe7ef);
-  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-female-1, #ffe7ef) 52%, transparent);
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-female-1, #ffb8c7);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-female-1, #ffb8c7) 52%, transparent);
 }
 
 .lyrics-karaoke-part.speaker-female-2,
 .lyrics-lyricsContainer-LyricsLine.speaker-female-2 {
-  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-female-2, #ffe0e8);
-  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-female-2, #ffe0e8) 50%, transparent);
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-female-2, #ffd6b3);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-female-2, #ffd6b3) 50%, transparent);
 }
 
 .lyrics-karaoke-part.speaker-female-3,
 .lyrics-lyricsContainer-LyricsLine.speaker-female-3 {
-  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-female-3, #fff0f5);
-  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-female-3, #fff0f5) 50%, transparent);
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-female-3, #f6c8ff);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-female-3, #f6c8ff) 50%, transparent);
 }
 
 .lyrics-karaoke-part.speaker-female-4,
 .lyrics-lyricsContainer-LyricsLine.speaker-female-4 {
-  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-female-4, #ffdfe0);
-  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-female-4, #ffdfe0) 50%, transparent);
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-female-4, #e6b4d4);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-female-4, #e6b4d4) 50%, transparent);
 }
 
 .lyrics-karaoke-part.speaker-female-5,
 .lyrics-lyricsContainer-LyricsLine.speaker-female-5 {
-  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-female-5, #fbe5ff);
-  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-female-5, #fbe5ff) 50%, transparent);
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-female-5, #f6e5a5);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-female-5, #f6e5a5) 50%, transparent);
 }
 
 .lyrics-karaoke-part.speaker-duet-1,
 .lyrics-lyricsContainer-LyricsLine.speaker-duet-1 {
-  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-duet-1, #eadfff);
-  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-duet-1, #eadfff) 52%, transparent);
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-duet-1, #e4d8ff);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-duet-1, #e4d8ff) 52%, transparent);
 }
 
 .lyrics-karaoke-part.speaker-duet-2,
 .lyrics-lyricsContainer-LyricsLine.speaker-duet-2 {
-  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-duet-2, #e2d2ff);
-  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-duet-2, #e2d2ff) 50%, transparent);
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-duet-2, #d6e4ff);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-duet-2, #d6e4ff) 50%, transparent);
 }
 
 .lyrics-karaoke-part.speaker-duet-3,
 .lyrics-lyricsContainer-LyricsLine.speaker-duet-3 {
-  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-duet-3, #f0e8ff);
-  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-duet-3, #f0e8ff) 50%, transparent);
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-duet-3, #ffddf2);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-duet-3, #ffddf2) 50%, transparent);
 }
 
 .lyrics-karaoke-part.speaker-duet-4,
 .lyrics-lyricsContainer-LyricsLine.speaker-duet-4 {
-  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-duet-4, #dec9ff);
-  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-duet-4, #dec9ff) 50%, transparent);
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-duet-4, #bfaeff);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-duet-4, #bfaeff) 50%, transparent);
 }
 
 .lyrics-karaoke-part.speaker-duet-5,
 .lyrics-lyricsContainer-LyricsLine.speaker-duet-5 {
-  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-duet-5, #e9dcff);
-  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-duet-5, #e9dcff) 50%, transparent);
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-duet-5, #9d8cf2);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-duet-5, #9d8cf2) 50%, transparent);
 }
 
 @keyframes ivlyrics-kind-effect-tremble {

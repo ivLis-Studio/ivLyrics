@@ -22,26 +22,24 @@ const SYNC_CREATOR_LEGACY_CUSTOM_SPEAKER_FALLBACKS = {
 };
 const SYNC_CREATOR_CUSTOM_FALLBACK_OPTIONS = ['MALE 1', 'FEMALE 1', 'DUET 1'];
 const SYNC_CREATOR_DEFAULT_CUSTOM_FALLBACK = 'MALE 1';
-const SYNC_CREATOR_BULK_SPEAKER_OPTIONS = SYNC_CREATOR_SPEAKER_OPTIONS.filter(
-	(value) => value !== 'CUSTOM'
-);
+const SYNC_CREATOR_BULK_SPEAKER_OPTIONS = [...SYNC_CREATOR_SPEAKER_OPTIONS];
 const SYNC_CREATOR_SPEAKER_TEXT_COLORS = {
 	'NORMAL': '#f2f4f7',
-	'MALE 1': '#e6f2ff',
-	'MALE 2': '#d7ecff',
-	'MALE 3': '#edf7ff',
-	'MALE 4': '#dbe7ff',
-	'MALE 5': '#e2f8ff',
-	'FEMALE 1': '#ffe7ef',
-	'FEMALE 2': '#ffe0e8',
-	'FEMALE 3': '#fff0f5',
-	'FEMALE 4': '#ffdfe0',
-	'FEMALE 5': '#fbe5ff',
-	'DUET 1': '#eadfff',
-	'DUET 2': '#e2d2ff',
-	'DUET 3': '#f0e8ff',
-	'DUET 4': '#dec9ff',
-	'DUET 5': '#e9dcff'
+	'MALE 1': '#a8ccff',
+	'MALE 2': '#9ae8d4',
+	'MALE 3': '#bfe8ff',
+	'MALE 4': '#7fb5e6',
+	'MALE 5': '#6cb8b8',
+	'FEMALE 1': '#ffb8c7',
+	'FEMALE 2': '#ffd6b3',
+	'FEMALE 3': '#f6c8ff',
+	'FEMALE 4': '#e6b4d4',
+	'FEMALE 5': '#f6e5a5',
+	'DUET 1': '#e4d8ff',
+	'DUET 2': '#d6e4ff',
+	'DUET 3': '#ffddf2',
+	'DUET 4': '#bfaeff',
+	'DUET 5': '#9d8cf2'
 };
 const SYNC_CREATOR_DEFAULT_SPEAKER = 'NORMAL';
 const SYNC_CREATOR_DEFAULT_KIND = 'vocal';
@@ -290,9 +288,10 @@ const sanitizeSyncCreatorSpeakerFallback = (speaker, fallback, useDefault = fals
 };
 
 const normalizeSyncCreatorSpeakerColor = (value) => {
-	const helperColor = window.ivLyricsSpeakerColors?.normalizeColor?.(value);
+	const rawColor = String(value || '').trim();
+	const color = rawColor && !rawColor.startsWith('#') ? `#${rawColor}` : rawColor;
+	const helperColor = window.ivLyricsSpeakerColors?.normalizeColor?.(color);
 	if (helperColor) return helperColor;
-	const color = String(value || '').trim();
 	if (/^#[0-9a-f]{6}$/i.test(color)) return color.toLowerCase();
 	if (/^#[0-9a-f]{3}$/i.test(color)) {
 		return `#${color.slice(1).split('').map(char => char + char).join('')}`.toLowerCase();
@@ -313,6 +312,121 @@ const sanitizeSyncCreatorSpeakerColor = (speaker, color, useDefault = false, fal
 	if (!isSyncCreatorCustomSpeaker(speaker)) return '';
 	return normalizeSyncCreatorSpeakerColor(color)
 		|| (useDefault ? getSyncCreatorCustomSpeakerDefaultColor(speaker, fallback) : '');
+};
+
+const resolveSyncCreatorSpeakerTransition = ({
+	currentSpeaker,
+	currentColor = '',
+	currentFallback = '',
+	nextSpeaker,
+	remembered = {}
+}) => {
+	const speaker = normalizeSyncCreatorSpeaker(nextSpeaker);
+	if (!speaker) return null;
+
+	let rememberedColor = normalizeSyncCreatorSpeakerColor(remembered.color);
+	let rememberedFallback = normalizeSyncCreatorSpeakerFallback(remembered.fallback);
+	if (isSyncCreatorCustomSpeaker(currentSpeaker)) {
+		rememberedColor = normalizeSyncCreatorSpeakerColor(currentColor) || rememberedColor;
+		rememberedFallback = normalizeSyncCreatorSpeakerFallback(currentFallback) || rememberedFallback;
+	}
+
+	if (!isSyncCreatorCustomSpeaker(speaker)) {
+		return {
+			speaker,
+			color: '',
+			fallback: '',
+			remembered: {
+				color: rememberedColor,
+				fallback: rememberedFallback
+			}
+		};
+	}
+
+	const fallback = sanitizeSyncCreatorSpeakerFallback(
+		speaker,
+		rememberedFallback || currentFallback,
+		true,
+		nextSpeaker
+	);
+	const color = sanitizeSyncCreatorSpeakerColor(
+		speaker,
+		rememberedColor || currentColor,
+		true,
+		fallback
+	);
+	return {
+		speaker,
+		color,
+		fallback,
+		remembered: { color, fallback }
+	};
+};
+
+const resolveSyncCreatorRememberedCustomSpeakerMeta = (remembered = {}, sticky = {}) => {
+	const fallback = normalizeSyncCreatorSpeakerFallback(remembered.fallback)
+		|| normalizeSyncCreatorSpeakerFallback(sticky.fallback)
+		|| SYNC_CREATOR_DEFAULT_CUSTOM_FALLBACK;
+	return {
+		color: normalizeSyncCreatorSpeakerColor(remembered.color)
+			|| normalizeSyncCreatorSpeakerColor(sticky.color)
+			|| getSyncCreatorCustomSpeakerDefaultColor('CUSTOM', fallback),
+		fallback
+	};
+};
+
+const resolveSyncCreatorDraftSpeakerMeta = ({
+	draft = {},
+	source = {},
+	inheritedSource = null,
+	inheritSource = false
+} = {}) => {
+	const baseSource = inheritSource && inheritedSource ? inheritedSource : source;
+	const hasSpeakerDraft = Object.prototype.hasOwnProperty.call(draft, 'speaker');
+	const sourceSpeaker = hasSpeakerDraft ? draft.speaker : baseSource?.speaker;
+	const speaker = normalizeSyncCreatorSpeaker(sourceSpeaker) || SYNC_CREATOR_DEFAULT_SPEAKER;
+	const hasColorDraft = Object.prototype.hasOwnProperty.call(draft, 'speaker-color');
+	const hasFallbackDraft = Object.prototype.hasOwnProperty.call(draft, 'speaker-fallback');
+	const speakerFallback = sanitizeSyncCreatorSpeakerFallback(
+		speaker,
+		hasFallbackDraft ? draft['speaker-fallback'] : baseSource?.['speaker-fallback'],
+		true,
+		sourceSpeaker
+	);
+	return {
+		speaker,
+		'speaker-fallback': speakerFallback,
+		'speaker-color': sanitizeSyncCreatorSpeakerColor(
+			speaker,
+			hasColorDraft ? draft['speaker-color'] : baseSource?.['speaker-color'],
+			true,
+			speakerFallback
+		)
+	};
+};
+
+const resolveSyncCreatorBulkSpeakerMeta = (value, color = '', fallback = '') => {
+	const speaker = normalizeSyncCreatorSpeaker(value);
+	if (!speaker) return null;
+	const speakerFallback = sanitizeSyncCreatorSpeakerFallback(speaker, fallback, true, value);
+	return {
+		speaker,
+		color: sanitizeSyncCreatorSpeakerColor(speaker, color, true, speakerFallback),
+		fallback: speakerFallback
+	};
+};
+
+const applySyncCreatorSpeakerMeta = (target, speakerMeta) => {
+	if (!target || !speakerMeta?.speaker) return target;
+	const next = { ...target, speaker: speakerMeta.speaker };
+	if (isSyncCreatorCustomSpeaker(speakerMeta.speaker)) {
+		next['speaker-color'] = speakerMeta.color;
+		next['speaker-fallback'] = speakerMeta.fallback;
+	} else {
+		delete next['speaker-color'];
+		delete next['speaker-fallback'];
+	}
+	return next;
 };
 
 const isSyncCreatorSpeakerMetaComplete = (value) => {
@@ -1812,6 +1926,11 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const [isLoadingLrclibId, setIsLoadingLrclibId] = useState(false);
 	const [lrclibSearchQuery, setLrclibSearchQuery] = useState('');
 	const [isSearchingLrclib, setIsSearchingLrclib] = useState(false);
+	const [showBulkCustomSpeakerDialog, setShowBulkCustomSpeakerDialog] = useState(false);
+	const [bulkCustomSpeakerFallback, setBulkCustomSpeakerFallback] = useState(SYNC_CREATOR_DEFAULT_CUSTOM_FALLBACK);
+	const [bulkCustomSpeakerColor, setBulkCustomSpeakerColor] = useState(() => (
+		getSyncCreatorCustomSpeakerDefaultColor('CUSTOM', SYNC_CREATOR_DEFAULT_CUSTOM_FALLBACK)
+	));
 
 	// Refs
 	const containerRef = useRef(null);
@@ -1833,6 +1952,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const preventNextTrackRef = useRef(false);
 	const providerRef = useRef(provider);
 	const selectedLrclibSourceRef = useRef(selectedLrclibSource);
+	const customSpeakerMetaMemoryRef = useRef(new Map());
 
 	const setProviderValue = useCallback((nextProvider = '') => {
 		const normalizedProvider = nextProvider || '';
@@ -2542,26 +2662,12 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		&& currentNextMergeLineIndex < lyricsLines.length;
 	const currentLineMeta = useMemo(() => {
 		const draft = lineMetaDrafts[currentLineStart] || {};
-		const hasSpeakerDraft = Object.prototype.hasOwnProperty.call(draft, 'speaker');
-		const sourceSpeaker = hasSpeakerDraft ? draft.speaker : currentExistingLineData?.speaker;
-		const speaker = normalizeSyncCreatorSpeaker(sourceSpeaker) || SYNC_CREATOR_DEFAULT_SPEAKER;
-		const hasColorDraft = Object.prototype.hasOwnProperty.call(draft, 'speaker-color');
-		const hasFallbackDraft = Object.prototype.hasOwnProperty.call(draft, 'speaker-fallback');
-		const speakerFallback = sanitizeSyncCreatorSpeakerFallback(
-			speaker,
-			hasFallbackDraft ? draft['speaker-fallback'] : currentExistingLineData?.['speaker-fallback'],
-			true,
-			sourceSpeaker
-		);
+		const speakerMeta = resolveSyncCreatorDraftSpeakerMeta({
+			draft,
+			source: currentExistingLineData
+		});
 		return {
-			speaker,
-			'speaker-fallback': speakerFallback,
-			'speaker-color': sanitizeSyncCreatorSpeakerColor(
-				speaker,
-				hasColorDraft ? draft['speaker-color'] : currentExistingLineData?.['speaker-color'],
-				true,
-				speakerFallback
-			),
+			...speakerMeta,
 			kind: normalizeSyncCreatorKind(draft.kind || currentExistingLineData?.kind) || SYNC_CREATOR_DEFAULT_KIND
 		};
 	}, [lineMetaDrafts, currentLineStart, currentExistingLineData]);
@@ -2602,36 +2708,38 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const currentParallelData = useMemo(() => {
 		const merged = mergeSyncCreatorParallelTemplate(currentParallelTemplate, currentExistingLineData?.parallel);
 		if (!merged) return null;
+		const existingParts = Array.isArray(currentExistingLineData?.parallel?.parts)
+			? currentExistingLineData.parallel.parts
+			: [];
+		const currentLineDraft = lineMetaDrafts[currentLineStart] || {};
+		const hasExplicitLineSpeaker = Object.prototype.hasOwnProperty.call(currentLineDraft, 'speaker')
+			|| Object.prototype.hasOwnProperty.call(currentExistingLineData || {}, 'speaker');
 		return {
 			...merged,
 			parts: merged.parts.map((part) => {
 				const draft = parallelPartMetaDrafts[`${currentLineStart}:${part.id}`] || {};
-				const hasSpeakerDraft = Object.prototype.hasOwnProperty.call(draft, 'speaker');
-				const sourceSpeaker = hasSpeakerDraft ? draft.speaker : part.speaker;
-				const speaker = normalizeSyncCreatorSpeaker(sourceSpeaker) || SYNC_CREATOR_DEFAULT_SPEAKER;
-				const hasColorDraft = Object.prototype.hasOwnProperty.call(draft, 'speaker-color');
-				const hasFallbackDraft = Object.prototype.hasOwnProperty.call(draft, 'speaker-fallback');
-				const speakerFallback = sanitizeSyncCreatorSpeakerFallback(
-					speaker,
-					hasFallbackDraft ? draft['speaker-fallback'] : part['speaker-fallback'],
-					true,
-					sourceSpeaker
-				);
+				const existingPart = existingParts.find(item => item?.id === part.id);
+				const speakerMeta = resolveSyncCreatorDraftSpeakerMeta({
+					draft,
+					source: part,
+					inheritedSource: currentLineMeta,
+					inheritSource: hasExplicitLineSpeaker && !existingPart
+				});
 				return {
 					...part,
-					speaker,
-					'speaker-fallback': speakerFallback,
-					'speaker-color': sanitizeSyncCreatorSpeakerColor(
-						speaker,
-						hasColorDraft ? draft['speaker-color'] : part['speaker-color'],
-						true,
-						speakerFallback
-					),
+					...speakerMeta,
 					kind: normalizeSyncCreatorKind(draft.kind || part.kind) || SYNC_CREATOR_DEFAULT_KIND
 				};
 			})
 		};
-	}, [currentParallelTemplate, currentExistingLineData, parallelPartMetaDrafts, currentLineStart]);
+	}, [
+		currentParallelTemplate,
+		currentExistingLineData,
+		parallelPartMetaDrafts,
+		lineMetaDrafts,
+		currentLineStart,
+		currentLineMeta
+	]);
 	const currentParallelParts = currentParallelData?.parts || [];
 	const hasCurrentParallelParts = currentParallelParts.length > 1;
 	const currentParentheticalLayoutCandidate = useMemo(() => {
@@ -5405,9 +5513,16 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		});
 	}, [lineCharOffsets, currentLineIndex, multiVocalMode]);
 
-	const applySongVocalSpeaker = useCallback((value) => {
-		const speaker = normalizeSyncCreatorSpeaker(value);
-		if (!speaker || !lyricsLines.length) return;
+	const applySongVocalSpeaker = useCallback((value, customMeta = {}) => {
+		const speakerMeta = resolveSyncCreatorBulkSpeakerMeta(
+			value,
+			customMeta.color,
+			customMeta.fallback
+		);
+		if (!speakerMeta || !lyricsLines.length) return;
+		const { speaker, color: speakerColor, fallback: speakerFallback } = speakerMeta;
+		const isCustomSpeaker = isSyncCreatorCustomSpeaker(speaker);
+		const rememberedCustomMeta = { color: speakerColor, fallback: speakerFallback };
 
 		const syncLinesByStart = new Map((Array.isArray(syncData?.lines) ? syncData.lines : []).map(line => [line.start, line]));
 		const nextLineMetaDrafts = {};
@@ -5419,9 +5534,15 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			nextLineMetaDrafts[lineStart] = {
 				...(lineMetaDrafts[lineStart] || {}),
 				speaker,
-				'speaker-color': '',
-				'speaker-fallback': ''
+				'speaker-color': speakerColor,
+				'speaker-fallback': speakerFallback
 			};
+			if (isCustomSpeaker) {
+				customSpeakerMetaMemoryRef.current.set(
+					`${trackId || 'track'}:${lineStart}:line`,
+					rememberedCustomMeta
+				);
+			}
 
 			if (isLineCoveredByMergedPrevious(index, syncLinesByStart)) {
 				return;
@@ -5440,9 +5561,15 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					nextParallelPartMetaDrafts[`${lineStart}:${part.id}`] = {
 						...(parallelPartMetaDrafts[`${lineStart}:${part.id}`] || {}),
 						speaker,
-						'speaker-color': '',
-						'speaker-fallback': ''
+						'speaker-color': speakerColor,
+						'speaker-fallback': speakerFallback
 					};
+					if (isCustomSpeaker) {
+						customSpeakerMetaMemoryRef.current.set(
+							`${trackId || 'track'}:${lineStart}:${part.id}`,
+							rememberedCustomMeta
+						);
+					}
 				});
 			}
 		});
@@ -5460,23 +5587,15 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			return {
 				...prev,
 				lines: prev.lines.map(line => {
-					const nextLine = {
+					const nextLine = applySyncCreatorSpeakerMeta({
 						...line,
-						speaker,
 						parallel: line.parallel ? {
 							...line.parallel,
 							parts: Array.isArray(line.parallel.parts)
-								? line.parallel.parts.map(part => {
-									const nextPart = { ...part, speaker };
-									delete nextPart['speaker-color'];
-									delete nextPart['speaker-fallback'];
-									return nextPart;
-								})
+								? line.parallel.parts.map(part => applySyncCreatorSpeakerMeta(part, speakerMeta))
 								: line.parallel.parts
 						} : line.parallel
-					};
-					delete nextLine['speaker-color'];
-					delete nextLine['speaker-fallback'];
+					}, speakerMeta);
 					return nextLine;
 				})
 			};
@@ -5488,10 +5607,43 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		syncData,
 		lineMetaDrafts,
 		parallelPartMetaDrafts,
+		trackId,
 		isLineCoveredByMergedPrevious,
 		getMergedLineIndexesForStart,
 		getParallelTemplateForLineData
 	]);
+	const requestSongVocalSpeaker = useCallback((value, customSeed = {}) => {
+		const speaker = normalizeSyncCreatorSpeaker(value);
+		if (!speaker) return;
+		if (!isSyncCreatorCustomSpeaker(speaker)) {
+			setShowBulkCustomSpeakerDialog(false);
+			applySongVocalSpeaker(speaker);
+			return;
+		}
+
+		const fallback = normalizeSyncCreatorSpeakerFallback(customSeed.fallback)
+			|| normalizeSyncCreatorSpeakerFallback(bulkCustomSpeakerFallback)
+			|| SYNC_CREATOR_DEFAULT_CUSTOM_FALLBACK;
+		const color = normalizeSyncCreatorSpeakerColor(customSeed.color)
+			|| normalizeSyncCreatorSpeakerColor(bulkCustomSpeakerColor)
+			|| getSyncCreatorCustomSpeakerDefaultColor('CUSTOM', fallback);
+		setBulkCustomSpeakerFallback(fallback);
+		setBulkCustomSpeakerColor(color);
+		setShowBulkCustomSpeakerDialog(true);
+	}, [applySongVocalSpeaker, bulkCustomSpeakerColor, bulkCustomSpeakerFallback]);
+	const applyBulkCustomSpeaker = useCallback(() => {
+		const color = normalizeSyncCreatorSpeakerColor(bulkCustomSpeakerColor);
+		if (!color) {
+			Toast.error(I18n.t('syncCreator.speakerCustomColorInvalid') || 'Enter a valid HEX color.');
+			return;
+		}
+		const fallback = normalizeSyncCreatorSpeakerFallback(bulkCustomSpeakerFallback)
+			|| SYNC_CREATOR_DEFAULT_CUSTOM_FALLBACK;
+		setBulkCustomSpeakerColor(color);
+		setBulkCustomSpeakerFallback(fallback);
+		applySongVocalSpeaker('CUSTOM', { color, fallback });
+		setShowBulkCustomSpeakerDialog(false);
+	}, [applySongVocalSpeaker, bulkCustomSpeakerColor, bulkCustomSpeakerFallback]);
 
 	const currentManualSplitPoints = useMemo(() => {
 		const splitPoints = manualParallelSplitDrafts[currentLineStart];
@@ -7622,12 +7774,17 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		);
 	};
 
-	const renderBulkSpeakerControl = () => lyricsLines.length > 0 && react.createElement('label', { style: s.bulkVocalPanelRow },
+	const renderBulkSpeakerControl = ({ compact = false, seedColor = '', seedFallback = '' } = {}) => lyricsLines.length > 0 && react.createElement('label', {
+		style: compact ? s.bulkVocalControl : s.bulkVocalPanelRow
+	},
 		react.createElement('span', { style: s.bulkVocalLabel }, I18n.t('syncCreator.bulkVocalLabel') || 'All vocals'),
 		react.createElement('select', {
-			style: { ...s.select, width: '100%' },
+			style: compact ? s.select : { ...s.select, width: '100%' },
 			value: '',
-			onChange: (e) => applySongVocalSpeaker(e.target.value)
+			onChange: (event) => requestSongVocalSpeaker(event.target.value, {
+				color: seedColor,
+				fallback: seedFallback
+			})
 		},
 			[
 				react.createElement('option', { key: 'placeholder', value: '', disabled: true }, I18n.t('syncCreator.bulkVocalPlaceholder') || 'Set speaker...'),
@@ -7650,35 +7807,52 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			if (activeParallelPart) updateParallelPartMeta(activeParallelPart.id, field, value);
 			else updateCurrentLineMeta(field, value);
 		};
+		const customSpeakerMemoryKey = `${trackId || 'track'}:${currentLineStart}:${activeParallelPart?.id || 'line'}`;
+		const targetRememberedCustomSpeakerMeta = customSpeakerMetaMemoryRef.current.get(customSpeakerMemoryKey) || {};
+		const rememberedCustomSpeakerMeta = resolveSyncCreatorRememberedCustomSpeakerMeta(
+			targetRememberedCustomSpeakerMeta,
+			{ color: bulkCustomSpeakerColor, fallback: bulkCustomSpeakerFallback }
+		);
 		const updateSpeaker = (value) => {
-			const speaker = normalizeSyncCreatorSpeaker(value);
-			if (!speaker) return;
-			const enteringCustom = isSyncCreatorCustomSpeaker(speaker) && !isSyncCreatorCustomSpeaker(targetSpeaker);
-			const fallback = sanitizeSyncCreatorSpeakerFallback(
-				speaker,
-				targetSpeakerFallback,
-				true,
-				value
-			);
-			const customColor = sanitizeSyncCreatorSpeakerColor(
-				speaker,
-				enteringCustom ? '' : targetSpeakerColor,
-				true,
-				fallback
-			);
-			updateSpeakerMeta('speaker', speaker);
-			updateSpeakerMeta('speaker-fallback', fallback);
-			updateSpeakerMeta('speaker-color', customColor);
+			const transition = resolveSyncCreatorSpeakerTransition({
+				currentSpeaker: targetSpeaker,
+				currentColor: targetSpeakerColor,
+				currentFallback: targetSpeakerFallback,
+				nextSpeaker: value,
+				remembered: rememberedCustomSpeakerMeta
+			});
+			if (!transition) return;
+			customSpeakerMetaMemoryRef.current.set(customSpeakerMemoryKey, transition.remembered);
+			if (isSyncCreatorCustomSpeaker(transition.speaker)) {
+				setBulkCustomSpeakerColor(transition.color);
+				setBulkCustomSpeakerFallback(transition.fallback);
+			}
+			updateSpeakerMeta('speaker', transition.speaker);
+			updateSpeakerMeta('speaker-fallback', transition.fallback);
+			updateSpeakerMeta('speaker-color', transition.color);
 		};
 		const updateSpeakerColor = (value) => {
 			const color = normalizeSyncCreatorSpeakerColor(value);
 			if (!color) return false;
+			customSpeakerMetaMemoryRef.current.set(customSpeakerMemoryKey, {
+				color,
+				fallback: normalizeSyncCreatorSpeakerFallback(targetSpeakerFallback)
+					|| rememberedCustomSpeakerMeta.fallback
+			});
+			setBulkCustomSpeakerColor(color);
 			updateSpeakerMeta('speaker-color', color);
 			return true;
 		};
 		const updateSpeakerFallback = (value) => {
 			const fallback = normalizeSyncCreatorSpeakerFallback(value);
-			if (fallback) updateSpeakerMeta('speaker-fallback', fallback);
+			if (!fallback) return;
+			customSpeakerMetaMemoryRef.current.set(customSpeakerMemoryKey, {
+				color: normalizeSyncCreatorSpeakerColor(targetSpeakerColor)
+					|| rememberedCustomSpeakerMeta.color,
+				fallback
+			});
+			setBulkCustomSpeakerFallback(fallback);
+			updateSpeakerMeta('speaker-fallback', fallback);
 		};
 		const updateKind = (value) => {
 			if (activeParallelPart) updateParallelPartMeta(activeParallelPart.id, 'kind', value);
@@ -7730,7 +7904,10 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					)
 				),
 				react.createElement('div', { style: s.railDivider }),
-				renderBulkSpeakerControl()
+				renderBulkSpeakerControl({
+					seedColor: isSyncCreatorCustomSpeaker(targetSpeaker) ? targetSpeakerColor : rememberedCustomSpeakerMeta.color,
+					seedFallback: isSyncCreatorCustomSpeaker(targetSpeaker) ? targetSpeakerFallback : rememberedCustomSpeakerMeta.fallback
+				})
 			),
 			react.createElement('div', { style: s.panel },
 				react.createElement('div', { style: s.panelTitle }, I18n.t('syncCreator.typeLabel') || 'Text effect'),
@@ -8425,21 +8602,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					onClick: () => setIsCharacterPronunciationPrimary(value => !value),
 					title: I18n.t('syncCreator.characterPronunciationPrimaryDesc') || '생성된 발음을 크게, 원어 가사를 작게 표시합니다.'
 				}, I18n.t('syncCreator.characterPronunciationPrimary') || '발음 크게'),
-				lyricsLines.length > 0 && react.createElement('label', { style: s.bulkVocalControl },
-					react.createElement('span', { style: s.bulkVocalLabel }, I18n.t('syncCreator.bulkVocalLabel') || 'All vocals'),
-					react.createElement('select', {
-						style: s.select,
-						value: '',
-						onChange: (e) => applySongVocalSpeaker(e.target.value)
-					},
-						[
-							react.createElement('option', { key: 'placeholder', value: '', disabled: true }, I18n.t('syncCreator.bulkVocalPlaceholder') || 'Set speaker...'),
-							...SYNC_CREATOR_BULK_SPEAKER_OPTIONS.map(value =>
-								react.createElement('option', { key: value, value }, value)
-							)
-						]
-					)
-				),
+				renderBulkSpeakerControl({ compact: true }),
 				isVirtualKaraokeSource && react.createElement('span', { style: s.virtualKaraokeBadge },
 					I18n.t('syncCreator.virtualKaraoke') || '가상 노래방 데이터'
 				)
@@ -8920,6 +9083,78 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 						style: s.lrcLibBtn,
 						onClick: () => resolveMultiVocalDecision(true)
 					}, I18n.t('syncCreator.multiVocalDecisionMulti') || 'Continue in multiple vocal mode')
+				)
+			)
+		),
+
+		showBulkCustomSpeakerDialog && react.createElement('div', {
+			style: s.lrcLibModal,
+			onClick: (event) => {
+				if (event.target === event.currentTarget) setShowBulkCustomSpeakerDialog(false);
+			}
+		},
+			react.createElement('div', { style: { ...s.lrcLibContent, maxWidth: '440px' } },
+				react.createElement('h3', { style: s.lrcLibTitle },
+					`${I18n.t('syncCreator.bulkVocalLabel') || 'All vocals'} · CUSTOM`
+				),
+				react.createElement('div', {
+					style: {
+						...s.customSpeakerColorEditor,
+						marginTop: 0,
+						padding: 0,
+						border: 'none',
+						background: 'transparent'
+					}
+				},
+					react.createElement('input', {
+						type: 'color',
+						style: s.customSpeakerColorPicker,
+						value: sanitizeSyncCreatorSpeakerColor(
+							'CUSTOM',
+							bulkCustomSpeakerColor,
+							true,
+							bulkCustomSpeakerFallback
+						),
+						onChange: (event) => setBulkCustomSpeakerColor(event.target.value),
+						'aria-label': I18n.t('syncCreator.speakerCustomColor') || 'Custom speaker color'
+					}),
+					react.createElement('div', { style: s.customSpeakerColorFields },
+						react.createElement('div', { style: s.customSpeakerColorLabel }, I18n.t('syncCreator.speakerCustomColor') || 'Custom speaker color'),
+						react.createElement('input', {
+							type: 'text',
+							style: s.customSpeakerColorText,
+							value: bulkCustomSpeakerColor,
+							placeholder: '#00ff00',
+							maxLength: 7,
+							onChange: (event) => setBulkCustomSpeakerColor(event.target.value),
+							onKeyDown: (event) => {
+								if (event.key !== 'Enter') return;
+								event.preventDefault();
+								applyBulkCustomSpeaker();
+							}
+						}),
+						react.createElement('div', { style: s.customSpeakerColorLabel }, I18n.t('syncCreator.speakerCustomFallback') || 'Fallback color group'),
+						react.createElement('select', {
+							style: { ...s.select, width: '100%' },
+							value: bulkCustomSpeakerFallback,
+							onChange: (event) => setBulkCustomSpeakerFallback(event.target.value)
+						}, SYNC_CREATOR_CUSTOM_FALLBACK_OPTIONS.map(value => react.createElement('option', {
+							key: value,
+							value
+						}, value.replace(' 1', ''))))
+					)
+				),
+				react.createElement('div', { style: s.lrcLibBtnRow },
+					react.createElement('button', {
+						type: 'button',
+						style: s.lrcLibBtnCancel,
+						onClick: () => setShowBulkCustomSpeakerDialog(false)
+					}, I18n.t('cancel') || 'Cancel'),
+					react.createElement('button', {
+						type: 'button',
+						style: s.lrcLibBtn,
+						onClick: applyBulkCustomSpeaker
+					}, I18n.t('videoBackground.apply') || 'Apply')
 				)
 			)
 		),

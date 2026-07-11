@@ -162,7 +162,8 @@ function formatContributorTimestamp(epochSeconds) {
 
 function getCreatorProfileUiTheme() {
 	try {
-		const storedTheme = localStorage.getItem("ivLyrics:settings-ui-theme");
+		const storedTheme = window.ivLyricsStoragePersistence?.getItem("ivLyrics:settings-ui-theme")
+			?? localStorage.getItem("ivLyrics:settings-ui-theme");
 		if (storedTheme === "light" || storedTheme === "dark") {
 			return storedTheme;
 		}
@@ -736,7 +737,12 @@ const SyncCreatorProfileModal = react.memo(({
 
 	react.useEffect(() => {
 		try {
-			localStorage.setItem("ivLyrics:settings-ui-theme", uiTheme === "light" ? "light" : "dark");
+			const normalizedTheme = uiTheme === "light" ? "light" : "dark";
+			if (window.ivLyricsStoragePersistence) {
+				window.ivLyricsStoragePersistence.setItem("ivLyrics:settings-ui-theme", normalizedTheme);
+			} else {
+				localStorage.setItem("ivLyrics:settings-ui-theme", normalizedTheme);
+			}
 		} catch (error) {
 			// Ignore storage failures in restricted runtimes.
 		}

@@ -6942,13 +6942,19 @@
 
         // 포트 설정 (localStorage에 저장)
         get port() {
-            const savedPort = Spicetify.LocalStorage.get('ivLyrics:overlay-port');
+            const savedPort = window.ivLyricsStoragePersistence
+                ? window.ivLyricsStoragePersistence.getItem('ivLyrics:overlay-port')
+                : Spicetify.LocalStorage.get('ivLyrics:overlay-port');
             return savedPort ? parseInt(savedPort, 10) : this.DEFAULT_PORT;
         },
         set port(value) {
             const portNum = parseInt(value, 10);
             if (portNum >= 1024 && portNum <= 65535) {
-                Spicetify.LocalStorage.set('ivLyrics:overlay-port', portNum.toString());
+                if (window.ivLyricsStoragePersistence) {
+                    window.ivLyricsStoragePersistence.setItem('ivLyrics:overlay-port', portNum.toString());
+                } else {
+                    Spicetify.LocalStorage.set('ivLyrics:overlay-port', portNum.toString());
+                }
                 this.isConnected = false;
                 this.checkConnection();
             }
@@ -6956,10 +6962,17 @@
 
         // 설정 (localStorage에 저장)
         get enabled() {
-            return Spicetify.LocalStorage.get('ivLyrics:overlay-enabled') !== 'false';
+            const stored = window.ivLyricsStoragePersistence
+                ? window.ivLyricsStoragePersistence.getItem('ivLyrics:overlay-enabled')
+                : Spicetify.LocalStorage.get('ivLyrics:overlay-enabled');
+            return stored !== 'false';
         },
         set enabled(value) {
-            Spicetify.LocalStorage.set('ivLyrics:overlay-enabled', value ? 'true' : 'false');
+            if (window.ivLyricsStoragePersistence) {
+                window.ivLyricsStoragePersistence.setItem('ivLyrics:overlay-enabled', value ? 'true' : 'false');
+            } else {
+                Spicetify.LocalStorage.set('ivLyrics:overlay-enabled', value ? 'true' : 'false');
+            }
             this.syncRuntimeState();
         },
 
@@ -7623,10 +7636,17 @@
         },
         enabled: {
             get() {
-                return Spicetify.LocalStorage.get('ivLyrics:visual:lyrics-helper-enabled') !== 'false';
+                const stored = window.ivLyricsStoragePersistence
+                    ? window.ivLyricsStoragePersistence.getItem('ivLyrics:visual:lyrics-helper-enabled')
+                    : Spicetify.LocalStorage.get('ivLyrics:visual:lyrics-helper-enabled');
+                return stored !== 'false';
             },
             set(value) {
-                Spicetify.LocalStorage.set('ivLyrics:visual:lyrics-helper-enabled', value ? 'true' : 'false');
+                if (window.ivLyricsStoragePersistence) {
+                    window.ivLyricsStoragePersistence.setItem('ivLyrics:visual:lyrics-helper-enabled', value ? 'true' : 'false');
+                } else {
+                    Spicetify.LocalStorage.set('ivLyrics:visual:lyrics-helper-enabled', value ? 'true' : 'false');
+                }
                 this.syncRuntimeState();
             }
         },

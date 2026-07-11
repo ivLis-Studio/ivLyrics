@@ -1,0 +1,193 @@
+name: PC Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without v (for example 5.5.1)"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark release as prerelease"
+        required: true
+        type: boolean
+        default: false
+      dry_run:
+        description: "Validate and generate AI notes without publishing"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pc-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Prepare and publish release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify release branch
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]]; then
+            echo "Run releases from $DEFAULT_BRANCH, not $GITHUB_REF_NAME." >&2
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "Checkout is not clean before release preparation." >&2
+            git status --short
+            exit 1
+          fi
+
+      - name: Prepare release version
+        id: version
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: python3 .github/scripts/set_release_version.py prepare "$RELEASE_VERSION"
+
+      - name: Validate release files
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          VERSION_CHANGED: ${{ steps.version.outputs.changed }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/set_release_version.py check "$RELEASE_VERSION"
+          node --check Utils.js
+          node --check NoticeSystem.js
+          python3 -m json.tool manifest.json >/dev/null
+          git diff --check
+
+          actual="$(git diff --name-only)"
+          if [[ "$VERSION_CHANGED" == "true" ]]; then
+            expected=$'NoticeSystem.js\nUtils.js\nversion.txt'
+            if [[ "$actual" != "$expected" ]]; then
+              echo "Unexpected release file changes:" >&2
+              printf '%s\n' "$actual" >&2
+              exit 1
+            fi
+          elif [[ -n "$actual" ]]; then
+            echo "Existing-version recovery must not modify files." >&2
+            printf '%s\n' "$actual" >&2
+            exit 1
+          fi
+
+      - name: Inspect release tag
+        id: tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          VERSION_CHANGED: ${{ steps.version.outputs.changed }}
+        run: |
+          set -euo pipefail
+          if tag_sha="$(git rev-parse --verify "${RELEASE_TAG}^{commit}" 2>/dev/null)"; then
+            if [[ "$VERSION_CHANGED" == "true" ]]; then
+              echo "Tag $RELEASE_TAG already exists for a new version." >&2
+              exit 1
+            fi
+            head_sha="$(git rev-parse HEAD)"
+            if [[ "$tag_sha" != "$head_sha" ]]; then
+              echo "Tag $RELEASE_TAG does not point to the current main commit." >&2
+              exit 1
+            fi
+            tag_exists=true
+          else
+            tag_exists=false
+          fi
+          echo "exists=$tag_exists" >> "$GITHUB_OUTPUT"
+
+      - name: Generate AI release notes
+        id: notes
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_NOTES_DIR: ${{ runner.temp }}/release-metadata
+          AI_BASE_URL: ${{ secrets.AI_BASE_URL }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}
+        run: python3 .github/scripts/generate_release_notes.py
+
+      - name: Upload release preview
+        uses: actions/upload-artifact@v7
+        with:
+          name: ivLyrics-${{ steps.version.outputs.tag }}-release-preview
+          path: |
+            ${{ steps.notes.outputs.notes_path }}
+            ${{ steps.notes.outputs.metadata_path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Commit and push release tag
+        if: ${{ inputs.dry_run == false }}
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          VERSION_CHANGED: ${{ steps.version.outputs.changed }}
+          TAG_EXISTS: ${{ steps.tag.outputs.exists }}
+        run: |
+          set -euo pipefail
+          if [[ "$VERSION_CHANGED" == "true" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add NoticeSystem.js Utils.js version.txt
+            git commit \
+              -m "$RELEASE_VERSION RELEASE" \
+              -m "PC 버전 표기 세 곳을 $RELEASE_VERSION으로 동기화했습니다."
+          fi
+
+          if [[ "$TAG_EXISTS" != "true" ]]; then
+            git tag "$RELEASE_TAG"
+            if [[ "$VERSION_CHANGED" == "true" ]]; then
+              git push --atomic origin HEAD:main "refs/tags/$RELEASE_TAG"
+            else
+              git push origin "refs/tags/$RELEASE_TAG"
+            fi
+          fi
+
+      - name: Create or update GitHub Release
+        if: ${{ inputs.dry_run == false }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_TITLE: ${{ steps.notes.outputs.release_title }}
+          RELEASE_NOTES: ${{ steps.notes.outputs.notes_path }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            if [[ "$PRERELEASE" == "true" ]]; then
+              gh release edit "$RELEASE_TAG" \
+                --title "$RELEASE_TITLE" \
+                --notes-file "$RELEASE_NOTES" \
+                --prerelease
+            else
+              gh release edit "$RELEASE_TAG" \
+                --title "$RELEASE_TITLE" \
+                --notes-file "$RELEASE_NOTES" \
+                --prerelease=false
+            fi
+          elif [[ "$PRERELEASE" == "true" ]]; then
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TITLE" \
+              --notes-file "$RELEASE_NOTES" \
+              --prerelease
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TITLE" \
+              --notes-file "$RELEASE_NOTES"
+          fi

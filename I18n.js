@@ -13,6 +13,32 @@
     var LANGUAGE_CODES = ["ko", "en", "zh-CN", "zh-TW", "ja", "es", "fr", "de", "it", "ru", "sv", "pt", "hi", "ar", "fa", "bn", "ur", "th", "tr", "vi", "id", "ms"];
     var AVAILABLE_LANGUAGES = [];
 
+    function getStoredLanguage() {
+        try {
+            if (window.ivLyricsStoragePersistence) {
+                return window.ivLyricsStoragePersistence.getItem(STORAGE_KEY);
+            }
+            if (typeof Spicetify !== 'undefined' && Spicetify.LocalStorage) {
+                return Spicetify.LocalStorage.get(STORAGE_KEY);
+            }
+            return localStorage.getItem(STORAGE_KEY);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function storeLanguage(langCode) {
+        try {
+            if (window.ivLyricsStoragePersistence) {
+                window.ivLyricsStoragePersistence.setItem(STORAGE_KEY, langCode);
+            } else if (typeof Spicetify !== 'undefined' && Spicetify.LocalStorage) {
+                Spicetify.LocalStorage.set(STORAGE_KEY, langCode);
+            } else {
+                localStorage.setItem(STORAGE_KEY, langCode);
+            }
+        } catch (e) { }
+    }
+
     // Language display names
     var LANGUAGE_NAMES = {
         ko: "한국어",
@@ -195,18 +221,7 @@
         refreshAvailableLanguages();
 
         // Get saved language
-        var savedLang = null;
-        try {
-            if (typeof Spicetify !== 'undefined' && Spicetify.LocalStorage) {
-                savedLang = Spicetify.LocalStorage.get(STORAGE_KEY);
-            }
-        } catch (e) { }
-
-        if (!savedLang || AVAILABLE_LANGUAGES.indexOf(savedLang) === -1) {
-            try {
-                savedLang = localStorage.getItem(STORAGE_KEY);
-            } catch (e) { }
-        }
+        var savedLang = getStoredLanguage();
 
         if (!savedLang || AVAILABLE_LANGUAGES.indexOf(savedLang) === -1) {
             savedLang = DEFAULT_LANGUAGE;
@@ -274,14 +289,7 @@
         currentLanguage = langCode;
 
         // Save to storage
-        try {
-            if (typeof Spicetify !== 'undefined' && Spicetify.LocalStorage) {
-                Spicetify.LocalStorage.set(STORAGE_KEY, langCode);
-            }
-        } catch (e) { }
-        try {
-            localStorage.setItem(STORAGE_KEY, langCode);
-        } catch (e) { }
+        storeLanguage(langCode);
 
         window.__ivLyricsDebugLog?.("[I18n] Language changed to: " + langCode);
         return Promise.resolve(true);

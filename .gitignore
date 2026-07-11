@@ -3,3 +3,5 @@ nul
 MARKETPLACE.md
 .DS_Store
 addon-manager.ps1
+__pycache__/
+*.pyc

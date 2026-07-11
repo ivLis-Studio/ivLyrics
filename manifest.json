@@ -57,6 +57,7 @@
 		"LearningMode.js"
 	],
 	"subfiles_extension": [
+		"StoragePersistence.js",
 		"MarketplaceManager.js",
 		"Addon_AI_Pollinations.js",
 		"Addon_AI_ChatGPT.js",

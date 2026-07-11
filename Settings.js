@@ -2321,21 +2321,21 @@ const MULTI_VOCAL_COLOR_GROUPS = [
 
 const getMultiVocalColorHelper = () => window.ivLyricsSpeakerColors || {
   defaultColors: {
-    "MALE 1": "#e6f2ff",
-    "MALE 2": "#d7ecff",
-    "MALE 3": "#edf7ff",
-    "MALE 4": "#dbe7ff",
-    "MALE 5": "#e2f8ff",
-    "FEMALE 1": "#ffe7ef",
-    "FEMALE 2": "#ffe0e8",
-    "FEMALE 3": "#fff0f5",
-    "FEMALE 4": "#ffdfe0",
-    "FEMALE 5": "#fbe5ff",
-    "DUET 1": "#eadfff",
-    "DUET 2": "#e2d2ff",
-    "DUET 3": "#f0e8ff",
-    "DUET 4": "#dec9ff",
-    "DUET 5": "#e9dcff",
+    "MALE 1": "#a8ccff",
+    "MALE 2": "#9ae8d4",
+    "MALE 3": "#bfe8ff",
+    "MALE 4": "#7fb5e6",
+    "MALE 5": "#6cb8b8",
+    "FEMALE 1": "#ffb8c7",
+    "FEMALE 2": "#ffd6b3",
+    "FEMALE 3": "#f6c8ff",
+    "FEMALE 4": "#e6b4d4",
+    "FEMALE 5": "#f6e5a5",
+    "DUET 1": "#e4d8ff",
+    "DUET 2": "#d6e4ff",
+    "DUET 3": "#ffddf2",
+    "DUET 4": "#bfaeff",
+    "DUET 5": "#9d8cf2",
   },
   normalizeColor(value) {
     const color = String(value || "").trim();
@@ -4783,7 +4783,8 @@ const getSettingsText = (key, fallback) => {
 };
 
 const getSettingsUiTheme = () => {
-  const storedTheme = localStorage.getItem("ivLyrics:settings-ui-theme");
+  const storedTheme = window.ivLyricsStoragePersistence?.getItem("ivLyrics:settings-ui-theme")
+    ?? localStorage.getItem("ivLyrics:settings-ui-theme");
   if (storedTheme === "light" || storedTheme === "dark") {
     return storedTheme;
   }
@@ -4798,7 +4799,11 @@ const getSettingsUiTheme = () => {
 };
 
 const persistSettingsUiTheme = (theme) => {
-  localStorage.setItem("ivLyrics:settings-ui-theme", theme);
+  if (window.ivLyricsStoragePersistence) {
+    window.ivLyricsStoragePersistence.setItem("ivLyrics:settings-ui-theme", theme);
+  } else {
+    localStorage.setItem("ivLyrics:settings-ui-theme", theme);
+  }
 };
 
 const SETTINGS_BACKGROUND_PRESETS = [
@@ -13228,6 +13233,8 @@ const ConfigModal = ({
                   keysToRemove.forEach((key) => {
                     localStorage.removeItem(key);
                   });
+
+                  await window.ivLyricsStoragePersistence?.clear?.();
 
                   resultContainer.innerHTML = `<div style="
 													padding: 16px 20px;

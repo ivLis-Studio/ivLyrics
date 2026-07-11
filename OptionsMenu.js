@@ -12,7 +12,9 @@ const OptionsMenuItemIcon = react.createElement(
 );
 
 function getSettingsSurfaceTheme() {
-  return localStorage.getItem("ivLyrics:settings-ui-theme") === "light"
+  const storedTheme = window.ivLyricsStoragePersistence?.getItem("ivLyrics:settings-ui-theme")
+    ?? localStorage.getItem("ivLyrics:settings-ui-theme");
+  return storedTheme === "light"
     ? "light"
     : "dark";
 }

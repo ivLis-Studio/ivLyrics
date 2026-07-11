@@ -1549,8 +1549,27 @@ window.TrackBackgroundDB = TrackBackgroundDB;
   }
 })();
 
-const __storageKeys = localStorage.getItem(`${APP_NAME}:storage-keys`);
-const StorageKeys = new Set(__storageKeys ? JSON.parse(__storageKeys) : []);
+const SettingsPersistence = window.ivLyricsStoragePersistence;
+const readPersistentSetting = (key) =>
+  SettingsPersistence?.getItem(key) ?? localStorage.getItem(key);
+const writePersistentSetting = (key, value) => {
+  if (SettingsPersistence) return SettingsPersistence.setItem(key, value);
+  return localStorage.setItem(key, value);
+};
+const removePersistentSetting = (key) => {
+  if (SettingsPersistence) return SettingsPersistence.removeItem(key);
+  return localStorage.removeItem(key);
+};
+
+let __storageKeys = [];
+try {
+  const savedStorageKeys = readPersistentSetting(`${APP_NAME}:storage-keys`);
+  const parsedStorageKeys = savedStorageKeys ? JSON.parse(savedStorageKeys) : [];
+  __storageKeys = Array.isArray(parsedStorageKeys) ? parsedStorageKeys : [];
+} catch (error) {
+  console.warn("[ivLyrics] Ignoring invalid storage key metadata.", error);
+}
+const StorageKeys = new Set(__storageKeys);
 /**
  *
  * @param {string} newKey
@@ -1560,7 +1579,7 @@ const saveStorageKeys = (newKey) => {
   if (!newKey.startsWith(APP_NAME)) return;
   StorageKeys.add(newKey);
   try {
-    localStorage.setItem(
+    writePersistentSetting(
       `${APP_NAME}:storage-keys`,
       JSON.stringify(Array.from(StorageKeys))
     );
@@ -1572,7 +1591,7 @@ const StorageManager = {
   get(key, defaultVal = true) {
     saveStorageKeys(key);
     try {
-      const value = localStorage.getItem(key);
+      const value = readPersistentSetting(key);
       return value !== null ? value === "true" : defaultVal;
     } catch (error) {
       return defaultVal;
@@ -1581,17 +1600,8 @@ const StorageManager = {
 
   getPersisted(key) {
     saveStorageKeys(key);
-    // Try Spicetify LocalStorage first (more reliable)
     try {
-      const value = Spicetify?.LocalStorage?.get(key);
-      if (typeof value === "string") return value;
-    } catch (error) {
-      // Error ignored
-    }
-
-    // Fallback to regular localStorage
-    try {
-      return localStorage.getItem(key);
+      return readPersistentSetting(key);
     } catch (error) {
       // Error ignored
     }
@@ -1608,17 +1618,8 @@ const StorageManager = {
     const stringValue = String(value);
     let success = false;
 
-    // Try Spicetify LocalStorage first
     try {
-      Spicetify?.LocalStorage?.set(key, stringValue);
-      success = true;
-    } catch (error) {
-      // Error ignored
-    }
-
-    // Fallback to regular localStorage
-    try {
-      localStorage.setItem(key, stringValue);
+      writePersistentSetting(key, stringValue);
       success = true;
     } catch (error) {
       // Error ignored
@@ -1632,28 +1633,20 @@ const StorageManager = {
   // Unified config save method to reduce duplication
   saveConfig(name, value) {
     saveStorageKeys(`${APP_NAME}:visual:${name}`);
-    if (name === "gemini-api-key" || name === "gemini-api-key-romaji") {
-      // Save sensitive keys to both storages for persistence
-      this.setPersisted(`${APP_NAME}:visual:${name}`, value);
-    } else if (name === "language") {
-      // Language setting needs to be saved to both storages for I18n system
-      this.setPersisted(`${APP_NAME}:visual:${name}`, value);
-    } else {
-      localStorage.setItem(`${APP_NAME}:visual:${name}`, value);
-    }
+    writePersistentSetting(`${APP_NAME}:visual:${name}`, value);
   },
 
   getItem(key) {
     saveStorageKeys(key);
-    return localStorage.getItem(key);
+    return readPersistentSetting(key);
   },
   setItem(key, value) {
     saveStorageKeys(key);
-    return localStorage.setItem(key, value);
+    return writePersistentSetting(key, value);
   },
   removeItem(key) {
     saveStorageKeys(key);
-    return localStorage.removeItem(key);
+    return removePersistentSetting(key);
   },
   getItemRaw(key) {
     return localStorage.getItem(key);
@@ -1720,11 +1713,13 @@ const StorageManager = {
 
     // 나머지 설정을 localStorage에 저장
     Object.entries(config).forEach(([key, value]) => {
-      StorageManager.setItemRaw(key, value);
+      StorageManager.setItem(key, value);
       saveStorageKeys(key);
     });
   },
 };
+
+window.StorageManager = StorageManager;
 
 // DB Export/Import Manager - 모든 IndexedDB 데이터 내보내기/가져오기
 const DB_EXPORT_TARGETS = [
@@ -1883,35 +1878,35 @@ const CONFIG = {
     "panel-border-opacity":
       StorageManager.getItem("ivLyrics:visual:panel-border-opacity") || "10",
     "multi-vocal-speaker-color-male-1":
-      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-male-1") || "#e6f2ff",
+      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-male-1") || "#a8ccff",
     "multi-vocal-speaker-color-male-2":
-      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-male-2") || "#d7ecff",
+      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-male-2") || "#9ae8d4",
     "multi-vocal-speaker-color-male-3":
-      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-male-3") || "#edf7ff",
+      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-male-3") || "#bfe8ff",
     "multi-vocal-speaker-color-male-4":
-      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-male-4") || "#dbe7ff",
+      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-male-4") || "#7fb5e6",
     "multi-vocal-speaker-color-male-5":
-      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-male-5") || "#e2f8ff",
+      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-male-5") || "#6cb8b8",
     "multi-vocal-speaker-color-female-1":
-      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-female-1") || "#ffe7ef",
+      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-female-1") || "#ffb8c7",
     "multi-vocal-speaker-color-female-2":
-      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-female-2") || "#ffe0e8",
+      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-female-2") || "#ffd6b3",
     "multi-vocal-speaker-color-female-3":
-      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-female-3") || "#fff0f5",
+      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-female-3") || "#f6c8ff",
     "multi-vocal-speaker-color-female-4":
-      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-female-4") || "#ffdfe0",
+      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-female-4") || "#e6b4d4",
     "multi-vocal-speaker-color-female-5":
-      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-female-5") || "#fbe5ff",
+      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-female-5") || "#f6e5a5",
     "multi-vocal-speaker-color-duet-1":
-      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-duet-1") || "#eadfff",
+      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-duet-1") || "#e4d8ff",
     "multi-vocal-speaker-color-duet-2":
-      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-duet-2") || "#e2d2ff",
+      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-duet-2") || "#d6e4ff",
     "multi-vocal-speaker-color-duet-3":
-      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-duet-3") || "#f0e8ff",
+      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-duet-3") || "#ffddf2",
     "multi-vocal-speaker-color-duet-4":
-      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-duet-4") || "#dec9ff",
+      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-duet-4") || "#bfaeff",
     "multi-vocal-speaker-color-duet-5":
-      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-duet-5") || "#e9dcff",
+      StorageManager.getItem("ivLyrics:visual:multi-vocal-speaker-color-duet-5") || "#9d8cf2",
     "sync-data-custom-speaker-colors-enabled": StorageManager.get(
       "ivLyrics:visual:sync-data-custom-speaker-colors-enabled",
       true

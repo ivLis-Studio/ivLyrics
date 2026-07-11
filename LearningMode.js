@@ -25,6 +25,12 @@
     const DB_VERSION = 1;
     const THEME_STORAGE_KEY = "ivLyrics:learningMode:theme";
     const DIFFICULTY_STORAGE_KEY = "ivLyrics:learningMode:difficulty";
+    const getStoredValue = (key) => window.ivLyricsStoragePersistence
+        ? window.ivLyricsStoragePersistence.getItem(key)
+        : localStorage.getItem(key);
+    const setStoredValue = (key, value) => window.ivLyricsStoragePersistence
+        ? window.ivLyricsStoragePersistence.setItem(key, value)
+        : localStorage.setItem(key, value);
     const PROMPT_VERSION = "lyrics-study-v6-2026-05-24";
     const MAX_STUDY_LINES = 80;
     const MAX_STUDY_CHARS = 8000;
@@ -128,7 +134,7 @@
 
     const getInitialStudyTheme = () => {
         try {
-            const stored = localStorage.getItem(THEME_STORAGE_KEY);
+            const stored = getStoredValue(THEME_STORAGE_KEY);
             if (stored === "light" || stored === "dark") return stored;
         } catch (error) { }
         try {
@@ -144,7 +150,7 @@
 
     const getInitialStudyDifficulty = () => {
         try {
-            return normalizeStudyDifficulty(localStorage.getItem(DIFFICULTY_STORAGE_KEY));
+            return normalizeStudyDifficulty(getStoredValue(DIFFICULTY_STORAGE_KEY));
         } catch (error) {
             return "normal";
         }
@@ -1747,7 +1753,7 @@
             setStudyTheme((current) => {
                 const next = current === "dark" ? "light" : "dark";
                 try {
-                    localStorage.setItem(THEME_STORAGE_KEY, next);
+                    setStoredValue(THEME_STORAGE_KEY, next);
                 } catch (error) { }
                 return next;
             });
@@ -1757,7 +1763,7 @@
             const next = normalizeStudyDifficulty(difficulty);
             setStudyDifficulty(next);
             try {
-                localStorage.setItem(DIFFICULTY_STORAGE_KEY, next);
+                setStoredValue(DIFFICULTY_STORAGE_KEY, next);
             } catch (error) { }
         }, []);
 

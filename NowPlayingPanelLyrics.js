@@ -861,21 +861,21 @@ body.${PANEL_ACTIVE_BODY_CLASS} [data-testid="lyrics-npv-section"] {
 .ivlyrics-panel-line-karaoke-part.speaker-c { --ivlyrics-panel-vocal-color: #ffd166; }
 .ivlyrics-panel-line-karaoke-part.speaker-d { --ivlyrics-panel-vocal-color: #c4a7ff; }
 .ivlyrics-panel-line-karaoke-part.speaker-sfx { --ivlyrics-panel-vocal-color: #f4a6c8; }
-.ivlyrics-panel-line-karaoke-part.speaker-male-1 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-male-1, #e6f2ff); }
-.ivlyrics-panel-line-karaoke-part.speaker-male-2 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-male-2, #d7ecff); }
-.ivlyrics-panel-line-karaoke-part.speaker-male-3 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-male-3, #edf7ff); }
-.ivlyrics-panel-line-karaoke-part.speaker-male-4 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-male-4, #dbe7ff); }
-.ivlyrics-panel-line-karaoke-part.speaker-male-5 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-male-5, #e2f8ff); }
-.ivlyrics-panel-line-karaoke-part.speaker-female-1 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-female-1, #ffe7ef); }
-.ivlyrics-panel-line-karaoke-part.speaker-female-2 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-female-2, #ffe0e8); }
-.ivlyrics-panel-line-karaoke-part.speaker-female-3 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-female-3, #fff0f5); }
-.ivlyrics-panel-line-karaoke-part.speaker-female-4 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-female-4, #ffdfe0); }
-.ivlyrics-panel-line-karaoke-part.speaker-female-5 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-female-5, #fbe5ff); }
-.ivlyrics-panel-line-karaoke-part.speaker-duet-1 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-duet-1, #eadfff); }
-.ivlyrics-panel-line-karaoke-part.speaker-duet-2 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-duet-2, #e2d2ff); }
-.ivlyrics-panel-line-karaoke-part.speaker-duet-3 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-duet-3, #f0e8ff); }
-.ivlyrics-panel-line-karaoke-part.speaker-duet-4 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-duet-4, #dec9ff); }
-.ivlyrics-panel-line-karaoke-part.speaker-duet-5 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-duet-5, #e9dcff); }
+.ivlyrics-panel-line-karaoke-part.speaker-male-1 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-male-1, #a8ccff); }
+.ivlyrics-panel-line-karaoke-part.speaker-male-2 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-male-2, #9ae8d4); }
+.ivlyrics-panel-line-karaoke-part.speaker-male-3 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-male-3, #bfe8ff); }
+.ivlyrics-panel-line-karaoke-part.speaker-male-4 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-male-4, #7fb5e6); }
+.ivlyrics-panel-line-karaoke-part.speaker-male-5 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-male-5, #6cb8b8); }
+.ivlyrics-panel-line-karaoke-part.speaker-female-1 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-female-1, #ffb8c7); }
+.ivlyrics-panel-line-karaoke-part.speaker-female-2 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-female-2, #ffd6b3); }
+.ivlyrics-panel-line-karaoke-part.speaker-female-3 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-female-3, #f6c8ff); }
+.ivlyrics-panel-line-karaoke-part.speaker-female-4 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-female-4, #e6b4d4); }
+.ivlyrics-panel-line-karaoke-part.speaker-female-5 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-female-5, #f6e5a5); }
+.ivlyrics-panel-line-karaoke-part.speaker-duet-1 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-duet-1, #e4d8ff); }
+.ivlyrics-panel-line-karaoke-part.speaker-duet-2 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-duet-2, #d6e4ff); }
+.ivlyrics-panel-line-karaoke-part.speaker-duet-3 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-duet-3, #ffddf2); }
+.ivlyrics-panel-line-karaoke-part.speaker-duet-4 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-duet-4, #bfaeff); }
+.ivlyrics-panel-line-karaoke-part.speaker-duet-5 { --ivlyrics-panel-vocal-color: var(--ivlyrics-multi-vocal-speaker-color-duet-5, #9d8cf2); }
 
 .ivlyrics-panel-line-karaoke-part .ivlyrics-panel-line-phonetic {
   color: var(--ivlyrics-panel-vocal-color, rgba(255, 255, 255, 0.75)) !important;
@@ -960,49 +960,49 @@ body.${PANEL_ACTIVE_BODY_CLASS} [data-testid="lyrics-npv-section"] {
 
 .ivlyrics-panel-line-karaoke-row.speaker-male-1 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-male-1 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-male-1.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-1, #e6f2ff) !important; }
+.ivlyrics-panel-line.speaker-male-1.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-1, #a8ccff) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-male-2 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-male-2 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-male-2.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-2, #d7ecff) !important; }
+.ivlyrics-panel-line.speaker-male-2.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-2, #9ae8d4) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-male-3 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-male-3 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-male-3.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-3, #edf7ff) !important; }
+.ivlyrics-panel-line.speaker-male-3.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-3, #bfe8ff) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-male-4 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-male-4 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-male-4.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-4, #dbe7ff) !important; }
+.ivlyrics-panel-line.speaker-male-4.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-4, #7fb5e6) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-male-5 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-male-5 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-male-5.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-5, #e2f8ff) !important; }
+.ivlyrics-panel-line.speaker-male-5.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-5, #6cb8b8) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-female-1 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-female-1 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-female-1.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-1, #ffe7ef) !important; }
+.ivlyrics-panel-line.speaker-female-1.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-1, #ffb8c7) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-female-2 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-female-2 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-female-2.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-2, #ffe0e8) !important; }
+.ivlyrics-panel-line.speaker-female-2.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-2, #ffd6b3) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-female-3 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-female-3 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-female-3.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-3, #fff0f5) !important; }
+.ivlyrics-panel-line.speaker-female-3.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-3, #f6c8ff) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-female-4 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-female-4 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-female-4.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-4, #ffdfe0) !important; }
+.ivlyrics-panel-line.speaker-female-4.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-4, #e6b4d4) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-female-5 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-female-5 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-female-5.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-5, #fbe5ff) !important; }
+.ivlyrics-panel-line.speaker-female-5.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-5, #f6e5a5) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-duet-1 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-duet-1 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-duet-1.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-1, #eadfff) !important; }
+.ivlyrics-panel-line.speaker-duet-1.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-1, #e4d8ff) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-duet-2 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-duet-2 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-duet-2.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-2, #e2d2ff) !important; }
+.ivlyrics-panel-line.speaker-duet-2.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-2, #d6e4ff) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-duet-3 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-duet-3 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-duet-3.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-3, #f0e8ff) !important; }
+.ivlyrics-panel-line.speaker-duet-3.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-3, #ffddf2) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-duet-4 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-duet-4 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-duet-4.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-4, #dec9ff) !important; }
+.ivlyrics-panel-line.speaker-duet-4.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-4, #bfaeff) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-duet-5 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-duet-5 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-duet-5.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-5, #e9dcff) !important; }
+.ivlyrics-panel-line.speaker-duet-5.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-5, #9d8cf2) !important; }
 
 @keyframes ivlyrics-panel-effect-tremble {
   0%, 100% { translate: 0 0; }
@@ -1254,49 +1254,49 @@ body.${PANEL_ACTIVE_BODY_CLASS} [data-testid="lyrics-npv-section"] {
 
 .ivlyrics-panel-line-karaoke-row.speaker-male-1 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-male-1 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-male-1.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-1, #e6f2ff) !important; }
+.ivlyrics-panel-line.speaker-male-1.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-1, #a8ccff) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-male-2 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-male-2 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-male-2.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-2, #d7ecff) !important; }
+.ivlyrics-panel-line.speaker-male-2.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-2, #9ae8d4) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-male-3 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-male-3 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-male-3.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-3, #edf7ff) !important; }
+.ivlyrics-panel-line.speaker-male-3.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-3, #bfe8ff) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-male-4 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-male-4 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-male-4.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-4, #dbe7ff) !important; }
+.ivlyrics-panel-line.speaker-male-4.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-4, #7fb5e6) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-male-5 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-male-5 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-male-5.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-5, #e2f8ff) !important; }
+.ivlyrics-panel-line.speaker-male-5.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-male-5, #6cb8b8) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-female-1 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-female-1 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-female-1.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-1, #ffe7ef) !important; }
+.ivlyrics-panel-line.speaker-female-1.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-1, #ffb8c7) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-female-2 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-female-2 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-female-2.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-2, #ffe0e8) !important; }
+.ivlyrics-panel-line.speaker-female-2.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-2, #ffd6b3) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-female-3 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-female-3 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-female-3.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-3, #fff0f5) !important; }
+.ivlyrics-panel-line.speaker-female-3.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-3, #f6c8ff) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-female-4 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-female-4 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-female-4.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-4, #ffdfe0) !important; }
+.ivlyrics-panel-line.speaker-female-4.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-4, #e6b4d4) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-female-5 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-female-5 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-female-5.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-5, #fbe5ff) !important; }
+.ivlyrics-panel-line.speaker-female-5.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-female-5, #f6e5a5) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-duet-1 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-duet-1 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-duet-1.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-1, #eadfff) !important; }
+.ivlyrics-panel-line.speaker-duet-1.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-1, #e4d8ff) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-duet-2 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-duet-2 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-duet-2.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-2, #e2d2ff) !important; }
+.ivlyrics-panel-line.speaker-duet-2.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-2, #d6e4ff) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-duet-3 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-duet-3 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-duet-3.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-3, #f0e8ff) !important; }
+.ivlyrics-panel-line.speaker-duet-3.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-3, #ffddf2) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-duet-4 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-duet-4 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-duet-4.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-4, #dec9ff) !important; }
+.ivlyrics-panel-line.speaker-duet-4.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-4, #bfaeff) !important; }
 .ivlyrics-panel-line-karaoke-row.speaker-duet-5 .ivlyrics-panel-karaoke-word.sung,
 .ivlyrics-panel-line.speaker-duet-5 .ivlyrics-panel-karaoke-word.sung,
-.ivlyrics-panel-line.speaker-duet-5.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-5, #e9dcff) !important; }
+.ivlyrics-panel-line.speaker-duet-5.active .ivlyrics-panel-line-text { color: var(--ivlyrics-multi-vocal-speaker-color-duet-5, #9d8cf2) !important; }
 
 .ivlyrics-panel-line.active .ivlyrics-panel-karaoke-text-run-segment.active {
   color: transparent !important;

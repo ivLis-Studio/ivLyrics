@@ -27,15 +27,17 @@
     const TOGGLE_TV_MODE_KEY = "ivLyrics:visual:toggle-tv-mode-key";
     const DEFAULT_TOGGLE_TV_KEY = "t";
 
+    const getStoredValue = (key) => window.ivLyricsStoragePersistence
+        ? window.ivLyricsStoragePersistence.getItem(key)
+        : Spicetify.LocalStorage.get(key);
+    const setStoredValue = (key, value) => window.ivLyricsStoragePersistence
+        ? window.ivLyricsStoragePersistence.setItem(key, value)
+        : Spicetify.LocalStorage.set(key, value);
+
     // 전체화면 단축키 가져오기
     const getFullscreenKey = () => {
         try {
-            // StorageManager.saveConfig와 일치하도록 localStorage에서 먼저 읽고, 
-            // 없으면 Spicetify.LocalStorage에서 읽음 (Mac 호환성)
-            let stored = localStorage.getItem(FULLSCREEN_KEY_SETTING);
-            if (!stored) {
-                stored = Spicetify.LocalStorage.get(FULLSCREEN_KEY_SETTING);
-            }
+            const stored = getStoredValue(FULLSCREEN_KEY_SETTING);
             return stored || DEFAULT_KEY;
         } catch (e) {
             return DEFAULT_KEY;
@@ -45,12 +47,7 @@
     // TV 모드 전환 단축키 가져오기
     const getToggleTvKey = () => {
         try {
-            // StorageManager.saveConfig와 일치하도록 localStorage에서 먼저 읽고,
-            // 없으면 Spicetify.LocalStorage에서 읽음 (Mac 호환성)
-            let stored = localStorage.getItem(TOGGLE_TV_MODE_KEY);
-            if (!stored) {
-                stored = Spicetify.LocalStorage.get(TOGGLE_TV_MODE_KEY);
-            }
+            const stored = getStoredValue(TOGGLE_TV_MODE_KEY);
             return stored || DEFAULT_TOGGLE_TV_KEY;
         } catch (e) {
             return DEFAULT_TOGGLE_TV_KEY;
@@ -136,13 +133,12 @@
         }
 
         // TV 모드 설정 토글
-        const currentValue = Spicetify.LocalStorage.get("ivLyrics:visual:fullscreen-tv-mode") === "true";
+        const currentValue = getStoredValue("ivLyrics:visual:fullscreen-tv-mode") === "true";
         const newValue = !currentValue;
 
         console.debug("[ivLyrics] Toggling TV mode:", currentValue, "->", newValue);
 
-        // LocalStorage에 저장
-        Spicetify.LocalStorage.set("ivLyrics:visual:fullscreen-tv-mode", newValue.toString());
+        setStoredValue("ivLyrics:visual:fullscreen-tv-mode", newValue.toString());
 
         // CONFIG 업데이트 (있으면)
         if (typeof window.CONFIG !== 'undefined' && window.CONFIG.visual) {

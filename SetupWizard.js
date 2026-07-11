@@ -2237,13 +2237,13 @@ const SetupWizard = ({ onComplete }) => {
       CONFIG.visual["spotify-fake-karaoke-enabled"] = pseudoKaraokeEnabled;
     }
 
-    // Also save to localStorage directly for overlay (uses different storage mechanism)
+    // Keep the overlay runtime flag in the same persistent settings store.
     if (typeof Spicetify !== "undefined" && Spicetify.LocalStorage) {
-      Spicetify.LocalStorage.set("ivLyrics:overlay-enabled", overlayEnabled ? "true" : "false");
+      StorageManager.setItem("ivLyrics:overlay-enabled", overlayEnabled ? "true" : "false");
     }
 
     // Mark setup as completed
-    localStorage.setItem(SETUP_STORAGE_KEY, "true");
+    StorageManager.setItem(SETUP_STORAGE_KEY, "true");
   };
 
   const handleComplete = (openSettings = false) => {
@@ -2464,5 +2464,5 @@ function openSetupWizard() {
 
 // Check if setup is needed
 function isSetupNeeded() {
-  return !localStorage.getItem(SETUP_STORAGE_KEY);
+  return !StorageManager.getItem(SETUP_STORAGE_KEY);
 }
