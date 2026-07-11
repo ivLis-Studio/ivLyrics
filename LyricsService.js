@@ -6783,37 +6783,74 @@
     // ============================================
 
     let senderBootstrapTimer = null;
-    let senderBootstrapInFlight = false;
-    let senderBootstrapRerunRequested = false;
-    let senderBootstrapPreviousUri = null;
-    let senderBootstrapWaitDeadline = 0;
+    let senderBootstrapScheduledChain = null;
+    let senderBootstrapInFlightChain = null;
+    let senderBootstrapRerunRequested = null;
+    let senderBootstrapNextChainId = 0;
     let senderBootstrapPageGraceUri = null;
     let senderBootstrapPageGraceUntil = 0;
+    const SENDER_BOOTSTRAP_METADATA_WAIT_MS = 4000;
 
     // Spotify 시작/헬퍼 재연결 시 songchange보다 리스너 등록이 늦으면 현재 곡을
     // 영원히 놓칠 수 있다. 두 sender가 공유하는 단일 부트스트랩으로 중복 조회 없이
     // 현재 곡을 한 번 보충하고, 이후 전송은 각 sender의 enabled 상태에 맡긴다.
-    const scheduleSenderBootstrap = (delay = 1200, previousUri = null) => {
-        if (previousUri) {
-            senderBootstrapPreviousUri = previousUri;
-            senderBootstrapWaitDeadline = Date.now() + 4000;
-        }
-        if (senderBootstrapTimer) {
-            clearTimeout(senderBootstrapTimer);
-        }
-
-        senderBootstrapTimer = setTimeout(async () => {
-            senderBootstrapTimer = null;
-            if (senderBootstrapInFlight) {
-                senderBootstrapRerunRequested = true;
+    const scheduleSenderBootstrap = (delay = 1200, previousUri = null, existingChain = null) => {
+        let bootstrapChain = existingChain;
+        if (bootstrapChain) {
+            if (bootstrapChain.id !== senderBootstrapScheduledChain?.id
+                && bootstrapChain.id !== senderBootstrapRerunRequested?.id) {
                 return;
             }
+        } else if (senderBootstrapTimer && senderBootstrapScheduledChain
+            && (!previousUri || !senderBootstrapScheduledChain.previousUri
+                || previousUri === senderBootstrapScheduledChain.previousUri)) {
+            // 같은 대기 체인에 겹쳐 들어온 예약은 마감 시각까지 포함해 그대로 재사용한다.
+            bootstrapChain = senderBootstrapScheduledChain;
+            if (!bootstrapChain.previousUri && previousUri) {
+                bootstrapChain.previousUri = previousUri;
+            }
+        } else {
+            bootstrapChain = {
+                id: ++senderBootstrapNextChainId,
+                previousUri: previousUri || null,
+                metadataDeadline: Date.now() + SENDER_BOOTSTRAP_METADATA_WAIT_MS
+            };
+        }
+
+        if (senderBootstrapTimer) {
+            clearTimeout(senderBootstrapTimer.handle);
+        }
+
+        const timerHandle = setTimeout(async () => {
+            if (senderBootstrapTimer?.handle === timerHandle) {
+                senderBootstrapTimer = null;
+            }
+            if (senderBootstrapScheduledChain?.id !== bootstrapChain.id) return;
+            if (senderBootstrapInFlightChain) {
+                if (!senderBootstrapRerunRequested
+                    || bootstrapChain.id > senderBootstrapRerunRequested.id) {
+                    senderBootstrapRerunRequested = bootstrapChain;
+                }
+                return;
+            }
+
+            const finishChain = () => {
+                if (senderBootstrapScheduledChain?.id === bootstrapChain.id) {
+                    senderBootstrapScheduledChain = null;
+                }
+                if (senderBootstrapRerunRequested?.id === bootstrapChain.id) {
+                    senderBootstrapRerunRequested = null;
+                }
+            };
 
             const overlaySender = window.OverlaySender;
             const helperSender = window.lyricsHelperSender;
             const overlayEnabled = !!overlaySender?.enabled;
             const helperEnabled = !!helperSender?.enabled;
-            if (!overlayEnabled && !helperEnabled) return;
+            if (!overlayEnabled && !helperEnabled) {
+                finishChain();
+                return;
+            }
 
             const item = Spicetify.Player.data?.item;
             const uri = item?.uri;
@@ -6822,24 +6859,27 @@
                 || item?.artists?.map(artistItem => artistItem.name).filter(Boolean).join(', ')
                 || '';
             if (!uri || !title) {
-                if (senderBootstrapPreviousUri && Date.now() < senderBootstrapWaitDeadline) {
-                    scheduleSenderBootstrap(150);
+                if (Date.now() < bootstrapChain.metadataDeadline) {
+                    scheduleSenderBootstrap(150, null, bootstrapChain);
+                } else {
+                    finishChain();
                 }
                 return;
             }
 
             // songchange 이벤트 직후에는 Player.data가 잠시 이전 URI를 유지한다.
-            if (senderBootstrapPreviousUri && uri === senderBootstrapPreviousUri
-                && Date.now() < senderBootstrapWaitDeadline) {
-                scheduleSenderBootstrap(150);
+            if (bootstrapChain.previousUri && uri === bootstrapChain.previousUri
+                && Date.now() < bootstrapChain.metadataDeadline) {
+                scheduleSenderBootstrap(150, null, bootstrapChain);
                 return;
             }
-            senderBootstrapPreviousUri = null;
-            senderBootstrapWaitDeadline = 0;
 
-            const overlayHasCurrentTrack = !overlayEnabled || overlaySender?._lastTrackInfo?.uri === uri;
-            const helperHasCurrentTrack = !helperEnabled || helperSender?._lastTrackInfo?.uri === uri;
-            if (overlayHasCurrentTrack && helperHasCurrentTrack) return;
+            const overlayHasCurrentTrack = !overlayEnabled || overlaySender?.lastDeliveredUri === uri;
+            const helperHasCurrentTrack = !helperEnabled || helperSender?.lastDeliveredUri === uri;
+            if (overlayHasCurrentTrack && helperHasCurrentTrack) {
+                finishChain();
+                return;
+            }
 
             // /ivLyrics 페이지에서는 페이지가 직접 가사를 조회해 lyrics-ready로
             // 전달하므로 중복 Gemini 호출을 피하려고 잠시 기다린다. 다만 페이지가
@@ -6853,13 +6893,13 @@
                 }
                 if (Date.now() < senderBootstrapPageGraceUntil) {
                     helperDebug('[LyricsService] ivLyrics 페이지 가사 전달 대기 중:', { uri });
-                    scheduleSenderBootstrap(1000);
+                    scheduleSenderBootstrap(1000, null, bootstrapChain);
                     return;
                 }
                 helperDebug('[LyricsService] ivLyrics 페이지가 가사를 전달하지 않아 직접 조회:', { uri });
             }
 
-            senderBootstrapInFlight = true;
+            senderBootstrapInFlightChain = bootstrapChain;
             try {
                 helperDebug('[LyricsService] 현재 곡 가사 초기 동기화:', { uri, title });
                 await LyricsService.getFullLyrics(
@@ -6874,13 +6914,26 @@
             } catch (e) {
                 console.error('[LyricsService] 현재 곡 가사 초기 동기화 실패:', e);
             } finally {
-                senderBootstrapInFlight = false;
-                if (senderBootstrapRerunRequested) {
-                    senderBootstrapRerunRequested = false;
-                    scheduleSenderBootstrap(150);
+                if (senderBootstrapInFlightChain?.id === bootstrapChain.id) {
+                    senderBootstrapInFlightChain = null;
+                }
+                const rerunChain = senderBootstrapRerunRequested;
+                if (rerunChain
+                    && senderBootstrapScheduledChain?.id === rerunChain.id
+                    && rerunChain.id > bootstrapChain.id) {
+                    senderBootstrapRerunRequested = null;
+                    scheduleSenderBootstrap(150, null, rerunChain);
+                } else {
+                    if (rerunChain
+                        && rerunChain.id < (senderBootstrapScheduledChain?.id || bootstrapChain.id)) {
+                        senderBootstrapRerunRequested = null;
+                    }
+                    finishChain();
                 }
             }
         }, delay);
+        senderBootstrapScheduledChain = bootstrapChain;
+        senderBootstrapTimer = { handle: timerHandle, chainId: bootstrapChain.id };
     };
 
     // Rust helper/overlay의 입력 형식은 정수 밀리초와 문자열만 허용한다.
@@ -6916,12 +6969,19 @@
         });
     };
 
+    const LYRICS_SEND_RETRY_DELAYS = [250, 750];
+
     const OverlaySender = {
         DEFAULT_PORT: 15000,
         progressInterval: null,
         lastSentUri: null,
         lastSentLyrics: null,
         lastSentOffset: null,
+        _lastSentDedupeToken: null,
+        lastDeliveredUri: null,
+        _deliveryGeneration: 0,
+        _deliveryKey: null,
+        _terminalDeliveryFailure: null,
         _lastTrackInfo: null,
         _lastLyrics: null,
         lastConfigDelay: undefined,
@@ -7006,12 +7066,41 @@
 
             if (value && !wasConnected) {
                 helperDebug('[OverlaySender] 오버레이 연결됨 ✓');
-                setTimeout(() => this.resendWithNewOffset(), 100);
-                scheduleSenderBootstrap(150);
+                this.handleConnectionRecovery();
             }
             else if (!value && wasConnected) {
                 helperDebug('[OverlaySender] 오버레이 연결 끊김');
             }
+        },
+
+        handleConnectionRecovery() {
+            // 가사 요청 자체가 연결을 복구한 경우 현재 큐가 성공 상태를 기록하므로
+            // 여기서 같은 payload를 다시 예약하지 않는다.
+            if (this._lyricsSendActive) return;
+
+            const failure = this._terminalDeliveryFailure;
+            if (failure
+                && failure.generation === this._deliveryGeneration
+                && failure.key === this._deliveryKey) {
+                if (failure.reconnectUsed) return;
+                failure.reconnectUsed = true;
+                const { generation, key } = failure;
+                setTimeout(() => {
+                    const currentFailure = this._terminalDeliveryFailure;
+                    if (!this.enabled || !currentFailure
+                        || currentFailure.generation !== generation
+                        || currentFailure.key !== key
+                        || this._deliveryGeneration !== generation
+                        || this._deliveryKey !== key) {
+                        return;
+                    }
+                    this.resendWithNewOffset('reconnect');
+                }, 100);
+                return;
+            }
+
+            setTimeout(() => this.resendWithNewOffset('reconnect'), 100);
+            scheduleSenderBootstrap(150);
         },
 
         async checkConnection() {
@@ -7153,28 +7242,122 @@
 
         // 가사 전송 직렬화 (최신 페이로드 우선) - HTTP 응답 순서 뒤집힘으로
         // 이전 가사가 최신 가사를 덮어쓰는 문제 방지
-        async queueLyricsSend(endpoint, uri, payload) {
-            this._pendingLyricsSend = { endpoint, uri, payload };
+        async queueLyricsSend(endpoint, uri, payload, deliveryContext = null) {
+            if (!deliveryContext) {
+                const key = JSON.stringify([uri, this.lastSentLyrics, this.lastSentOffset]);
+                deliveryContext = {
+                    key,
+                    generation: ++this._deliveryGeneration,
+                    isReconnectCycle: false
+                };
+                this._deliveryKey = key;
+                this._terminalDeliveryFailure = null;
+            }
+            const dedupeToken = this.lastSentUri === uri ? {} : null;
+            if (dedupeToken) {
+                this._lastSentDedupeToken = dedupeToken;
+            }
+            this._pendingLyricsSend = {
+                endpoint,
+                uri,
+                payload,
+                retryCount: 0,
+                deliveryKey: deliveryContext.key,
+                generation: deliveryContext.generation,
+                isReconnectCycle: !!deliveryContext.isReconnectCycle,
+                dedupeSnapshot: {
+                    uri: this.lastSentUri,
+                    lyrics: this.lastSentLyrics,
+                    offset: this.lastSentOffset,
+                    token: dedupeToken
+                }
+            };
             if (this._lyricsSendActive) return;
             this._lyricsSendActive = true;
+            const clearDedupeIfCurrent = (queued) => {
+                const snapshot = queued.dedupeSnapshot;
+                if (queued.generation !== this._deliveryGeneration
+                    || !snapshot || snapshot.uri !== queued.uri
+                    || this._lastSentDedupeToken !== snapshot.token
+                    || this.lastSentUri !== snapshot.uri
+                    || this.lastSentLyrics !== snapshot.lyrics
+                    || !Object.is(this.lastSentOffset, snapshot.offset)) {
+                    return;
+                }
+                this.lastSentUri = null;
+                this.lastSentLyrics = null;
+                this.lastSentOffset = null;
+                this._lastSentDedupeToken = null;
+            };
+            const markTerminalFailure = (queued) => {
+                if (queued.generation !== this._deliveryGeneration
+                    || queued.deliveryKey !== this._deliveryKey) {
+                    return;
+                }
+                const previousFailure = this._terminalDeliveryFailure;
+                this._terminalDeliveryFailure = {
+                    key: queued.deliveryKey,
+                    generation: queued.generation,
+                    reconnectUsed: queued.isReconnectCycle
+                        || !!(previousFailure
+                            && previousFailure.key === queued.deliveryKey
+                            && previousFailure.generation === queued.generation
+                            && previousFailure.reconnectUsed)
+                };
+                clearDedupeIfCurrent(queued);
+            };
             try {
                 while (this._pendingLyricsSend) {
                     const next = this._pendingLyricsSend;
                     this._pendingLyricsSend = null;
-                    if (next.uri && this.isStaleTrackSend({ uri: next.uri })) continue;
-                    const sent = await this.sendToEndpoint(next.endpoint, next.payload);
-                    if (sent !== true) {
-                        this.lastSentUri = null;
-                        this.lastSentLyrics = null;
-                        this.lastSentOffset = null;
+                    if (next.generation !== this._deliveryGeneration) continue;
+                    if (!this.enabled || (next.uri && this.isStaleTrackSend({ uri: next.uri }))) {
+                        clearDedupeIfCurrent(next);
+                        continue;
                     }
+                    const sent = await this.sendToEndpoint(next.endpoint, next.payload);
+                    const deliveryIsCurrent = this.enabled
+                        && next.generation === this._deliveryGeneration
+                        && (!next.uri || !this.isStaleTrackSend({ uri: next.uri }));
+                    if (sent === true) {
+                        if (deliveryIsCurrent) {
+                            this.lastDeliveredUri = next.uri || null;
+                            this._terminalDeliveryFailure = null;
+                        }
+                        continue;
+                    }
+
+                    if (!deliveryIsCurrent) continue;
+
+                    if (this.lastDeliveredUri === next.uri) {
+                        this.lastDeliveredUri = null;
+                    }
+                    this.scheduleConnectionCheck?.();
+
+                    const retryDelay = LYRICS_SEND_RETRY_DELAYS[next.retryCount];
+                    if (retryDelay === undefined) {
+                        markTerminalFailure(next);
+                        continue;
+                    }
+
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                    // 대기 중 들어온 최신 페이로드가 실패한 요청의 재시도를 대체한다.
+                    if (this._pendingLyricsSend) {
+                        continue;
+                    }
+                    if (!this.enabled || next.generation !== this._deliveryGeneration
+                        || (next.uri && this.isStaleTrackSend({ uri: next.uri }))) {
+                        clearDedupeIfCurrent(next);
+                        continue;
+                    }
+                    this._pendingLyricsSend = { ...next, retryCount: next.retryCount + 1 };
                 }
             } finally {
                 this._lyricsSendActive = false;
             }
         },
 
-        async sendLyrics(trackInfo, lyrics, forceResend = false) {
+        async sendLyrics(trackInfo, lyrics, forceResend = false, sendReason = 'normal') {
             if (!trackInfo || !lyrics || !Array.isArray(lyrics)) return;
             if (!this.enabled) return;
             if (this.isStaleTrackSend(trackInfo)) {
@@ -7195,7 +7378,7 @@
             }
             this._lastReqId = currentReqId;
 
-            if (this.isStaleTrackSend(trackInfo)) {
+            if (!this.enabled || this.isStaleTrackSend(trackInfo)) {
                 helperDebug('[OverlaySender] 이전 곡 가사 전송 차단 (오프셋 계산 후):', trackInfo.uri);
                 return;
             }
@@ -7207,6 +7390,15 @@
                 this.lastSentLyrics === lyricsHash &&
                 this.lastSentOffset === offset) {
                 return;
+            }
+
+            const deliveryKey = JSON.stringify([trackInfo.uri, lyricsHash, offset]);
+            const isReconnectCycle = sendReason === 'reconnect';
+            let deliveryGeneration = this._deliveryGeneration;
+            if (!isReconnectCycle || this._deliveryKey !== deliveryKey) {
+                deliveryGeneration = ++this._deliveryGeneration;
+                this._deliveryKey = deliveryKey;
+                this._terminalDeliveryFailure = null;
             }
 
             this.lastSentUri = trackInfo.uri;
@@ -7252,15 +7444,19 @@
                 },
                 lyrics: mappedLines,
                 isSynced: lyrics.some(l => l.startTime !== undefined && l.startTime !== null)
+            }, {
+                key: deliveryKey,
+                generation: deliveryGeneration,
+                isReconnectCycle
             });
         },
 
-        async resendWithNewOffset() {
+        async resendWithNewOffset(sendReason = 'explicit') {
             // 오프셋 캐시 초기화
             this._offsetCache = {};
             if (this._lastTrackInfo && this._lastLyrics) {
                 helperDebug('[OverlaySender] 가사 재전송 (싱크 반영)');
-                await this.sendLyrics(this._lastTrackInfo, this._lastLyrics, true);
+                await this.sendLyrics(this._lastTrackInfo, this._lastLyrics, true, sendReason);
             }
         },
 
@@ -7436,6 +7632,12 @@
                 this.lastSentUri = null;
                 this.lastSentLyrics = null;
                 this.lastSentOffset = null;
+                this._lastSentDedupeToken = null;
+                this.lastDeliveredUri = null;
+                this._deliveryGeneration += 1;
+                this._deliveryKey = null;
+                this._terminalDeliveryFailure = null;
+                this._pendingLyricsSend = null;
                 this._offsetCache = {};
                 this._lastProgressUri = null;
                 this._lastTrackInfo = null;
@@ -7531,6 +7733,12 @@
                 this.lastSentUri = null;
                 this.lastSentLyrics = null;
                 this.lastSentOffset = null;
+                this._lastSentDedupeToken = null;
+                this.lastDeliveredUri = null;
+                this._deliveryGeneration += 1;
+                this._deliveryKey = null;
+                this._terminalDeliveryFailure = null;
+                this._pendingLyricsSend = null;
                 this._lastTrackInfo = null;
                 this._lastLyrics = null;
                 this._offsetCache = {};
@@ -7599,6 +7807,11 @@
         lastSentUri: { value: null, writable: true },
         lastSentLyrics: { value: null, writable: true },
         lastSentOffset: { value: null, writable: true },
+        _lastSentDedupeToken: { value: null, writable: true },
+        lastDeliveredUri: { value: null, writable: true },
+        _deliveryGeneration: { value: 0, writable: true },
+        _deliveryKey: { value: null, writable: true },
+        _terminalDeliveryFailure: { value: null, writable: true },
         _lastTrackInfo: { value: null, writable: true },
         _lastLyrics: { value: null, writable: true },
         lastConfigDelay: { value: undefined, writable: true },
@@ -7682,8 +7895,7 @@
 
                 if (value && !wasConnected) {
                     helperDebug('[lyricsHelperSender] 헬퍼 연결됨 ✓');
-                    setTimeout(() => this.resendWithNewOffset(), 100);
-                    scheduleSenderBootstrap(150);
+                    this.handleConnectionRecovery();
                 }
                 else if (!value && wasConnected) {
                     helperDebug('[lyricsHelperSender] 헬퍼 연결 끊김');
@@ -7691,7 +7903,7 @@
             }
         },
         sendLyrics: {
-            value: async function (trackInfo, lyrics, forceResend = false) {
+            value: async function (trackInfo, lyrics, forceResend = false, sendReason = 'normal') {
                 if (!trackInfo || !lyrics || !Array.isArray(lyrics)) return;
                 if (!this.enabled) return;
                 if (this.isStaleTrackSend(trackInfo)) {
@@ -7712,7 +7924,7 @@
                 }
                 this._lastReqId = currentReqId;
 
-                if (this.isStaleTrackSend(trackInfo)) {
+                if (!this.enabled || this.isStaleTrackSend(trackInfo)) {
                     helperDebug('[lyricsHelperSender] 이전 곡 가사 전송 차단 (오프셋 계산 후):', trackInfo.uri);
                     return;
                 }
@@ -7724,6 +7936,15 @@
                     this.lastSentLyrics === lyricsHash &&
                     this.lastSentOffset === offset) {
                     return;
+                }
+
+                const deliveryKey = JSON.stringify([trackInfo.uri, lyricsHash, offset]);
+                const isReconnectCycle = sendReason === 'reconnect';
+                let deliveryGeneration = this._deliveryGeneration;
+                if (!isReconnectCycle || this._deliveryKey !== deliveryKey) {
+                    deliveryGeneration = ++this._deliveryGeneration;
+                    this._deliveryKey = deliveryKey;
+                    this._terminalDeliveryFailure = null;
                 }
 
                 this.lastSentUri = trackInfo.uri;
@@ -7764,15 +7985,19 @@
                     },
                     lyrics: mappedLines,
                     isSynced: lyrics.some(l => l.startTime !== undefined && l.startTime !== null)
+                }, {
+                    key: deliveryKey,
+                    generation: deliveryGeneration,
+                    isReconnectCycle
                 });
             }
         },
         resendWithNewOffset: {
-            value: async function () {
+            value: async function (sendReason = 'explicit') {
                 this._offsetCache = {};
                 if (this._lastTrackInfo && this._lastLyrics) {
                     helperDebug('[lyricsHelperSender] 가사 재전송 (싱크 반영)');
-                    await this.sendLyrics(this._lastTrackInfo, this._lastLyrics, true);
+                    await this.sendLyrics(this._lastTrackInfo, this._lastLyrics, true, sendReason);
                 }
             }
         },
@@ -7851,6 +8076,12 @@
                     this.lastSentUri = null;
                     this.lastSentLyrics = null;
                     this.lastSentOffset = null;
+                    this._lastSentDedupeToken = null;
+                    this.lastDeliveredUri = null;
+                    this._deliveryGeneration += 1;
+                    this._deliveryKey = null;
+                    this._terminalDeliveryFailure = null;
+                    this._pendingLyricsSend = null;
                     this._offsetCache = {};
                     this._lastProgressUri = null;
                     this._lastTrackInfo = null;
@@ -8056,6 +8287,12 @@
                     this.lastSentUri = null;
                     this.lastSentLyrics = null;
                     this.lastSentOffset = null;
+                    this._lastSentDedupeToken = null;
+                    this.lastDeliveredUri = null;
+                    this._deliveryGeneration += 1;
+                    this._deliveryKey = null;
+                    this._terminalDeliveryFailure = null;
+                    this._pendingLyricsSend = null;
                     this._lastTrackInfo = null;
                     this._lastLyrics = null;
                     this._offsetCache = {};
