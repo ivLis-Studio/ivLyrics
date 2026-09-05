@@ -332,7 +332,8 @@ const LyricsShareImage = (() => {
    * @param {string} options.template - 프리셋 이름 (cover, gradient, minimal, glass)
    * @param {Object} options.customSettings - 커스텀 설정 (템플릿 설정 덮어쓰기)
    * @param {number} options.width - 이미지 너비 (기본: 1080)
-   * @returns {Promise<{canvas: HTMLCanvasElement, dataUrl: string, blob: Blob}>}
+   * @param {'both'|'dataUrl'|'blob'} options.output - Encode only the requested output (default: both)
+   * @returns {Promise<{canvas: HTMLCanvasElement, dataUrl: string|null, blob: Blob|null}>}
    */
   async function generateImage(options) {
     const {
@@ -343,6 +344,7 @@ const LyricsShareImage = (() => {
       template = 'cover',
       customSettings = {},
       width: optionWidth,
+      output = 'both',
     } = options;
 
     // 프리셋 + 커스텀 설정 병합
@@ -476,8 +478,10 @@ const LyricsShareImage = (() => {
     }
 
     // Blob 생성
-    const dataUrl = canvas.toDataURL('image/png');
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    const dataUrl = output === 'blob' ? null : canvas.toDataURL('image/png');
+    const blob = output === 'dataUrl'
+      ? null
+      : await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
 
     return { canvas, dataUrl, blob };
   }

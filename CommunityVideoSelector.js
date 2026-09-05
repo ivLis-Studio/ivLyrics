@@ -340,6 +340,7 @@ const SyncedVideoPreview = ({ videoId, startTime, skipSegments = [], isAutoGener
     if (!videoId || !containerRef.current) return;
 
     let isMounted = true;
+    let initRetryTimer = null;
 
     // Spotify 재생 위치에 맞춰 동기화
     // VideoBackground와 동일한 로직 사용:
@@ -393,12 +394,12 @@ const SyncedVideoPreview = ({ videoId, startTime, skipSegments = [], isAutoGener
 
     // YouTube IFrame API 로드 확인
     const initPlayer = () => {
+      initRetryTimer = null;
+      if (!isMounted || !containerRef.current) return;
       if (!window.YT || !window.YT.Player) {
-        setTimeout(initPlayer, 100);
+        initRetryTimer = setTimeout(initPlayer, 100);
         return;
       }
-
-      if (!isMounted || !containerRef.current) return;
 
       // 고유 ID 생성
       const playerId = `preview-player-${videoId}-${Date.now()}`;
@@ -469,6 +470,8 @@ const SyncedVideoPreview = ({ videoId, startTime, skipSegments = [], isAutoGener
 
     return () => {
       isMounted = false;
+      if (initRetryTimer !== null) clearTimeout(initRetryTimer);
+      initRetryTimer = null;
       if (syncIntervalRef.current) {
         clearInterval(syncIntervalRef.current);
         syncIntervalRef.current = null;
@@ -623,14 +626,15 @@ const SimpleVideoPreview = ({ videoId, startTime, skipSegments = [] }) => {
     if (!videoId || !containerRef.current) return;
 
     let isMounted = true;
+    let initRetryTimer = null;
 
     const initPlayer = () => {
+      initRetryTimer = null;
+      if (!isMounted || !containerRef.current) return;
       if (!window.YT || !window.YT.Player) {
-        setTimeout(initPlayer, 100);
+        initRetryTimer = setTimeout(initPlayer, 100);
         return;
       }
-
-      if (!isMounted) return;
 
       // 고유 ID 생성
       const playerId = `simple-preview-${videoId}-${Date.now()}`;
@@ -672,6 +676,8 @@ const SimpleVideoPreview = ({ videoId, startTime, skipSegments = [] }) => {
 
     return () => {
       isMounted = false;
+      if (initRetryTimer !== null) clearTimeout(initRetryTimer);
+      initRetryTimer = null;
       if (playerRef.current) {
         try {
           playerRef.current.destroy();

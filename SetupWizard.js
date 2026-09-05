@@ -1496,11 +1496,17 @@ const VideoTestStep = ({ onNext, onBack, onNeedHelper, onSkip }) => {
   // Initialize YouTube Player API
   react.useEffect(() => {
     const playerId = playerIdRef.current;
+    let isMounted = true;
+    let retryTimer = null;
+    let apiReadyCallback = null;
+    const previousApiReadyCallback = window.onYouTubeIframeAPIReady;
 
     const createPlayer = () => {
+      retryTimer = null;
+      if (!isMounted || !playerContainerRef.current || playerRef.current) return;
       if (!window.YT || !window.YT.Player) {
         // Wait for YT API to load
-        setTimeout(createPlayer, 200);
+        retryTimer = setTimeout(createPlayer, 200);
         return;
       }
 
@@ -1549,15 +1555,28 @@ const VideoTestStep = ({ onNext, onBack, onNeedHelper, onSkip }) => {
       const firstScriptTag = document.getElementsByTagName("script")[0];
       firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
-      window.onYouTubeIframeAPIReady = () => {
-        createPlayer();
+      apiReadyCallback = (...args) => {
+        try {
+          if (typeof previousApiReadyCallback === "function") {
+            previousApiReadyCallback.apply(window, args);
+          }
+        } finally {
+          createPlayer();
+        }
       };
+      window.onYouTubeIframeAPIReady = apiReadyCallback;
     } else {
       createPlayer();
     }
 
     // Cleanup
     return () => {
+      isMounted = false;
+      if (retryTimer !== null) clearTimeout(retryTimer);
+      retryTimer = null;
+      if (apiReadyCallback && window.onYouTubeIframeAPIReady === apiReadyCallback) {
+        window.onYouTubeIframeAPIReady = previousApiReadyCallback;
+      }
       if (playerRef.current && typeof playerRef.current.destroy === "function") {
         try {
           playerRef.current.destroy();

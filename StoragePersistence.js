@@ -31,6 +31,10 @@
   moduleState.initialized = true;
   moduleState.writeQueue = moduleState.writeQueue || Promise.resolve();
   moduleState.record = null;
+  moduleState.pendingIndexedRecords = new Map();
+  moduleState.indexedWriteScheduled = false;
+  moduleState.indexedWriteFailed = false;
+  moduleState.synchronousWriteFailed = false;
   window[MODULE_KEY] = moduleState;
 
   const isManagedKey = (key) =>
@@ -94,8 +98,15 @@
 
   const writeSynchronousRecord = (record) => {
     try {
-      getPlatformStorage()?.setItem(BACKUP_KEY, record);
+      const storage = getPlatformStorage();
+      if (typeof storage?.setItem !== "function") {
+        moduleState.synchronousWriteFailed = true;
+        return;
+      }
+      storage.setItem(BACKUP_KEY, record);
+      moduleState.synchronousWriteFailed = false;
     } catch (error) {
+      moduleState.synchronousWriteFailed = true;
       console.warn("[ivLyrics] Failed to save the settings recovery snapshot.", error);
     }
   };
@@ -185,15 +196,37 @@
       return moduleState.writeQueue;
     }
 
-    const record = {
-      ...moduleState.record,
-      settings: { ...moduleState.record.settings },
-    };
+    // Records are replaced on each update. Keep only the newest waiting
+    // snapshot per namespace; a transaction already in flight still finishes
+    // in order, and switching accounts cannot discard the previous backup.
+    moduleState.pendingIndexedRecords.set(moduleState.record.namespace, moduleState.record);
+    if (moduleState.indexedWriteScheduled) return moduleState.writeQueue;
+
+    moduleState.indexedWriteScheduled = true;
     moduleState.writeQueue = moduleState.writeQueue
       .catch(() => undefined)
-      .then(() => writeIndexedRecord(record))
-      .catch((error) => {
-        console.warn("[ivLyrics] Failed to save the IndexedDB settings backup.", error);
+      .then(async () => {
+        try {
+          while (moduleState.pendingIndexedRecords.size > 0) {
+            const [namespace, pendingRecord] = moduleState.pendingIndexedRecords.entries().next().value;
+            moduleState.pendingIndexedRecords.delete(namespace);
+            const record = {
+              ...pendingRecord,
+              settings: { ...pendingRecord.settings },
+            };
+            try {
+              await writeIndexedRecord(record);
+              moduleState.indexedWriteFailed = false;
+            } catch (error) {
+              moduleState.indexedWriteFailed = true;
+              console.warn("[ivLyrics] Failed to save the IndexedDB settings backup.", error);
+            }
+          }
+        } finally {
+          // Clear this synchronously with the drain ending so a new update
+          // cannot land between the last loop check and queue cleanup.
+          moduleState.indexedWriteScheduled = false;
+        }
       });
     return moduleState.writeQueue;
   };
@@ -205,6 +238,18 @@
   };
 
   const updateRecord = (key, value) => {
+    if (moduleState.record && moduleState.record.namespace === getNamespace()) {
+      const unchanged = value === null
+        ? !Object.prototype.hasOwnProperty.call(moduleState.record.settings, key)
+        : moduleState.record.settings[key] === String(value);
+      if (unchanged) {
+        // A no-op still retries an earlier failed backup without creating a
+        // new revision or delaying the caller's localStorage write.
+        if (moduleState.synchronousWriteFailed) persistRecord();
+        else if (moduleState.indexedWriteFailed) queueIndexedWrite();
+        return;
+      }
+    }
     const current = moduleState.record || createRecord();
     const settings = { ...current.settings };
     if (value === null) {

@@ -10058,7 +10058,12 @@
               };
             `], { type: 'application/javascript' });
 
-            this._worker = new Worker(URL.createObjectURL(blob));
+            const workerUrl = URL.createObjectURL(blob);
+            try {
+                this._worker = new Worker(workerUrl);
+            } finally {
+                URL.revokeObjectURL(workerUrl);
+            }
 
             this._worker.onmessage = async () => {
                 if (!this.enabled) return;

@@ -4600,14 +4600,19 @@ const ShareImageModal = ({ lyrics, trackInfo, onClose }) => {
     return selectedIndices.map((idx) => normalizedLyricsByIdx.get(idx)).filter(Boolean);
   }, [selectedIndices, normalizedLyricsByIdx]);
 
-  // Generate preview when selection or template changes
+  // Keep one render in flight and retain only the newest pending preview.
+  const previewGenerationRef = react.useRef({ running: false, pending: null });
   react.useEffect(() => {
     if (selectedLines.length === 0 || !trackInfo) {
       setPreviewUrl(null);
+      setIsGenerating(false);
       return;
     }
 
+    let cancelled = false;
+    const queue = previewGenerationRef.current;
     const generatePreview = async () => {
+      if (cancelled) return;
       setIsGenerating(true);
       try {
         const result = await LyricsShareImage.generateImage({
@@ -4618,15 +4623,35 @@ const ShareImageModal = ({ lyrics, trackInfo, onClose }) => {
           template,
           customSettings,
           width: 1080, // same width as export for consistency
+          output: 'dataUrl',
         });
-        setPreviewUrl(result.dataUrl);
+        if (!cancelled) setPreviewUrl(result.dataUrl);
       } catch (e) {
-        console.error('[ShareImage] Preview generation failed:', e);
+        if (!cancelled) console.error('[ShareImage] Preview generation failed:', e);
+      } finally {
+        if (!cancelled) setIsGenerating(false);
       }
-      setIsGenerating(false);
     };
 
-    generatePreview();
+    queue.pending = generatePreview;
+    const frameId = requestAnimationFrame(async () => {
+      if (queue.running) return;
+      queue.running = true;
+      try {
+        while (queue.pending) {
+          const next = queue.pending;
+          queue.pending = null;
+          await next();
+        }
+      } finally {
+        queue.running = false;
+      }
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frameId);
+      if (queue.pending === generatePreview) queue.pending = null;
+    };
   }, [selectedLines, template, customSettings, trackInfo]);
 
   const toggleLine = (lineIdx) => {
@@ -4674,6 +4699,7 @@ const ShareImageModal = ({ lyrics, trackInfo, onClose }) => {
         template,
         customSettings,
         width: 1080,
+        output: 'blob',
       });
       const success = await LyricsShareImage.copyToClipboard(result.blob);
       if (success) {
@@ -4698,6 +4724,7 @@ const ShareImageModal = ({ lyrics, trackInfo, onClose }) => {
         template,
         customSettings,
         width: 1080,
+        output: 'dataUrl',
       });
       const filename = `${trackInfo.name || 'lyrics'} - ${trackInfo.artist || 'unknown'}.png`.replace(/[/\\?%*:|"<>]/g, '-');
       LyricsShareImage.download(result.dataUrl, filename);
@@ -4721,6 +4748,7 @@ const ShareImageModal = ({ lyrics, trackInfo, onClose }) => {
         template,
         customSettings,
         width: 1080,
+        output: 'blob',
       });
       const success = await LyricsShareImage.share(result.blob, trackInfo.name, trackInfo.artist);
       if (success) {

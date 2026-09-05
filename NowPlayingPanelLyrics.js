@@ -3290,21 +3290,22 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
 
         if (!text) return null;
         if (segment?.type === "space") {
-		const segmentSpeakerPresentation = getPanelSpeakerPresentation(
-			segment.styleSpeaker,
-			segment.styleSpeakerColor,
-			segment.styleSpeakerFallback
-		);
-		const segmentSpeakerStyle = getPanelSpeakerStyle(
-			segment.styleSpeaker,
-			segment.styleSpeakerColor,
-			segment.styleSpeakerFallback
-		);
-		return react.createElement("span", {
+            return react.createElement("span", {
                 key: "text-run-space-" + idx,
                 className: "ivlyrics-panel-karaoke-text-run-space"
             }, text);
         }
+
+        const segmentSpeakerPresentation = getPanelSpeakerPresentation(
+            segment.styleSpeaker,
+            segment.styleSpeakerColor,
+            segment.styleSpeakerFallback
+        );
+        const segmentSpeakerStyle = getPanelSpeakerStyle(
+            segment.styleSpeaker,
+            segment.styleSpeakerColor,
+            segment.styleSpeakerFallback
+        );
 
         return react.createElement("span", {
             key: "text-run-" + idx,
@@ -5484,10 +5485,8 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
         }
 
         panelObserver = new MutationObserver((mutations) => {
-            // 패널이 열렸는지 확인
-            const panel = findNowPlayingPanel();
-            const container = document.querySelector(`.${PANEL_CONTAINER_CLASS}`);
             const isOnIvLyricsPage = isIvLyricsPageActive();
+            const container = document.querySelector(`.${PANEL_CONTAINER_CLASS}`);
 
             if (isOnIvLyricsPage) {
                 if (container || document.querySelector(`.${NOWPLAYING_BAR_CONTAINER_CLASS}`)) {
@@ -5496,6 +5495,8 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
                 return;
             }
 
+            // ivLyrics 페이지에서는 패널을 표시하지 않으므로 패널 탐색도 건너뛴다.
+            const panel = findNowPlayingPanel();
             if (panel && (!container || !panel.contains(container) || !container.querySelector(`.${PANEL_SECTION_CLASS}`))) {
                 // 패널이 있지만 가사가 없으면 삽입
                 scheduleInsertPanelLyrics(100);
@@ -5577,6 +5578,36 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
         }
     };
 
+    const IVLYRICS_PAGE_ROOT_SELECTOR = '.lyrics-lyricsContainer-LyricsContainer, [data-testid="ivlyrics-page"]';
+    const IVLYRICS_PAGE_ROOT_CLASS_PATTERN = /(?:^|\s)lyrics-lyricsContainer-LyricsContainer(?:\s|$)/;
+
+    const containsIvLyricsPageRoot = (node) => node?.nodeType === 1 && (
+        node.classList?.contains('lyrics-lyricsContainer-LyricsContainer')
+        || node.getAttribute?.('data-testid') === 'ivlyrics-page'
+        || !!node.querySelector?.(IVLYRICS_PAGE_ROOT_SELECTOR)
+    );
+
+    const isIvLyricsPageMutationRelevant = (mutation) => {
+        if (mutation.type === 'childList') {
+            for (const node of mutation.addedNodes) {
+                if (containsIvLyricsPageRoot(node)) return true;
+            }
+            for (const node of mutation.removedNodes) {
+                if (containsIvLyricsPageRoot(node)) return true;
+            }
+        } else if (mutation.type === 'attributes') {
+            if (mutation.attributeName === 'data-testid') {
+                return mutation.target.getAttribute('data-testid') === 'ivlyrics-page'
+                    || mutation.oldValue === 'ivlyrics-page';
+            }
+            if (mutation.attributeName === 'class') {
+                return mutation.target.classList.contains('lyrics-lyricsContainer-LyricsContainer')
+                    || IVLYRICS_PAGE_ROOT_CLASS_PATTERN.test(mutation.oldValue || '');
+            }
+        }
+        return false;
+    };
+
     const setupPageDetection = () => {
         if (pageObserver || historyUnlisten) {
             return;
@@ -5595,41 +5626,9 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
             moduleState.historyUnlisten = historyUnlisten;
         }
 
-        // MutationObserver로 DOM 변경 감지 (lyrics-lyricsContainer-LyricsContainer 클래스 포함)
+        // 페이지 루트가 추가/제거되거나 식별자가 바뀔 때만 페이지 상태를 확인한다.
         pageObserver = new MutationObserver((mutations) => {
-            // 클래스 변경이나 새 요소 추가 시 상태 업데이트
-            let shouldUpdate = false;
-            for (const mutation of mutations) {
-                if (mutation.type === 'childList') {
-                    // 새로 추가된 노드 중 lyrics 컨테이너가 있는지 확인
-                    for (const node of mutation.addedNodes) {
-                        if (node.nodeType === 1) { // Element node
-                            if (node.classList?.contains('lyrics-lyricsContainer-LyricsContainer') ||
-                                node.querySelector?.('.lyrics-lyricsContainer-LyricsContainer')) {
-                                shouldUpdate = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (shouldUpdate) break;
-                    // 제거된 노드 확인
-                    for (const node of mutation.removedNodes) {
-                        if (node.nodeType === 1) {
-                            if (node.classList?.contains('lyrics-lyricsContainer-LyricsContainer') ||
-                                node.querySelector?.('.lyrics-lyricsContainer-LyricsContainer')) {
-                                shouldUpdate = true;
-                                break;
-                            }
-                        }
-                    }
-                } else if (mutation.type === 'attributes') {
-                    // data-testid 또는 class 변경 시 업데이트
-                    if (mutation.attributeName === 'data-testid' || mutation.attributeName === 'class') {
-                        shouldUpdate = true;
-                    }
-                }
-                if (shouldUpdate) break;
-            }
+            const shouldUpdate = mutations.some(isIvLyricsPageMutationRelevant);
             // debounce로 빈번한 업데이트 방지
             if (shouldUpdate) {
                 if (pageObserverTimeout) clearTimeout(pageObserverTimeout);
@@ -5644,6 +5643,7 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
             childList: true,
             subtree: true,
             attributes: true,
+            attributeOldValue: true,
             attributeFilter: ['data-testid', 'class']
         });
         moduleState.pageObserver = pageObserver;

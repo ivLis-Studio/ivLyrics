@@ -3633,7 +3633,6 @@ const CacheManager = {
       data,
       expiry: Date.now() + this._ttl,
       lastAccessed: Date.now(),
-      size: this._estimateSize(data),
     });
   },
 
@@ -3708,15 +3707,6 @@ const CacheManager = {
 
     for (let i = 0; i < toRemove; i++) {
       this._cache.delete(entries[i][0]);
-    }
-  },
-
-  _estimateSize(data) {
-    // Rough estimation of object size in bytes
-    try {
-      return JSON.stringify(data).length * 2; // 2 bytes per character (UTF-16)
-    } catch {
-      return 1000; // Default estimate
     }
   },
 

@@ -1245,7 +1245,10 @@ const AccountSection = () => {
 
 // AI Addon 개별 카드 컴포넌트 (아코디언 스타일 - LyricsProviderCard와 동일 스타일)
 const AddonSettingsCard = ({ addon, isEnabled, onToggle, isExpanded, onExpandToggle }) => {
-  const SettingsUI = addon.getSettingsUI ? addon.getSettingsUI() : null;
+  const SettingsUI = useMemo(
+    () => addon.getSettingsUI ? addon.getSettingsUI() : null,
+    [addon, addon.getSettingsUI]
+  );
 
   const [capabilities, setCapabilities] = useState({});
 
@@ -1424,7 +1427,10 @@ const getLyricsProviderGranularitySupport = (provider) => {
 
 // 가사 제공자 카드 컴포넌트
 const LyricsProviderCard = ({ provider, isEnabled, onToggle, isExpanded, onExpandToggle }) => {
-  const SettingsUI = provider.getSettingsUI ? provider.getSettingsUI() : null;
+  const SettingsUI = useMemo(
+    () => provider.getSettingsUI ? provider.getSettingsUI() : null,
+    [provider, provider.getSettingsUI]
+  );
 
   const getLocalizedDescription = (desc) => {
     if (typeof desc === 'string') return desc;
@@ -6791,6 +6797,34 @@ const settingsNavigationNodeContains = (node, settingKey) =>
   node.settingKey === settingKey ||
   node.children.some((child) => settingsNavigationNodeContains(child, settingKey));
 
+// Keep headings mounted when scroll-spy updates the selected sidebar item.
+// Replacing their component type also needlessly invalidates the search index.
+const SettingsSectionTitle = ({ title, subtitle, sectionKey }) => {
+  const parentSectionKey = sectionKey
+    ? SETTINGS_SECTION_PARENT_BY_KEY[sectionKey]
+    : null;
+  return react.createElement(
+    "div",
+    {
+      className: "section-title",
+      ...(sectionKey ? { "data-setting-key": sectionKey } : {}),
+      ...(parentSectionKey
+        ? { "data-parent-setting-key": parentSectionKey }
+        : {}),
+    },
+    react.createElement(
+      "div",
+      { className: "section-title-content" },
+      react.createElement(
+        "div",
+        { className: "section-text" },
+        react.createElement("h3", null, title),
+        subtitle && react.createElement("p", null, subtitle)
+      )
+    )
+  );
+};
+
 const ConfigModal = ({
   onRequestClose = () => {},
   initialTab = "general",
@@ -7933,7 +7967,7 @@ const ConfigModal = ({
   }, [searchQuery, searchableSettingEntries]);
 
   // 검색 결과 컴포넌트
-  const SearchResults = () => {
+  const renderSearchResults = () => {
     if (!searchQuery.trim()) {
       return null;
     }
@@ -8343,7 +8377,7 @@ const ConfigModal = ({
     }
 	  }, [activeTab, uiTheme]);
 
-  const HeaderSection = () => {
+  const renderHeaderSection = () => {
     const themeOptions = [
       {
         id: "light",
@@ -8505,32 +8539,6 @@ const ConfigModal = ({
             },
             react.createElement("span", null, "×")
           )
-        )
-      )
-    );
-  };
-
-  const SectionTitle = ({ title, subtitle, sectionKey }) => {
-    const parentSectionKey = sectionKey
-      ? SETTINGS_SECTION_PARENT_BY_KEY[sectionKey]
-      : null;
-    return react.createElement(
-      "div",
-      {
-        className: "section-title",
-        ...(sectionKey ? { "data-setting-key": sectionKey } : {}),
-        ...(parentSectionKey
-          ? { "data-parent-setting-key": parentSectionKey }
-          : {}),
-      },
-      react.createElement(
-        "div",
-        { className: "section-title-content" },
-        react.createElement(
-          "div",
-          { className: "section-text" },
-          react.createElement("h3", null, title),
-          subtitle && react.createElement("p", null, subtitle)
         )
       )
     );
@@ -9330,7 +9338,7 @@ const ConfigModal = ({
     );
   }, []);
 
-  const SidebarNavigation = () => {
+  const renderSidebarNavigation = () => {
     const renderSectionNodes = (nodes) =>
       nodes.map((item) => {
         const isItemActive =
@@ -16779,7 +16787,7 @@ const ConfigModal = ({
 `,
       },
     }),
-    react.createElement(HeaderSection),
+    renderHeaderSection(),
     react.createElement(
       SettingsSidebarShell,
       { sidebarRef: settingsSidebarRef },
@@ -16831,7 +16839,7 @@ const ConfigModal = ({
           )
         )
       ),
-      react.createElement(SidebarNavigation)
+      renderSidebarNavigation()
     ),
     react.createElement(
       SettingsMainPanelShell,
@@ -16850,7 +16858,7 @@ const ConfigModal = ({
             className: `tab-content ${activeTab === "search" ? "active" : ""}`,
             "data-tab-id": "search",
           },
-        react.createElement(SearchResults)
+        renderSearchResults()
       ),
       // 일반 탭 (동작 관련 설정)
       activeTab === "general" &&
@@ -16861,7 +16869,7 @@ const ConfigModal = ({
             "data-tab-id": "general",
           },
         // 언어 설정 섹션
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("sections.language"),
           subtitle: I18n.t("settings.language.desc"),
           sectionKey: "language",
@@ -16916,7 +16924,7 @@ const ConfigModal = ({
           },
         }),
         // 데스크탑 오버레이 섹션
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("sections.desktopOverlay"),
           subtitle: I18n.t("sections.desktopOverlaySubtitle"),
           sectionKey: "overlay-enabled",
@@ -16932,7 +16940,7 @@ const ConfigModal = ({
             }`,
           "data-tab-id": "appearance",
         },
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("sections.visualEffects"),
           subtitle: I18n.t("sections.visualEffectsSubtitle"),
           sectionKey: "background-experience",
@@ -16974,7 +16982,7 @@ const ConfigModal = ({
           )
         ),
         react.createElement(BackgroundExperienceSection, { isFadActive }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.syncMode.title"),
           subtitle: I18n.t("settingsAdvanced.syncMode.subtitle"),
           sectionKey: "sync-mode",
@@ -17032,7 +17040,7 @@ const ConfigModal = ({
             window.dispatchEvent(configChange);
           },
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.multiVocalColors.title") || "Multi-vocal Colors",
           subtitle: I18n.t("settingsAdvanced.multiVocalColors.subtitle") || "Customize male, female, and duet speaker colors.",
           sectionKey: "multi-vocal-colors",
@@ -17057,7 +17065,7 @@ const ConfigModal = ({
           },
         }),
         react.createElement(ConfigMultiVocalColorSettings),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.instrumentalBreak.title") || "Instrumental Marker",
           subtitle: I18n.t("settingsAdvanced.instrumentalBreak.subtitle") || "Replace long blank or note-only lyric gaps with an icon",
           sectionKey: "instrumental-break",
@@ -17185,7 +17193,7 @@ const ConfigModal = ({
           {
             className: "settings-live-preview-sticky",
           },
-          react.createElement(SectionTitle, {
+          react.createElement(SettingsSectionTitle, {
             title: I18n.t("settingsAdvanced.livePreview.title"),
             subtitle: I18n.t("settingsAdvanced.livePreview.subtitle"),
             sectionKey: "live-preview",
@@ -17249,7 +17257,7 @@ const ConfigModal = ({
             )
           )
         ),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("sections.motion"),
           subtitle: I18n.t("settings.reduceMotion.desc"),
           sectionKey: "reduce-motion",
@@ -17276,7 +17284,7 @@ const ConfigModal = ({
             );
           },
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.originalStyle.title"),
           subtitle: I18n.t("settingsAdvanced.originalStyle.subtitle"),
           sectionKey: "original-style",
@@ -17412,7 +17420,7 @@ const ConfigModal = ({
             );
           },
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.pronunciationStyle.title"),
           subtitle: I18n.t("settingsAdvanced.pronunciationStyle.subtitle"),
           sectionKey: "pronunciation-style",
@@ -17574,7 +17582,7 @@ const ConfigModal = ({
             );
           },
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.translationStyle.title"),
           subtitle: I18n.t("settingsAdvanced.translationStyle.subtitle"),
           sectionKey: "translation-style",
@@ -17720,7 +17728,7 @@ const ConfigModal = ({
             );
           },
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.furiganaStyle.title"),
           subtitle: I18n.t("settingsAdvanced.furiganaStyle.subtitle"),
           sectionKey: "furigana-style",
@@ -17783,7 +17791,7 @@ const ConfigModal = ({
             );
           },
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.textShadow.title"),
           subtitle: I18n.t("settingsAdvanced.textShadow.subtitle"),
           sectionKey: "text-shadow",
@@ -17844,7 +17852,7 @@ const ConfigModal = ({
           className: `tab-content ${activeTab === "performance" ? "active" : ""}`,
           "data-tab-id": "performance",
         },
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.performance.rendering.title"),
           subtitle: I18n.t("settingsAdvanced.performance.rendering.subtitle"),
           sectionKey: "performance-rendering",
@@ -17891,7 +17899,7 @@ const ConfigModal = ({
           ],
           onChange: handlePerformanceSettingChange,
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.performance.visualCost.title"),
           subtitle: I18n.t("settingsAdvanced.performance.visualCost.subtitle"),
           sectionKey: "performance-visual-cost",
@@ -17931,7 +17939,7 @@ const ConfigModal = ({
           ],
           onChange: handlePerformanceSettingChange,
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.performance.backgroundWork.title"),
           subtitle: I18n.t("settingsAdvanced.performance.backgroundWork.subtitle"),
           sectionKey: "performance-background-work",
@@ -17962,7 +17970,7 @@ const ConfigModal = ({
           className: `tab-content ${activeTab === "lyrics" ? "active" : ""}`,
           "data-tab-id": "lyrics",
         },
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.playback.title"),
           subtitle: I18n.t("settingsAdvanced.playback.subtitle"),
           sectionKey: "playback",
@@ -18000,7 +18008,7 @@ const ConfigModal = ({
             );
           },
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: getSettingsText("settings.syncCreatorSettings.title", "Sync Creator Settings"),
           subtitle: getSettingsText("settings.syncCreatorSettings.subtitle", "Configure Sync Creator keyboard behavior and recording shortcuts."),
           sectionKey: "sync-creator-settings",
@@ -18105,7 +18113,7 @@ const ConfigModal = ({
             );
           },
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.karaokeMode.title"),
           subtitle: I18n.t("settingsAdvanced.karaokeMode.subtitle"),
           sectionKey: "karaoke-mode",
@@ -18158,7 +18166,7 @@ const ConfigModal = ({
             );
           },
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.prefetch.title"),
           subtitle: I18n.t("settingsAdvanced.prefetch.subtitle"),
           sectionKey: "prefetch",
@@ -18183,7 +18191,7 @@ const ConfigModal = ({
             StorageManager.saveConfig(name, value);
           },
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.cacheManagement.title"),
           subtitle: I18n.t("settingsAdvanced.cacheManagement.subtitle"),
           sectionKey: "cache-management",
@@ -18191,7 +18199,7 @@ const ConfigModal = ({
         // 로컬 캐시 관리 (IndexedDB) - 메모리 캐시와 통합됨
         react.createElement(LocalCacheManager),
         // 헬퍼 연동 섹션
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settings.lyricsHelper.sectionTitle") || "Helper Integration",
           subtitle: I18n.t("settings.lyricsHelper.sectionSubtitle") || "Send lyrics to external helper applications",
           sectionKey: "lyrics-helper",
@@ -18237,7 +18245,7 @@ const ConfigModal = ({
           className: `tab-content ${activeTab === "advanced" ? "active" : ""}`,
           "data-tab-id": "advanced",
         },
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.languageDetection.title"),
           subtitle: I18n.t("settingsAdvanced.languageDetection.subtitle"),
           sectionKey: "language-detection",
@@ -18277,14 +18285,14 @@ const ConfigModal = ({
           },
         }),
 
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.cloudSync.title"),
           subtitle: I18n.t("settingsAdvanced.cloudSync.monthlyRequired"),
           sectionKey: "cloud-sync",
         }),
         react.createElement(ConfigCloudSync),
 
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.exportImport.title"),
           subtitle: I18n.t("settingsAdvanced.exportImport.subtitle"),
           sectionKey: "export-import",
@@ -18580,14 +18588,14 @@ const ConfigModal = ({
           onChange: () => { },
         }),
 
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.settingsPresets.title"),
           subtitle: I18n.t("settingsAdvanced.settingsPresets.subtitle"),
           sectionKey: "settings-presets",
         }),
         react.createElement(ConfigSettingsPresets),
 
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.dbExportImport.title"),
           subtitle: I18n.t("settingsAdvanced.dbExportImport.subtitle"),
           sectionKey: "db-export-import",
@@ -18876,7 +18884,7 @@ const ConfigModal = ({
           onChange: () => { },
         }),
 
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.resetSettings.title"),
           subtitle: I18n.t("settingsAdvanced.resetSettings.subtitle"),
           sectionKey: "reset-settings",
@@ -19052,7 +19060,7 @@ const ConfigModal = ({
           "data-tab-id": "fullscreen",
         },
         // ===== 기본 설정 섹션 =====
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.fullscreenMode.title"),
           subtitle: I18n.t("settingsAdvanced.fullscreenMode.subtitle"),
           sectionKey: "fullscreen-mode",
@@ -19114,7 +19122,7 @@ const ConfigModal = ({
         }),
 
         // ===== LP 모드 섹션 =====
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("vinyl.mode"),
           subtitle: I18n.t("vinyl.settings.subtitle"),
           sectionKey: "vinyl-mode",
@@ -19184,7 +19192,7 @@ const ConfigModal = ({
           onChange: saveVinylSetting,
         }),
 
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("vinyl.settings.tonearmTitle"),
           subtitle: I18n.t("vinyl.settings.tonearmSubtitle"),
           sectionKey: "vinyl-tonearm",
@@ -19231,12 +19239,12 @@ const ConfigModal = ({
           onChange: saveVinylSetting,
         }),
 
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("sections.typography"),
           subtitle: I18n.t("vinyl.settings.typographySubtitle"),
           sectionKey: "vinyl-typography",
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.originalStyle.title"),
           subtitle: I18n.t("settingsAdvanced.originalStyle.subtitle"),
           sectionKey: "vinyl-original-style",
@@ -19291,7 +19299,7 @@ const ConfigModal = ({
           onChange: saveVinylSetting,
         }),
 
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.pronunciationStyle.title"),
           subtitle: I18n.t("settingsAdvanced.pronunciationStyle.subtitle"),
           sectionKey: "vinyl-pronunciation-style",
@@ -19356,7 +19364,7 @@ const ConfigModal = ({
           onChange: saveVinylSetting,
         }),
 
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.translationStyle.title"),
           subtitle: I18n.t("settingsAdvanced.translationStyle.subtitle"),
           sectionKey: "vinyl-translation-style",
@@ -19421,7 +19429,7 @@ const ConfigModal = ({
           onChange: saveVinylSetting,
         }),
 
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("vinyl.settings.videoStageTypographyTitle"),
           subtitle: I18n.t("vinyl.settings.videoStageTypographySubtitle"),
           sectionKey: "video-stage-typography",
@@ -19495,7 +19503,7 @@ const ConfigModal = ({
         }),
 
         // ===== 일반 모드 레이아웃 섹션 =====
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.normalMode.title"),
           subtitle: I18n.t("settingsAdvanced.normalMode.subtitle"),
           sectionKey: "normal-mode",
@@ -19562,7 +19570,7 @@ const ConfigModal = ({
         }),
 
         // ===== TV 모드 섹션 =====
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.tvMode.title"),
           subtitle: I18n.t("settingsAdvanced.tvMode.subtitle"),
           sectionKey: "tv-mode",
@@ -19615,7 +19623,7 @@ const ConfigModal = ({
         }),
 
         // ===== 제목/아티스트 설정 섹션 =====
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.metadataDisplay.title"),
           subtitle: I18n.t("settingsAdvanced.metadataDisplay.subtitle"),
           sectionKey: "metadata-display",
@@ -19663,7 +19671,7 @@ const ConfigModal = ({
             );
           },
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.fullscreenStyle.title"),
           subtitle: I18n.t("settingsAdvanced.fullscreenStyle.subtitle"),
           sectionKey: "fullscreen-style",
@@ -19750,7 +19758,7 @@ const ConfigModal = ({
             );
           },
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.fullscreenUI.title"),
           subtitle: I18n.t("settingsAdvanced.fullscreenUI.subtitle"),
           sectionKey: "fullscreen-ui",
@@ -19862,7 +19870,7 @@ const ConfigModal = ({
             );
           },
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.controllerStyle.title"),
           subtitle: I18n.t("settingsAdvanced.controllerStyle.subtitle"),
           sectionKey: "controller-style",
@@ -19899,7 +19907,7 @@ const ConfigModal = ({
             );
           },
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.autoHide.title"),
           subtitle: I18n.t("settingsAdvanced.autoHide.subtitle"),
           sectionKey: "auto-hide",
@@ -19937,7 +19945,7 @@ const ConfigModal = ({
             );
           },
         }),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.tmiStyle.title"),
           subtitle: I18n.t("settingsAdvanced.tmiStyle.subtitle"),
           sectionKey: "tmi-style",
@@ -19977,7 +19985,7 @@ const ConfigModal = ({
           className: `tab-content ${activeTab === "nowplaying" ? "active" : ""}`,
           "data-tab-id": "nowplaying",
         },
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.nowPlayingPanel.title") || "NowPlaying Panel Lyrics",
           subtitle: I18n.t("settingsAdvanced.nowPlayingPanel.subtitle") || "Lyrics display settings for the Now Playing panel",
           sectionKey: "panel-lyrics-general",
@@ -20084,7 +20092,7 @@ const ConfigModal = ({
           },
         }),
         // 배경 설정 섹션
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.nowPlayingPanel.background.title") || "Background",
           subtitle: I18n.t("settingsAdvanced.nowPlayingPanel.background.subtitle") || "Customize the panel background",
           sectionKey: "panel-background",
@@ -20152,7 +20160,7 @@ const ConfigModal = ({
           },
         }),
         // Border 설정 섹션
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.nowPlayingPanel.border.title") || "Border",
           subtitle: I18n.t("settingsAdvanced.nowPlayingPanel.border.subtitle") || "Customize the panel border",
           sectionKey: "panel-border",
@@ -20208,7 +20216,7 @@ const ConfigModal = ({
           className: `tab-content ${activeTab === "debug" ? "active" : ""}`,
           "data-tab-id": "debug",
         },
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.debugTab.title"),
           subtitle: I18n.t("settingsAdvanced.debugTab.subtitle"),
           sectionKey: "debug-overview",
@@ -20224,13 +20232,13 @@ const ConfigModal = ({
           "data-tab-id": "about",
         },
         // Discord 계정 연동 섹션 (최상단)
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.aboutTab.account.title"),
           subtitle: I18n.t("settingsAdvanced.aboutTab.account.subtitle"),
           sectionKey: "about-account",
         }),
         react.createElement(AccountSection),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.aboutTab.appInfo.title"),
           subtitle: I18n.t("settingsAdvanced.aboutTab.subtitle"),
           sectionKey: "about-app-info",
@@ -20329,7 +20337,7 @@ const ConfigModal = ({
             I18n.t("settingsAdvanced.aboutTab.thanks")
           )
         ),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.aboutTab.clientInfo.title"),
           subtitle: I18n.t("settingsAdvanced.aboutTab.clientInfo.subtitle"),
           sectionKey: "about-client-info",
@@ -20413,7 +20421,7 @@ const ConfigModal = ({
             )
           )
         ),
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.aboutTab.update.title"),
           subtitle: I18n.t("settingsAdvanced.aboutTab.update.subtitle"),
           sectionKey: "about-update",
@@ -20724,7 +20732,7 @@ const ConfigModal = ({
           onChange: () => { },
         }),
 
-        react.createElement(SectionTitle, {
+        react.createElement(SettingsSectionTitle, {
           title: I18n.t("settingsAdvanced.aboutTab.patchNotes.title"),
           subtitle: I18n.t("settingsAdvanced.aboutTab.patchNotes.subtitle"),
           sectionKey: "about-patch-notes",
