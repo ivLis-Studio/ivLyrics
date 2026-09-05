@@ -9786,12 +9786,10 @@ class LyricsContainer extends react.Component {
   }
 
   getAutomaticMode(lyricsState = this.state) {
-    if (lyricsState?.karaoke && CONFIG.visual["karaoke-mode-enabled"]) {
-      return lyricsState.karaokeGranularity === "word" ? WORD_KARAOKE : KARAOKE;
-    }
-    if (lyricsState?.synced) return SYNCED;
-    if (lyricsState?.unsynced) return UNSYNCED;
-    return -1;
+    // Prefer renderers independently of source timing granularity: word-timed
+    // karaoke also supports character rendering.
+    return [KARAOKE, WORD_KARAOKE, SYNCED, UNSYNCED]
+      .find((mode) => this.isModeAvailable(mode, lyricsState)) ?? -1;
   }
 
   getCurrentMode() {
