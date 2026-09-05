@@ -46,6 +46,7 @@
 		"Pages.js",
 		"VinylActiveLyricRenderer.js",
 		"VinylPlayerMode.js",
+		"SettingsStyles.js",
 		"Settings.js",
 		"OptionsMenu.js",
 		"TabBar.js",

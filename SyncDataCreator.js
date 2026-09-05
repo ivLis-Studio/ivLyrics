@@ -8973,25 +8973,12 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	// Keep the creator on the same restrained visual system as Settings.
 	// The names are retained because timing-state code already references them widely.
 	const TOSS_BLUE = 'rgb(var(--spice-rgb-accent, 30, 215, 96))';
-	const TOSS_BLUE_DEEP = 'rgb(var(--spice-rgb-accent, 30, 190, 82))';
 	const TOSS_BLUE_SOFT = 'rgba(var(--spice-rgb-accent, 30, 215, 96), 0.13)';
 	const TOSS_BLUE_BORDER = 'rgba(var(--spice-rgb-accent, 30, 215, 96), 0.36)';
 	const TOSS_BLUE_RING = 'rgba(var(--spice-rgb-accent, 30, 215, 96), 0.15)';
-	const TOSS_SURFACE = '#11161b';
-	const TOSS_SURFACE_STRONG = '#151a1f';
 	const TOSS_BORDER = 'rgba(255,255,255,0.08)';
 
-	const getModeStyle = () => {
-		if (mode === 'record') return { background: 'rgba(255, 93, 93, 0.14)', color: '#ff8a8a', borderColor: 'rgba(255, 93, 93, 0.36)' };
-		if (mode === 'preview') return { background: TOSS_BLUE_SOFT, color: TOSS_BLUE, borderColor: TOSS_BLUE_BORDER };
-		return { background: 'rgba(255,255,255,0.06)', color: 'var(--spice-subtext)', borderColor: TOSS_BORDER };
-	};
 
-	const getModeLabel = () => {
-		if (mode === 'record') return I18n.t('syncCreator.recordMode');
-		if (mode === 'preview') return I18n.t('syncCreator.previewMode');
-		return I18n.t('syncCreator.idleMode');
-	};
 
 	// 스타일
 	const s = {
@@ -9023,13 +9010,6 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			display: 'inline-flex', alignItems: 'center', gap: '6px',
 			fontSize: '12px', fontWeight: '600',
 			letterSpacing: '-0.005em'
-		},
-		title: { fontSize: '15px', fontWeight: '700', margin: '0 0 0 2px', color: 'var(--spice-text)', letterSpacing: '-0.01em' },
-		modeBadge: {
-			padding: '4px 9px', borderRadius: '999px',
-			fontSize: '10.5px', fontWeight: '700',
-			letterSpacing: '0.02em',
-			border: '1px solid transparent'
 		},
 		granularityControl: {
 			display: 'inline-flex', alignItems: 'center', gap: '2px',
@@ -9068,21 +9048,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			letterSpacing: '-0.005em',
 			boxShadow: 'none'
 		},
-		trackRow: {
-			display: 'flex', alignItems: 'center', gap: '14px',
-			padding: '14px 18px',
-			background: '#11161b',
-			borderBottom: `1px solid ${TOSS_BORDER}`,
-			flexShrink: 0
-		},
-		albumArt: {
-			width: '52px', height: '52px', borderRadius: '10px', objectFit: 'cover',
-			boxShadow: '0 8px 24px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.05)'
-		},
 		trackMeta: { flex: 1, minWidth: 0 },
 		trackName: { fontSize: '14px', fontWeight: '700', color: 'var(--spice-text)', letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
 		artistName: { fontSize: '12px', color: 'var(--spice-subtext)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-		providerRow: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' },
 		bulkVocalControl: {
 			display: 'inline-flex',
 			alignItems: 'center',
@@ -9211,13 +9179,6 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		characterPronunciationProgressText: { fontSize: '11px', lineHeight: 1.3, color: 'var(--spice-subtext)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
 		characterPronunciationProgressTrack: { width: '100%', height: '4px', borderRadius: '999px', background: 'rgba(255,255,255,0.12)', overflow: 'hidden' },
 		characterPronunciationProgressFill: { height: '100%', borderRadius: '999px', background: TOSS_BLUE, transition: 'width 160ms ease', boxShadow: 'none' },
-		playbackRow: {
-			display: 'flex', alignItems: 'center', gap: '10px',
-			padding: '11px 18px',
-			background: 'transparent',
-			borderBottom: `1px solid ${TOSS_BORDER}`,
-			flexShrink: 0
-		},
 		playbackTime: { fontSize: '11px', color: 'var(--spice-subtext)', minWidth: '42px', fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum"', fontWeight: '500' },
 		playbackBar: {
 			flex: 1, height: '6px',
@@ -9232,13 +9193,6 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			height: '28px', padding: '0 7px', borderRadius: '7px',
 			fontSize: '10.5px', fontWeight: '600', cursor: 'pointer',
 			letterSpacing: '-0.005em', fontVariantNumeric: 'tabular-nums'
-		},
-		offsetRow: {
-			display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-			padding: '9px 18px',
-			background: 'transparent',
-			borderBottom: `1px solid ${TOSS_BORDER}`,
-			flexShrink: 0
 		},
 		offsetLabel: { fontSize: '11px', color: 'var(--spice-subtext)', fontWeight: '600', letterSpacing: '0.02em', textTransform: 'uppercase', opacity: 0.8 },
 		offsetValue: {
@@ -9292,7 +9246,6 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			cursor: 'pointer',
 			fontVariantNumeric: 'tabular-nums'
 		},
-		lyricsArea: { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', padding: '18px 22px', overflow: 'hidden', position: 'relative', zIndex: 1 },
 		lineNav: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '14px' },
 		navBtn: {
 			background: 'transparent', color: 'var(--spice-subtext)',
@@ -9305,7 +9258,6 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		lineInfo: { textAlign: 'center', minWidth: '120px' },
 		lineCount: { fontSize: '18px', fontWeight: '700', color: 'var(--spice-text)', letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' },
 		lineStatus: { fontSize: '11px', color: 'var(--spice-subtext)', marginTop: '2px', fontWeight: '500' },
-		multiVocalSwitchRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', flexWrap: 'wrap', margin: '-6px 0 12px' },
 		multiVocalSwitchBtn: {
 			background: 'transparent',
 			border: '1px solid transparent',
@@ -9411,58 +9363,6 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			background: TOSS_BLUE_SOFT,
 			color: 'var(--spice-text)',
 			boxShadow: `0 0 0 1px ${TOSS_BLUE_BORDER}`
-		},
-		parallelPartRow: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' },
-		parallelPartBtn: {
-			background: 'rgba(255,255,255,0.05)', color: 'var(--spice-text)',
-			border: '1px solid rgba(255,255,255,0.08)',
-			padding: '7px 12px', borderRadius: '999px',
-			fontSize: '11px', fontWeight: '700', cursor: 'pointer',
-			fontVariantNumeric: 'tabular-nums'
-		},
-		parallelPartBtnActive: {
-			background: TOSS_BLUE_SOFT,
-			borderColor: TOSS_BLUE_BORDER,
-			color: 'var(--spice-text)'
-		},
-		parallelMetaRow: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', margin: '-4px 0 12px', flexWrap: 'wrap' },
-		parallelMetaLabel: { fontSize: '11px', color: 'var(--spice-subtext)', fontWeight: '700', letterSpacing: '0.02em', textTransform: 'uppercase' },
-		parallelMetaSelect: {
-			background: 'rgba(255,255,255,0.05)', color: 'var(--spice-text)',
-			border: '1px solid rgba(255,255,255,0.08)',
-			padding: '6px 10px', borderRadius: '8px',
-			fontSize: '11px', fontWeight: '700', outline: 'none'
-		},
-		parallelMetaSelectDuet: {
-			color: '#d9c7ff',
-			background: 'rgba(156, 92, 255, 0.10)',
-			borderColor: 'rgba(190, 150, 255, 0.38)'
-		},
-		parallelMetaOptionDuet: { color: '#c9a7ff', background: '#1b1424' },
-		inspectorBlock: {
-			width: 'min(940px, 100%)',
-			margin: '0 auto 14px',
-			padding: '0 0 14px',
-			borderRadius: '0',
-			background: 'transparent',
-			border: 'none',
-			borderBottom: `1px solid ${TOSS_BORDER}`,
-			boxShadow: 'none',
-			boxSizing: 'border-box'
-		},
-		inspectorTitle: {
-			fontSize: '11px',
-			fontWeight: '850',
-			color: 'var(--spice-subtext)',
-			letterSpacing: '0.06em',
-			textTransform: 'uppercase',
-			margin: '0 0 10px'
-		},
-		inspectorGrid: {
-			display: 'grid',
-			gridTemplateColumns: 'minmax(0, 1fr)',
-			gap: '16px',
-			alignItems: 'start'
 		},
 		speakerGroups: { display: 'flex', flexDirection: 'column', gap: '11px' },
 		speakerGroupTitle: { fontSize: '10px', fontWeight: '850', color: 'var(--spice-subtext)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '6px' },
@@ -9696,7 +9596,6 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			paddingLeft: '14px',
 			touchAction: 'pan-y'
 		},
-		lyricsScroll: { width: '100%', overflowX: 'auto', overflowY: 'hidden', paddingBottom: '28px', display: 'flex', justifyContent: 'center' },
 		lyricsLine: { display: 'inline-flex', flexWrap: 'nowrap', gap: '0px', paddingLeft: '32px', paddingRight: '32px', justifyContent: 'center', alignItems: usePrimaryCharacterPronunciation ? 'flex-start' : 'stretch', color: currentSpeakerTextColor },
 		rtlLyricsLine: { display: 'block', width: '100%', paddingLeft: '32px', paddingRight: '32px', textAlign: 'center', direction: 'rtl', unicodeBidi: 'plaintext', color: currentSpeakerTextColor },
 		rtlTextRun: { display: 'inline-block', maxWidth: '100%', padding: '10px 1px', fontSize: '32px', fontWeight: '600', lineHeight: 1.45, letterSpacing: 0, whiteSpace: 'pre', cursor: mode === 'record' ? 'pointer' : 'default', color: 'transparent', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' },
@@ -9727,15 +9626,6 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		nextLineLabel: { fontSize: '10px', color: 'var(--spice-subtext)', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: '700' },
 		nextLineText: { fontSize: '14px', color: 'var(--spice-subtext)', lineHeight: 1.7, letterSpacing: '-0.005em' },
 		hint: { fontSize: '12px', color: 'var(--spice-subtext)', textAlign: 'center', padding: '10px 8px', fontStyle: 'italic', opacity: 0.8 },
-		progressRow: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', padding: '7px 18px', fontSize: '11.5px', color: 'var(--spice-subtext)', flexShrink: 0, fontWeight: '500', fontVariantNumeric: 'tabular-nums' },
-		controls: {
-			display: 'flex', flexWrap: 'wrap', gap: '4px',
-			padding: '10px 18px',
-			justifyContent: 'center',
-			borderTop: `1px solid ${TOSS_BORDER}`,
-			background: '#11161b',
-			flexShrink: 0
-		},
 		ctrlBtn: {
 			background: 'transparent', color: 'var(--spice-subtext)',
 			border: '1px solid transparent',
@@ -9846,12 +9736,6 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			fontWeight: '700', cursor: 'pointer', fontSize: '13px',
 			letterSpacing: '-0.005em',
 			boxShadow: 'none'
-		},
-		lrcLibBtnSecondary: {
-			background: 'rgba(255,255,255,0.045)', color: 'var(--spice-text)',
-			border: '1px solid rgba(255,255,255,0.08)',
-			height: '34px', padding: '0 16px', borderRadius: '999px',
-			fontWeight: '600', cursor: 'pointer', fontSize: '13px'
 		},
 		lrcLibBtnCancel: {
 			background: 'transparent', color: 'var(--spice-subtext)',
@@ -9994,7 +9878,6 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			padding: '16px 18px',
 			boxShadow: 'none'
 		},
-		panelTight: { padding: '14px 18px' },
 		panelTitle: { fontSize: '12px', fontWeight: '700', color: 'var(--spice-text)', marginBottom: '10px', letterSpacing: '-0.01em' },
 		panelSubtitle: { fontSize: '11px', color: 'var(--spice-subtext)', lineHeight: 1.4, marginTop: '-6px', marginBottom: '10px' },
 		sourceTrack: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', minWidth: 0 },
@@ -11897,630 +11780,6 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		renderModals()
 	);
 
-	return react.createElement('div', { className: 'ivlyrics-sync-creator-shell', style: s.overlay, ref: containerRef },
-		// Header - 유저 요청대로 가운데 정렬 (윈도우 컨트롤과 겹치지 않게)
-		react.createElement('div', { style: s.header },
-			react.createElement('button', {
-				style: s.backBtn, onClick: () => {
-					preventNextTrackRef.current = false;
-					if (onClose) onClose();
-				}
-			},
-				react.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'currentColor' },
-					react.createElement('path', { d: 'M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z' })
-				),
-				I18n.t('syncCreator.back') || '닫기'
-			),
-			react.createElement('h2', { style: s.title }, I18n.t('syncCreator.title')),
-			react.createElement('span', { style: { ...s.modeBadge, ...getModeStyle() } }, getModeLabel()),
-
-			react.createElement('button', {
-				style: { ...s.submitBtn, opacity: isSubmitting || !syncData ? 0.5 : 1, cursor: isSubmitting || !syncData ? 'not-allowed' : 'pointer' },
-				onClick: handleSubmit,
-				disabled: isSubmitting || !syncData
-			}, isSubmitting ? I18n.t('syncCreator.submitting') : I18n.t('syncCreator.submit'))
-		),
-
-		// Track + Provider
-		react.createElement('div', { style: s.trackRow },
-			albumArt && react.createElement('img', { src: albumArt, style: s.albumArt, alt: trackName }),
-			react.createElement('div', { style: s.trackMeta },
-				react.createElement('div', { style: s.trackName }, trackName),
-				react.createElement('div', { style: s.artistName }, artistName)
-			),
-			react.createElement('div', { style: s.providerRow },
-				react.createElement('span', { style: { fontSize: '12px', color: 'var(--spice-subtext)' } }, 'Provider:'),
-				react.createElement('span', { style: s.virtualKaraokeBadge }, 'LRCLIB'),
-				react.createElement('button', { style: { ...s.loadBtn, opacity: isLoading ? 0.5 : 1 }, onClick: loadLyrics, disabled: isLoading },
-					isLoading ? I18n.t('syncCreator.loading') : I18n.t('syncCreator.reload') || '다시 로드'
-				),
-				lyricsLines.length > 0 && renderCharacterPronunciationTargetControl({ compact: true }),
-				lyricsLines.length > 0 && react.createElement('button', {
-					style: {
-						...s.secondaryBtn,
-						opacity: isGeneratingCharacterPronunciations ? 0.6 : 1,
-						background: showCharacterPronunciations ? 'rgba(49, 130, 246, 0.22)' : s.secondaryBtn.background
-					},
-					onClick: handleCharacterPronunciationToggle,
-					disabled: isGeneratingCharacterPronunciations,
-					title: I18n.t('syncCreator.characterPronunciationDesc') || 'Generate character-aligned pronunciation with AI and show it below the current line.'
-				}, isGeneratingCharacterPronunciations
-					? (characterPronunciationProgressInfo?.buttonLabel || I18n.t('syncCreator.characterPronunciationGenerating') || 'AI 발음 생성 중...')
-					: characterPronunciations
-						? (showCharacterPronunciations
-							? (I18n.t('syncCreator.characterPronunciationHide') || '발음 숨기기')
-							: (I18n.t('syncCreator.characterPronunciationShow') || '발음 표시'))
-						: (I18n.t('syncCreator.characterPronunciationGenerate') || 'AI 글자 발음')
-				),
-				characterPronunciations && react.createElement('button', {
-					style: s.secondaryBtn,
-					onClick: () => handleCharacterPronunciationToggle({ forceRegenerate: true }),
-					disabled: isGeneratingCharacterPronunciations,
-					title: I18n.t('syncCreator.characterPronunciationRegenerateDesc') || 'Ignore the saved result and generate pronunciation again.'
-				}, I18n.t('syncCreator.characterPronunciationRegenerate') || 'Regenerate Pronunciation'),
-				isGeneratingCharacterPronunciations && characterPronunciationProgressInfo && react.createElement('div', {
-					style: s.characterPronunciationProgress,
-					title: characterPronunciationProgressInfo.label
-				},
-					react.createElement('div', { style: s.characterPronunciationProgressText }, characterPronunciationProgressInfo.label),
-					react.createElement('div', { style: s.characterPronunciationProgressTrack },
-						react.createElement('div', {
-							style: {
-								...s.characterPronunciationProgressFill,
-								width: `${Math.max(0, Math.min(100, characterPronunciationProgressInfo.percent || 0))}%`
-							}
-						})
-					)
-				),
-				characterPronunciations && showCharacterPronunciations && react.createElement('button', {
-					style: {
-						...s.secondaryBtn,
-						background: isCharacterPronunciationPrimary ? 'rgba(49, 130, 246, 0.22)' : s.secondaryBtn.background
-					},
-					onClick: () => setIsCharacterPronunciationPrimary(value => !value),
-					title: I18n.t('syncCreator.characterPronunciationPrimaryDesc') || '생성된 발음을 크게, 원어 가사를 작게 표시합니다.'
-				}, I18n.t('syncCreator.characterPronunciationPrimary') || '발음 크게'),
-				renderBulkSpeakerControl({ compact: true }),
-				isVirtualKaraokeSource && react.createElement('span', { style: s.virtualKaraokeBadge },
-					I18n.t('syncCreator.virtualKaraoke') || '가상 노래방 데이터'
-				)
-			)
-		),
-
-		addonId === SYNC_CREATOR_SOURCE_ADDON_ID && react.createElement('div', { style: s.candidatePanel },
-			react.createElement('div', { style: s.candidatePanelHeader },
-				react.createElement('div', { style: s.candidatePanelTitle },
-					`${I18n.t('syncCreator.lrclibSearchResults') || 'LRCLIB Search Results'} ${(lrclibSearchMeta?.totalResults || lrclibCandidates.length || 0) > 0 ? `(${lrclibSearchMeta?.totalResults || lrclibCandidates.length})` : ''}`
-				),
-				react.createElement('button', {
-					type: 'button',
-					style: s.secondaryBtn,
-					onClick: () => setShowLrclibCandidates(prev => !prev)
-				}, showLrclibCandidates
-					? (I18n.t('syncCreator.hideLrclibSearchResults') || 'Hide Search Results')
-					: (I18n.t('syncCreator.showLrclibSearchResults') || 'Show Search Results'))
-			),
-			showLrclibCandidates && react.createElement('div', { style: s.candidateList },
-				isLoading && lrclibCandidates.length === 0 && react.createElement('div', { style: s.candidateEmpty },
-					I18n.t('syncCreator.loadingLyrics') || 'Loading lyrics...'
-				),
-				!isLoading && lrclibCandidates.length === 0 && react.createElement('div', { style: s.candidateEmpty },
-					lrclibSearchMeta?.error || (I18n.t('syncCreator.lrclibNoCandidates') || 'No LRCLIB candidates found')
-				),
-				lrclibCandidates.map((candidate, index) => {
-					const isPreviewing = previewLrclibCandidate?.candidateKey === candidate.candidateKey;
-					const isApplied = selectedLrclibCandidateKey === candidate.candidateKey;
-					const candidateId = getLrclibCandidateId(candidate);
-					let itemStyle = { ...s.candidateItem };
-					if (isPreviewing) itemStyle = { ...itemStyle, ...s.candidateItemActive };
-					if (isApplied) itemStyle = { ...itemStyle, ...s.candidateItemApplied };
-
-					return react.createElement('button', {
-						key: candidate.candidateKey,
-						type: 'button',
-						style: itemStyle,
-						onClick: () => setPreviewLrclibCandidateKey(candidate.candidateKey)
-					},
-						react.createElement('div', { style: s.candidateTitleRow },
-							react.createElement('span', { style: s.candidateTitle }, `${index + 1}. ${candidate.trackName || candidate.name || trackName}`),
-							candidateId && react.createElement('span', {
-								style: s.candidateIdBadge,
-								title: `${I18n.t('syncCreator.lrclibIdLabel') || 'LRCLIB ID'}: ${candidateId}`,
-								onClick: (event) => copyLrclibCandidateId(candidateId, event)
-							}, `ID ${candidateId}`)
-						),
-						react.createElement('div', { style: s.candidateSubtitle },
-							`${candidate.artistName || artistName} · ${formatSeconds(Number(candidate.duration || 0))}`
-						),
-						react.createElement('div', { style: s.candidateMetaRow },
-							candidate.syncLineExactMatch && react.createElement('span', { style: { ...s.candidateBadge, color: '#8fc1ff' } }, I18n.t('syncCreator.lrclibBadgeExact') || 'Exact'),
-							candidate.hasSyncedLyrics && react.createElement('span', { style: s.candidateBadge }, I18n.t('syncCreator.lrclibBadgeSynced') || 'Synced'),
-							candidate.hasPlainLyrics && react.createElement('span', { style: s.candidateBadge }, I18n.t('syncCreator.lrclibBadgePlain') || 'Plain'),
-							candidate.searchSource === 'primary' && react.createElement('span', { style: s.candidateBadge }, I18n.t('syncCreator.lrclibBadgePrimary') || 'Primary'),
-							candidate.searchSource === 'english' && react.createElement('span', { style: s.candidateBadge }, I18n.t('syncCreator.lrclibBadgeEnglish') || 'English'),
-							isApplied && react.createElement('span', { style: { ...s.candidateBadge, color: '#8fc1ff' } }, I18n.t('syncCreator.lrclibLoaded') || 'Loaded')
-						)
-					);
-				})
-			),
-			showLrclibCandidates && react.createElement('div', { style: s.candidatePreview },
-				previewLrclibCandidate
-					? react.createElement(react.Fragment, null,
-						react.createElement('div', { style: s.candidatePreviewHeader },
-							react.createElement('div', null,
-								react.createElement('div', { style: s.candidatePreviewTitle }, previewLrclibCandidate.trackName || previewLrclibCandidate.name || trackName),
-								react.createElement('div', { style: s.candidatePreviewSubtitle },
-									`${previewLrclibCandidate.artistName || artistName} · ${previewLrclibCandidate.albumName || ''}`.replace(/\s·\s$/, '')
-								)
-							),
-							react.createElement('div', { style: s.candidatePreviewActions },
-								getLrclibCandidateId(previewLrclibCandidate) && react.createElement('button', {
-									type: 'button',
-									style: s.candidateIdButton,
-									title: `${I18n.t('syncCreator.lrclibIdLabel') || 'LRCLIB ID'}: ${getLrclibCandidateId(previewLrclibCandidate)}`,
-									onClick: (event) => copyLrclibCandidateId(previewLrclibCandidate, event)
-								}, `ID ${getLrclibCandidateId(previewLrclibCandidate)}`),
-								react.createElement('button', {
-									type: 'button',
-									style: { ...s.secondaryBtn, opacity: selectedLrclibCandidateKey === previewLrclibCandidate.candidateKey ? 0.7 : 1 },
-									onClick: () => applySelectedLrclibCandidate(previewLrclibCandidate.candidateKey),
-									disabled: isLoading
-								}, selectedLrclibCandidateKey === previewLrclibCandidate.candidateKey
-									? (I18n.t('syncCreator.lrclibLoaded') || 'Loaded')
-									: (I18n.t('syncCreator.lrclibApplyCandidate') || 'Load This Lyrics'))
-							)
-						),
-						react.createElement('div', { style: s.candidateMetaRow },
-							react.createElement('span', { style: s.candidateBadge }, `${I18n.t('syncCreator.lrclibMetricArtist') || 'artist'} ${Number(previewLrclibCandidate.artistScore || 0).toFixed(3)}`),
-							react.createElement('span', { style: s.candidateBadge }, `${I18n.t('syncCreator.lrclibMetricTitle') || 'title'} ${Number(previewLrclibCandidate.titleScore || 0).toFixed(3)}`),
-							react.createElement('span', { style: s.candidateBadge }, `${I18n.t('syncCreator.lrclibMetricDiff') || 'diff'} ${formatSeconds(Number(previewLrclibCandidate.durationDiff || 0))}`),
-							previewLrclibCandidate.preferredLyricsSource === 'synced' && react.createElement('span', { style: s.candidateBadge }, I18n.t('syncCreator.lrclibBadgeSynced') || 'Synced'),
-							previewLrclibCandidate.preferredLyricsSource === 'plain' && react.createElement('span', { style: s.candidateBadge }, I18n.t('syncCreator.lrclibBadgePlain') || 'Plain')
-						),
-						react.createElement('pre', { style: s.candidatePreviewText }, previewLrclibCandidate.previewText || '')
-					)
-					: react.createElement('div', { style: s.candidateEmpty },
-						I18n.t('syncCreator.lrclibSelectCandidate') || 'Select a candidate'
-					)
-			)
-		),
-
-		// Playback
-		lyricsText && react.createElement('div', { style: s.playbackRow },
-			react.createElement('button', { style: s.seekBtn, onClick: () => handleSeekOffset(-3000) }, '-3s'),
-			react.createElement('button', { style: s.seekBtn, onClick: () => handleSeekOffset(-1000) }, '-1s'),
-			react.createElement('span', { style: s.playbackTime }, formatTime(position)),
-			(() => {
-				const playbackPercent = (position / (Spicetify.Player?.data?.item?.duration?.milliseconds || 1)) * 100;
-				return react.createElement('div', {
-					style: { ...s.playbackBar, '--iv-progress': `${playbackPercent}%` },
-					'data-iv-progress-bar': 'true',
-					onClick: handleSeek
-				},
-					react.createElement('div', { style: { ...s.playbackFill, width: `${playbackPercent}%` } })
-				);
-			})(),
-			react.createElement('span', { style: s.playbackTime }, formatTime(Spicetify.Player?.data?.item?.duration?.milliseconds || 0)),
-			react.createElement('button', { style: s.seekBtn, onClick: () => handleSeekOffset(1000) }, '+1s'),
-			react.createElement('button', { style: s.seekBtn, onClick: () => handleSeekOffset(3000) }, '+3s')
-		),
-
-		// Offset
-		lyricsText && syncData && react.createElement('div', { style: s.offsetRow },
-			react.createElement('span', { style: s.offsetLabel }, I18n.t('syncCreator.globalOffset')),
-			react.createElement('button', { style: s.offsetBtn, onClick: () => adjustGlobalOffset(-100) }, '-100ms'),
-			react.createElement('button', { style: s.offsetBtn, onClick: () => adjustGlobalOffset(-10) }, '-10ms'),
-			react.createElement('span', { style: s.offsetValue }, `${globalOffset >= 0 ? '+' : ''}${globalOffset}ms`),
-			react.createElement('button', { style: s.offsetBtn, onClick: () => adjustGlobalOffset(10) }, '+10ms'),
-			react.createElement('button', { style: s.offsetBtn, onClick: () => adjustGlobalOffset(100) }, '+100ms')
-		),
-
-		// Lyrics Area
-		react.createElement('div', { style: s.lyricsArea },
-			isLoading && react.createElement('div', { style: s.loading }, I18n.t('syncCreator.loadingLyrics')),
-			error && react.createElement('div', { style: { ...s.error, display: 'flex', flexDirection: 'column', alignItems: 'center' } },
-				react.createElement('div', null, error)
-			),
-			!isLoading && !error && !lyricsText && react.createElement('div', { style: s.loading }, I18n.t('syncCreator.loadLyrics')),
-
-			lyricsText && lyricsLines.length > 0 && react.createElement(react.Fragment, null,
-				// Line Navigation (이전/다음 버튼)
-				react.createElement('div', { style: s.lineNav },
-					react.createElement('button', { style: { ...s.navBtn, opacity: previousNavigableLineIndex < 0 ? 0.3 : 1 }, onClick: goToPrevLine, disabled: previousNavigableLineIndex < 0 }, '◀'),
-					react.createElement('div', { style: s.lineInfo },
-						react.createElement('div', { style: s.lineCount }, `${currentLineIndex + 1} / ${lyricsLines.length}`),
-						react.createElement('div', { style: s.lineStatus }, isCurrentLineSynced ? '✓ ' + I18n.t('syncCreator.synced') : I18n.t('syncCreator.notSynced'))
-					),
-					react.createElement('button', { style: { ...s.navBtn, opacity: nextNavigableLineIndex < 0 ? 0.3 : 1 }, onClick: goToNextLine, disabled: nextNavigableLineIndex < 0 }, '▶')
-				),
-
-				((!multiVocalMode && currentFullLineChars.length > 1) || canMergeCurrentLineWithNext) && react.createElement('div', { style: s.multiVocalSwitchRow },
-					!multiVocalMode && currentFullLineChars.length > 1 && react.createElement('button', {
-						type: 'button',
-						style: s.multiVocalSwitchBtn,
-						onClick: enableManualMultiVocalMode
-					}, I18n.t('syncCreator.enableMultiVocalMode') || 'Enable multiple vocal mode'),
-					canMergeCurrentLineWithNext && react.createElement('button', {
-						type: 'button',
-						style: s.multiVocalSwitchBtn,
-						onClick: mergeCurrentLineWithNext
-					}, I18n.t('syncCreator.mergeWithNextLine') || 'Merge next line')
-				),
-
-				multiVocalMode && react.createElement('div', { style: s.multiVocalBanner },
-					hasCurrentParallelParts
-						? (I18n.t('syncCreator.multiVocalBannerParts') || 'Multiple vocal mode: sync each vocal part separately.')
-						: (I18n.t('syncCreator.multiVocalBannerLine') || 'Multiple vocal mode: choose SPEAKER and text effect for this line.')
-				),
-
-				multiVocalMode && currentFullLineChars.length > 1 && react.createElement('div', { style: s.parallelSplitEditor },
-					react.createElement('div', { style: s.parallelSplitHeader },
-						react.createElement('span', { style: s.parallelSplitTitle }, I18n.t('syncCreator.manualSplit') || 'Manual split'),
-						hasManualParallelSplit && react.createElement('span', { style: s.parallelSplitBadge }, `${currentManualSplitPoints.length + 1} parts`),
-						hasManualDraftSplit && react.createElement('button', {
-							type: 'button',
-							style: s.parallelSplitResetBtn,
-							onClick: resetCurrentLineManualSplit
-						}, I18n.t('syncCreator.useAutoSplit') || 'Use auto'),
-						react.createElement('button', {
-							type: 'button',
-							style: s.parallelSplitToggleBtn,
-							onClick: () => setIsParallelSplitCollapsed(prev => !prev)
-						}, isParallelSplitCollapsed
-							? (I18n.t('update.expand') || 'Expand')
-							: (I18n.t('update.collapse') || 'Collapse'))
-					),
-					!isParallelSplitCollapsed && react.createElement('div', { style: s.parallelSplitBody },
-						react.createElement('div', { style: s.parallelSplitTape },
-						currentFullLineChars.map((char, index) => react.createElement(react.Fragment, { key: `manual-split-${currentLineStart}-${index}` },
-							index > 0 && react.createElement('button', {
-								type: 'button',
-								style: {
-									...s.parallelSplitBoundary,
-									...(currentManualSplitPointSet.has(index) ? s.parallelSplitBoundaryActive : null)
-								},
-								title: I18n.t('syncCreator.splitHere') || 'Split here',
-								onClick: (e) => {
-									e.preventDefault();
-									e.stopPropagation();
-									toggleManualParallelSplitPoint(index);
-								}
-							}, currentManualSplitPointSet.has(index) ? '|' : '·'),
-							react.createElement('span', { style: s.parallelSplitChar }, char === ' ' ? '\u00A0' : char)
-						))
-					)
-					)
-				),
-
-				false && hasCurrentParallelParts && react.createElement('div', { style: s.parallelPartRow },
-					currentParallelParts.map((part, index) => {
-						const speakerLabel = part.speaker || `VOCAL ${index + 1}`;
-						const kindLabel = getSyncCreatorKindLabel(part.kind) || I18n.t('syncCreator.unselectedType') || 'Text effect not selected';
-						return react.createElement('button', {
-							key: part.id,
-							type: 'button',
-							style: {
-								...s.parallelPartBtn,
-								...(activeParallelPartId === part.id ? s.parallelPartBtnActive : null)
-							},
-							onClick: () => {
-								setActiveParallelPartId(part.id);
-								setRecordingProgressIndex(-1);
-								clearRecordingLock();
-								charTimesRef.current = [];
-								if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
-							}
-						}, `${speakerLabel} · ${kindLabel} · ${countRangeChars(part.ranges)}`);
-					})
-				),
-
-				(activeParallelPart || !hasCurrentParallelParts) && renderLineInspector(),
-
-				false && hasCurrentParallelParts && react.createElement('div', { style: s.parallelPartRow },
-					[
-							{ id: 'full', label: I18n.t('syncCreator.allLine') || 'Full line', count: currentFullLineChars.length },
-							...currentParallelParts.map(part => ({
-								id: part.id,
-								label: `${part.speaker || (part.role === 'background' ? 'B' : 'A')} ${getSyncCreatorKindLabel(part.kind) || (I18n.t('syncCreator.kindVocal') || 'No effect')}`,
-								count: countRangeChars(part.ranges)
-							}))
-					].map(part => react.createElement('button', {
-						key: part.id,
-						type: 'button',
-						style: {
-							...s.parallelPartBtn,
-							...(activeParallelPartId === part.id ? s.parallelPartBtnActive : null)
-						},
-						onClick: () => {
-							setActiveParallelPartId(part.id);
-							setRecordingProgressIndex(-1);
-							clearRecordingLock();
-							charTimesRef.current = [];
-							if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
-							}
-						}, `${part.label} · ${part.count}`))
-					),
-
-					false && activeParallelPart && react.createElement('div', { style: s.parallelMetaRow },
-						react.createElement('span', { style: s.parallelMetaLabel }, 'Speaker'),
-						react.createElement('select', {
-							style: s.parallelMetaSelect,
-							value: activeParallelPart.speaker || 'A',
-							onChange: (e) => updateParallelPartMeta(activeParallelPart.id, 'speaker', e.target.value)
-						}, ['A', 'B', 'C', 'D', 'SFX'].map(value =>
-							react.createElement('option', { key: value, value }, value)
-						)),
-						react.createElement('span', { style: s.parallelMetaLabel }, I18n.t('syncCreator.typeLabel') || 'Text effect'),
-						react.createElement('select', {
-							style: s.parallelMetaSelect,
-							value: activeParallelPart.kind || 'vocal',
-							onChange: (e) => updateParallelPartMeta(activeParallelPart.id, 'kind', e.target.value)
-						}, SYNC_CREATOR_KIND_OPTIONS.map(([value, labelKey]) =>
-							react.createElement('option', { key: value, value }, I18n.t(labelKey) || value)
-						))
-					),
-
-					false && !activeParallelPart && react.createElement('div', { style: s.parallelMetaRow },
-						react.createElement('span', { style: s.parallelMetaLabel }, 'Speaker'),
-						react.createElement('select', {
-							style: s.parallelMetaSelect,
-							value: currentLineMeta.speaker || 'A',
-							onChange: (e) => updateCurrentLineMeta('speaker', e.target.value)
-						}, ['A', 'B', 'C', 'D', 'SFX'].map(value =>
-							react.createElement('option', { key: value, value }, value)
-						)),
-						react.createElement('span', { style: s.parallelMetaLabel }, I18n.t('syncCreator.typeLabel') || 'Text effect'),
-						react.createElement('select', {
-							style: s.parallelMetaSelect,
-							value: currentLineMeta.kind || 'vocal',
-							onChange: (e) => updateCurrentLineMeta('kind', e.target.value)
-						}, SYNC_CREATOR_KIND_OPTIONS.map(([value, labelKey]) =>
-							react.createElement('option', { key: value, value }, I18n.t(labelKey) || value)
-						))
-					),
-
-				// Lyrics Box
-				react.createElement('div', {
-					style: hasCurrentParallelParts
-						? { ...s.lyricsBox, ...s.lyricsBoxParallelScrollable }
-						: s.lyricsBox,
-					onMouseDown: hasCurrentParallelParts ? undefined : handleContainerMouseDown,
-					onTouchStart: hasCurrentParallelParts ? undefined : handleContainerMouseDown,
-					ref: lyricsScrollRef
-				},
-					hasCurrentParallelParts
-						? react.createElement('div', { style: s.parallelStack },
-							currentParallelParts.map((part, index) => renderParallelPartLine(part, index))
-						)
-						: react.createElement('div', { style: useCurrentLineTextRun ? { ...s.rtlLyricsLine, direction: currentLineDirection } : s.lyricsLine },
-							renderCurrentLineCharacters()
-						)
-				),
-
-				// Next Line
-				nextNavigableLineIndex >= 0 && react.createElement('div', { style: s.nextLineBox },
-					react.createElement('div', { style: s.nextLineLabel }, I18n.t('syncCreator.nextLine')),
-					react.createElement('div', {
-						style: {
-							...s.nextLineText,
-							direction: getSyncCreatorTextDirection(lyricsLines[nextNavigableLineIndex]),
-							unicodeBidi: 'plaintext'
-						}
-					}, getSyncCreatorFuriganaReact(lyricsLines[nextNavigableLineIndex]))
-				),
-
-				mode === 'record' && react.createElement('div', { style: s.hint }, syncGranularityRecordingHint),
-
-				// 키보드 단축키 가이드 (record 모드일 때만 표시)
-				mode === 'record' && react.createElement('div', { style: s.shortcutsContainer },
-					// 한 글자
-					react.createElement('div', { style: s.shortcutItem },
-						react.createElement('span', { style: s.shortcutKey }, getSyncCreatorShortcutDisplay('charForward')),
-						react.createElement('span', { style: s.shortcutDesc }, I18n.t('syncCreator.shortcuts.charForward') || '한 글자')
-					),
-					react.createElement('div', { style: s.shortcutItem },
-						react.createElement('span', { style: s.shortcutKey }, getSyncCreatorShortcutDisplay('charBack')),
-						react.createElement('span', { style: s.shortcutDesc }, I18n.t('syncCreator.shortcuts.charBack') || '한 글자 취소')
-					),
-					// 한 단어
-					react.createElement('div', { style: s.shortcutItem },
-						react.createElement('span', { style: s.shortcutKey }, getSyncCreatorShortcutDisplay('wordForward')),
-						react.createElement('span', { style: s.shortcutDesc }, I18n.t('syncCreator.shortcuts.wordForward') || '한 단어')
-					),
-					react.createElement('div', { style: s.shortcutItem },
-						react.createElement('span', { style: s.shortcutKey }, getSyncCreatorShortcutDisplay('wordBack')),
-						react.createElement('span', { style: s.shortcutDesc }, I18n.t('syncCreator.shortcuts.wordBack') || '한 단어 취소')
-					),
-					// 음절
-					react.createElement('div', { style: s.shortcutItem },
-						react.createElement('span', { style: s.shortcutKey }, getSyncCreatorShortcutDisplay('syllable')),
-						react.createElement('span', { style: s.shortcutDesc }, I18n.t('syncCreator.shortcuts.syllable') || '음절')
-					),
-					// 드래그
-					react.createElement('div', { style: s.shortcutItem },
-						react.createElement('span', { style: s.shortcutKey }, getSyncCreatorShortcutDisplay('drag')),
-						react.createElement('span', { style: s.shortcutDesc }, I18n.t('syncCreator.shortcuts.drag') || '누르고 있으면 드래그')
-					),
-					react.createElement('div', { style: s.shortcutItem },
-						react.createElement('span', { style: s.shortcutKey }, I18n.t('syncCreator.shortcuts.rightClick') || '우클릭'),
-						react.createElement('span', { style: s.shortcutDesc }, I18n.t('syncCreator.shortcuts.lockToCharacter') || '해당 글자까지 잠금')
-					),
-					react.createElement('div', { style: s.shortcutItem },
-						react.createElement('span', { style: s.shortcutKey }, '↑ / ↓'),
-						react.createElement('span', { style: s.shortcutDesc }, `${I18n.t('syncCreator.prevLine') || '이전 줄'} / ${I18n.t('syncCreator.nextLineBtn') || '다음 줄'}`)
-					),
-					// 완료/취소
-					react.createElement('div', { style: s.shortcutItem },
-						react.createElement('span', { style: s.shortcutKey }, 'Enter'),
-						react.createElement('span', { style: s.shortcutDesc }, I18n.t('syncCreator.shortcuts.finish') || '라인 완료')
-					),
-					react.createElement('div', { style: s.shortcutItem },
-						react.createElement('span', { style: s.shortcutKey }, '⌫'),
-						react.createElement('span', { style: s.shortcutDesc }, I18n.t('syncCreator.shortcuts.cancel') || '취소')
-					),
-					// 재생 컨트롤
-					react.createElement('div', { style: s.shortcutItem },
-						react.createElement('span', { style: s.shortcutKey }, 'Space'),
-						react.createElement('span', { style: s.shortcutDesc }, I18n.t('syncCreator.shortcuts.playPause') || '재생/일시정지')
-					),
-					react.createElement('div', { style: s.shortcutItem },
-						react.createElement('span', { style: s.shortcutKey }, 'Z'),
-						react.createElement('span', { style: s.shortcutDesc }, I18n.t('syncCreator.shortcuts.seekBack') || '-3초')
-					),
-					react.createElement('div', { style: s.shortcutItem },
-						react.createElement('span', { style: s.shortcutKey }, 'X'),
-						react.createElement('span', { style: s.shortcutDesc }, I18n.t('syncCreator.shortcuts.seekForward') || '+3초')
-					)
-				)
-			)
-		),
-
-		// Progress
-		lyricsText && react.createElement('div', { style: s.progressRow },
-			`${completedLines} / ${lyricsLines.length} ${I18n.t('syncCreator.linesCompleted')}`,
-			react.createElement('span', { style: { opacity: 0.5 } }, '|'),
-			`${syncedChars} / ${totalChars} ${I18n.t('syncCreator.chars')}`
-		),
-
-		// Controls
-		lyricsText && react.createElement('div', { style: s.controls },
-			react.createElement('button', { style: s.ctrlBtn, onClick: goToFirstLine, disabled: currentLineIndex <= 0 }, I18n.t('syncCreator.firstLine')),
-
-			// 기록 모드
-			react.createElement('button', {
-				style: {
-					...s.modeBtn,
-					background: mode === 'record'
-						? 'linear-gradient(135deg, #ff6b6b, #f04452)'
-						: TOSS_BLUE,
-					color: '#fff',
-					boxShadow: mode === 'record'
-						? '0 8px 22px rgba(240, 68, 82, 0.24)'
-						: `0 8px 22px ${TOSS_BLUE_RING}`
-				},
-				onClick: () => toggleMode('record')
-			}, mode === 'record' ? I18n.t('syncCreator.stopRecord') : I18n.t('syncCreator.recordMode')),
-
-			// 미리보기 모드
-			react.createElement('button', {
-				style: {
-					...s.modeBtn,
-					background: mode === 'preview'
-						? `linear-gradient(135deg, ${TOSS_BLUE}, ${TOSS_BLUE_DEEP})`
-						: 'rgba(255,255,255,0.05)',
-					color: mode === 'preview' ? '#fff' : 'var(--spice-text)',
-					border: mode === 'preview' ? '1px solid transparent' : `1px solid ${TOSS_BORDER}`,
-					boxShadow: mode === 'preview' ? `0 8px 22px ${TOSS_BLUE_RING}` : 'none'
-				},
-				onClick: () => toggleMode('preview'),
-				disabled: !syncData || syncData.lines.length === 0
-			}, mode === 'preview' ? I18n.t('syncCreator.stopPreview') : I18n.t('syncCreator.previewMode')),
-
-			// 가사 복사 버튼
-			react.createElement('button', { style: s.ctrlBtn, onClick: copyAllLyrics, disabled: !lyricsText },
-				I18n.t('syncCreator.copyLyrics') || '가사 복사'
-			),
-
-			// 싱크 데이터 내보내기
-			react.createElement('button', { style: s.ctrlBtn, onClick: exportSyncData, disabled: !syncData || !syncData.lines || syncData.lines.length === 0 },
-				I18n.t('syncCreator.export') || '내보내기'
-			),
-
-			// 싱크 데이터 불러오기
-			react.createElement('button', { style: s.ctrlBtn, onClick: importSyncData },
-				I18n.t('syncCreator.import') || '불러오기'
-			),
-
-			// 현재 줄 삭제
-			isCurrentLineSynced && react.createElement('button', { style: s.deleteBtn, onClick: deleteCurrentLineSync },
-				I18n.t('syncCreator.deleteLine')
-			),
-
-			// 초기화
-			react.createElement('button', {
-				style: s.deleteBtn,
-				onClick: resetFromStart,
-				title: I18n.t('syncCreator.resetConfirm') || '현재 작업 중인 싱크 데이터가 모두 삭제됩니다.'
-			},
-				I18n.t('syncCreator.reset')
-			)
-		),
-
-		pendingMultiVocalDecision && react.createElement('div', { style: s.lrcLibModal },
-			react.createElement('div', { style: { ...s.lrcLibContent, maxWidth: '560px' } },
-				react.createElement('h3', { style: s.lrcLibTitle }, I18n.t('syncCreator.multiVocalDetectedTitle') || 'Multiple vocals detected'),
-				react.createElement('p', { style: s.lrcLibDesc },
-					I18n.t('syncCreator.multiVocalDetectedBody') || 'This lyric contains lines with parentheses or separators, so it can be synced as separate vocal parts. Choose how to work on this song.'
-				),
-				pendingMultiVocalDecision.preview && react.createElement('div', {
-					style: s.multiVocalDecisionPreview,
-					title: pendingMultiVocalDecision.preview
-				}, pendingMultiVocalDecision.preview),
-				react.createElement('div', { style: s.lrcLibBtnRow },
-					react.createElement('button', {
-						style: s.lrcLibBtnCancel,
-						onClick: () => resolveMultiVocalDecision(false)
-					}, I18n.t('syncCreator.multiVocalDecisionNormal') || 'Continue in normal mode'),
-					react.createElement('button', {
-						style: s.lrcLibBtn,
-						onClick: () => resolveMultiVocalDecision(true)
-					}, I18n.t('syncCreator.multiVocalDecisionMulti') || 'Continue in multiple vocal mode')
-				)
-			)
-		),
-
-		renderBulkCustomSpeakerDialog(),
-
-		// AI character pronunciation token usage modal
-	showCharacterPronunciationConsent && react.createElement('div', {
-		style: s.lrcLibModal,
-		onClick: (e) => {
-			if (e.target !== e.currentTarget) return;
-			characterPronunciationConsentForceRef.current = false;
-			setShowCharacterPronunciationConsent(false);
-		}
-		},
-			react.createElement('div', { style: s.lrcLibContent },
-				react.createElement('h3', { style: s.lrcLibTitle },
-					I18n.t('syncCreator.characterPronunciationTokenWarningTitle') || 'AI character pronunciation token usage'
-				),
-				react.createElement('p', { style: s.lrcLibDesc },
-					I18n.t('syncCreator.characterPronunciationTokenWarningBody') || 'This feature generates pronunciation aligned to each character for karaoke sync, so it uses more AI tokens than ordinary pronunciation generation.'
-				),
-				react.createElement('div', {
-					style: {
-						fontSize: '12px',
-						color: '#ffb74d',
-						lineHeight: 1.55,
-						padding: '12px 14px',
-						background: 'rgba(255, 152, 0, 0.08)',
-						borderRadius: '10px',
-						border: '1px solid rgba(255, 152, 0, 0.28)'
-					}
-				}, I18n.t('syncCreator.characterPronunciationTokenWarningUsage') || 'Expected usage: about 3-6x more tokens than a normal line-by-line pronunciation request. Actual usage varies by lyrics length, language, and provider retries.'),
-				react.createElement('div', { style: s.lrcLibBtnRow },
-				react.createElement('button', {
-					style: s.lrcLibBtnCancel,
-					onClick: () => {
-						characterPronunciationConsentForceRef.current = false;
-						setShowCharacterPronunciationConsent(false);
-					}
-					}, I18n.t('syncCreator.characterPronunciationTokenWarningCancel') || I18n.t('cancel') || 'Cancel'),
-					react.createElement('button', {
-					style: s.lrcLibBtn,
-					onClick: () => {
-						const forceRegenerate = characterPronunciationConsentForceRef.current;
-						characterPronunciationConsentForceRef.current = false;
-						setShowCharacterPronunciationConsent(false);
-						handleCharacterPronunciationToggle({ skipConsent: true, forceRegenerate });
-					}
-					}, I18n.t('syncCreator.characterPronunciationTokenWarningConfirm') || 'I understand and generate')
-				)
-			)
-		),
-
-		// LRCLIB 발행 모달
-	);
 };
 
 window.SyncDataCreator = SyncDataCreator;

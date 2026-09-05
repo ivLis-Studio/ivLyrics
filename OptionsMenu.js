@@ -4513,6 +4513,115 @@ const SettingsMenu = react.memo(() => {
     )
   );
 });
+// Reuse the advanced panel's controls without adding component or DOM wrappers.
+const renderShareImageControls = (settings, updateSetting) => {
+  const labelText = (key, fallback) => I18n.t(`shareImage.settings.${key}`) || fallback;
+  const field = (label, control) => react.createElement("div", { style: { gridColumn: 'span 2' } },
+    react.createElement("label", {
+      style: { color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' }
+    }, label),
+    control
+  );
+  const section = (key, fallback, first = false) => react.createElement("div", {
+    className: "share-image-panel-section",
+    style: {
+      gridColumn: 'span 2',
+      fontSize: '12px',
+      fontWeight: '600',
+      color: '#1db954',
+      ...(!first ? { marginTop: '12px' } : {}),
+      marginBottom: '4px',
+      borderBottom: '1px solid rgba(29,185,84,0.2)',
+      paddingBottom: '8px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      letterSpacing: '0.5px',
+      textTransform: 'uppercase'
+    }
+  }, I18n.t(`shareImage.sections.${key}`) || fallback);
+  const range = (key, fallbackLabel, fallback, min, max, { step, percent = false } = {}) => {
+    const value = percent ? Math.round((settings[key] ?? fallback) * 100) : settings[key] ?? fallback;
+    return field(`${labelText(key, fallbackLabel)}: ${value}${percent ? '%' : 'px'}`,
+      react.createElement("input", {
+        type: 'range', min, max,
+        ...(step !== undefined ? { step } : {}),
+        value,
+        onChange: (event) => updateSetting(key, percent ? parseInt(event.target.value) / 100 : parseInt(event.target.value)),
+        style: { width: '100%', accentColor: '#1db954' }
+      })
+    );
+  };
+  const checkbox = (key, fallbackLabel, wide = false) => react.createElement("div",
+    wide ? { style: { gridColumn: 'span 2' } } : null,
+    react.createElement("label", {
+      className: "share-image-check",
+      style: { display: 'flex', alignItems: 'center', gap: '6px', color: 'rgba(255,255,255,0.7)', cursor: 'pointer' }
+    },
+      react.createElement("input", {
+        type: 'checkbox', checked: settings[key] !== false,
+        onChange: (event) => updateSetting(key, event.target.checked),
+        style: { accentColor: '#1db954' }
+      }),
+      labelText(key, fallbackLabel)
+    )
+  );
+  const choice = (key, fallbackLabel, options, compact = false) => field(labelText(key, fallbackLabel),
+    react.createElement("div", { style: { display: 'flex', gap: '4px' } },
+      options.map(([value, label]) => react.createElement("button", {
+        key: value === null ? 'auto' : value,
+        className: "share-image-segment-btn",
+        "data-active": settings[key] === value,
+        onClick: () => updateSetting(key, value),
+        style: {
+          flex: 1,
+          padding: compact ? '5px 6px' : '5px 8px',
+          borderRadius: '4px',
+          border: settings[key] === value ? '1px solid #1db954' : '1px solid rgba(255,255,255,0.15)',
+          background: settings[key] === value ? 'rgba(29,185,84,0.15)' : 'rgba(255,255,255,0.05)',
+          color: '#fff',
+          fontSize: compact ? '9px' : '10px',
+          cursor: 'pointer'
+        }
+      }, label))
+    )
+  );
+
+  return [
+    section('background', '배경', true),
+    choice('backgroundType', '배경 스타일', [
+      ['coverBlur', labelText('coverBlur', '블러')],
+      ['gradient', labelText('gradient', '그라디언트')],
+      ['solid', labelText('solid', '단색')]
+    ]),
+    settings.backgroundType === 'coverBlur' && range('backgroundBlur', '배경 블러', 30, 0, 80),
+    range('backgroundOpacity', '배경 어둡기', 0.6, 20, 90, { percent: true }),
+    section('cover', '앨범 커버'),
+    checkbox('showCover', '앨범 커버'),
+    checkbox('showTrackInfo', '곡 정보'),
+    settings.showCover && choice('coverPosition', '커버 위치', [
+      ['left', labelText('posLeft', '좌측')], ['center', labelText('posCenter', '중앙')]
+    ]),
+    settings.showCover && range('coverSize', '커버 크기', 120, 60, 200),
+    settings.showCover && range('coverRadius', '커버 둥글기', 16, 0, 50),
+    settings.showCover && range('coverBlur', '커버 블러', 0, 0, 30),
+    section('lyrics', '가사'),
+    checkbox('showPronunciation', '발음'),
+    checkbox('showTranslation', '번역'),
+    choice('lyricsAlign', '가사 정렬', [
+      ['left', labelText('alignLeft', '왼쪽')], ['center', labelText('alignCenter', '가운데')]
+    ]),
+    range('fontSize', '글꼴 크기', 32, 20, 48),
+    range('blockGap', '줄 간격', 32, 16, 60),
+    section('layout', '레이아웃'),
+    choice('aspectRatio', '이미지 비율', [[null, '자동'], [1, '1:1'], [9 / 16, '9:16'], [16 / 9, '16:9']], true),
+    range('imageWidth', '이미지 너비', 1080, 720, 1920, { step: 60 }),
+    range('padding', '여백', 60, 30, 100),
+    section('other', '기타'),
+    checkbox('showWatermark', '워터마크 표시', true)
+  ];
+};
+
 // Share Lyrics Image Modal Component
 const ShareImageModal = ({ lyrics, trackInfo, onClose }) => {
   const [selectedIndices, setSelectedIndices] = react.useState([]);
@@ -4997,465 +5106,7 @@ const ShareImageModal = ({ lyrics, trackInfo, onClose }) => {
             boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)',
           }
         },
-          // === 배경 설정 섹션 ===
-          react.createElement("div", {
-            className: "share-image-panel-section",
-            style: {
-              gridColumn: 'span 2',
-              fontSize: '12px',
-              fontWeight: '600',
-              color: '#1db954',
-              marginBottom: '4px',
-              borderBottom: '1px solid rgba(29,185,84,0.2)',
-              paddingBottom: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              letterSpacing: '0.5px',
-              textTransform: 'uppercase'
-            }
-          }, I18n.t("shareImage.sections.background") || "배경"),
-
-          // 배경 타입
-          react.createElement("div", { style: { gridColumn: 'span 2' } },
-            react.createElement("label", { style: { color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' } },
-              I18n.t("shareImage.settings.backgroundType") || "배경 스타일"
-            ),
-            react.createElement("div", { style: { display: 'flex', gap: '4px' } },
-              ['coverBlur', 'gradient', 'solid'].map(type =>
-                react.createElement("button", {
-                  key: type,
-                  className: "share-image-segment-btn",
-                  "data-active": currentSettings.backgroundType === type,
-                  onClick: () => updateSetting('backgroundType', type),
-                  style: {
-                    flex: 1,
-                    padding: '5px 8px',
-                    borderRadius: '4px',
-                    border: currentSettings.backgroundType === type ? '1px solid #1db954' : '1px solid rgba(255,255,255,0.15)',
-                    background: currentSettings.backgroundType === type ? 'rgba(29,185,84,0.15)' : 'rgba(255,255,255,0.05)',
-                    color: '#fff',
-                    fontSize: '10px',
-                    cursor: 'pointer',
-                  }
-                }, type === 'coverBlur' ? (I18n.t("shareImage.settings.coverBlur") || '블러') :
-                  type === 'gradient' ? (I18n.t("shareImage.settings.gradient") || '그라디언트') :
-                    (I18n.t("shareImage.settings.solid") || '단색'))
-              )
-            )
-          ),
-
-          // 배경 블러 강도 (coverBlur일 때만)
-          currentSettings.backgroundType === 'coverBlur' && react.createElement("div", { style: { gridColumn: 'span 2' } },
-            react.createElement("label", { style: { color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' } },
-              `${I18n.t("shareImage.settings.backgroundBlur") || "배경 블러"}: ${currentSettings.backgroundBlur ?? 30}px`
-            ),
-            react.createElement("input", {
-              type: 'range',
-              min: 0,
-              max: 80,
-              value: currentSettings.backgroundBlur ?? 30,
-              onChange: (e) => updateSetting('backgroundBlur', parseInt(e.target.value)),
-              style: { width: '100%', accentColor: '#1db954' }
-            })
-          ),
-
-          // 배경 어둡기
-          react.createElement("div", { style: { gridColumn: 'span 2' } },
-            react.createElement("label", { style: { color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' } },
-              `${I18n.t("shareImage.settings.backgroundOpacity") || "배경 어둡기"}: ${Math.round((currentSettings.backgroundOpacity ?? 0.6) * 100)}%`
-            ),
-            react.createElement("input", {
-              type: 'range',
-              min: 20,
-              max: 90,
-              value: Math.round((currentSettings.backgroundOpacity ?? 0.6) * 100),
-              onChange: (e) => updateSetting('backgroundOpacity', parseInt(e.target.value) / 100),
-              style: { width: '100%', accentColor: '#1db954' }
-            })
-          ),
-
-          // === 앨범 커버 설정 섹션 ===
-          react.createElement("div", {
-            className: "share-image-panel-section",
-            style: {
-              gridColumn: 'span 2',
-              fontSize: '12px',
-              fontWeight: '600',
-              color: '#1db954',
-              marginTop: '12px',
-              marginBottom: '4px',
-              borderBottom: '1px solid rgba(29,185,84,0.2)',
-              paddingBottom: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              letterSpacing: '0.5px',
-              textTransform: 'uppercase'
-            }
-          }, I18n.t("shareImage.sections.cover") || "앨범 커버"),
-
-          // 커버 표시
-          react.createElement("div", null,
-            react.createElement("label", {
-              className: "share-image-check",
-              style: {
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                color: 'rgba(255,255,255,0.7)',
-                cursor: 'pointer',
-              }
-            },
-              react.createElement("input", {
-                type: 'checkbox',
-                checked: currentSettings.showCover !== false,
-                onChange: (e) => updateSetting('showCover', e.target.checked),
-                style: { accentColor: '#1db954' }
-              }),
-              I18n.t("shareImage.settings.showCover") || "앨범 커버"
-            )
-          ),
-
-          // 곡 정보 표시
-          react.createElement("div", null,
-            react.createElement("label", {
-              className: "share-image-check",
-              style: {
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                color: 'rgba(255,255,255,0.7)',
-                cursor: 'pointer',
-              }
-            },
-              react.createElement("input", {
-                type: 'checkbox',
-                checked: currentSettings.showTrackInfo !== false,
-                onChange: (e) => updateSetting('showTrackInfo', e.target.checked),
-                style: { accentColor: '#1db954' }
-              }),
-              I18n.t("shareImage.settings.showTrackInfo") || "곡 정보"
-            )
-          ),
-
-          // 커버 위치
-          currentSettings.showCover && react.createElement("div", { style: { gridColumn: 'span 2' } },
-            react.createElement("label", { style: { color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' } },
-              I18n.t("shareImage.settings.coverPosition") || "커버 위치"
-            ),
-            react.createElement("div", { style: { display: 'flex', gap: '4px' } },
-              ['left', 'center'].map(pos =>
-                react.createElement("button", {
-                  key: pos,
-                  className: "share-image-segment-btn",
-                  "data-active": currentSettings.coverPosition === pos,
-                  onClick: () => updateSetting('coverPosition', pos),
-                  style: {
-                    flex: 1,
-                    padding: '5px 8px',
-                    borderRadius: '4px',
-                    border: currentSettings.coverPosition === pos ? '1px solid #1db954' : '1px solid rgba(255,255,255,0.15)',
-                    background: currentSettings.coverPosition === pos ? 'rgba(29,185,84,0.15)' : 'rgba(255,255,255,0.05)',
-                    color: '#fff',
-                    fontSize: '10px',
-                    cursor: 'pointer',
-                  }
-                }, pos === 'left' ? (I18n.t("shareImage.settings.posLeft") || '좌측') : (I18n.t("shareImage.settings.posCenter") || '중앙'))
-              )
-            )
-          ),
-
-          // 커버 크기
-          currentSettings.showCover && react.createElement("div", { style: { gridColumn: 'span 2' } },
-            react.createElement("label", { style: { color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' } },
-              `${I18n.t("shareImage.settings.coverSize") || "커버 크기"}: ${currentSettings.coverSize ?? 120}px`
-            ),
-            react.createElement("input", {
-              type: 'range',
-              min: 60,
-              max: 200,
-              value: currentSettings.coverSize ?? 120,
-              onChange: (e) => updateSetting('coverSize', parseInt(e.target.value)),
-              style: { width: '100%', accentColor: '#1db954' }
-            })
-          ),
-
-          // 커버 둥글기
-          currentSettings.showCover && react.createElement("div", { style: { gridColumn: 'span 2' } },
-            react.createElement("label", { style: { color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' } },
-              `${I18n.t("shareImage.settings.coverRadius") || "커버 둥글기"}: ${currentSettings.coverRadius ?? 16}px`
-            ),
-            react.createElement("input", {
-              type: 'range',
-              min: 0,
-              max: 50,
-              value: currentSettings.coverRadius ?? 16,
-              onChange: (e) => updateSetting('coverRadius', parseInt(e.target.value)),
-              style: { width: '100%', accentColor: '#1db954' }
-            })
-          ),
-
-          // 커버 블러
-          currentSettings.showCover && react.createElement("div", { style: { gridColumn: 'span 2' } },
-            react.createElement("label", { style: { color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' } },
-              `${I18n.t("shareImage.settings.coverBlur") || "커버 블러"}: ${currentSettings.coverBlur ?? 0}px`
-            ),
-            react.createElement("input", {
-              type: 'range',
-              min: 0,
-              max: 30,
-              value: currentSettings.coverBlur ?? 0,
-              onChange: (e) => updateSetting('coverBlur', parseInt(e.target.value)),
-              style: { width: '100%', accentColor: '#1db954' }
-            })
-          ),
-
-          // === 가사 설정 섹션 ===
-          react.createElement("div", {
-            className: "share-image-panel-section",
-            style: {
-              gridColumn: 'span 2',
-              fontSize: '12px',
-              fontWeight: '600',
-              color: '#1db954',
-              marginTop: '12px',
-              marginBottom: '4px',
-              borderBottom: '1px solid rgba(29,185,84,0.2)',
-              paddingBottom: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              letterSpacing: '0.5px',
-              textTransform: 'uppercase'
-            }
-          }, I18n.t("shareImage.sections.lyrics") || "가사"),
-
-          // 발음 표시
-          react.createElement("div", null,
-            react.createElement("label", {
-              className: "share-image-check",
-              style: {
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                color: 'rgba(255,255,255,0.7)',
-                cursor: 'pointer',
-              }
-            },
-              react.createElement("input", {
-                type: 'checkbox',
-                checked: currentSettings.showPronunciation !== false,
-                onChange: (e) => updateSetting('showPronunciation', e.target.checked),
-                style: { accentColor: '#1db954' }
-              }),
-              I18n.t("shareImage.settings.showPronunciation") || "발음"
-            )
-          ),
-
-          // 번역 표시
-          react.createElement("div", null,
-            react.createElement("label", {
-              className: "share-image-check",
-              style: {
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                color: 'rgba(255,255,255,0.7)',
-                cursor: 'pointer',
-              }
-            },
-              react.createElement("input", {
-                type: 'checkbox',
-                checked: currentSettings.showTranslation !== false,
-                onChange: (e) => updateSetting('showTranslation', e.target.checked),
-                style: { accentColor: '#1db954' }
-              }),
-              I18n.t("shareImage.settings.showTranslation") || "번역"
-            )
-          ),
-
-          // 가사 정렬
-          react.createElement("div", { style: { gridColumn: 'span 2' } },
-            react.createElement("label", { style: { color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' } },
-              I18n.t("shareImage.settings.lyricsAlign") || "가사 정렬"
-            ),
-            react.createElement("div", { style: { display: 'flex', gap: '4px' } },
-              ['left', 'center'].map(align =>
-                react.createElement("button", {
-                  key: align,
-                  className: "share-image-segment-btn",
-                  "data-active": currentSettings.lyricsAlign === align,
-                  onClick: () => updateSetting('lyricsAlign', align),
-                  style: {
-                    flex: 1,
-                    padding: '5px 8px',
-                    borderRadius: '4px',
-                    border: currentSettings.lyricsAlign === align ? '1px solid #1db954' : '1px solid rgba(255,255,255,0.15)',
-                    background: currentSettings.lyricsAlign === align ? 'rgba(29,185,84,0.15)' : 'rgba(255,255,255,0.05)',
-                    color: '#fff',
-                    fontSize: '10px',
-                    cursor: 'pointer',
-                  }
-                }, align === 'left' ? (I18n.t("shareImage.settings.alignLeft") || '왼쪽') : (I18n.t("shareImage.settings.alignCenter") || '가운데'))
-              )
-            )
-          ),
-
-          // 글꼴 크기
-          react.createElement("div", { style: { gridColumn: 'span 2' } },
-            react.createElement("label", { style: { color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' } },
-              `${I18n.t("shareImage.settings.fontSize") || "글꼴 크기"}: ${currentSettings.fontSize ?? 32}px`
-            ),
-            react.createElement("input", {
-              type: 'range',
-              min: 20,
-              max: 48,
-              value: currentSettings.fontSize ?? 32,
-              onChange: (e) => updateSetting('fontSize', parseInt(e.target.value)),
-              style: { width: '100%', accentColor: '#1db954' }
-            })
-          ),
-
-          // 블록 간격
-          react.createElement("div", { style: { gridColumn: 'span 2' } },
-            react.createElement("label", { style: { color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' } },
-              `${I18n.t("shareImage.settings.blockGap") || "줄 간격"}: ${currentSettings.blockGap ?? 32}px`
-            ),
-            react.createElement("input", {
-              type: 'range',
-              min: 16,
-              max: 60,
-              value: currentSettings.blockGap ?? 32,
-              onChange: (e) => updateSetting('blockGap', parseInt(e.target.value)),
-              style: { width: '100%', accentColor: '#1db954' }
-            })
-          ),
-
-          // === 레이아웃 설정 섹션 ===
-          react.createElement("div", {
-            className: "share-image-panel-section",
-            style: {
-              gridColumn: 'span 2',
-              fontSize: '12px',
-              fontWeight: '600',
-              color: '#1db954',
-              marginTop: '12px',
-              marginBottom: '4px',
-              borderBottom: '1px solid rgba(29,185,84,0.2)',
-              paddingBottom: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              letterSpacing: '0.5px',
-              textTransform: 'uppercase'
-            }
-          }, I18n.t("shareImage.sections.layout") || "레이아웃"),
-
-          // 이미지 비율
-          react.createElement("div", { style: { gridColumn: 'span 2' } },
-            react.createElement("label", { style: { color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' } },
-              I18n.t("shareImage.settings.aspectRatio") || "이미지 비율"
-            ),
-            react.createElement("div", { style: { display: 'flex', gap: '4px' } },
-              [
-                { key: null, label: '자동' },
-                { key: 1, label: '1:1' },
-                { key: 9 / 16, label: '9:16' },
-                { key: 16 / 9, label: '16:9' },
-              ].map(ratio =>
-                react.createElement("button", {
-                  key: ratio.key === null ? 'auto' : ratio.key,
-                  className: "share-image-segment-btn",
-                  "data-active": currentSettings.aspectRatio === ratio.key,
-                  onClick: () => updateSetting('aspectRatio', ratio.key),
-                  style: {
-                    flex: 1,
-                    padding: '5px 6px',
-                    borderRadius: '4px',
-                    border: currentSettings.aspectRatio === ratio.key ? '1px solid #1db954' : '1px solid rgba(255,255,255,0.15)',
-                    background: currentSettings.aspectRatio === ratio.key ? 'rgba(29,185,84,0.15)' : 'rgba(255,255,255,0.05)',
-                    color: '#fff',
-                    fontSize: '9px',
-                    cursor: 'pointer',
-                  }
-                }, ratio.label)
-              )
-            )
-          ),
-
-          // 이미지 너비
-          react.createElement("div", { style: { gridColumn: 'span 2' } },
-            react.createElement("label", { style: { color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' } },
-              `${I18n.t("shareImage.settings.imageWidth") || "이미지 너비"}: ${currentSettings.imageWidth ?? 1080}px`
-            ),
-            react.createElement("input", {
-              type: 'range',
-              min: 720,
-              max: 1920,
-              step: 60,
-              value: currentSettings.imageWidth ?? 1080,
-              onChange: (e) => updateSetting('imageWidth', parseInt(e.target.value)),
-              style: { width: '100%', accentColor: '#1db954' }
-            })
-          ),
-
-          // 여백
-          react.createElement("div", { style: { gridColumn: 'span 2' } },
-            react.createElement("label", { style: { color: 'rgba(255,255,255,0.7)', marginBottom: '4px', display: 'block' } },
-              `${I18n.t("shareImage.settings.padding") || "여백"}: ${currentSettings.padding ?? 60}px`
-            ),
-            react.createElement("input", {
-              type: 'range',
-              min: 30,
-              max: 100,
-              value: currentSettings.padding ?? 60,
-              onChange: (e) => updateSetting('padding', parseInt(e.target.value)),
-              style: { width: '100%', accentColor: '#1db954' }
-            })
-          ),
-
-          // === 기타 설정 ===
-          react.createElement("div", {
-            className: "share-image-panel-section",
-            style: {
-              gridColumn: 'span 2',
-              fontSize: '12px',
-              fontWeight: '600',
-              color: '#1db954',
-              marginTop: '12px',
-              marginBottom: '4px',
-              borderBottom: '1px solid rgba(29,185,84,0.2)',
-              paddingBottom: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              letterSpacing: '0.5px',
-              textTransform: 'uppercase'
-            }
-          }, I18n.t("shareImage.sections.other") || "기타"),
-
-          // 워터마크
-          react.createElement("div", { style: { gridColumn: 'span 2' } },
-            react.createElement("label", {
-              className: "share-image-check",
-              style: {
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                color: 'rgba(255,255,255,0.7)',
-                cursor: 'pointer',
-              }
-            },
-              react.createElement("input", {
-                type: 'checkbox',
-                checked: currentSettings.showWatermark !== false,
-                onChange: (e) => updateSetting('showWatermark', e.target.checked),
-                style: { accentColor: '#1db954' }
-              }),
-              I18n.t("shareImage.settings.showWatermark") || "워터마크 표시"
-            )
-          )
+          ...renderShareImageControls(currentSettings, updateSetting)
         ),
 
         // Preview

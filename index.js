@@ -1440,381 +1440,128 @@ const TrackSyncDB = {
 // TrackSyncDB를 window에 등록 (LyricsService와 다른 컴포넌트에서 사용 가능)
 window.TrackSyncDB = TrackSyncDB;
 
-// IndexedDB for track language overrides (곡별 언어 오버라이드)
-const LANG_DB_NAME = "ivLyrics-lang-db";
-const LANG_DB_VERSION = 1;
-const LANG_STORE_NAME = "track-language-overrides";
-
-let langDbInstance = null;
-
-const initLangDB = () => {
-  return new Promise((resolve, reject) => {
-    if (langDbInstance) {
-      resolve(langDbInstance);
+// Track overrides share storage mechanics; sync offsets retain their separate
+// transaction-completion and import guarantees above.
+const createTrackOverrideDB = ({ dbName, storeName, label, setting, methods, normalize }) => {
+  let dbInstance = null;
+  const [getName, setName, clearName] = methods;
+  const open = () => new Promise((resolve, reject) => {
+    if (dbInstance) {
+      resolve(dbInstance);
       return;
     }
-
-    const request = indexedDB.open(LANG_DB_NAME, LANG_DB_VERSION);
-
+    const request = indexedDB.open(dbName, 1);
     request.onerror = () => {
-      console.error("[ivLyrics] Language IndexedDB error:", request.error);
+      console.error(`[ivLyrics] ${label} IndexedDB error:`, request.error);
       reject(request.error);
     };
-
     request.onsuccess = () => {
-      langDbInstance = request.result;
-      ivLyricsDebug("[ivLyrics] Language IndexedDB initialized");
-      resolve(langDbInstance);
+      dbInstance = request.result;
+      ivLyricsDebug(`[ivLyrics] ${label} IndexedDB initialized`);
+      resolve(dbInstance);
     };
-
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
-      if (!db.objectStoreNames.contains(LANG_STORE_NAME)) {
-        db.createObjectStore(LANG_STORE_NAME);
-        ivLyricsDebug("[ivLyrics] Language IndexedDB object store created");
+      if (!db.objectStoreNames.contains(storeName)) {
+        db.createObjectStore(storeName);
+        ivLyricsDebug(`[ivLyrics] ${label} IndexedDB object store created`);
       }
     };
   });
+  const requestValue = (db, operation, args, result = () => undefined) => new Promise((resolve, reject) => {
+    const transaction = db.transaction([storeName], operation === "get" ? "readonly" : "readwrite");
+    const request = transaction.objectStore(storeName)[operation](...args);
+    request.onsuccess = () => resolve(result(request.result));
+    request.onerror = () => reject(request.error);
+  });
+  const getAll = (db) => new Promise((resolve, reject) => {
+    const store = db.transaction([storeName], "readonly").objectStore(storeName);
+    const request = store.getAllKeys();
+    request.onsuccess = () => {
+      const keys = request.result;
+      const valuesRequest = store.getAll();
+      valuesRequest.onsuccess = () => {
+        const result = {};
+        keys.forEach((key, index) => {
+          const value = normalize ? normalize(valuesRequest.result[index]) : valuesRequest.result[index];
+          if (!normalize || value) result[key] = value;
+        });
+        resolve(result);
+      };
+      valuesRequest.onerror = () => reject(valuesRequest.error);
+    };
+    request.onerror = () => reject(request.error);
+  });
+
+  return {
+    async [getName](trackUri) {
+      try {
+        const db = await open();
+        // Preserve the existing API boundary: open failures use fallback values;
+        // request failures reject, and writes settle on request success.
+        return requestValue(db, "get", [trackUri], normalize || ((value) => value || null));
+      } catch (error) {
+        console.error(`[ivLyrics] Failed to get ${setting} override:`, error);
+        return null;
+      }
+    },
+    async [setName](trackUri, value) {
+      try {
+        const storedValue = normalize ? normalize(value) : value;
+        if (normalize && !storedValue) {
+          await this[clearName](trackUri);
+          return;
+        }
+        const db = await open();
+        return requestValue(db, "put", [storedValue, trackUri]);
+      } catch (error) {
+        console.error(`[ivLyrics] Failed to set ${setting} override:`, error);
+      }
+    },
+    async [clearName](trackUri) {
+      try {
+        const db = await open();
+        return requestValue(db, "delete", [trackUri]);
+      } catch (error) {
+        console.error(`[ivLyrics] Failed to clear ${setting} override:`, error);
+      }
+    },
+    async getAllOverrides() {
+      try {
+        const db = await open();
+        return getAll(db);
+      } catch (error) {
+        console.error(`[ivLyrics] Failed to get all ${setting} overrides:`, error);
+        return {};
+      }
+    },
+  };
 };
 
-const TrackLanguageDB = {
-  async getLanguage(trackUri) {
-    try {
-      const db = await initLangDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([LANG_STORE_NAME], "readonly");
-        const store = transaction.objectStore(LANG_STORE_NAME);
-        const request = store.get(trackUri);
-
-        request.onsuccess = () => resolve(request.result || null);
-        request.onerror = () => reject(request.error);
-      });
-    } catch (error) {
-      console.error("[ivLyrics] Failed to get language override:", error);
-      return null;
-    }
-  },
-
-  async setLanguage(trackUri, language) {
-    try {
-      const db = await initLangDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([LANG_STORE_NAME], "readwrite");
-        const store = transaction.objectStore(LANG_STORE_NAME);
-        const request = store.put(language, trackUri);
-
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      });
-    } catch (error) {
-      console.error("[ivLyrics] Failed to set language override:", error);
-    }
-  },
-
-  async clearLanguage(trackUri) {
-    try {
-      const db = await initLangDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([LANG_STORE_NAME], "readwrite");
-        const store = transaction.objectStore(LANG_STORE_NAME);
-        const request = store.delete(trackUri);
-
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      });
-    } catch (error) {
-      console.error("[ivLyrics] Failed to clear language override:", error);
-    }
-  },
-
-  async getAllOverrides() {
-    try {
-      const db = await initLangDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([LANG_STORE_NAME], "readonly");
-        const store = transaction.objectStore(LANG_STORE_NAME);
-        const request = store.getAllKeys();
-
-        request.onsuccess = () => {
-          const keys = request.result;
-          const getAllRequest = store.getAll();
-
-          getAllRequest.onsuccess = () => {
-            const values = getAllRequest.result;
-            const result = {};
-            keys.forEach((key, index) => {
-              result[key] = values[index];
-            });
-            resolve(result);
-          };
-
-          getAllRequest.onerror = () => reject(getAllRequest.error);
-        };
-
-        request.onerror = () => reject(request.error);
-      });
-    } catch (error) {
-      console.error("[ivLyrics] Failed to get all language overrides:", error);
-      return {};
-    }
-  },
-};
-
-// TrackLanguageDB를 window에 등록 (다른 컴포넌트에서 사용 가능)
+const TrackLanguageDB = createTrackOverrideDB({
+  dbName: "ivLyrics-lang-db",
+  storeName: "track-language-overrides",
+  label: "Language",
+  setting: "language",
+  methods: ["getLanguage", "setLanguage", "clearLanguage"],
+});
+const TrackLyricsProviderDB = createTrackOverrideDB({
+  dbName: "ivLyrics-provider-db",
+  storeName: "track-lyrics-provider-overrides",
+  label: "Provider",
+  setting: "provider",
+  methods: ["getProvider", "setProvider", "clearProvider"],
+});
+const TrackBackgroundDB = createTrackOverrideDB({
+  dbName: "ivLyrics-background-db",
+  storeName: "track-background-overrides",
+  label: "Background",
+  setting: "background",
+  methods: ["getOverride", "setOverride", "clearOverride"],
+  normalize: normalizeIvLyricsTrackBackgroundOverride,
+});
 window.TrackLanguageDB = TrackLanguageDB;
-
-// IndexedDB for track lyrics provider overrides (곡별 가사 제공자 오버라이드)
-const PROVIDER_DB_NAME = "ivLyrics-provider-db";
-const PROVIDER_DB_VERSION = 1;
-const PROVIDER_STORE_NAME = "track-lyrics-provider-overrides";
-
-let providerDbInstance = null;
-
-const initProviderDB = () => {
-  return new Promise((resolve, reject) => {
-    if (providerDbInstance) {
-      resolve(providerDbInstance);
-      return;
-    }
-
-    const request = indexedDB.open(PROVIDER_DB_NAME, PROVIDER_DB_VERSION);
-
-    request.onerror = () => {
-      console.error("[ivLyrics] Provider IndexedDB error:", request.error);
-      reject(request.error);
-    };
-
-    request.onsuccess = () => {
-      providerDbInstance = request.result;
-      ivLyricsDebug("[ivLyrics] Provider IndexedDB initialized");
-      resolve(providerDbInstance);
-    };
-
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains(PROVIDER_STORE_NAME)) {
-        db.createObjectStore(PROVIDER_STORE_NAME);
-        ivLyricsDebug("[ivLyrics] Provider IndexedDB object store created");
-      }
-    };
-  });
-};
-
-const TrackLyricsProviderDB = {
-  async getProvider(trackUri) {
-    try {
-      const db = await initProviderDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([PROVIDER_STORE_NAME], "readonly");
-        const store = transaction.objectStore(PROVIDER_STORE_NAME);
-        const request = store.get(trackUri);
-
-        request.onsuccess = () => resolve(request.result || null);
-        request.onerror = () => reject(request.error);
-      });
-    } catch (error) {
-      console.error("[ivLyrics] Failed to get provider override:", error);
-      return null;
-    }
-  },
-
-  async setProvider(trackUri, providerId) {
-    try {
-      const db = await initProviderDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([PROVIDER_STORE_NAME], "readwrite");
-        const store = transaction.objectStore(PROVIDER_STORE_NAME);
-        const request = store.put(providerId, trackUri);
-
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      });
-    } catch (error) {
-      console.error("[ivLyrics] Failed to set provider override:", error);
-    }
-  },
-
-  async clearProvider(trackUri) {
-    try {
-      const db = await initProviderDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([PROVIDER_STORE_NAME], "readwrite");
-        const store = transaction.objectStore(PROVIDER_STORE_NAME);
-        const request = store.delete(trackUri);
-
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      });
-    } catch (error) {
-      console.error("[ivLyrics] Failed to clear provider override:", error);
-    }
-  },
-
-  async getAllOverrides() {
-    try {
-      const db = await initProviderDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([PROVIDER_STORE_NAME], "readonly");
-        const store = transaction.objectStore(PROVIDER_STORE_NAME);
-        const request = store.getAllKeys();
-
-        request.onsuccess = () => {
-          const keys = request.result;
-          const getAllRequest = store.getAll();
-
-          getAllRequest.onsuccess = () => {
-            const values = getAllRequest.result;
-            const result = {};
-            keys.forEach((key, index) => {
-              result[key] = values[index];
-            });
-            resolve(result);
-          };
-
-          getAllRequest.onerror = () => reject(getAllRequest.error);
-        };
-
-        request.onerror = () => reject(request.error);
-      });
-    } catch (error) {
-      console.error("[ivLyrics] Failed to get all provider overrides:", error);
-      return {};
-    }
-  },
-};
-
 window.TrackLyricsProviderDB = TrackLyricsProviderDB;
-
-// IndexedDB for track background overrides (곡별 배경 오버라이드)
-const BACKGROUND_DB_NAME = "ivLyrics-background-db";
-const BACKGROUND_DB_VERSION = 1;
-const BACKGROUND_STORE_NAME = "track-background-overrides";
-
-let backgroundDbInstance = null;
-
-const initBackgroundDB = () => {
-  return new Promise((resolve, reject) => {
-    if (backgroundDbInstance) {
-      resolve(backgroundDbInstance);
-      return;
-    }
-
-    const request = indexedDB.open(BACKGROUND_DB_NAME, BACKGROUND_DB_VERSION);
-
-    request.onerror = () => {
-      console.error("[ivLyrics] Background IndexedDB error:", request.error);
-      reject(request.error);
-    };
-
-    request.onsuccess = () => {
-      backgroundDbInstance = request.result;
-      ivLyricsDebug("[ivLyrics] Background IndexedDB initialized");
-      resolve(backgroundDbInstance);
-    };
-
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains(BACKGROUND_STORE_NAME)) {
-        db.createObjectStore(BACKGROUND_STORE_NAME);
-        ivLyricsDebug("[ivLyrics] Background IndexedDB object store created");
-      }
-    };
-  });
-};
-
-const TrackBackgroundDB = {
-  async getOverride(trackUri) {
-    try {
-      const db = await initBackgroundDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([BACKGROUND_STORE_NAME], "readonly");
-        const store = transaction.objectStore(BACKGROUND_STORE_NAME);
-        const request = store.get(trackUri);
-
-        request.onsuccess = () =>
-          resolve(normalizeIvLyricsTrackBackgroundOverride(request.result));
-        request.onerror = () => reject(request.error);
-      });
-    } catch (error) {
-      console.error("[ivLyrics] Failed to get background override:", error);
-      return null;
-    }
-  },
-
-  async setOverride(trackUri, override) {
-    try {
-      const normalizedOverride = normalizeIvLyricsTrackBackgroundOverride(override);
-      if (!normalizedOverride) {
-        await this.clearOverride(trackUri);
-        return;
-      }
-
-      const db = await initBackgroundDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([BACKGROUND_STORE_NAME], "readwrite");
-        const store = transaction.objectStore(BACKGROUND_STORE_NAME);
-        const request = store.put(normalizedOverride, trackUri);
-
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      });
-    } catch (error) {
-      console.error("[ivLyrics] Failed to set background override:", error);
-    }
-  },
-
-  async clearOverride(trackUri) {
-    try {
-      const db = await initBackgroundDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([BACKGROUND_STORE_NAME], "readwrite");
-        const store = transaction.objectStore(BACKGROUND_STORE_NAME);
-        const request = store.delete(trackUri);
-
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      });
-    } catch (error) {
-      console.error("[ivLyrics] Failed to clear background override:", error);
-    }
-  },
-
-  async getAllOverrides() {
-    try {
-      const db = await initBackgroundDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([BACKGROUND_STORE_NAME], "readonly");
-        const store = transaction.objectStore(BACKGROUND_STORE_NAME);
-        const request = store.getAllKeys();
-
-        request.onsuccess = () => {
-          const keys = request.result;
-          const getAllRequest = store.getAll();
-
-          getAllRequest.onsuccess = () => {
-            const values = getAllRequest.result;
-            const result = {};
-            keys.forEach((key, index) => {
-              const override = normalizeIvLyricsTrackBackgroundOverride(values[index]);
-              if (override) {
-                result[key] = override;
-              }
-            });
-            resolve(result);
-          };
-
-          getAllRequest.onerror = () => reject(getAllRequest.error);
-        };
-
-        request.onerror = () => reject(request.error);
-      });
-    } catch (error) {
-      console.error("[ivLyrics] Failed to get all background overrides:", error);
-      return {};
-    }
-  },
-};
-
 window.TrackBackgroundDB = TrackBackgroundDB;
 
 // Migrate from localStorage to IndexedDB

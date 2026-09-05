@@ -57,6 +57,7 @@ const createHarness = () => {
     SettingsOutlineIcon: placeholder,
     ProviderSupportIconChip: placeholder,
   });
+  vm.runInContext(readFileSync(new URL("../SettingsStyles.js", import.meta.url), "utf8"), context);
   vm.runInContext(`${section("const getEffectiveReducedMotionPreference =", "function openConfig(")}
     ${section("const AddonSettingsCard =", "// 가사 제공자 설정 탭 컴포넌트")}
     globalThis.components = { ConfigModal, AddonSettingsCard, LyricsProviderCard };`, context);
