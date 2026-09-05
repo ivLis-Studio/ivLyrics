@@ -5580,7 +5580,7 @@
          * @returns {Array} - synced 형식 가사
          */
         function convertKaraokeToSynced(karaoke) {
-            if (!Array.isArray(karaoke) || karaoke.length === 0) return null;
+            if (!karaoke || !Array.isArray(karaoke)) return null;
 
             return karaoke.map(line => ({
                 startTime: line.startTime,
@@ -7919,13 +7919,7 @@
                 }
 
                 // 2. 가사 선택 (synced, karaoke, unsynced 순)
-                const firstLyricsContent = window.ivLyricsDataUtils?.firstLyricsContent
-                    || ((...candidates) => candidates.find(candidate => Array.isArray(candidate) && candidate.length > 0) || null);
-                let lyrics = firstLyricsContent(
-                    lyricsResult.karaoke,
-                    lyricsResult.synced,
-                    lyricsResult.unsynced
-                ) || [];
+                let lyrics = lyricsResult.karaoke || lyricsResult.synced || lyricsResult.unsynced || [];
                 const provider = lyricsResult.provider;
                 const lyricsType = lyrics === lyricsResult.karaoke
                     ? 'karaoke'
@@ -8303,17 +8297,13 @@
                 || (typeof result.provider === 'string' && result.provider.startsWith('spotify-') && syncData?.provider === 'spotify');
 
             if (syncData && isProviderMatch) {
-                const firstLyricsContent = window.ivLyricsDataUtils?.firstLyricsContent
-                    || ((...candidates) => candidates.find(candidate => Array.isArray(candidate) && candidate.length > 0) || null);
-                const baseLyrics = firstLyricsContent(result.synced, result.unsynced);
-                const karaoke = baseLyrics
-                    ? window.SyncDataService.applySyncDataToLyrics(baseLyrics, syncData, {
-                        durationMs: result.durationMs || result.duration_ms || result.duration,
-                        result
-                    })
-                    : null;
+                const baseLyrics = result.synced || result.unsynced;
+                const karaoke = window.SyncDataService.applySyncDataToLyrics(baseLyrics, syncData, {
+                    durationMs: result.durationMs || result.duration_ms || result.duration,
+                    result
+                });
 
-                if (Array.isArray(karaoke) && karaoke.length > 0) {
+                if (karaoke) {
                     result.karaoke = karaoke;
                     result.syncDataApplied = true;
                     result.syncDataProvider = result.provider;

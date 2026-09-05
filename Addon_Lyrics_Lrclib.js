@@ -36,8 +36,6 @@
 (() => {
     'use strict';  // 엄격 모드 활성화: 잠재적 오류를 사전에 방지
 
-    const hasLyricsContent = (lyrics) => Array.isArray(lyrics) && lyrics.length > 0;
-
     const ADDON_LOCALIZATION = {
         en: {
             description: 'Get lyrics from LRCLIB open-source lyrics database',
@@ -1665,7 +1663,7 @@
         else if (candidate.syncedLyrics) {
             const parsed = parseLRC(candidate.syncedLyrics);
             result.synced = parsed.synced;
-            if (!hasLyricsContent(result.unsynced)) {
+            if (!result.unsynced) {
                 result.unsynced = parsed.unsynced;
             }
         }
@@ -1673,13 +1671,13 @@
             result.unsynced = parsePlainLyrics(candidate.plainLyrics);
         }
 
-        if (!hasLyricsContent(result.synced) && candidate.plainLyrics && !hasLyricsContent(result.unsynced)) {
+        if (!result.synced && candidate.plainLyrics && !result.unsynced) {
             result.unsynced = parsePlainLyrics(candidate.plainLyrics);
         }
 
         applyLyricsfileKaraokeToResult(result, candidate);
 
-        return [result.karaoke, result.synced, result.unsynced].some(hasLyricsContent);
+        return !!(result.karaoke || result.synced || result.unsynced);
     }
 
     function buildPreviewCandidateList(primarySearchFlow, englishSearchFlow, selectedCandidate) {
@@ -2686,8 +2684,8 @@
                     if (directCandidate && applyCandidateLyricsToResult(result, directCandidate)) {
                         logDebug('Success', {
                             directLrclibId: getSyncDataLrclibId(syncDataSource),
-                            hasSynced: hasLyricsContent(result.synced),
-                            hasUnsynced: hasLyricsContent(result.unsynced),
+                            hasSynced: !!result.synced,
+                            hasUnsynced: !!result.unsynced,
                             durationDiff: directCandidate.durationDiff.toFixed(2),
                             exactDurationMatch: directCandidate.exactDurationMatch,
                             syncDataLineCount: syncDataLineCharCounts?.length || 0,
@@ -3230,7 +3228,7 @@
                 else if (body.syncedLyrics) {
                     const parsed = parseLRC(body.syncedLyrics);
                     result.synced = parsed.synced;
-                    if (!hasLyricsContent(result.unsynced)) {
+                    if (!result.unsynced) {
                         result.unsynced = parsed.unsynced;
                     }
                 }
@@ -3238,13 +3236,13 @@
                     result.unsynced = parsePlainLyrics(body.plainLyrics);
                 }
 
-                if (!hasLyricsContent(result.synced) && body.plainLyrics && !hasLyricsContent(result.unsynced)) {
+                if (!result.synced && body.plainLyrics && !result.unsynced) {
                     result.unsynced = parsePlainLyrics(body.plainLyrics);
                 }
 
                 applyLyricsfileKaraokeToResult(result, body);
 
-                if (![result.karaoke, result.synced, result.unsynced].some(hasLyricsContent)) {
+                if (!result.karaoke && !result.synced && !result.unsynced) {
                     result.error = 'No lyrics';
                     logDebug('Failed', {
                         error: result.error,
@@ -3263,9 +3261,9 @@
                     titleScore: body.titleScore.toFixed(3),
                     durationDiff: body.durationDiff.toFixed(2),
                     exactDurationMatch: body.exactDurationMatch,
-                    hasKaraoke: hasLyricsContent(result.karaoke),
-                    hasSynced: hasLyricsContent(result.synced),
-                    hasUnsynced: hasLyricsContent(result.unsynced),
+                    hasKaraoke: !!result.karaoke,
+                    hasSynced: !!result.synced,
+                    hasUnsynced: !!result.unsynced,
                     hasInterleavedTranslations: !!body.hasInterleavedTranslations,
                     matchReason: body.matchReason,
                     syncDataLineCount: syncDataLineCharCounts?.length || 0,

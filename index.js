@@ -3542,15 +3542,10 @@ const getLyricsTextCacheHash = (lyrics = []) => {
   return `txt-${(hash >>> 0).toString(36)}-${length.toString(36)}`;
 };
 
-const hasUsableLyricsContent = (lyrics) => Array.isArray(lyrics) && lyrics.length > 0;
-const firstUsableLyricsContent = (...candidates) => (
-  candidates.find(hasUsableLyricsContent) || null
-);
-
 const getSyncDataRendererCacheVersion = (lyricsState = {}) => (
   lyricsState?.syncDataApplied
     ? `${lyricsState.syncDataRendererVersion || "legacy-sync-data-renderer"}:${getLyricsTextCacheHash(
-      firstUsableLyricsContent(lyricsState.karaoke, lyricsState.synced, lyricsState.unsynced)
+      lyricsState.karaoke || lyricsState.synced || lyricsState.unsynced
     )}`
     : "base"
 );
@@ -3567,12 +3562,11 @@ const isLyricsRenderCacheCurrent = (lyricsState = {}) => (
 const getDisplayModeCacheKey = (lyricsState = {}, mode = "") => {
   const providerKey = lyricsState.provider || "";
   const providerCacheVersion = lyricsState.cacheVersion || "provider-cache-legacy";
-  const sourceLyrics = firstUsableLyricsContent(
-    lyricsState.currentLyrics,
-    lyricsState.karaoke,
-    lyricsState.synced,
-    lyricsState.unsynced
-  ) || [];
+  const sourceLyrics = lyricsState.currentLyrics
+    || lyricsState.karaoke
+    || lyricsState.synced
+    || lyricsState.unsynced
+    || [];
   const lyricsShape = getLyricsProcessingShapeSignature(sourceLyrics);
   const pronunciationNotation = mode === "gemini_romaji"
     ? `:${getCurrentLyricsPronunciationNotation()}`
@@ -3917,7 +3911,7 @@ const Prefetcher = {
         // 1단계: 가사 먼저 프리페치
         const lyrics = await this._prefetchLyrics(trackInfo, mode);
 
-        if (!lyrics || !firstUsableLyricsContent(lyrics.karaoke, lyrics.synced, lyrics.unsynced)) {
+        if (!lyrics || (!lyrics.synced && !lyrics.unsynced && !lyrics.karaoke)) {
           ivLyricsDebug(`[Prefetcher] No lyrics found for: ${trackInfo.title}`);
         } else {
           // 2단계: 가사 로드 완료 후 번역/발음 프리페치
@@ -4007,8 +4001,8 @@ const Prefetcher = {
       return this._inflightRequests.get(versionedCacheKeyBase);
     }
 
-    const lyricsArray = firstUsableLyricsContent(lyrics.karaoke, lyrics.synced, lyrics.unsynced);
-    if (!lyricsArray) return;
+    const lyricsArray = lyrics.karaoke || lyrics.synced || lyrics.unsynced;
+    if (!lyricsArray || lyricsArray.length === 0) return;
 
     // 언어 감지
     const detectedLanguage = LyricsService.detectLanguage(lyricsArray);
@@ -5357,13 +5351,13 @@ class LyricsContainer extends react.Component {
 
   getCurrentCulturalAnnotationLyrics() {
     const currentMode = this.getCurrentMode();
-    if (isKaraokeRenderMode(currentMode) && hasUsableLyricsContent(this.state.karaoke)) {
+    if (isKaraokeRenderMode(currentMode) && Array.isArray(this.state.karaoke)) {
       return this.state.karaoke;
     }
-    if (currentMode === SYNCED && hasUsableLyricsContent(this.state.synced)) {
+    if (currentMode === SYNCED && Array.isArray(this.state.synced)) {
       return this.state.synced;
     }
-    if (currentMode === UNSYNCED && hasUsableLyricsContent(this.state.unsynced)) {
+    if (currentMode === UNSYNCED && Array.isArray(this.state.unsynced)) {
       return this.state.unsynced;
     }
     return Array.isArray(this.state.currentLyrics) ? this.state.currentLyrics : [];
@@ -5532,13 +5526,13 @@ class LyricsContainer extends react.Component {
   getEditingBaseLyrics() {
     const currentMode = this.getCurrentMode();
 
-    if (isKaraokeRenderMode(currentMode) && hasUsableLyricsContent(this.state.karaoke)) {
+    if (isKaraokeRenderMode(currentMode) && Array.isArray(this.state.karaoke)) {
       return this.state.karaoke;
     }
-    if (currentMode === SYNCED && hasUsableLyricsContent(this.state.synced)) {
+    if (currentMode === SYNCED && Array.isArray(this.state.synced)) {
       return this.state.synced;
     }
-    if (currentMode === UNSYNCED && hasUsableLyricsContent(this.state.unsynced)) {
+    if (currentMode === UNSYNCED && Array.isArray(this.state.unsynced)) {
       return this.state.unsynced;
     }
 
@@ -6580,20 +6574,15 @@ class LyricsContainer extends react.Component {
 
       // 원본 가사를 가져오기 위해 synced, karaoke, unsynced 중 현재 모드에 해당하는 것 사용
       let originalLyrics = [];
-      if (isKaraokeRenderMode(currentMode) && hasUsableLyricsContent(this.state.karaoke)) {
+      if (isKaraokeRenderMode(currentMode) && this.state.karaoke) {
         originalLyrics = this.state.karaoke;
-      } else if (currentMode === SYNCED && hasUsableLyricsContent(this.state.synced)) {
+      } else if (currentMode === SYNCED && this.state.synced) {
         originalLyrics = this.state.synced;
-      } else if (currentMode === UNSYNCED && hasUsableLyricsContent(this.state.unsynced)) {
+      } else if (currentMode === UNSYNCED && this.state.unsynced) {
         originalLyrics = this.state.unsynced;
       } else {
         // fallback: currentLyrics에서 originalText 사용
-        originalLyrics = firstUsableLyricsContent(
-          this.state.currentLyrics,
-          this.state.karaoke,
-          this.state.synced,
-          this.state.unsynced
-        ) || [];
+        originalLyrics = this.state.currentLyrics || [];
       }
 
       // Section line 제거하고 원문 텍스트만 추출 (getGeminiTranslation과 동일)
@@ -7492,12 +7481,10 @@ class LyricsContainer extends react.Component {
       // if song changed one time
       if (tempState.uri !== this.state.uri || refresh) {
         // Detect language from the new lyrics data
-        const hasLyricsContent = window.ivLyricsDataUtils?.hasLyricsContent
-          || ((lyrics) => Array.isArray(lyrics) && lyrics.length > 0);
         let defaultLanguage = null;
-        if (hasLyricsContent(tempState.synced)) {
+        if (tempState.synced) {
           defaultLanguage = Utils.detectLanguage(tempState.synced);
-        } else if (hasLyricsContent(tempState.unsynced)) {
+        } else if (tempState.unsynced) {
           defaultLanguage = Utils.detectLanguage(tempState.unsynced);
         }
 
@@ -7555,18 +7542,18 @@ class LyricsContainer extends react.Component {
     const dataMode = getLyricsDataMode(mode);
     const preferredModeKey =
       typeof dataMode === "number" && dataMode >= 0 ? CONFIG.modes?.[dataMode] : null;
-    const sharedResolver = window.ivLyricsDataUtils?.resolveLyricsForMode;
-    if (typeof sharedResolver === "function") {
-      return sharedResolver(lyricsState, preferredModeKey);
-    }
+    const preferredLyrics =
+      preferredModeKey && lyricsState[preferredModeKey]
+        ? lyricsState[preferredModeKey]
+        : null;
 
-    const hasContent = (lyrics) => Array.isArray(lyrics) && lyrics.length > 0;
-    return [
-      preferredModeKey ? lyricsState[preferredModeKey] : null,
-      lyricsState.karaoke,
-      lyricsState.synced,
-      lyricsState.unsynced,
-    ].find(hasContent) || null;
+    return (
+      preferredLyrics ||
+      lyricsState.karaoke ||
+      lyricsState.synced ||
+      lyricsState.unsynced ||
+      null
+    );
   }
 
   lyricsSource(lyricsState, mode) {
@@ -9607,13 +9594,8 @@ class LyricsContainer extends react.Component {
 
     // Listen for lyric index changes from Pages.js
     this.handleLyricIndexChange = (event) => {
-      const nextIndex = event.detail?.index;
-      if (typeof nextIndex === 'number' && this.state.currentLyricIndex !== nextIndex) {
-        if (this.state.isFullscreen || this.state.learningModeActive) {
-          this.setState({ currentLyricIndex: nextIndex });
-        } else {
-          this.state.currentLyricIndex = nextIndex;
-        }
+      if (event.detail && typeof event.detail.index === 'number') {
+        this.setState({ currentLyricIndex: event.detail.index });
       }
     };
     window.addEventListener("ivLyrics:lyric-index-changed", this.handleLyricIndexChange);
@@ -9795,24 +9777,20 @@ class LyricsContainer extends react.Component {
 
   isModeAvailable(mode, lyricsState = this.state) {
     if (!lyricsState || mode === -1) return false;
-    const hasContent = window.ivLyricsDataUtils?.hasLyricsContent
-      || ((lyrics) => Array.isArray(lyrics) && lyrics.length > 0);
     if (isKaraokeRenderMode(mode)) {
-      return hasContent(lyricsState.karaoke) && CONFIG.visual["karaoke-mode-enabled"];
+      return !!lyricsState.karaoke && CONFIG.visual["karaoke-mode-enabled"];
     }
-    if (mode === SYNCED) return hasContent(lyricsState.synced);
-    if (mode === UNSYNCED) return hasContent(lyricsState.unsynced);
+    if (mode === SYNCED) return !!lyricsState.synced;
+    if (mode === UNSYNCED) return !!lyricsState.unsynced;
     return false;
   }
 
   getAutomaticMode(lyricsState = this.state) {
-    const hasContent = window.ivLyricsDataUtils?.hasLyricsContent
-      || ((lyrics) => Array.isArray(lyrics) && lyrics.length > 0);
-    if (hasContent(lyricsState?.karaoke) && CONFIG.visual["karaoke-mode-enabled"]) {
+    if (lyricsState?.karaoke && CONFIG.visual["karaoke-mode-enabled"]) {
       return lyricsState.karaokeGranularity === "word" ? WORD_KARAOKE : KARAOKE;
     }
-    if (hasContent(lyricsState?.synced)) return SYNCED;
-    if (hasContent(lyricsState?.unsynced)) return UNSYNCED;
+    if (lyricsState?.synced) return SYNCED;
+    if (lyricsState?.unsynced) return UNSYNCED;
     return -1;
   }
 
@@ -10267,11 +10245,7 @@ class LyricsContainer extends react.Component {
         ? updateBannerDOM.createPortal(updateBannerContent, document.body)
         : updateBannerContent;
 
-    const hasLyrics = !!firstUsableLyricsContent(
-      this.state.karaoke,
-      this.state.synced,
-      this.state.unsynced
-    );
+    const hasLyrics = !!(this.state.karaoke || this.state.synced || this.state.unsynced);
     const isTwoColumn = CONFIG.visual["fullscreen-two-column"] !== false;
     const isLayoutReversed = CONFIG.visual["fullscreen-layout-reverse"] === true;
     const centerWhenNoLyrics = CONFIG.visual["fullscreen-center-when-no-lyrics"] !== false;
@@ -10629,9 +10603,7 @@ class LyricsContainer extends react.Component {
         activeLyrics: shouldHideFullscreenLyrics || !Array.isArray(this.state.currentLyrics)
           ? []
           : this.state.currentLyrics,
-        activeLyricsKaraoke: !shouldHideFullscreenLyrics
-          && isKaraokeRenderMode(mode)
-          && hasUsableLyricsContent(this.state.karaoke),
+        activeLyricsKaraoke: !shouldHideFullscreenLyrics && isKaraokeRenderMode(mode) && !!this.state.karaoke,
         karaokeSource: this.state.karaokeSource,
         lyricsSettingsRevision: this.reRenderLyricsPage,
         translatedMetadata: this.state.translatedMetadata,

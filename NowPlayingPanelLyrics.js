@@ -118,24 +118,6 @@
         return uri.startsWith("spotify:track:") ? uri.split(":")[2] : null;
     };
 
-    const shouldWaitForPanelTrackMetadata = (
-        currentUri,
-        previousTrackUri,
-        attempt,
-        maxAttempts = 6
-    ) => attempt < maxAttempts && (
-        !currentUri || (previousTrackUri && currentUri === previousTrackUri)
-    );
-
-    const isIvLyricsRouteActive = (pathname, hasVisiblePage = false) => {
-        const normalizedPathname = typeof pathname === "string" ? pathname : "";
-        if (normalizedPathname) {
-            return normalizedPathname === "/ivLyrics"
-                || normalizedPathname.startsWith("/ivLyrics/");
-        }
-        return Boolean(hasVisiblePage);
-    };
-
     const getSavedPanelLocalLyrics = (uri) => {
         if (!uri) return null;
         try {
@@ -1432,7 +1414,6 @@ p.ivlyrics-panel-line-text {
   white-space: normal !important;
   max-width: 100% !important;
   overflow-wrap: anywhere !important;
-  contain: style layout !important;
 }
 
 /* 노래방 단어 */
@@ -1445,7 +1426,6 @@ p.ivlyrics-panel-line-text {
   max-width: 100% !important;
   white-space: normal !important;
   overflow-wrap: anywhere !important;
-  contain: style layout !important;
 }
 
 .ivlyrics-panel-karaoke-text-run-segment {
@@ -1461,7 +1441,6 @@ p.ivlyrics-panel-line-text {
   unicode-bidi: isolate !important;
   -webkit-box-decoration-break: clone !important;
   box-decoration-break: clone !important;
-  contain: style layout !important;
 }
 
 .ivlyrics-panel-karaoke-text-run-space {
@@ -1828,18 +1807,9 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
 
     const isIvLyricsPageActive = () => {
         const pathname = getCurrentPathname();
-        const pageElement = document.querySelector('[data-testid="ivlyrics-page"]');
-        const hasVisiblePage = Boolean(
-            pageElement
-            && !pageElement.hidden
-            && pageElement.getAttribute('aria-hidden') !== 'true'
-            && pageElement.getClientRects().length > 0
-        );
-        // Spotify can keep the previous custom-app DOM mounted after navigating
-        // home. A non-empty History pathname is authoritative; using the stale
-        // hidden node as an OR condition removes the panel until another track
-        // change happens to rebuild that part of the UI.
-        return isIvLyricsRouteActive(pathname, hasVisiblePage);
+        return pathname === '/ivLyrics'
+            || pathname.startsWith('/ivLyrics/')
+            || document.querySelector('[data-testid="ivlyrics-page"]') !== null;
     };
 
     const scheduleInsertPanelLyrics = (delay = 100) => {
@@ -1977,23 +1947,6 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
     const shouldWrapKaraokeByWord = (text) => {
         const normalizedText = typeof text === "string" ? text : "";
         return /\S\s+\S/u.test(normalizedText);
-    };
-
-    // 라틴 문자가 지배적인 긴 텍스트(영어 등)를 Text Run 경로로 전환
-    const PANEL_KARAOKE_LATIN_TEXT_RUN_MIN_GRAPHEMES = 20;
-    const PANEL_KARAOKE_LATIN_TEXT_RUN_MIN_RATIO = 0.4;
-    const PANEL_KARAOKE_LATIN_CHAR_REGEX = /[A-Za-z\u00C0-\u02AF\u0370-\u052F\u1E00-\u1EFF\u0400-\u04FF]/u;
-
-    const shouldUseKaraokeTextRunForLatin = (text) => {
-        const normalizedText = typeof text === "string" ? text : "";
-        if (!normalizedText) return false;
-        if (/[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uAC00-\uD7AF]/u.test(normalizedText)) {
-            return false;
-        }
-        const nonWhitespaceChars = normalizedText.replace(/\s/gu, "");
-        if (nonWhitespaceChars.length < PANEL_KARAOKE_LATIN_TEXT_RUN_MIN_GRAPHEMES) return false;
-        const latinCount = Array.from(nonWhitespaceChars).filter(ch => PANEL_KARAOKE_LATIN_CHAR_REGEX.test(ch)).length;
-        return latinCount / nonWhitespaceChars.length >= PANEL_KARAOKE_LATIN_TEXT_RUN_MIN_RATIO;
     };
 
     const getKaraokeSyllablesText = (syllables) => (
@@ -3455,7 +3408,7 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
         const renderKaraokeSyllables = (items, keyPrefix, className) => {
             const joinedText = getKaraokeSyllablesText(items);
 
-            if (shouldUseKaraokeTextRun(joinedText) || shouldUseKaraokeTextRunForLatin(joinedText)) {
+            if (shouldUseKaraokeTextRun(joinedText)) {
                 const textDirection = getKaraokeTextDirection(joinedText);
 				const preserveInlineStyles = !KARAOKE_JOINING_SCRIPT_REGEX.test(joinedText);
                 const segments = buildKaraokeTextRunSegments(items, preserveInlineStyles);
@@ -4034,19 +3987,13 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
 
                     // karaoke (노래방) → synced → unsynced 순서로 선택
                     const karaokeModeEnabled = getVisualSetting('karaoke-mode-enabled', true) !== false;
-                    const hasLyricsContent = window.ivLyricsDataUtils?.hasLyricsContent
-                        || ((candidate) => Array.isArray(candidate) && candidate.length > 0);
-                    const firstLyricsContent = window.ivLyricsDataUtils?.firstLyricsContent
-                        || ((...candidates) => candidates.find(hasLyricsContent) || null);
-                    const selectedKaraoke = karaokeModeEnabled && hasLyricsContent(result.karaoke)
-                        ? result.karaoke
-                        : null;
-                    let lyricsData = firstLyricsContent(selectedKaraoke, result.synced, result.unsynced) || [];
-                    const isKaraoke = hasLyricsContent(selectedKaraoke);
-                    const nextKaraokeSource = isKaraoke ? (result.karaokeSource || null) : null;
-                    const lyricsType = isKaraoke
+                    const selectedKaraoke = karaokeModeEnabled ? result.karaoke : null;
+                    let lyricsData = selectedKaraoke || result.synced || result.unsynced || [];
+                    const isKaraoke = !!selectedKaraoke;
+                    const nextKaraokeSource = selectedKaraoke ? (result.karaokeSource || null) : null;
+                    const lyricsType = selectedKaraoke
                         ? 'karaoke'
-                        : (hasLyricsContent(result.synced) ? 'synced' : 'unsynced');
+                        : (result.synced ? 'synced' : 'unsynced');
 
                     if (lyricsData.length > 0) {
                         // endTime 계산 (없으면 다음 라인의 startTime 사용)
@@ -4384,9 +4331,8 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
         useEffect(() => {
             // 곡 변경 시 가사 로드
             const handleSongChange = () => {
-                const previousTrackUri = lastTrackUri.current
-                    || currentLyricsState.trackUri
-                    || null;
+                // 곡 변경 이벤트 발생 시점에 트랙 URI 캡처
+                const capturedUri = Spicetify.Player.data?.item?.uri;
 
                 // 이전 가사 상태 초기화 (새 곡 전환 중임을 표시)
                 loadSeqRef.current += 1;
@@ -4402,27 +4348,17 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
                 currentLyricsState.lyrics = [];
                 currentLyricsState.currentIndex = 0;
 
+                loadTrackOffset(capturedUri);
+
+                // 약간의 딜레이 후 로드 (트랙 정보가 완전히 업데이트될 때까지 대기)
+                // 캡처한 URI를 전달하여 딜레이 중 곡이 변경되면 무시
                 if (songChangeTimerRef.current) {
                     clearTimeout(songChangeTimerRef.current);
                 }
-
-                // songchange can fire before Player.data swaps to the new item.
-                // Poll briefly for a different, non-empty URI; otherwise the old
-                // track can be reloaded and no later event arrives to fill the panel.
-                const scheduleTrackLoad = (attempt = 0) => {
-                    songChangeTimerRef.current = setTimeout(() => {
-                        songChangeTimerRef.current = null;
-                        const currentUri = Spicetify.Player.data?.item?.uri || null;
-                        if (shouldWaitForPanelTrackMetadata(currentUri, previousTrackUri, attempt)) {
-                            scheduleTrackLoad(attempt + 1);
-                            return;
-                        }
-
-                        loadTrackOffset(currentUri);
-                        loadLyricsFromExtension(true, currentUri);
-                    }, attempt === 0 ? 300 : 150);
-                };
-                scheduleTrackLoad();
+                songChangeTimerRef.current = setTimeout(() => {
+                    songChangeTimerRef.current = null;
+                    loadLyricsFromExtension(true, capturedUri);
+                }, 300);
             };
 
             // 설정 변경 리스너

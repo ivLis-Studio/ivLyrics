@@ -254,9 +254,8 @@
             }
 
             // ivLyrics 페이지나 우측 패널이 이미 동일 곡의 표시 결과를 만들고 있으면
-            // 그 공유 스냅샷을 잠시 기다린다. 패널의 body 클래스는 실제 번역 완료를
-            // 보장하지 않으므로, 제한 시간이 지나면 독립 fallback도 번역을 수행해야
-            // 페이지를 한 번 열기 전까지 오버레이 번역이 비는 상태가 생기지 않는다.
+            // 그 공유 스냅샷을 기다린다. 제한 시간이 지나도 AI를 다시 호출하지 않고
+            // 원문만 보충하여 두 경로의 번역 표현이 달라지는 일을 막는다.
             const presentationOwnerActive = hasActivePresentationOwner();
             if (presentationOwnerActive) {
                 if (pageGraceUri !== trackInfo.uri) {
@@ -269,7 +268,9 @@
                 }
             }
 
-            startFallbackRequest(trackInfo, { skipTranslation: false });
+            startFallbackRequest(trackInfo, {
+                skipTranslation: presentationOwnerActive
+            });
             finishChain(chain);
         }, Math.max(0, Number(delay) || 0));
 

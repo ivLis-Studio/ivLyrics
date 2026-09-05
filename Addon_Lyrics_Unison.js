@@ -531,31 +531,6 @@
         };
     }
 
-    function intersectParallelOverlapWindows(windows, parts) {
-        const intersections = [];
-        for (const window of windows || []) {
-            for (const part of parts || []) {
-                const startTime = Math.max(window.startTime, part.startTime);
-                const endTime = Math.min(window.endTime, part.endTime);
-                if (endTime - startTime >= PARALLEL_VOCAL_MIN_OVERLAP_MS) {
-                    intersections.push({ startTime, endTime });
-                }
-            }
-        }
-
-        return intersections
-            .sort((left, right) => left.startTime - right.startTime || left.endTime - right.endTime)
-            .reduce((merged, interval) => {
-                const previous = merged[merged.length - 1];
-                if (previous && interval.startTime <= previous.endTime) {
-                    previous.endTime = Math.max(previous.endTime, interval.endTime);
-                } else {
-                    merged.push({ ...interval });
-                }
-                return merged;
-            }, []);
-    }
-
     function groupParallelVocalLines(lines) {
         const orderedLines = [...(lines || [])]
             .sort((left, right) => left.startTime - right.startTime || left.sourceIndex - right.sourceIndex);
@@ -563,44 +538,76 @@
             const { lead, background } = getLineVocalParts(line);
             return [lead, ...background].filter(Boolean);
         });
+        const parents = orderedLines.map((_line, index) => index);
+        const findRoot = index => {
+            let root = index;
+            while (parents[root] !== root) root = parents[root];
+            while (parents[index] !== index) {
+                const parent = parents[index];
+                parents[index] = root;
+                index = parent;
+            }
+            return root;
+        };
+        const joinRoots = (left, right) => {
+            const leftRoot = findRoot(left);
+            const rightRoot = findRoot(right);
+            if (leftRoot !== rightRoot) parents[rightRoot] = leftRoot;
+        };
+        const parallelSeeds = new Set();
 
-        // A connected-component merge is too broad for chained overlaps:
-        // A overlaps B, and B later overlaps C, but A and C never sing together.
-        // Build chronological cohorts whose members share one simultaneous overlap
-        // window instead. This preserves true 3+ singer moments without turning a
-        // relay of adjacent lines into one long primary/background lyric.
-        const cohorts = [];
-        let currentCohort = null;
+        for (let leftIndex = 0; leftIndex < orderedLines.length; leftIndex++) {
+            const left = orderedLines[leftIndex];
+            const leftParts = partsByLine[leftIndex];
+            if (leftParts.length === 0) continue;
+            const leftEndTime = Math.max(...leftParts.map(part => part.endTime));
+
+            for (let rightIndex = leftIndex + 1; rightIndex < orderedLines.length; rightIndex++) {
+                const right = orderedLines[rightIndex];
+                const rightParts = partsByLine[rightIndex];
+                if (rightParts.length === 0) continue;
+                const rightStartTime = Math.min(...rightParts.map(part => part.startTime));
+                if (rightStartTime >= leftEndTime) break;
+
+                const hasMeaningfulOverlap = leftParts.some(leftPart => (
+                    rightParts.some(rightPart => (
+                        getVocalPartOverlapMs(leftPart, rightPart) >= PARALLEL_VOCAL_MIN_OVERLAP_MS
+                    ))
+                ));
+                if (!hasMeaningfulOverlap) continue;
+
+                joinRoots(leftIndex, rightIndex);
+                parallelSeeds.add(leftIndex);
+            }
+        }
+
+        const parallelRoots = new Set([...parallelSeeds].map(findRoot));
+        const components = new Map();
         orderedLines.forEach((line, index) => {
-            const parts = partsByLine[index];
-            const partWindows = parts.map(part => ({
-                startTime: part.startTime,
-                endTime: part.endTime
-            }));
-
-            if (!currentCohort) {
-                currentCohort = { lines: [line], overlapWindows: partWindows };
-                return;
-            }
-
-            const sharedWindows = intersectParallelOverlapWindows(
-                currentCohort.overlapWindows,
-                parts
-            );
-            if (sharedWindows.length > 0) {
-                currentCohort.lines.push(line);
-                currentCohort.overlapWindows = sharedWindows;
-                return;
-            }
-
-            cohorts.push(currentCohort);
-            currentCohort = { lines: [line], overlapWindows: partWindows };
+            const root = findRoot(index);
+            const component = components.get(root) || [];
+            component.push(line);
+            components.set(root, component);
         });
-        if (currentCohort) cohorts.push(currentCohort);
 
-        const grouped = cohorts.flatMap(({ lines: component }) => {
+        const emittedRoots = new Set();
+        const grouped = [];
+        orderedLines.forEach((line, index) => {
+            const root = findRoot(index);
+            if (!parallelRoots.has(root)) {
+                grouped.push(line);
+                return;
+            }
+            if (emittedRoots.has(root)) return;
+            emittedRoots.add(root);
+
+            const component = components.get(root) || [line];
             const parallelLine = component.length > 1 ? createParallelVocalLine(component) : null;
-            return parallelLine ? [parallelLine] : component;
+            if (parallelLine) {
+                grouped.push(parallelLine);
+            } else {
+                grouped.push(...component);
+            }
         });
 
         return grouped.sort((left, right) => left.startTime - right.startTime || left.sourceIndex - right.sourceIndex);

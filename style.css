@@ -11,18 +11,6 @@
 
 @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css");
 
-@property --offset {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --position-index {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 0;
-}
-
 :root {
   --iv-motion-ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
   --iv-motion-ease-emphasis: cubic-bezier(0.2, 0.9, 0.2, 1);
@@ -1687,25 +1675,52 @@ body.ivlyrics-page-active .main-topBar-container {
   height: 0;
 }
 
+/* This zero-height root otherwise loses :hover in the gaps between moving
+   rows, making Spotify's shared hover selectors restyle the whole song.
+   Fill only its hit area behind the rows, using the positioned page's bounds;
+   keep row geometry, text selection and click targets unchanged. */
+.lyrics-lyricsContainer-SyncedLyricsPage:not(.scrolling-active)
+  > .lyrics-lyricsContainer-SyncedLyrics:not(.settings-live-preview-line)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+
+/* These values position the outer row only. Stop their changing inherited
+   values at the content boundary so a hand-off does not restyle every glyph.
+   Keep --offset inherited from the synced root to the row itself. */
+.lyrics-lyricsContainer-SyncedLyrics > .lyrics-lyricsContainer-LyricsLine > * {
+  --offset: initial;
+  --position-index: initial;
+  --animation-index: initial;
+  --blur-index: initial;
+  --line-shift-duration: initial;
+  --line-shift-delay: initial;
+}
+
+.lyrics-lyricsContainer-LyricsLine {
+  --iv-karaoke-past-color-share: 0%;
+}
+
 .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine {
   transform: translateY(calc(var(--position-index) * var(--lyrics-line-height) + var(--offset)));
   transform-origin: var(--lyrics-align-text);
   color: var(--lyrics-color-inactive);
-  transition: transform var(--line-shift-duration, var(--iv-lyrics-centering-duration, 300ms))
-      var(--iv-lyrics-centering-ease, cubic-bezier(0.42, 0, 0.58, 1))
-      var(--line-shift-delay, 0s);
+  transition-timing-function:
+    var(--iv-lyrics-centering-ease, cubic-bezier(0.42, 0, 0.58, 1)),
+    cubic-bezier(0.16, 1, 0.3, 1),
+    cubic-bezier(0.16, 1, 0.3, 1);
+  transition-duration:
+    var(--line-shift-duration, var(--iv-lyrics-centering-duration, 300ms)),
+    300ms,
+    360ms;
+  transition-delay: var(--line-shift-delay, 0s), 0s, 0s;
+  /* Skip `filter` here: blur snaps to new value when --blur-index changes instead of
+     transitioning across every visible line in parallel (huge GPU spike during scroll). */
+  transition-property: transform, color, opacity;
   opacity: 1;
-  will-change: transform;
-  contain: paint;
-}
-
-/* Line-synced lyrics render as one font run instead of the padded karaoke
-   glyph layers. Let ascenders, descenders, outlines and shadows paint slightly
-   past the containment edge without changing row height or centering. */
-.lyrics-lyricsContainer-SyncedLyricsPage:not(.is-karaoke)
-  .lyrics-lyricsContainer-SyncedLyrics
-  > .lyrics-lyricsContainer-LyricsLine {
-  overflow-clip-margin: 0.24em;
+  will-change: auto;
 }
 
 /* Only currently visible auto-follow rows receive compositor layers. Hidden
@@ -1716,12 +1731,12 @@ body.ivlyrics-page-active .main-topBar-container {
   will-change: transform;
 }
 
-.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine {
-  filter: blur(calc(var(--blur-index) * 1.5px));
+.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) {
+  letter-spacing: -0.005em;
 }
 
-.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine.lyrics-lyricsContainer-LyricsLine-active {
-  filter: none;
+.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine {
+  filter: blur(calc(var(--blur-index) * 1.5px));
 }
 
 /* 하이라이트 모드: 현재 가사만 밝게, 나머지는 희미하게 */
@@ -1738,7 +1753,7 @@ body.ivlyrics-page-active .main-topBar-container {
 .lyrics-lyricsContainer-LyricsContainer.highlight-mode-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine.lyrics-lyricsContainer-LyricsLine-active,
 .lyrics-lyricsContainer-LyricsContainer.highlight-mode-enabled .lyrics-lyricsContainer-SyncedScrollView .lyrics-lyricsContainer-LyricsLine.lyrics-lyricsContainer-LyricsLine-active {
   opacity: 1 !important;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.3), 0 2px 8px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.3), 0 3px 10px rgba(0, 0, 0, 0.7);
 }
 
 /* 하이라이트 모드: Unsynced 가사에도 적용 */
@@ -1749,7 +1764,7 @@ body.ivlyrics-page-active .main-topBar-container {
 
 .lyrics-lyricsContainer-LyricsContainer.highlight-mode-enabled .lyrics-lyricsContainer-UnsyncedLyricsPage .lyrics-lyricsContainer-LyricsLine.lyrics-lyricsContainer-LyricsLine-active {
   opacity: 1 !important;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.3), 0 2px 8px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.3), 0 3px 10px rgba(0, 0, 0, 0.7);
 }
 
 /* 하이라이트 모드 + 호버 효과: 마우스 올리면 밝게 */
@@ -1765,7 +1780,7 @@ body.ivlyrics-page-active .main-topBar-container {
 .lyrics-lyricsContainer-UnsyncedLyricsPage .lyrics-lyricsContainer-LyricsLine {
   color: var(--lyrics-color-inactive);
   opacity: 0.5;
-  filter: none;
+  filter: blur(0px);
   transform: translateY(0);
   transition:
     color var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
@@ -1799,16 +1814,27 @@ body.ivlyrics-page-active .main-topBar-container {
   color: var(--lyrics-color-active);
   opacity: 1;
   filter: none !important;
-  transition: transform var(--line-shift-duration, var(--iv-lyrics-centering-duration, 300ms))
+  transition:
+    transform var(--line-shift-duration, var(--iv-lyrics-centering-duration, 300ms))
       var(--iv-lyrics-centering-ease, cubic-bezier(0.42, 0, 0.58, 1))
-      var(--line-shift-delay, 0s);
+      var(--line-shift-delay, 0s),
+    color 0.3s var(--iv-motion-ease-standard),
+    opacity 0.4s var(--iv-motion-ease-standard),
+    text-shadow 0.4s var(--iv-motion-ease-standard);
 }
 
 .lyrics-lyricsContainer-LyricsLine > p,
 .lyrics-lyricsContainer-LyricsLine-phonetic,
 .lyrics-lyricsContainer-LyricsLine-translation,
 .lyrics-karaoke-line {
-  transition: none;
+  transition:
+    transform var(--iv-lyrics-centering-duration, 300ms)
+      var(--iv-lyrics-centering-ease, cubic-bezier(0.42, 0, 0.58, 1)),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    letter-spacing var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    text-shadow var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    --ivlyrics-effect-strength var(--iv-lyrics-centering-duration, 300ms)
+      var(--iv-lyrics-centering-ease, cubic-bezier(0.42, 0, 0.58, 1));
 }
 
 .lyrics-lyricsContainer-LyricsLine > p:has(.lyrics-karaoke-stack),
@@ -1816,6 +1842,11 @@ body.ivlyrics-page-active .main-topBar-container {
   overflow: visible;
 }
 
+.lyrics-lyricsContainer-LyricsLine-active > p,
+.lyrics-lyricsContainer-LyricsLine-active .lyrics-lyricsContainer-LyricsLine-phonetic,
+.lyrics-lyricsContainer-LyricsLine-active .lyrics-lyricsContainer-LyricsLine-translation {
+  transform: translateY(-2px);
+}
 
 .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine.lyrics-lyricsContainer-LyricsLine-active {
   transform: translateY(calc(var(--position-index) * var(--lyrics-line-height) + var(--offset)));
@@ -2126,7 +2157,6 @@ div.lyrics-tabBar-headerItemLink {
   max-width: 100%;
   --ivlyrics-effect-strength: 0;
   --karaoke-glyph-bleed-x: 0.16em;
-  --karaoke-glyph-bleed-y: 0.22em;
   letter-spacing: var(--lyrics-original-letter-spacing, 0);
   line-height: 1.38;
   color: var(--lyrics-color-inactive);
@@ -2189,19 +2219,34 @@ div.lyrics-tabBar-headerItemLink {
 .lyrics-lyricsContainer-SyncedLyricsPage.is-karaoke
   .lyrics-lyricsContainer-SyncedLyrics:has(.lyrics-karaoke-part.active-vocal-row)
   > .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-paddingLine) {
-  transition-property: transform;
-  transition-duration: var(--line-shift-duration, var(--iv-lyrics-centering-duration, 300ms)) !important;
-  transition-timing-function: var(--iv-lyrics-centering-ease, cubic-bezier(0.42, 0, 0.58, 1)) !important;
-  transition-delay: var(--line-shift-delay, 0s) !important;
+  transition-property: transform, color, opacity;
+  transition-duration:
+    var(--line-shift-duration, var(--iv-lyrics-centering-duration, 300ms)),
+    300ms,
+    360ms !important;
+  transition-timing-function:
+    var(--iv-lyrics-centering-ease, cubic-bezier(0.42, 0, 0.58, 1)),
+    cubic-bezier(0.16, 1, 0.3, 1),
+    cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition-delay: var(--line-shift-delay, 0s), 0s, 0s !important;
 }
 
 .lyrics-lyricsContainer-SyncedLyricsPage:not(.scrolling-active)
   .lyrics-lyricsContainer-SyncedLyrics
   > .lyrics-lyricsContainer-LyricsLine-paddingLine {
-  transition-property: transform !important;
-  transition-duration: var(--line-shift-duration, var(--iv-lyrics-centering-duration, 300ms)) !important;
-  transition-timing-function: var(--iv-lyrics-centering-ease, cubic-bezier(0.42, 0, 0.58, 1)) !important;
-  transition-delay: var(--line-shift-delay, 0s) !important;
+  transition-property: transform, color, opacity !important;
+  transition-duration:
+    var(--line-shift-duration, var(--iv-lyrics-centering-duration, 300ms)),
+    300ms,
+    420ms !important;
+  transition-timing-function:
+    var(--iv-lyrics-centering-ease, cubic-bezier(0.42, 0, 0.58, 1)),
+    cubic-bezier(0.16, 1, 0.3, 1),
+    cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition-delay:
+    var(--line-shift-delay, 0s),
+    0s,
+    0s !important;
 }
 
 .lyrics-karaoke-part {
@@ -2790,12 +2835,13 @@ div.lyrics-tabBar-headerItemLink {
   vertical-align: baseline;
   overflow: visible;
   overflow-wrap: anywhere;
-  contain: style layout;
 }
 
+/* Keep idle glyphs and words in 2D. A zero-depth translate3d promotes thousands
+   of offscreen glyphs; bounce distance, scale and transition timing stay the same. */
 .lyrics-karaoke-word.is-word-timed {
   transform-origin: center bottom;
-  transform: translate3d(0, var(--karaoke-bounce-y, 0), 0) scale(var(--karaoke-bounce-scale, 1));
+  transform: translateY(var(--karaoke-bounce-y, 0)) scale(var(--karaoke-bounce-scale, 1));
   transition: transform 75ms linear;
 }
 
@@ -2804,7 +2850,7 @@ div.lyrics-tabBar-headerItemLink {
 }
 
 .lyrics-karaoke-text-run-segment {
-  --iv-karaoke-completed-color: var(--lyrics-color-active);
+  --iv-karaoke-completed-color: color-mix(in srgb, var(--lyrics-color-inactive) var(--iv-karaoke-past-color-share, 0%), var(--lyrics-color-active));
   display: inline-block;
   max-width: 100%;
   white-space: pre-wrap;
@@ -2819,13 +2865,10 @@ div.lyrics-tabBar-headerItemLink {
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
   transform-origin: center bottom;
-  transform: translate3d(0, var(--karaoke-bounce-y, 0), 0) scale(var(--karaoke-bounce-scale, 1));
+  transform: translateY(var(--karaoke-bounce-y, 0)) scale(var(--karaoke-bounce-scale, 1));
   transition:
     transform 75ms linear,
     --iv-karaoke-completed-color 520ms cubic-bezier(0.16, 1, 0.3, 1);
-  /* 내부 스타일/레이아웃 변경이 외부 형제·부모 레이아웃에 영향 주지 않음을 브라우저에 명시.
-     inline-block 재계산 범위를 세그먼트 단위로 격리하여 reflow 비용을 대폭 줄입니다. */
-  contain: style layout;
 }
 
 .lyrics-karaoke-text-run-segment.is-word-timed {
@@ -2834,15 +2877,6 @@ div.lyrics-tabBar-headerItemLink {
 
 .lyrics-karaoke-text-run-segment.is-bouncing {
   will-change: transform;
-}
-
-/* pending 상태에서는 bounce가 없으므로 transform을 제거하여 레이어 생성 방지.
-   브라우저가 불필요한 합성 레이어를 만들지 않아 메모리와 GPU 비용이 줄어듭니다. */
-.lyrics-karaoke-text-run-segment--pending:not(.is-bouncing),
-.lyrics-karaoke-text-run-segment--done:not(.is-bouncing),
-.lyrics-karaoke-char--pending:not(.is-bouncing),
-.lyrics-karaoke-char--done:not(.is-bouncing) {
-  transform: none;
 }
 
 /* Semi-transparent glyph colors are composited once per shaped glyph. In
@@ -2883,7 +2917,7 @@ div.lyrics-tabBar-headerItemLink {
 }
 
 .lyrics-karaoke-char {
-  --iv-karaoke-completed-color: var(--lyrics-color-active);
+  --iv-karaoke-completed-color: color-mix(in srgb, var(--lyrics-color-inactive) var(--iv-karaoke-past-color-share, 0%), var(--lyrics-color-active));
   display: inline-block;
   white-space: pre-wrap;
   padding-inline: var(--karaoke-glyph-bleed-x, 0.16em);
@@ -2896,11 +2930,10 @@ div.lyrics-tabBar-headerItemLink {
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
   transform-origin: center bottom;
-  transform: translate3d(0, var(--karaoke-bounce-y, 0), 0) scale(var(--karaoke-bounce-scale, 1));
+  transform: translateY(var(--karaoke-bounce-y, 0)) scale(var(--karaoke-bounce-scale, 1));
   transition:
     transform 75ms linear,
     --iv-karaoke-completed-color 520ms cubic-bezier(0.16, 1, 0.3, 1);
-  contain: style layout;
 }
 
 /* As with text runs, the wrapper stays transparent and the nested glyph-fill
@@ -2944,9 +2977,11 @@ div.lyrics-tabBar-headerItemLink {
 }
 
 .lyrics-lyricsContainer-SyncedLyricsPage.is-karaoke
-  .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active):has(.lyrics-karaoke-line.is-complete)
-  :is(.lyrics-karaoke-char, .lyrics-karaoke-text-run-segment, .lyrics-karaoke-glyph-fill) {
-  --iv-karaoke-completed-color: var(--lyrics-color-inactive);
+  .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active):has(.lyrics-karaoke-line.is-complete) {
+  /* Keep :has invalidation on the row, rather than adding all glyphs to the
+     document's relational-selector invalidation set. Resolve the endpoint on
+     each glyph so nested vocal rows retain their own speaker colors. */
+  --iv-karaoke-past-color-share: 100%;
 }
 
 .lyrics-lyricsContainer-LyricsContainer.highlight-mode-enabled
@@ -4649,7 +4684,7 @@ body:has(#lyrics-fullscreen-container) [data-tippy-root] {
 .lyrics-lyricsContainer-LyricsLine-active .lyrics-lyricsContainer-LyricsLine-culturalNote {
   color: var(--lyrics-color-active);
   opacity: var(--lyrics-cultural-note-opacity, 0.6);
-  transform: none;
+  transform: translateY(-2px);
 }
 
 /* Legacy support: .lyrics-lyricsContainer-LyricsLine-sub uses translation style */
@@ -12731,18 +12766,6 @@ html.is-lp-view-exit::view-transition-new(root) {
   text-transform: uppercase;
 }
 
-.ivlyrics-sync-creator-shell .sync-creator-range-style-tape {
-  letter-spacing: 0 !important;
-  word-spacing: 0 !important;
-}
-
-.ivlyrics-sync-creator-shell .sync-creator-range-style-char {
-  letter-spacing: 0 !important;
-  line-height: inherit;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
-
 .ivlyrics-sync-creator-shell .sync-creator-range-effect-picker .sync-creator-effect-strip {
   display: grid !important;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -18132,7 +18155,7 @@ html.is-lp-view-exit::view-transition-new(root) {
 .lyrics-karaoke-text-run-segment::before {
   content: attr(data-outline-text) / "";
   position: absolute;
-  inset-block: calc(var(--karaoke-glyph-bleed-y, 0.22em) * -1);
+  inset-block: 0;
   inset-inline: var(--karaoke-glyph-bleed-x, 0.16em);
   z-index: -1;
   color: transparent;
@@ -18145,7 +18168,7 @@ html.is-lp-view-exit::view-transition-new(root) {
 }
 
 .lyrics-karaoke-glyph-fill {
-  --iv-karaoke-completed-color: var(--lyrics-color-active);
+  --iv-karaoke-completed-color: color-mix(in srgb, var(--lyrics-color-inactive) var(--iv-karaoke-past-color-share, 0%), var(--lyrics-color-active));
   display: inline-block;
   position: relative;
   /* Expand only the paint box for slanted glyph overhang. Equal negative
@@ -18153,11 +18176,6 @@ html.is-lp-view-exit::view-transition-new(root) {
      positions, word spacing and wrapping stay exactly unchanged. */
   padding-inline: var(--karaoke-glyph-bleed-x, 0.16em);
   margin-inline: calc(var(--karaoke-glyph-bleed-x, 0.16em) * -1);
-  /* Bounce/float transforms and tall combining marks can paint outside the
-     font's normal inline box. Expand and cancel only the paint box so the top
-     and bottom of a glyph are not clipped without changing line geometry. */
-  padding-block: var(--karaoke-glyph-bleed-y, 0.22em);
-  margin-block: calc(var(--karaoke-glyph-bleed-y, 0.22em) * -1);
   overflow: visible;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;

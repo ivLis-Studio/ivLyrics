@@ -1646,33 +1646,6 @@ const isSyncCreatorCharacterPronunciationCompatible = (result, lyricsLines) => {
 	});
 };
 
-const shiftSyncCreatorFiniteTimes = (values, deltaSec) => Array.isArray(values)
-	? values.map(time => (
-		typeof time === 'number' && Number.isFinite(time)
-			? roundSyncCreatorTime(Math.max(0, time + deltaSec))
-			: time
-	))
-	: values;
-
-const shiftSyncCreatorLineTiming = (line, deltaSec) => ({
-	...line,
-	chars: shiftSyncCreatorFiniteTimes(line?.chars, deltaSec),
-	parallel: line?.parallel ? {
-		...line.parallel,
-		parts: Array.isArray(line.parallel.parts)
-			? line.parallel.parts.map(part => ({
-				...part,
-				chars: shiftSyncCreatorFiniteTimes(part.chars, deltaSec)
-			}))
-			: line.parallel.parts
-	} : line?.parallel
-});
-
-const hasSyncCreatorLyricsContent = (lyrics) => Array.isArray(lyrics) && lyrics.length > 0;
-const firstSyncCreatorLyricsContent = (...candidates) => (
-	candidates.find(hasSyncCreatorLyricsContent) || null
-);
-
 const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const { useState, useEffect, useRef, useCallback, useMemo } = react;
 	const syncCreatorDraftStore = window.SyncCreatorDraftStore || null;
@@ -3263,9 +3236,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		}
 		if (!isCurrentSyncCreatorSourceChange(sourceChangeRequestId)) return false;
 
-		const text = extractLyricsText(
-			firstSyncCreatorLyricsContent(result.synced, result.unsynced) || []
-		);
+		const text = extractLyricsText(result.synced || result.unsynced);
 		if (loadedSyncBody) {
 			const normalizedLoadedSyncBody = normalizeLoadedSyncCreatorBodyForLyrics(loadedSyncBody, text);
 			if (normalizedLoadedSyncBody !== loadedSyncBody) {
@@ -4642,7 +4613,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 
 			if (result?.error) throw new Error(result.error);
 
-			if (result && firstSyncCreatorLyricsContent(result.synced, result.unsynced)) {
+			if (result && (result.synced || result.unsynced)) {
 				await applyLoadedLyricsResult(result, SYNC_CREATOR_SOURCE_ADDON_ID, sourceChangeRequestId);
 			} else {
 				if (!isCurrentSyncCreatorSourceChange(sourceChangeRequestId)) return;
@@ -7311,66 +7282,69 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const adjustCurrentLineOffset = useCallback((deltaMs) => {
 		claimSessionForLocalEditing();
 		const requestedDeltaSec = deltaMs / 1000;
-		if (!syncData || !Array.isArray(syncData.lines) || !Number.isInteger(currentLineStart)) return;
-
-		const targetLine = syncData.lines.find(line => line.start === currentLineStart);
-		const targetTimes = getSyncCreatorLineTimes(targetLine);
-		if (!targetLine || targetTimes.length === 0) return;
-
-		const firstTime = Math.min(...targetTimes);
-		const lastTime = Math.max(...targetTimes);
-		const previousLine = syncData.lines
-			.filter(line => line.start < currentLineStart)
-			.sort((a, b) => b.start - a.start)[0] || null;
-		const nextLine = syncData.lines
-			.filter(line => line.start > currentLineStart)
-			.sort((a, b) => a.start - b.start)[0] || null;
-		const previousTimes = getSyncCreatorLineTimes(previousLine);
-		const nextTimes = getSyncCreatorLineTimes(nextLine);
-		const minFirstTime = previousTimes.length > 0
-			? Math.max(...previousTimes) + SYNC_CREATOR_MIN_SEQUENTIAL_STEP_SEC
-			: 0;
-		const maxLastTime = nextTimes.length > 0
-			? Math.min(...nextTimes) - SYNC_CREATOR_MIN_SEQUENTIAL_STEP_SEC
-			: Infinity;
-		const minDeltaSec = minFirstTime - firstTime;
-		const maxDeltaSec = Number.isFinite(maxLastTime) ? maxLastTime - lastTime : Infinity;
-		if (Number.isFinite(maxDeltaSec) && maxDeltaSec < minDeltaSec) return;
-
-		const boundedDeltaSec = Math.min(Math.max(requestedDeltaSec, minDeltaSec), maxDeltaSec);
-		if ((requestedDeltaSec > 0 && boundedDeltaSec <= 0) || (requestedDeltaSec < 0 && boundedDeltaSec >= 0)) return;
-		if (!Number.isFinite(boundedDeltaSec) || Math.abs(boundedDeltaSec) < 0.0005) return;
-
-		// The offset control can be used while a parallel sub-line or a partially
-		// recorded line is still selected. Resetting the input here erased that
-		// in-progress timing and made the sub-line appear to return to zero. Move
-		// the transient editor clock exactly once, outside React's state updater.
-		charTimesRef.current = shiftSyncCreatorFiniteTimes(charTimesRef.current, boundedDeltaSec);
-		if (pendingWordSyncRef.current && Number.isFinite(pendingWordSyncRef.current.startTime)) {
-			pendingWordSyncRef.current = {
-				...pendingWordSyncRef.current,
-				startTime: roundSyncTime(Math.max(0, pendingWordSyncRef.current.startTime + boundedDeltaSec))
-			};
-		}
-		if (pendingSyllableSyncRef.current && Number.isFinite(pendingSyllableSyncRef.current.startTime)) {
-			pendingSyllableSyncRef.current = {
-				...pendingSyllableSyncRef.current,
-				startTime: roundSyncTime(Math.max(0, pendingSyllableSyncRef.current.startTime + boundedDeltaSec))
-			};
-		}
+		resetCurrentSyncInput();
 
 		setSyncData(prev => {
-			if (!prev || !Array.isArray(prev.lines)) return prev;
+			if (!prev || !Array.isArray(prev.lines) || !Number.isInteger(currentLineStart)) return prev;
+
+			const targetIndex = prev.lines.findIndex(line => line.start === currentLineStart);
+			if (targetIndex < 0) return prev;
+
+			const targetLine = prev.lines[targetIndex];
+			const targetTimes = getSyncCreatorLineTimes(targetLine);
+			if (targetTimes.length === 0) return prev;
+
+			const firstTime = Math.min(...targetTimes);
+			const lastTime = Math.max(...targetTimes);
+			const previousLine = prev.lines
+				.filter(line => line.start < currentLineStart)
+				.sort((a, b) => b.start - a.start)[0] || null;
+			const nextLine = prev.lines
+				.filter(line => line.start > currentLineStart)
+				.sort((a, b) => a.start - b.start)[0] || null;
+			const previousTimes = getSyncCreatorLineTimes(previousLine);
+			const nextTimes = getSyncCreatorLineTimes(nextLine);
+			const minFirstTime = previousTimes.length > 0
+				? Math.max(...previousTimes) + SYNC_CREATOR_MIN_SEQUENTIAL_STEP_SEC
+				: 0;
+			const maxLastTime = nextTimes.length > 0
+				? Math.min(...nextTimes) - SYNC_CREATOR_MIN_SEQUENTIAL_STEP_SEC
+				: Infinity;
+			const minDeltaSec = minFirstTime - firstTime;
+			const maxDeltaSec = Number.isFinite(maxLastTime) ? maxLastTime - lastTime : Infinity;
+			if (Number.isFinite(maxDeltaSec) && maxDeltaSec < minDeltaSec) return prev;
+
+			const boundedDeltaSec = Math.min(Math.max(requestedDeltaSec, minDeltaSec), maxDeltaSec);
+			if ((requestedDeltaSec > 0 && boundedDeltaSec <= 0) || (requestedDeltaSec < 0 && boundedDeltaSec >= 0)) return prev;
+			if (!Number.isFinite(boundedDeltaSec) || Math.abs(boundedDeltaSec) < 0.0005) return prev;
+
+			const shiftTimes = (values) => Array.isArray(values)
+				? values.map(time => (
+					typeof time === 'number' && Number.isFinite(time)
+						? roundSyncTime(Math.max(0, time + boundedDeltaSec))
+						: time
+				))
+				: values;
+			const shiftLine = (line) => ({
+				...line,
+				chars: shiftTimes(line.chars),
+				parallel: line.parallel ? {
+					...line.parallel,
+					parts: Array.isArray(line.parallel.parts)
+						? line.parallel.parts.map(part => ({
+							...part,
+							chars: shiftTimes(part.chars)
+						}))
+						: line.parallel.parts
+				} : line.parallel
+			});
+
 			return {
 				...prev,
-				lines: prev.lines.map(line => (
-					line.start === currentLineStart
-						? shiftSyncCreatorLineTiming(line, boundedDeltaSec)
-						: line
-				))
+				lines: prev.lines.map((line, index) => index === targetIndex ? shiftLine(line) : line)
 			};
 		});
-	}, [claimSessionForLocalEditing, currentLineStart, syncData]);
+	}, [claimSessionForLocalEditing, currentLineStart, resetCurrentSyncInput]);
 
 	const resetFromStart = useCallback(async () => {
 		const confirmed = window.confirm(
@@ -10518,44 +10492,28 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		);
 	};
 
-	const renderTextEffectPicker = (selectedKind, onSelect, {
-		compact = false,
-		disabled = false,
-		allowEmpty = false,
-		previewColor = currentSpeakerTextColor,
-		previewMutedColor = currentSpeakerMutedColor,
-		previewAsRange = false
-	} = {}) => {
+	const renderTextEffectPicker = (selectedKind, onSelect, { compact = false, disabled = false, allowEmpty = false } = {}) => {
 		const normalizedKind = allowEmpty ? selectedKind : (selectedKind || SYNC_CREATOR_DEFAULT_KIND);
-		const renderEffectPreview = (label, value) => {
-			const previewChars = Array.from(label).map((char, index) => react.createElement('span', {
-				key: `${value}-${index}`,
-				className: 'ivlyrics-sync-kind-preview-char lyrics-karaoke-char lyrics-karaoke-char--done',
-				style: char === ' ' ? { minWidth: '0.35em' } : null,
-				'data-outline-text': char === ' ' ? '' : char
-			}, react.createElement('span', {
-				className: 'lyrics-karaoke-glyph-fill'
-			}, char === ' ' ? '\u00A0' : char)));
-			const previewContent = previewAsRange
-				? react.createElement('span', {
-					className: `ivlyrics-karaoke-range-style ${value}`
-				}, previewChars)
-				: previewChars;
-
-			return react.createElement('span', {
+		const renderEffectPreview = (label, value) => react.createElement('span', {
 			style: {
 				...(compact ? s.effectPillLabel : s.effectLabel),
-				color: previewColor,
+				color: currentSpeakerTextColor,
 				pointerEvents: 'none',
-				'--lyrics-color-active': previewColor,
-				'--lyrics-color-inactive': previewMutedColor
+				'--lyrics-color-active': currentSpeakerTextColor,
+				'--lyrics-color-inactive': currentSpeakerMutedColor
 			},
-			className: `ivlyrics-sync-kind-preview lyrics-karaoke-part lead ${previewAsRange ? '' : value}${textEffectsDisabled ? ' text-effects-disabled' : ''}`,
+			className: `ivlyrics-sync-kind-preview lyrics-karaoke-part lead ${value}${textEffectsDisabled ? ' text-effects-disabled' : ''}`,
 			'aria-hidden': true
 		}, react.createElement('span', {
 			className: 'lyrics-karaoke-line is-active is-effect-live is-effect-focused'
-		}, previewContent));
-		};
+		}, Array.from(label).map((char, index) => react.createElement('span', {
+			key: `${value}-${index}`,
+			className: 'ivlyrics-sync-kind-preview-char lyrics-karaoke-char lyrics-karaoke-char--done',
+			style: char === ' ' ? { minWidth: '0.35em' } : null,
+			'data-outline-text': char === ' ' ? '' : char
+		}, react.createElement('span', {
+			className: 'lyrics-karaoke-glyph-fill'
+		}, char === ' ' ? '\u00A0' : char)))));
 
 		return react.createElement('div', {
 			className: compact ? 'sync-creator-effect-strip' : undefined,
@@ -11158,12 +11116,6 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		const selectedText = selectionStart >= 0
 			? currentFullLineChars.slice(selectionStart, selectionEnd + 1).join('')
 			: '';
-		const rangePreviewColor = getSyncCreatorSpeakerTextColor(
-			styleRangeSpeaker,
-			styleRangeSpeakerColor,
-			styleRangeSpeakerFallback
-		) || currentSpeakerTextColor;
-		const rangePreviewMutedColor = `color-mix(in srgb, ${rangePreviewColor} 54%, transparent)`;
 		const selectRangeEffect = (value) => {
 			if (!value) return;
 			setStyleRangeEffect(value);
@@ -11255,7 +11207,6 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					I18n.t('syncCreator.rangeStyleHint') || '싱크 단위와 관계없이 원하는 글자를 드래그해 선택하세요.'
 				),
 				react.createElement('div', {
-					className: 'sync-creator-range-style-tape',
 					style: {
 						display: 'flex',
 						flexWrap: 'wrap',
@@ -11288,7 +11239,6 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 						: '';
 					return react.createElement('span', {
 						key: `range-style-${currentLineStart}-${index}`,
-						className: 'sync-creator-range-style-char',
 						role: 'option',
 						'aria-selected': selected,
 						onPointerDown: (event) => beginStyleRangeSelection(index, event),
@@ -11334,10 +11284,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 						renderTextEffectPicker(styleRangeEffect, selectRangeEffect, {
 							compact: true,
 							disabled: !selectedText,
-							allowEmpty: true,
-							previewColor: rangePreviewColor,
-							previewMutedColor: rangePreviewMutedColor,
-							previewAsRange: true
+							allowEmpty: true
 						})
 					),
 					react.createElement('section', { className: 'sync-creator-range-style-pane sync-creator-range-color-picker' },

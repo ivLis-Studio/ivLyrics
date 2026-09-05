@@ -40,7 +40,6 @@
 		"langs/LangVi.js",
 		"langs/LangTr.js",
 		"I18n.js",
-		"LyricsDataUtils.js",
 		"LyricsPresentationPublisher.js",
 		"TinySegmenter.js",
 		"LyricsWordSegmenter.js",

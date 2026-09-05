@@ -68,7 +68,6 @@ const LyricsCache = window.LyricsCache;
 const ApiTracker = window.ApiTracker;
 const HAN_CHARACTER_REGEX = /\p{Script=Han}/u;
 const KANJI_CHARACTER_REGEX = /[\u4E00-\u9FAF\u3400-\u4DBF]/;
-const JAPANESE_KANA_CHARACTER_REGEX = /[\u3040-\u30FF]/u;
 const CLEAN_HTML_RT_REGEX = /<rt[^>]*>.*?<\/rt>/gi;
 const CLEAN_HTML_RUBY_REGEX = /<\/?ruby[^>]*>/gi;
 const CLEAN_HTML_TAG_REGEX = /<[^>]+>/g;
@@ -1094,7 +1093,7 @@ const Utils = {
 
   /**
    * Apply furigana to Japanese text if enabled in settings
-   * Applies to Japanese tracks and to Japanese lines inside multilingual tracks.
+   * Only applies when the detected language is Japanese ('ja')
    * @param {string} text - The text to process
    * @returns {string} - Text with furigana HTML tags if applicable
    */
@@ -1108,12 +1107,10 @@ const Utils = {
       return text;
     }
 
-    // A whole-track language detector can label a multilingual song as English,
-    // Korean, etc. A line containing kana is still unambiguously Japanese and
-    // should receive furigana. Kanji-only non-Japanese lines remain excluded so
-    // Chinese lyrics are not sent through the Japanese tokenizer.
+    // Only apply furigana when the detected language is Japanese
+    // This prevents furigana from being applied to Chinese songs
     const detectedLang = this._currentDetectedLanguage;
-    if (detectedLang !== "ja" && !JAPANESE_KANA_CHARACTER_REGEX.test(text)) {
+    if (detectedLang !== "ja") {
       return text;
     }
 
@@ -1375,7 +1372,7 @@ const Utils = {
   /**
    * Current version of the ivLyrics app
    */
-  currentVersion: "6.6.3",
+  currentVersion: "6.6.4",
 
   /**
    * Check for updates from remote repository

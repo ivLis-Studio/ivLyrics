@@ -2720,9 +2720,9 @@ const DebugInfoPanel = () => {
       if (cachedLyrics) {
         lyricsInfo = {
           provider: cachedLyrics.provider || "unknown",
-          hasKaraoke: Array.isArray(cachedLyrics.karaoke) && cachedLyrics.karaoke.length > 0,
-          hasSynced: Array.isArray(cachedLyrics.synced) && cachedLyrics.synced.length > 0,
-          hasUnsynced: Array.isArray(cachedLyrics.unsynced) && cachedLyrics.unsynced.length > 0,
+          hasKaraoke: !!cachedLyrics.karaoke,
+          hasSynced: !!cachedLyrics.synced,
+          hasUnsynced: !!cachedLyrics.unsynced,
           karaokeLineCount: cachedLyrics.karaoke?.length || 0,
           syncedLineCount: cachedLyrics.synced?.length || 0,
           unsyncedLineCount: cachedLyrics.unsynced?.length || 0,
