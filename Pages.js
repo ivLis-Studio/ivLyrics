@@ -5370,9 +5370,16 @@ const useSyncedLyricsEngine = ({
 		compact ? [lyricsId, containerReady] : [lyricsId]
 	);
 
+	// Display text is derived from these settings as well as the lyric array.
+	// Keep playback-only renders cached, but do not retain a previous replacement
+	// after the user switches back to showing supplements below the original.
+	const lyricsDisplayMode = CONFIG.visual["translate:display-mode"];
+	const furiganaEnabled = !!CONFIG.visual["furigana-enabled"];
+	const furiganaReady = window.FuriganaConverter?.isAvailable?.() === true;
+	const lyricsLocale = String(window.Utils?.getDetectedLanguage?.() || "auto");
 	const preparedLyrics = useMemo(
 		() => buildPreparedSyncedLyrics(lyrics, isKara),
-		[lyrics, isKara]
+		[lyrics, isKara, lyricsDisplayMode, furiganaEnabled, furiganaReady, lyricsLocale]
 	);
 
 	const paddedLyrics = useMemo(
@@ -7662,6 +7669,10 @@ const SyncedExpandedLyricsPage = react.memo(({ lyrics = [], provider, contributo
 });
 
 const UnsyncedLyricsPage = react.memo(({ lyrics = [], provider, contributors, copyright }) => {
+	const lyricsDisplayMode = CONFIG.visual["translate:display-mode"];
+	const furiganaEnabled = !!CONFIG.visual["furigana-enabled"];
+	const furiganaReady = window.FuriganaConverter?.isAvailable?.() === true;
+	const lyricsLocale = String(window.Utils?.getDetectedLanguage?.() || "auto");
 	const lyricsArray = useMemo(() => normalizeUnsyncedLyrics(lyrics), [lyrics]);
 	const renderItems = useMemo(() => lyricsArray.map((line, index) => {
 		const { text, originalText, text2 } = getEmbeddedAuxiliaryDisplayValues(line);
@@ -7689,7 +7700,7 @@ const UnsyncedLyricsPage = react.memo(({ lyrics = [], provider, contributors, co
 			subText2CopyText: showMode2 ? showMode2Translation : null,
 			originalText,
 		};
-	}), [lyricsArray, lyrics]);
+	}), [lyricsArray, lyrics, lyricsDisplayMode, furiganaEnabled, furiganaReady, lyricsLocale]);
 
 	if (lyricsArray.length === 0) {
 		return react.createElement("div", { className: "lyrics-lyricsContainer-UnsyncedLyricsPage" }, renderLyricsUnavailable(I18n.t("messages.noLyrics")));

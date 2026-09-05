@@ -3118,12 +3118,14 @@ const getStaticOptions = () => ({
 const TranslationMenu = react.memo(({ friendlyLanguage, hasTranslation }) => {
   // Open modal on click instead of ContextMenu to avoid xpui hook errors
   const open = () => {
-    // Force "below" display mode
+    // Refresh prepared lyric rows when leaving the legacy replacement mode.
+    const displayModeChanged = CONFIG.visual["translate:display-mode"] !== "below";
     CONFIG.visual["translate:display-mode"] = "below";
     StorageManager.setItem(
       `${APP_NAME}:visual:translate:display-mode`,
       "below"
     );
+    if (displayModeChanged) lyricContainerUpdate?.();
 
     // Determine the correct mode key based on language
     const modeKey = friendlyLanguage || "gemini";

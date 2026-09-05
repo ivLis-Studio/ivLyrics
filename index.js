@@ -2561,7 +2561,7 @@ const CONFIG = {
       ) || "auto",
     "translate:display-mode":
       StorageManager.getItem("ivLyrics:visual:translate:display-mode") ||
-      "replace",
+      "below",
     "translate:target-language":
       StorageManager.getItem("ivLyrics:visual:translate:target-language") ||
       "auto",
