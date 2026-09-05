@@ -646,6 +646,28 @@ const FullscreenOverlay = (() => {
         );
     };
 
+    // These fields are read directly while rendering the overlay. Keep their
+    // polling fallback even when playback position is not used by this layout,
+    // including metadata that arrives after songchange or mutates in place.
+    const getOverlayMetadataSnapshot = () => {
+        const item = Spicetify.Player.data?.item;
+        const metadata = item?.metadata;
+        return [
+            getFirstSpotifyUri(item?.uri),
+            getCurrentArtistUri(),
+            getCurrentAlbumUri(),
+            metadata?.title,
+            metadata?.artist_name,
+            metadata?.album_title,
+            metadata?.album_disc_number,
+            metadata?.year,
+            metadata?.image_xlarge_url,
+            metadata?.image_large_url,
+            item?.album?.images?.[0]?.url,
+            metadata?.image_url
+        ];
+    };
+
     // Clock Component
     const Clock = ({ show, showSeconds = false, size = 48 }) => {
         const [time, setTime] = useState(new Date());
@@ -2024,6 +2046,8 @@ const FullscreenOverlay = (() => {
         const [isPlaying, setIsPlaying] = useState(false);
         const [position, setPosition] = useState(0);
         const [duration, setDuration] = useState(0);
+        const [, setMetadataRevision] = useState(0);
+        const metadataSnapshotRef = useRef(null);
         const [isPortraitViewport, setIsPortraitViewport] = useState(() => {
             if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
                 return false;
@@ -2132,13 +2156,28 @@ const FullscreenOverlay = (() => {
             };
         }, [navigateSpotifyUri]);
 
-        // Track playback state for TV mode controls
+        // Standard and compact layouts own progress in ProgressBar; changing
+        // unused root position state would rebuild the entire overlay twice a second.
+        const trackRootPosition = isFullscreen && (
+            CONFIG?.visual?.["fullscreen-tv-mode"] === true
+                ? CONFIG?.visual?.["fullscreen-tv-show-progress"] !== false
+                : focusModeActive && !tmiMode
+        );
         useEffect(() => {
             const updatePlaybackState = () => {
                 const isPaused = Spicetify.Player?.data?.isPaused ?? true;
                 setIsPlaying(!isPaused);
-                setPosition(Spicetify.Player?.getProgress?.() || 0);
+                if (trackRootPosition) {
+                    setPosition(Spicetify.Player?.getProgress?.() || 0);
+                }
                 setDuration(Spicetify.Player?.data?.item?.metadata?.duration_ms || Spicetify.Player?.getDuration?.() || 0);
+
+                const nextMetadata = getOverlayMetadataSnapshot();
+                const previousMetadata = metadataSnapshotRef.current;
+                metadataSnapshotRef.current = nextMetadata;
+                if (previousMetadata && nextMetadata.some((value, index) => !Object.is(value, previousMetadata[index]))) {
+                    setMetadataRevision((revision) => revision + 1);
+                }
             };
 
             updatePlaybackState();
@@ -2154,7 +2193,7 @@ const FullscreenOverlay = (() => {
                 Spicetify.Player?.removeEventListener?.("songchange", updatePlaybackState);
                 Spicetify.Player?.removeEventListener?.("onplaypause", updatePlaybackState);
             };
-        }, []);
+        }, [trackRootPosition]);
 
         useEffect(() => {
             uiVisibleRef.current = uiVisible;

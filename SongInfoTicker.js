@@ -7,7 +7,7 @@ const SongResearch = (() => {
     "use strict";
 
     const react = Spicetify.React;
-    const { useEffect, useMemo, useRef, useState } = react;
+    const { useEffect, useMemo, useRef, useState, useCallback } = react;
     const researchCache = new Map();
     const researchInFlight = new Map();
     const MAX_RESEARCH_CACHE_ENTRIES = 100;
@@ -816,7 +816,7 @@ const SongResearch = (() => {
         return sections.filter(([, , , content]) => hasValue(content));
     };
 
-    const ResearchDocument = ({ info, register, coverUrl }) => {
+    const ResearchDocument = react.memo(({ info, register, coverUrl }) => {
         const thesis = info.editorial_thesis || {};
         const intro = info.introduction || {};
         const basic = info.basic_information || {};
@@ -1056,7 +1056,7 @@ const SongResearch = (() => {
         }, react.createElement(ResearchQuality, { quality: info.research_quality })));
 
         return sections;
-    };
+    });
 
     const ResearchWebSearchFallbackNotice = () => react.createElement("aside", {
         className: "research-loading-notice research-loading-notice-warning research-web-search-fallback",
@@ -1078,10 +1078,11 @@ const SongResearch = (() => {
         const suppressNavClickRef = useRef(false);
         const programmaticScrollRef = useRef(null);
         const sectionRefs = useRef(new Map());
+        const uiLanguage = window.I18n?.getCurrentLanguage?.() || CONFIG?.visual?.language || "en";
         const normalized = useMemo(() => window.AIAddonManager?.normalizeResearchResult
             ? window.AIAddonManager.normalizeResearchResult(info || {}, { title: trackName, artist: artistName })
             : (info || {}), [info, trackName, artistName]);
-        const sectionDefinitions = useMemo(() => getSectionDefinitions(normalized), [normalized]);
+        const sectionDefinitions = useMemo(() => getSectionDefinitions(normalized), [normalized, uiLanguage]);
         const [activeSection, setActiveSection] = useState(sectionDefinitions[0]?.[0] || "overview");
         const metadata = normalized.metadata || {};
         const quality = normalized.research_quality || {};
@@ -1101,10 +1102,10 @@ const SongResearch = (() => {
             });
         };
 
-        const register = (id, node) => {
+        const register = useCallback((id, node) => {
             if (node) sectionRefs.current.set(id, node);
             else sectionRefs.current.delete(id);
-        };
+        }, []);
 
         useEffect(() => {
             const root = contentRef.current;
@@ -1354,7 +1355,8 @@ const SongResearch = (() => {
             ),
             react.createElement("main", { className: "research-content", ref: contentRef },
                 isGenerating && webSearchFallback && react.createElement(ResearchWebSearchFallbackNotice),
-                react.createElement(ResearchDocument, { info: normalized, register, coverUrl }),
+                // Language changes must refresh labels even when article data is unchanged.
+                react.createElement(ResearchDocument, { info: normalized, register, coverUrl, uiLanguage }),
                 isGenerating && react.createElement("div", {
                     className: "research-generating-status",
                     role: "status",

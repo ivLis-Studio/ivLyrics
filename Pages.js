@@ -6961,13 +6961,28 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 	? renderGranularity === "word"
 	: line.karaokeGranularity === "word";
 
-  const vocalRows = getKaraokeVocalRows(line);
+	const lyricsLocale = String(window.Utils?.getDetectedLanguage?.() || "auto");
+	const speakerColors = window.ivLyricsSpeakerColors;
+	const creatorSpeakerColorEnabled = line.vocals
+		? (speakerColors?.isCreatorColorEnabled?.()
+			?? (CONFIG?.visual?.["sync-data-custom-speaker-colors-enabled"] !== false))
+		: false;
+	// Playback only changes the active row and fill. Keep each child line stable
+	// so its own character/furigana preparation can survive playback updates.
+	const vocalRows = useMemo(() => getKaraokeVocalRows(line), [
+		line, line.vocals, settingsRevision, creatorSpeakerColorEnabled,
+		speakerColors, speakerColors?.getPresentation,
+		speakerColors?.[PAGES_IV_LYRICS_SPEAKER_CLASS_CONTRACT],
+	]);
   const shouldUseVocalRowAnchor = isActive
           && Array.isArray(vocalRows)
           && vocalRows.length >= KARAOKE_VOCAL_STACK_CENTER_THRESHOLD;
-  const vocalRowRenderData = Array.isArray(vocalRows)
-	? vocalRows.map((row) => buildKaraokeVocalRowRenderData(line, row, shouldUseVocalRowAnchor))
-	: null;
+	const vocalRowRenderData = useMemo(() => Array.isArray(vocalRows)
+		? vocalRows.map((row) => ({
+			...buildKaraokeVocalRowRenderData(line, row, shouldUseVocalRowAnchor),
+			charCount: getKaraokeSyllableCharCount(row.syllables),
+		}))
+		: null, [line, vocalRows, shouldUseVocalRowAnchor, lyricsLocale, window.LyricsWordSegmenter?.segmentGraphemes]);
   const vocalAnchorStateRef = useRef({ lineKey: null, anchorPosition: -1, lastPlaybackPosition: NaN });
   const nextVocalAnchorPosition = shouldUseVocalRowAnchor
           ? getKaraokeVocalAnchorPosition(vocalRowRenderData, position)
@@ -7015,7 +7030,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
                           row.speakerClass ? `speaker-${row.speakerClass}` : "",
                   ].filter(Boolean);
                   const currentOffset = rowGlobalCharOffset;
-                  rowGlobalCharOffset += getKaraokeSyllableCharCount(row.syllables);
+                  rowGlobalCharOffset += rowRenderData.charCount;
 			const rowTimedChars = rowRenderData.timedChars;
 			const rowActiveCharIndex = getActiveKaraokeTimedCharIndex(rowTimedChars, position);
 			const rowActiveGlobalCharIndex = rowActiveCharIndex >= 0 ? currentOffset + rowActiveCharIndex : -1;
@@ -7090,8 +7105,6 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 
 	const furiganaEnabled = CONFIG?.visual?.["furigana-enabled"] === true;
 	const furiganaReady = window.FuriganaConverter?.isAvailable?.() === true;
-	const lyricsLocale = String(window.Utils?.getDetectedLanguage?.() || "auto");
-
 	const { furiganaMap, timedChars, endTime, wrapByWord, textDirection, useTextRun, preserveInlineStyles } = useMemo(() => {
 		const sourceSyllables = Array.isArray(line.syllables) && line.syllables.length > 0
 			? line.syllables

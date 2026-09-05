@@ -8913,6 +8913,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 
 		let frameId = 0;
 		let disposed = false;
+		let lastPreviewPosition = NaN;
 		const scheduleFrame = typeof requestAnimationFrame === 'function'
 			? requestAnimationFrame
 			: (callback) => setTimeout(() => callback(Date.now()), 16);
@@ -8924,6 +8925,14 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		const paint = () => {
 			if (disposed) return;
 			const pos = Number(Spicetify.Player?.getProgress?.() || 0);
+			// Keep polling for seeks/resume. A paused preview needs no repeat lookup,
+			// unless another effect invalidated its paint; recording locks stay live.
+			if (mode !== 'record' && Number.isFinite(pos) && pos === lastPreviewPosition
+				&& lastPaintedPlaybackIndexRef.current >= -1) {
+				frameId = scheduleFrame(paint);
+				return;
+			}
+			lastPreviewPosition = pos;
 			const nextIndex = Number.isFinite(pos)
 				? getPreviewProgressIndexAtTime(currentLineIndex, pos / 1000)
 				: -1;
@@ -8952,6 +8961,8 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		mode,
 		syncLinesByStart,
 		currentLineIndex,
+		lyricsText,
+		activeParallelPartId,
 		lyricsLines.length,
 		getPreviewProgressIndexAtTime,
 		applyPlaybackProgressVisual,

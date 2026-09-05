@@ -3381,8 +3381,8 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
                             Number(rowElement.getAttribute('data-panel-vocal-row-index')) === activeRowIndex
                         );
                     });
+                    window.dispatchEvent(new Event('ivlyrics-panel-anchor-update'));
                 }
-                window.dispatchEvent(new Event('ivlyrics-panel-anchor-update'));
             };
 
             updateAnchorRow();
@@ -4810,6 +4810,8 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
             let intervalId = null;
             let cachedDelay = null;
             let lastTrackUri = null;
+            let lastNotifiedPosition = null;
+            let lastNotifiedTrackUri = null;
             const UPDATE_INTERVAL = 30; // 업데이트 간격 (ms) - RAF보다 CPU 효율적
             const resolveTrailingInterludeInfo = createTrailingKaraokeInterludeResolver(lyrics);
 
@@ -4889,8 +4891,13 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
                     setVisualTrailingInterludeKey(nextVisualTrailingInterludeKey);
                 }
 
-                // 활성 라인만 구독하므로 매 tick 연속 fill을 갱신해도 비용이 제한된다.
-                window.dispatchEvent(new Event('ivlyrics-panel-time-update'));
+                // Keep polling for seeks and track/offset changes while paused,
+                // but do not wake every active word when its time is unchanged.
+                if (adjustedPosition !== lastNotifiedPosition || currentTrackUri !== lastNotifiedTrackUri) {
+                    lastNotifiedPosition = adjustedPosition;
+                    lastNotifiedTrackUri = currentTrackUri;
+                    window.dispatchEvent(new Event('ivlyrics-panel-time-update'));
+                }
             };
 
             if (isEnabled && lyrics.length > 0) {
