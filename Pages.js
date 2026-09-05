@@ -3965,7 +3965,8 @@ const prefersReducedLyricsMotion = () => (
 	|| (
 		typeof window !== "undefined"
 		&& typeof window.matchMedia === "function"
-		&& window.matchMedia("(prefers-reduced-motion: reduce)").matches
+		// MediaQueryList.matches stays live; do not allocate one for every glyph.
+		&& (prefersReducedLyricsMotion.mediaQuery ??= window.matchMedia("(prefers-reduced-motion: reduce)")).matches
 	)
 );
 
@@ -4658,11 +4659,13 @@ const buildKaraokeWordElements = (
 			return Number.isFinite(value) ? Math.max(maximum, value) : maximum;
 		}, -Infinity);
 		const bounce = wordTimed && Number.isFinite(startTime) && Number.isFinite(endTime)
-			? getKaraokeWordBounceValues(position, isActive, startTime, endTime)
+			? getKaraokeWordBounceValues(position, isActive, startTime, endTime, 1,
+				getKaraokeMotionProfile(timedChars, currentWordStart, currentWord.length))
 			: { active: false };
 		const style = bounce.active ? {
 			"--karaoke-bounce-y": `${bounce.offsetY}px`,
 			"--karaoke-bounce-scale": bounce.scale,
+			"--karaoke-motion-glow": bounce.glow,
 		} : undefined;
 		const styledWordElements = wrapKaraokeInlineStyleRuns(wordChars, currentWord, {
 			keyPrefix: "karaoke-word-inline-style",
@@ -4868,13 +4871,8 @@ const buildKaraokeTextRunElements = (
 		const segmentCharCount = Number.isFinite(segment.charCount)
 			? segment.charCount
 			: splitKaraokeGraphemes(segment.text).length;
-		const segmentCenterIndex = globalCharOffset + segment.startIndex + Math.max(0, segmentCharCount - 1) / 2;
-		const bounceAttenuation = wordTimed
-			? 1
-			: getKaraokeBounceAttenuation(segmentCenterIndex, activeGlobalCharIndex);
-		const bounce = wordTimed
-			? getKaraokeWordBounceValues(position, isActive, segment.startTime, segment.endTime, bounceAttenuation)
-			: getKaraokeBounceValues(position, isActive, segment.startTime, segment.endTime, bounceAttenuation);
+		const bounce = getKaraokeBounceValues(position, isActive, segment.startTime, segment.endTime, 1,
+			getKaraokeMotionProfile(timedChars, segment.startIndex, segmentCharCount));
 		const segmentStyle = {};
 		if (segmentState === "active") {
 			const softEdge = 10;
@@ -4886,6 +4884,7 @@ const buildKaraokeTextRunElements = (
 		if (bounce.active) {
 			segmentStyle["--karaoke-bounce-y"] = `${bounce.offsetY}px`;
 			segmentStyle["--karaoke-bounce-scale"] = bounce.scale;
+			segmentStyle["--karaoke-motion-glow"] = bounce.glow;
 		}
 
 		let segmentClassName = getCachedKaraokeStateClassName(
@@ -6720,24 +6719,127 @@ const getStableKaraokeVocalAnchorPosition = (stateRef, line, position, nextAncho
 };
 
 const KARAOKE_FILL_STEPS = 25;
-const KARAOKE_BOUNCE_IDLE = { offsetY: 0, scale: 1, active: false };
-const KARAOKE_BOUNCE_MAX_CHAR_DISTANCE = 3;
-const easeOutSine = (value) => Math.sin(Math.max(0, Math.min(1, value)) * Math.PI / 2);
-const easeSoftRelease = (value) => (
-	0.5 + 0.5 * Math.cos(Math.max(0, Math.min(1, value)) * Math.PI)
-);
+const KARAOKE_BOUNCE_IDLE = { offsetY: 0, scale: 1, glow: 0, active: false };
+// Motion uses the source timing units; character fill and scrolling keep their
+// own clocks. Cache preparation by the memoized grapheme array, never per frame.
+const karaokeMotionProfileCache = new WeakMap();
+const smoothKaraokeMotion = (value) => {
+	const x = Math.max(0, Math.min(1, value));
+	return x * x * (3 - 2 * x);
+};
 
-const getKaraokeBounceAttenuation = (globalCharIndex, activeGlobalCharIndex) => {
-	if (!Number.isFinite(globalCharIndex) || !Number.isFinite(activeGlobalCharIndex) || activeGlobalCharIndex < 0) {
-		return 1;
+const createKaraokeMotionProfile = (startTime, endTime, cadence, gap = 0, holdEndTime = endTime) => {
+	const calm = smoothKaraokeMotion((cadence - 90) / 230);
+	const sustained = smoothKaraokeMotion((holdEndTime - startTime - 700) / 900);
+	return {
+		startTime,
+		endTime: holdEndTime,
+		riseDuration: Math.max(1, Math.min(holdEndTime - startTime, 220, 45 + cadence * 0.45)),
+		// Stay within the parent's existing 820 ms outgoing-row lifetime.
+		releaseDuration: Math.min(700, 110 + 220 * calm + 100 * sustained + Math.min(800, Math.max(0, gap)) * 0.25 * calm),
+		amplitude: 1.1 + 3.9 * calm + sustained * 0.6,
+		scaleAmount: 0.006 + 0.024 * calm,
+		glow: 0.035 + 0.105 * calm + 0.025 * sustained,
+	};
+};
+
+const getKaraokeMotionProfile = (timedChars, startIndex, charCount = 1) => {
+	if (!Array.isArray(timedChars) || !timedChars[startIndex]) return null;
+	let cached = karaokeMotionProfileCache.get(timedChars);
+	if (!cached) {
+		const units = [];
+		const byChar = new Array(timedChars.length);
+		const sourceBounds = new Map();
+		timedChars.forEach((charInfo, index) => {
+			if (!Number.isFinite(charInfo?.startTime) || !Number.isFinite(charInfo?.endTime)) return;
+			const key = charInfo.karaokeUnitIndex ?? index;
+			const bounds = sourceBounds.get(key) || { start: Infinity, end: -Infinity, groups: 0 };
+			bounds.start = Math.min(bounds.start, charInfo.startTime);
+			bounds.end = Math.max(bounds.end, charInfo.endTime);
+			sourceBounds.set(key, bounds);
+		});
+		let current = null;
+		timedChars.forEach((charInfo, index) => {
+			if (!charInfo || !/\S/u.test(charInfo.char || "")) {
+				current = null;
+				return;
+			}
+			const start = charInfo.startTime;
+			const end = charInfo.endTime;
+			if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+			const unitKey = charInfo.karaokeUnitIndex ?? index;
+			if (!current || current.key !== unitKey) {
+				current = { key: unitKey, start, end, count: 0 };
+				units.push(current);
+				sourceBounds.get(unitKey).groups++;
+			}
+			current.start = Math.min(current.start, start);
+			current.end = Math.max(current.end, end);
+			current.count++;
+			byChar[index] = current;
+		});
+		units.forEach((unit) => {
+			const source = sourceBounds.get(unit.key);
+			// A trailing space belongs to its source syllable's duration. Do not
+			// extend separate words when a provider times a whole phrase as one unit.
+			if (source.groups === 1) {
+				unit.start = source.start;
+				unit.end = source.end;
+			}
+			// Normalize long words without treating every Latin letter as a beat.
+			unit.cadence = (unit.end - unit.start) / Math.sqrt(unit.count);
+		});
+		units.forEach((unit, index) => {
+			let sum = 0;
+			let count = 0;
+			let lastStart = NaN;
+			for (let i = Math.max(0, index - 2); i <= Math.min(units.length - 1, index + 2); i++) {
+				const neighbor = units[i];
+				// Some sources repeat one onset across several text fragments.
+				if (neighbor.start === lastStart) continue;
+				lastStart = neighbor.start;
+				sum += Math.min(600, neighbor.cadence);
+				count++;
+			}
+			unit.localCadence = unit.cadence * 0.75 + (sum / Math.max(1, count)) * 0.25;
+			unit.gap = Math.max(0, (units[index + 1]?.start ?? unit.end) - unit.end);
+		});
+		cached = { byChar, profiles: new Map() };
+		karaokeMotionProfileCache.set(timedChars, cached);
 	}
-
-	const distance = Math.abs(globalCharIndex - activeGlobalCharIndex);
-	if (distance > KARAOKE_BOUNCE_MAX_CHAR_DISTANCE) {
-		return 0;
+	const key = `${startIndex}:${charCount}`;
+	if (cached.profiles.has(key)) return cached.profiles.get(key);
+	const first = timedChars[startIndex];
+	const unit = cached.byChar[startIndex];
+	if (!unit) return null;
+	const lastIndex = Math.min(timedChars.length - 1, startIndex + Math.max(1, charCount) - 1);
+	const start = Number.isFinite(first.karaokeFillStartTime) ? first.karaokeFillStartTime : first.startTime;
+	let end = start;
+	let cadence = 0;
+	let count = 0;
+	for (let index = startIndex; index <= lastIndex; index++) {
+		const charInfo = timedChars[index];
+		if (!charInfo) continue;
+		const charEnd = Number.isFinite(charInfo.karaokeFillEndTime) ? charInfo.karaokeFillEndTime : charInfo.endTime;
+		if (Number.isFinite(charEnd)) end = Math.max(end, charEnd);
+		if (cached.byChar[index]) {
+			cadence += cached.byChar[index].localCadence;
+			count++;
+		}
 	}
-
-	return Math.max(0.22, 1 - distance * 0.23);
+	// Only compact source units sustain their characters together. A provider's
+	// whole-line timing must not leave dozens of previously sung glyphs floating.
+	const sustain = charCount === 1 && unit.count <= 24
+		? smoothKaraokeMotion((unit.end - unit.start - 750) / 650)
+			* smoothKaraokeMotion((unit.cadence - 170) / 200)
+		: 0;
+	const lastUnit = cached.byChar[lastIndex] || unit;
+	const wholeUnit = unit === lastUnit && charCount >= unit.count;
+	const holdEnd = wholeUnit ? Math.max(end, unit.end) : end + Math.max(0, unit.end - end) * sustain;
+	const gap = holdEnd >= lastUnit.end ? lastUnit.gap : 0;
+	const profile = createKaraokeMotionProfile(start, end, cadence / Math.max(1, count), gap, holdEnd);
+	cached.profiles.set(key, profile);
+	return profile;
 };
 
 const getKaraokeCharFill = (position, isActive, startTime, endTime, isComplete = false) => {
@@ -6758,93 +6860,29 @@ const getKaraokeCharFill = (position, isActive, startTime, endTime, isComplete =
 	return Math.round(corrected * KARAOKE_FILL_STEPS) / KARAOKE_FILL_STEPS;
 };
 
-const getKaraokeBounceValues = (position, isActive, startTime, endTime, attenuation = 1) => {
-	if (!CONFIG.visual["karaoke-bounce"] || !isActive || attenuation <= 0) {
-		return KARAOKE_BOUNCE_IDLE;
-	}
+const getKaraokeBounceValues = (position, isActive, startTime, endTime, attenuation = 1, motionProfile = null) => {
+	if (!CONFIG.visual["karaoke-bounce"] || !Number.isFinite(position)) return KARAOKE_BOUNCE_IDLE;
+	const profile = motionProfile || createKaraokeMotionProfile(startTime, endTime, endTime - startTime);
+	if (!Number.isFinite(profile.startTime) || !Number.isFinite(profile.endTime)
+		|| position < profile.startTime || position >= profile.endTime + profile.releaseDuration
+		|| prefersReducedLyricsMotion()) return KARAOKE_BOUNCE_IDLE;
 
-	const duration = Math.max(1, endTime - startTime);
-	const riseDuration = Math.max(180, Math.min(280, duration * 0.9));
-	const releaseDuration = Math.max(420, Math.min(820, duration * 2.4));
-	const totalWindow = riseDuration + releaseDuration;
-	const elapsed = position - startTime;
-
-	if (elapsed < 0 || elapsed > totalWindow) {
-		return KARAOKE_BOUNCE_IDLE;
-	}
-
-	let waveStrength;
-
-	if (elapsed <= riseDuration) {
-		const riseProgress = elapsed / riseDuration;
-		waveStrength = easeOutSine(riseProgress);
-	} else {
-		const fallProgress = Math.min(1, (elapsed - riseDuration) / Math.max(1, totalWindow - riseDuration));
-		waveStrength = easeSoftRelease(fallProgress);
-	}
-
-	if (waveStrength < 0.025) {
-		return KARAOKE_BOUNCE_IDLE;
-	}
-
-	waveStrength *= Math.max(0, Math.min(1, attenuation));
-
-	const offsetY = Math.round((-6 * waveStrength) * 4) / 4;
-	const scale = Math.round((1 + 0.055 * waveStrength) * 200) / 200;
-
-	return {
-		offsetY,
-		scale,
-		active: offsetY !== 0 || scale !== 1,
-	};
+	// A completed syllable can still settle after the next row takes the scroll
+	// anchor. Its own playback window, not global character distance, owns motion.
+	const strength = position < profile.endTime
+		? smoothKaraokeMotion((position - profile.startTime) / profile.riseDuration)
+		: 1 - smoothKaraokeMotion((position - profile.endTime) / profile.releaseDuration);
+	const offsetY = Math.round(-profile.amplitude * strength * 4) / 4;
+	const scale = Math.round((1 + profile.scaleAmount * strength) * 500) / 500;
+	const glow = CONFIG.visual["karaoke-text-effects"] === false ? 0
+		: Math.round(profile.glow * strength * 50) / 50;
+	if (offsetY === 0 && scale === 1 && glow === 0) return KARAOKE_BOUNCE_IDLE;
+	return { offsetY, scale, glow, active: true };
 };
 
-const getKaraokeWordBounceValues = (position, isActive, startTime, endTime, attenuation = 1) => {
-	if (!CONFIG.visual["karaoke-bounce"] || attenuation <= 0) {
-		return KARAOKE_BOUNCE_IDLE;
-	}
-
-	const duration = Math.max(1, endTime - startTime);
-	const riseDuration = Math.min(180, Math.max(60, duration * 0.38));
-	const releaseDuration = Math.min(280, Math.max(180, duration * 0.45));
-	const peakTime = Math.min(endTime, startTime + riseDuration);
-	const animationEndTime = endTime + releaseDuration;
-	if (position < startTime || position >= animationEndTime) {
-		return KARAOKE_BOUNCE_IDLE;
-	}
-
-	let waveStrength;
-	if (position <= peakTime) {
-		const riseProgress = Math.max(
-			0,
-			Math.min(1, (position - startTime) / Math.max(1, peakTime - startTime))
-		);
-		waveStrength = easeOutSine(riseProgress);
-	} else if (position <= endTime) {
-		// Keep the word lifted for its full playback window. The following word can
-		// rise while this one is still up, which avoids the stop-and-go motion.
-		waveStrength = 1;
-	} else {
-		const releaseProgress = Math.max(
-			0,
-			Math.min(1, (position - endTime) / Math.max(1, releaseDuration))
-		);
-		waveStrength = easeSoftRelease(releaseProgress);
-	}
-
-	waveStrength *= Math.max(0, Math.min(1, attenuation));
-	if (waveStrength < 0.025) {
-		return KARAOKE_BOUNCE_IDLE;
-	}
-
-	const offsetY = Math.round((-6 * waveStrength) * 4) / 4;
-	const scale = Math.round((1 + 0.055 * waveStrength) * 200) / 200;
-	return {
-		offsetY,
-		scale,
-		active: offsetY !== 0 || scale !== 1,
-	};
-};
+const getKaraokeWordBounceValues = (position, isActive, startTime, endTime, attenuation = 1, motionProfile = null) => (
+	getKaraokeBounceValues(position, isActive, startTime, endTime, attenuation, motionProfile)
+);
 
 const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = isActive, isEffectLive = isActive || isEffectFocused, settingsRevision = 0, globalCharOffset = 0, activeGlobalCharIndex = -1, phonetic = null, translation = null, furiganaMapOverride = null, culturalAnnotations = [], renderGranularity = null }) => {
   if (!line) {
@@ -6999,7 +7037,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 
 	const furiganaEnabled = CONFIG?.visual?.["furigana-enabled"] === true;
 	const furiganaReady = window.FuriganaConverter?.isAvailable?.() === true;
-	const { furiganaMap, timedChars, endTime, wrapByWord, textDirection, useTextRun, preserveInlineStyles } = useMemo(() => {
+	const { furiganaMap, timedChars, motionProfiles, endTime, wrapByWord, textDirection, useTextRun, preserveInlineStyles } = useMemo(() => {
 		const sourceSyllables = Array.isArray(line.syllables) && line.syllables.length > 0
 			? line.syllables
 			: getTimedSyllablesFromLine(line);
@@ -7021,6 +7059,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 				? furiganaMapOverride
 				: buildKaraokeFuriganaMap(processedText),
 			timedChars: renderTimedChars,
+			motionProfiles: renderTimedChars.map((_, index) => getKaraokeMotionProfile(renderTimedChars, index)),
 			endTime: compensatedTimedChars.reduce(
 				(maxEndTime, charInfo) => Math.max(maxEndTime, Number.isFinite(charInfo?.endTime) ? charInfo.endTime : 0),
 				getKaraokeLineBounds(line).endTime
@@ -7104,14 +7143,13 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 				isComplete
 			);
 		const charState = fillRatio <= 0 ? "pending" : fillRatio >= 1 ? "done" : "active";
-		const globalCharIndex = globalCharOffset + index;
-		const bounceAttenuation = getKaraokeBounceAttenuation(globalCharIndex, activeGlobalCharIndex);
-		const bounce = wordTimed ? KARAOKE_BOUNCE_IDLE : getKaraokeBounceValues(
+		const bounce = wordTimed || !motionProfiles[index] ? KARAOKE_BOUNCE_IDLE : getKaraokeBounceValues(
 			position,
 			isActive,
 			Number.isFinite(charInfo?.karaokeFillStartTime) ? charInfo.karaokeFillStartTime : charInfo.startTime,
 			Number.isFinite(charInfo?.karaokeFillEndTime) ? charInfo.karaokeFillEndTime : charInfo.endTime,
-			bounceAttenuation
+			1,
+			motionProfiles[index]
 		);
 		const karaokeStyle = {};
 		if (charState === "active") {
@@ -7124,6 +7162,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 		if (bounce.active) {
 			karaokeStyle["--karaoke-bounce-y"] = `${bounce.offsetY}px`;
 			karaokeStyle["--karaoke-bounce-scale"] = bounce.scale;
+			karaokeStyle["--karaoke-motion-glow"] = bounce.glow;
 		}
 		const className = getCachedKaraokeStateClassName(
 			KARAOKE_CHAR_STATE_CLASS_NAMES,

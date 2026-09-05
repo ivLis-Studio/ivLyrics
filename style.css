@@ -2256,10 +2256,7 @@ div.lyrics-tabBar-headerItemLink {
   padding-block: 0.03em;
 }
 
-.lyrics-karaoke-part.background {
-  font-size: 0.92em;
-  opacity: 0.9;
-}
+/* Lead/background describe timing tracks, including equal duet singers. */
 
 .lyrics-karaoke-part.effect,
 .lyrics-karaoke-part.speaker-sfx {
@@ -2847,6 +2844,12 @@ div.lyrics-tabBar-headerItemLink {
 
 .lyrics-karaoke-word.is-word-timed.is-bouncing {
   will-change: transform;
+}
+
+/* The word wrapper owns motion in word mode; inherited motion variables must
+   not apply the same transform a second time to its individual glyphs. */
+.lyrics-karaoke-word.is-word-timed .lyrics-karaoke-char {
+  transform: none;
 }
 
 .lyrics-karaoke-text-run-segment {
@@ -18164,6 +18167,24 @@ html.is-lp-view-exit::view-transition-new(root) {
   -webkit-text-stroke-color: var(--lyrics-current-original-outline-stroke-color, #000000);
   text-shadow: none !important;
   filter: none !important;
+  pointer-events: none;
+}
+
+/* A small, fixed-radius glow is painted only for currently moving glyphs.
+   Animate its opacity, leaving fill, outline and measured text boxes intact. */
+.lyrics-karaoke-char.is-bouncing::after,
+.lyrics-karaoke-text-run-segment.is-bouncing::after,
+.lyrics-karaoke-word.is-word-timed.is-bouncing .lyrics-karaoke-char::after {
+  content: attr(data-outline-text) / "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline: var(--karaoke-glyph-bleed-x, 0.16em);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 0 transparent;
+  text-shadow: 0 0 0.16em var(--lyrics-color-active);
+  opacity: var(--karaoke-motion-glow, 0);
+  transition: opacity 75ms linear;
   pointer-events: none;
 }
 
