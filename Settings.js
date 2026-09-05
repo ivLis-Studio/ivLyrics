@@ -1610,6 +1610,103 @@ const LyricsProviderCard = ({ provider, isEnabled, onToggle, isExpanded, onExpan
   );
 };
 
+// Both provider tabs keep the same reorder gestures and persistence contract.
+const createSettingsProviderOrderControls = (
+  managerName, providers, providerOrder, setProviderOrder, dragState, setDragState
+) => {
+  const moveProvider = (providerId, direction) => {
+    const currentOrder = buildOrderedProviderList(providers, providerOrder).map((provider) => provider.id);
+    const currentIndex = currentOrder.indexOf(providerId);
+    if (currentIndex === -1) return;
+
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= currentOrder.length) return;
+
+    const newOrder = [...currentOrder];
+    [newOrder[currentIndex], newOrder[newIndex]] = [newOrder[newIndex], newOrder[currentIndex]];
+
+    setProviderOrder(newOrder);
+    if (window[managerName]) {
+      window[managerName].setProviderOrder(newOrder);
+    }
+  };
+
+  const handleDragStart = (event, providerId) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", providerId);
+    setDragState({ sourceId: providerId, targetId: null, position: "before" });
+  };
+
+  const handleDragOver = (event, targetId) => {
+    if (!dragState.sourceId || dragState.sourceId === targetId) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const position = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
+    if (dragState.targetId !== targetId || dragState.position !== position) {
+      setDragState((current) => ({ ...current, targetId, position }));
+    }
+  };
+
+  const handleDrop = (event, targetId) => {
+    event.preventDefault();
+    const sourceId = dragState.sourceId || event.dataTransfer.getData("text/plain");
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const position = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
+    const newOrder = reorderProviderList(providers, providerOrder, sourceId, targetId, position);
+    setProviderOrder(newOrder);
+    window[managerName]?.setProviderOrder?.(newOrder);
+    setDragState({ sourceId: null, targetId: null, position: "before" });
+  };
+
+  const clearDragState = () => {
+    setDragState({ sourceId: null, targetId: null, position: "before" });
+  };
+
+  return { moveProvider, handleDragStart, handleDragOver, handleDrop, clearDragState };
+};
+
+// Return the existing DOM tree directly; do not introduce a remounting wrapper.
+const renderSettingsProviderItems = ({
+  sortedProviders, dragState, enabledProviders, expandedProviders,
+  handleDragOver, handleDrop, handleDragStart, clearDragState, moveProvider,
+  handleToggleEnabled, toggleExpanded, translationKey, Card, providerProp
+}) => (
+  sortedProviders.map((provider, providerIndex) =>
+    react.createElement("div", {
+      key: provider.id,
+      role: "listitem",
+      className: [
+        "lyrics-provider-item",
+        dragState.sourceId === provider.id ? "dragging" : "",
+        dragState.targetId === provider.id ? `drag-over-${dragState.position}` : "",
+      ].filter(Boolean).join(" "),
+      onDragOver: (event) => handleDragOver(event, provider.id),
+      onDrop: (event) => handleDrop(event, provider.id),
+    },
+      react.createElement("span", {
+        className: "provider-order-index",
+        "aria-hidden": "true",
+      }, providerIndex + 1),
+      react.createElement(ProviderDragHandle, {
+        provider,
+        label: `${provider.name || provider.id}: ${I18n.t(`${translationKey}.moveUp`) || "Move Up"} / ${I18n.t(`${translationKey}.moveDown`) || "Move Down"}`,
+        onDragStart: handleDragStart,
+        onDragEnd: clearDragState,
+        onMove: moveProvider,
+      }),
+      // Provider 카드
+      react.createElement(Card, {
+        [providerProp]: provider,
+        isEnabled: enabledProviders[provider.id] !== false,
+        onToggle: (enabled) => handleToggleEnabled(provider.id, enabled),
+        isExpanded: expandedProviders.has(provider.id),
+        onExpandToggle: () => toggleExpanded(provider.id)
+      })
+    )
+  )
+);
+
 // 가사 제공자 설정 탭 컴포넌트
 const LyricsProvidersTab = () => {
   const [providers, setProviders] = useState([]);
@@ -1665,54 +1762,10 @@ const LyricsProvidersTab = () => {
     });
   };
 
-  const moveProvider = (providerId, direction) => {
-    const currentOrder = buildOrderedProviderList(providers, providerOrder).map((provider) => provider.id);
-    const currentIndex = currentOrder.indexOf(providerId);
-    if (currentIndex === -1) return;
-
-    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex < 0 || newIndex >= currentOrder.length) return;
-
-    const newOrder = [...currentOrder];
-    [newOrder[currentIndex], newOrder[newIndex]] = [newOrder[newIndex], newOrder[currentIndex]];
-
-    setProviderOrder(newOrder);
-    if (window.LyricsAddonManager) {
-      window.LyricsAddonManager.setProviderOrder(newOrder);
-    }
-  };
-
-  const handleDragStart = (event, providerId) => {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", providerId);
-    setDragState({ sourceId: providerId, targetId: null, position: "before" });
-  };
-
-  const handleDragOver = (event, targetId) => {
-    if (!dragState.sourceId || dragState.sourceId === targetId) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const position = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
-    if (dragState.targetId !== targetId || dragState.position !== position) {
-      setDragState((current) => ({ ...current, targetId, position }));
-    }
-  };
-
-  const handleDrop = (event, targetId) => {
-    event.preventDefault();
-    const sourceId = dragState.sourceId || event.dataTransfer.getData("text/plain");
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const position = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
-    const newOrder = reorderProviderList(providers, providerOrder, sourceId, targetId, position);
-    setProviderOrder(newOrder);
-    window.LyricsAddonManager?.setProviderOrder?.(newOrder);
-    setDragState({ sourceId: null, targetId: null, position: "before" });
-  };
-
-  const clearDragState = () => {
-    setDragState({ sourceId: null, targetId: null, position: "before" });
-  };
+  const { moveProvider, handleDragStart, handleDragOver, handleDrop, clearDragState } =
+    createSettingsProviderOrderControls(
+      "LyricsAddonManager", providers, providerOrder, setProviderOrder, dragState, setDragState
+    );
 
   // 정렬된 provider 목록
   const sortedProviders = buildOrderedProviderList(providers, providerOrder);
@@ -1761,39 +1814,12 @@ const LyricsProvidersTab = () => {
 
       // Provider 목록
       providers.length > 0 && react.createElement("div", { className: "lyrics-providers-list", role: "list" },
-        sortedProviders.map((provider, providerIndex) =>
-          react.createElement("div", {
-            key: provider.id,
-            role: "listitem",
-            className: [
-              "lyrics-provider-item",
-              dragState.sourceId === provider.id ? "dragging" : "",
-              dragState.targetId === provider.id ? `drag-over-${dragState.position}` : "",
-            ].filter(Boolean).join(" "),
-            onDragOver: (event) => handleDragOver(event, provider.id),
-            onDrop: (event) => handleDrop(event, provider.id),
-          },
-            react.createElement("span", {
-              className: "provider-order-index",
-              "aria-hidden": "true",
-            }, providerIndex + 1),
-            react.createElement(ProviderDragHandle, {
-              provider,
-              label: `${provider.name || provider.id}: ${I18n.t("settings.lyricsProviders.moveUp") || "Move Up"} / ${I18n.t("settings.lyricsProviders.moveDown") || "Move Down"}`,
-              onDragStart: handleDragStart,
-              onDragEnd: clearDragState,
-              onMove: moveProvider,
-            }),
-            // Provider 카드
-            react.createElement(LyricsProviderCard, {
-              provider: provider,
-              isEnabled: enabledProviders[provider.id] !== false,
-              onToggle: (enabled) => handleToggleEnabled(provider.id, enabled),
-              isExpanded: expandedProviders.has(provider.id),
-              onExpandToggle: () => toggleExpanded(provider.id)
-            })
-          )
-        )
+        renderSettingsProviderItems({
+          sortedProviders, dragState, enabledProviders, expandedProviders,
+          handleDragOver, handleDrop, handleDragStart, clearDragState, moveProvider,
+          handleToggleEnabled, toggleExpanded,
+          translationKey: "settings.lyricsProviders", Card: LyricsProviderCard, providerProp: "provider"
+        })
       ),
 
       // Provider가 없을 때
@@ -1938,54 +1964,10 @@ const AIProvidersTab = () => {
     });
   };
 
-  const moveProvider = (providerId, direction) => {
-    const currentOrder = buildOrderedProviderList(providers, providerOrder).map((provider) => provider.id);
-    const currentIndex = currentOrder.indexOf(providerId);
-    if (currentIndex === -1) return;
-
-    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex < 0 || newIndex >= currentOrder.length) return;
-
-    const newOrder = [...currentOrder];
-    [newOrder[currentIndex], newOrder[newIndex]] = [newOrder[newIndex], newOrder[currentIndex]];
-
-    setProviderOrder(newOrder);
-    if (window.AIAddonManager) {
-      window.AIAddonManager.setProviderOrder(newOrder);
-    }
-  };
-
-  const handleDragStart = (event, providerId) => {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", providerId);
-    setDragState({ sourceId: providerId, targetId: null, position: "before" });
-  };
-
-  const handleDragOver = (event, targetId) => {
-    if (!dragState.sourceId || dragState.sourceId === targetId) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const position = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
-    if (dragState.targetId !== targetId || dragState.position !== position) {
-      setDragState((current) => ({ ...current, targetId, position }));
-    }
-  };
-
-  const handleDrop = (event, targetId) => {
-    event.preventDefault();
-    const sourceId = dragState.sourceId || event.dataTransfer.getData("text/plain");
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const position = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
-    const newOrder = reorderProviderList(providers, providerOrder, sourceId, targetId, position);
-    setProviderOrder(newOrder);
-    window.AIAddonManager?.setProviderOrder?.(newOrder);
-    setDragState({ sourceId: null, targetId: null, position: "before" });
-  };
-
-  const clearDragState = () => {
-    setDragState({ sourceId: null, targetId: null, position: "before" });
-  };
+  const { moveProvider, handleDragStart, handleDragOver, handleDrop, clearDragState } =
+    createSettingsProviderOrderControls(
+      "AIAddonManager", providers, providerOrder, setProviderOrder, dragState, setDragState
+    );
 
   const handleCulturalSettingChange = (name, value) => {
     CONFIG.visual[name] = value;
@@ -2193,39 +2175,12 @@ const AIProvidersTab = () => {
       ),
       // Provider 목록
       providers.length > 0 && react.createElement("div", { className: "lyrics-providers-list", role: "list" },
-        sortedProviders.map((provider, providerIndex) =>
-          react.createElement("div", {
-            key: provider.id,
-            role: "listitem",
-            className: [
-              "lyrics-provider-item",
-              dragState.sourceId === provider.id ? "dragging" : "",
-              dragState.targetId === provider.id ? `drag-over-${dragState.position}` : "",
-            ].filter(Boolean).join(" "),
-            onDragOver: (event) => handleDragOver(event, provider.id),
-            onDrop: (event) => handleDrop(event, provider.id),
-          },
-            react.createElement("span", {
-              className: "provider-order-index",
-              "aria-hidden": "true",
-            }, providerIndex + 1),
-            react.createElement(ProviderDragHandle, {
-              provider,
-              label: `${provider.name || provider.id}: ${I18n.t("settings.aiProviders.moveUp") || "Move Up"} / ${I18n.t("settings.aiProviders.moveDown") || "Move Down"}`,
-              onDragStart: handleDragStart,
-              onDragEnd: clearDragState,
-              onMove: moveProvider,
-            }),
-            // Provider 카드
-            react.createElement(AddonSettingsCard, {
-              addon: provider,
-              isEnabled: enabledProviders[provider.id] !== false,
-              onToggle: (enabled) => handleToggleEnabled(provider.id, enabled),
-              isExpanded: expandedProviders.has(provider.id),
-              onExpandToggle: () => toggleExpanded(provider.id)
-            })
-          )
-        )
+        renderSettingsProviderItems({
+          sortedProviders, dragState, enabledProviders, expandedProviders,
+          handleDragOver, handleDrop, handleDragStart, clearDragState, moveProvider,
+          handleToggleEnabled, toggleExpanded,
+          translationKey: "settings.aiProviders", Card: AddonSettingsCard, providerProp: "addon"
+        })
       ),
 
       // Provider가 없을 때
@@ -4476,6 +4431,82 @@ const ConfigCloudSync = () => {
 };
 
 // 비디오 헬퍼 토글 컴포넌트 (연결 상태 표시 포함)
+const renderSettingsHelperToggle = ({
+  settingKey, enabled, isConnected, disabled, label, description, downloadLabel,
+  statusText, handleDownload, handleToggle
+}) => {
+  return react.createElement(
+    "div",
+    { className: "setting-row", "data-setting-key": settingKey },
+    react.createElement(
+      "div",
+      { className: "setting-row-content" },
+      react.createElement(
+        "div",
+        { className: "setting-row-left" },
+        react.createElement(
+          "div",
+          { className: "setting-name" },
+          label,
+          // 활성화 시 상태 태그 표시
+          enabled && react.createElement("span", {
+            style: {
+              marginLeft: "10px",
+              fontSize: "10px",
+              padding: "2px 8px",
+              borderRadius: "12px",
+              backgroundColor: isConnected ? "rgba(74, 222, 128, 0.2)" : "rgba(239, 68, 68, 0.2)",
+              color: isConnected ? "#4ade80" : "#ef4444",
+              border: `1px solid ${isConnected ? "rgba(74, 222, 128, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+              fontWeight: "600",
+              verticalAlign: "middle"
+            }
+          }, statusText)
+        ),
+        react.createElement(
+          "div",
+          { className: "setting-description" },
+          description
+        )
+      ),
+      react.createElement(
+        "div",
+        { className: "setting-row-right", style: { display: "flex", alignItems: "center", gap: "10px" } },
+        // 다운로드 버튼 (활성화 && 연결 안됨)
+        enabled && !isConnected && react.createElement(
+          "button",
+          {
+            className: "btn",
+            onClick: handleDownload,
+            style: { fontSize: "11px", padding: "4px 8px", height: "auto" }
+          },
+          downloadLabel
+        ),
+        // 토글 스위치
+        react.createElement(
+          "button",
+          {
+            className: `switch-checkbox${enabled ? " active" : ""}`,
+            onClick: handleToggle,
+            "aria-checked": enabled,
+            role: "checkbox",
+            disabled,
+          },
+          react.createElement("svg", {
+            width: 12,
+            height: 12,
+            viewBox: "0 0 16 16",
+            fill: "currentColor",
+            dangerouslySetInnerHTML: {
+              __html: Spicetify.SVGIcons.check,
+            },
+          })
+        )
+      )
+    )
+  );
+};
+
 const VideoHelperToggle = ({ name, settingKey, defaultValue, disabled, onChange = () => { } }) => {
   const [enabled, setEnabled] = useState(defaultValue === "true" || defaultValue === true);
   const [isConnected, setIsConnected] = useState(false);
@@ -4546,19 +4577,6 @@ const VideoHelperToggle = ({ name, settingKey, defaultValue, disabled, onChange 
     }
   };
 
-  const handleCheckConnection = async () => {
-    if (typeof VideoHelperService !== "undefined") {
-      setChecking(true);
-      const connected = await VideoHelperService.checkHealth();
-      setIsConnected(connected);
-      setChecking(false);
-      if (connected) {
-        Toast?.success?.(I18n.t("settings.videoHelper.connected"));
-      } else {
-        Toast?.error?.(I18n.t("settings.videoHelper.disconnected"));
-      }
-    }
-  };
 
   const getStatusText = () => {
     if (checking) return I18n.t("settings.videoHelper.status.checking");
@@ -4566,76 +4584,13 @@ const VideoHelperToggle = ({ name, settingKey, defaultValue, disabled, onChange 
     return I18n.t("settings.videoHelper.status.disconnected");
   };
 
-  return react.createElement(
-    "div",
-    { className: "setting-row", "data-setting-key": settingKey },
-    react.createElement(
-      "div",
-      { className: "setting-row-content" },
-      react.createElement(
-        "div",
-        { className: "setting-row-left" },
-        react.createElement(
-          "div",
-          { className: "setting-name" },
-          I18n.t("settings.videoHelper.label"),
-          // 활성화 시 상태 태그 표시
-          enabled && react.createElement("span", {
-            style: {
-              marginLeft: "10px",
-              fontSize: "10px",
-              padding: "2px 8px",
-              borderRadius: "12px",
-              backgroundColor: isConnected ? "rgba(74, 222, 128, 0.2)" : "rgba(239, 68, 68, 0.2)",
-              color: isConnected ? "#4ade80" : "#ef4444",
-              border: `1px solid ${isConnected ? "rgba(74, 222, 128, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
-              fontWeight: "600",
-              verticalAlign: "middle"
-            }
-          }, getStatusText())
-        ),
-        react.createElement(
-          "div",
-          { className: "setting-description" },
-          I18n.t("settings.videoHelper.desc")
-        )
-      ),
-      react.createElement(
-        "div",
-        { className: "setting-row-right", style: { display: "flex", alignItems: "center", gap: "10px" } },
-        // 다운로드 버튼 (활성화 && 연결 안됨)
-        enabled && !isConnected && react.createElement(
-          "button",
-          {
-            className: "btn",
-            onClick: handleDownload,
-            style: { fontSize: "11px", padding: "4px 8px", height: "auto" }
-          },
-          I18n.t("settings.videoHelper.download")
-        ),
-        // 토글 스위치
-        react.createElement(
-          "button",
-          {
-            className: `switch-checkbox${enabled ? " active" : ""}`,
-            onClick: handleToggle,
-            "aria-checked": enabled,
-            role: "checkbox",
-            disabled,
-          },
-          react.createElement("svg", {
-            width: 12,
-            height: 12,
-            viewBox: "0 0 16 16",
-            fill: "currentColor",
-            dangerouslySetInnerHTML: {
-              __html: Spicetify.SVGIcons.check,
-            },
-          })
-        )
-      )
-    )
-  );
+  return renderSettingsHelperToggle({
+    settingKey, enabled, isConnected, disabled, handleDownload, handleToggle,
+    label: I18n.t("settings.videoHelper.label"),
+    description: I18n.t("settings.videoHelper.desc"),
+    downloadLabel: I18n.t("settings.videoHelper.download"),
+    statusText: getStatusText()
+  });
 };
 
 // Lyrics Helper Toggle - 가사 헬퍼 연결 토글
@@ -4709,19 +4664,6 @@ const LyricsHelperToggle = ({ name, settingKey, defaultValue, disabled, onChange
     window.open("https://ivlis.kr/ivLyrics/extensions/#helper", "_blank");
   };
 
-  const handleCheckConnection = async () => {
-    if (window.lyricsHelperSender) {
-      setChecking(true);
-      const connected = await window.lyricsHelperSender.checkConnection();
-      setIsConnected(connected);
-      setChecking(false);
-      if (connected) {
-        Toast?.success?.(I18n.t("settings.lyricsHelper.connected") || "Helper connected");
-      } else {
-        Toast?.error?.(I18n.t("settings.lyricsHelper.disconnected") || "Helper not connected");
-      }
-    }
-  };
 
   const getStatusText = () => {
     if (checking) return I18n.t("settings.lyricsHelper.status.checking") || "Checking...";
@@ -4729,76 +4671,13 @@ const LyricsHelperToggle = ({ name, settingKey, defaultValue, disabled, onChange
     return I18n.t("settings.lyricsHelper.status.disconnected") || "Not connected";
   };
 
-  return react.createElement(
-    "div",
-    { className: "setting-row", "data-setting-key": settingKey },
-    react.createElement(
-      "div",
-      { className: "setting-row-content" },
-      react.createElement(
-        "div",
-        { className: "setting-row-left" },
-        react.createElement(
-          "div",
-          { className: "setting-name" },
-          I18n.t("settings.lyricsHelper.label"),
-          // 활성화 시 상태 태그 표시
-          enabled && react.createElement("span", {
-            style: {
-              marginLeft: "10px",
-              fontSize: "10px",
-              padding: "2px 8px",
-              borderRadius: "12px",
-              backgroundColor: isConnected ? "rgba(74, 222, 128, 0.2)" : "rgba(239, 68, 68, 0.2)",
-              color: isConnected ? "#4ade80" : "#ef4444",
-              border: `1px solid ${isConnected ? "rgba(74, 222, 128, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
-              fontWeight: "600",
-              verticalAlign: "middle"
-            }
-          }, getStatusText())
-        ),
-        react.createElement(
-          "div",
-          { className: "setting-description" },
-          I18n.t("settings.lyricsHelper.desc")
-        )
-      ),
-      react.createElement(
-        "div",
-        { className: "setting-row-right", style: { display: "flex", alignItems: "center", gap: "10px" } },
-        // 다운로드 버튼 (활성화 && 연결 안됨)
-        enabled && !isConnected && react.createElement(
-          "button",
-          {
-            className: "btn",
-            onClick: handleDownload,
-            style: { fontSize: "11px", padding: "4px 8px", height: "auto" }
-          },
-          I18n.t("settings.lyricsHelper.download") || "Download"
-        ),
-        // 토글 스위치
-        react.createElement(
-          "button",
-          {
-            className: `switch-checkbox${enabled ? " active" : ""}`,
-            onClick: handleToggle,
-            "aria-checked": enabled,
-            role: "checkbox",
-            disabled,
-          },
-          react.createElement("svg", {
-            width: 12,
-            height: 12,
-            viewBox: "0 0 16 16",
-            fill: "currentColor",
-            dangerouslySetInnerHTML: {
-              __html: Spicetify.SVGIcons.check,
-            },
-          })
-        )
-      )
-    )
-  );
+  return renderSettingsHelperToggle({
+    settingKey, enabled, isConnected, disabled, handleDownload, handleToggle,
+    label: I18n.t("settings.lyricsHelper.label"),
+    description: I18n.t("settings.lyricsHelper.desc"),
+    downloadLabel: I18n.t("settings.lyricsHelper.download") || "Download",
+    statusText: getStatusText()
+  });
 };
 
 const ConfigSelection = ({
@@ -6931,6 +6810,20 @@ const SettingsSectionTitle = ({ title, subtitle, sectionKey }) => {
       )
     )
   );
+};
+
+// Reuse only the result immediately after this setting row, preserving its position.
+const getSettingsResultContainer = (button, id, rowClass) => {
+  const settingRow = button.closest(".setting-row");
+  let resultContainer = settingRow?.nextElementSibling;
+  if (!resultContainer || !resultContainer.id || resultContainer.id !== id) {
+    resultContainer = document.createElement("div");
+    resultContainer.id = id;
+    resultContainer.style.cssText = "margin-top: -1px;";
+    settingRow?.parentNode?.insertBefore(resultContainer, settingRow.nextSibling);
+    if (rowClass) settingRow?.classList.add(rowClass);
+  }
+  return resultContainer;
 };
 
 const ConfigModal = ({
@@ -10782,23 +10675,7 @@ const ConfigModal = ({
                   });
                   await Utils.saveBlobAs(blob, fileName, saveTarget);
 
-                  const settingRow = button.closest(".setting-row");
-                  let resultContainer = settingRow?.nextElementSibling;
-
-                  if (
-                    !resultContainer ||
-                    !resultContainer.id ||
-                    resultContainer.id !== "export-result-container"
-                  ) {
-                    // 결과 컨테이너가 없으면 생성
-                    resultContainer = document.createElement("div");
-                    resultContainer.id = "export-result-container";
-                    resultContainer.style.cssText = "margin-top: -1px;";
-                    settingRow?.parentNode?.insertBefore(
-                      resultContainer,
-                      settingRow.nextSibling
-                    );
-                  }
+                  const resultContainer = getSettingsResultContainer(button, "export-result-container");
 
                   resultContainer.innerHTML = `<div style="
 													padding: 16px 20px;
@@ -10827,23 +10704,7 @@ const ConfigModal = ({
 													</div>
 												</div>`;
                 } catch (e) {
-                  const settingRow = button.closest(".setting-row");
-                  let resultContainer = settingRow?.nextElementSibling;
-
-                  if (
-                    !resultContainer ||
-                    !resultContainer.id ||
-                    resultContainer.id !== "export-result-container"
-                  ) {
-                    // 결과 컨테이너가 없으면 생성
-                    resultContainer = document.createElement("div");
-                    resultContainer.id = "export-result-container";
-                    resultContainer.style.cssText = "margin-top: -1px;";
-                    settingRow?.parentNode?.insertBefore(
-                      resultContainer,
-                      settingRow.nextSibling
-                    );
-                  }
+                  const resultContainer = getSettingsResultContainer(button, "export-result-container");
                   resultContainer.innerHTML = `
 											<div style="
 												padding: 16px 20px;
@@ -10919,23 +10780,7 @@ const ConfigModal = ({
                         }
                         await StorageManager.importConfig(cfg);
 
-                        const settingRow = button.closest(".setting-row");
-                        let resultContainer = settingRow?.nextElementSibling;
-
-                        if (
-                          !resultContainer ||
-                          !resultContainer.id ||
-                          resultContainer.id !== "export-result-container"
-                        ) {
-                          // 결과 컨테이너가 없으면 생성
-                          resultContainer = document.createElement("div");
-                          resultContainer.id = "export-result-container";
-                          resultContainer.style.cssText = "margin-top: -1px;";
-                          settingRow?.parentNode?.insertBefore(
-                            resultContainer,
-                            settingRow.nextSibling
-                          );
-                        }
+                        const resultContainer = getSettingsResultContainer(button, "export-result-container");
 
                         resultContainer.innerHTML = `<div style="
 													padding: 16px 20px;
@@ -10973,23 +10818,7 @@ const ConfigModal = ({
                           delay: 1500,
                         });
                       } catch (e) {
-                        const settingRow = button.closest(".setting-row");
-                        let resultContainer = settingRow?.nextElementSibling;
-
-                        if (
-                          !resultContainer ||
-                          !resultContainer.id ||
-                          resultContainer.id !== "export-result-container"
-                        ) {
-                          // 결과 컨테이너가 없으면 생성
-                          resultContainer = document.createElement("div");
-                          resultContainer.id = "export-result-container";
-                          resultContainer.style.cssText = "margin-top: -1px;";
-                          settingRow?.parentNode?.insertBefore(
-                            resultContainer,
-                            settingRow.nextSibling
-                          );
-                        }
+                        const resultContainer = getSettingsResultContainer(button, "export-result-container");
                         resultContainer.innerHTML = `
 											<div style="
 												padding: 16px 20px;
@@ -11083,22 +10912,7 @@ const ConfigModal = ({
                   const blob = new Blob([json], { type: "application/json" });
                   await Utils.saveBlobAs(blob, fileName, saveTarget);
 
-                  const settingRow = button.closest(".setting-row");
-                  let resultContainer = settingRow?.nextElementSibling;
-
-                  if (
-                    !resultContainer ||
-                    !resultContainer.id ||
-                    resultContainer.id !== "db-export-result-container"
-                  ) {
-                    resultContainer = document.createElement("div");
-                    resultContainer.id = "db-export-result-container";
-                    resultContainer.style.cssText = "margin-top: -1px;";
-                    settingRow?.parentNode?.insertBefore(
-                      resultContainer,
-                      settingRow.nextSibling
-                    );
-                  }
+                  const resultContainer = getSettingsResultContainer(button, "db-export-result-container");
 
                   resultContainer.innerHTML = `<div style="
                     padding: 16px 20px;
@@ -11127,22 +10941,7 @@ const ConfigModal = ({
                     </div>
                   </div>`;
                 } catch (e) {
-                  const settingRow = button.closest(".setting-row");
-                  let resultContainer = settingRow?.nextElementSibling;
-
-                  if (
-                    !resultContainer ||
-                    !resultContainer.id ||
-                    resultContainer.id !== "db-export-result-container"
-                  ) {
-                    resultContainer = document.createElement("div");
-                    resultContainer.id = "db-export-result-container";
-                    resultContainer.style.cssText = "margin-top: -1px;";
-                    settingRow?.parentNode?.insertBefore(
-                      resultContainer,
-                      settingRow.nextSibling
-                    );
-                  }
+                  const resultContainer = getSettingsResultContainer(button, "db-export-result-container");
                   resultContainer.innerHTML = `
                     <div style="
                       padding: 16px 20px;
@@ -11222,22 +11021,7 @@ const ConfigModal = ({
                         const data = JSON.parse(contents);
                         await DBExportManager.importAllDBs(data);
 
-                        const settingRow = button.closest(".setting-row");
-                        let resultContainer = settingRow?.nextElementSibling;
-
-                        if (
-                          !resultContainer ||
-                          !resultContainer.id ||
-                          resultContainer.id !== "db-import-result-container"
-                        ) {
-                          resultContainer = document.createElement("div");
-                          resultContainer.id = "db-import-result-container";
-                          resultContainer.style.cssText = "margin-top: -1px;";
-                          settingRow?.parentNode?.insertBefore(
-                            resultContainer,
-                            settingRow.nextSibling
-                          );
-                        }
+                        const resultContainer = getSettingsResultContainer(button, "db-import-result-container");
 
                         resultContainer.innerHTML = `<div style="
                           padding: 16px 20px;
@@ -11274,22 +11058,7 @@ const ConfigModal = ({
                           delay: 1500,
                         });
                       } catch (e) {
-                        const settingRow = button.closest(".setting-row");
-                        let resultContainer = settingRow?.nextElementSibling;
-
-                        if (
-                          !resultContainer ||
-                          !resultContainer.id ||
-                          resultContainer.id !== "db-import-result-container"
-                        ) {
-                          resultContainer = document.createElement("div");
-                          resultContainer.id = "db-import-result-container";
-                          resultContainer.style.cssText = "margin-top: -1px;";
-                          settingRow?.parentNode?.insertBefore(
-                            resultContainer,
-                            settingRow.nextSibling
-                          );
-                        }
+                        const resultContainer = getSettingsResultContainer(button, "db-import-result-container");
                         resultContainer.innerHTML = `
                           <div style="
                             padding: 16px 20px;
@@ -11366,22 +11135,7 @@ const ConfigModal = ({
                 button.textContent = I18n.t("settingsAdvanced.resetSettings.reset.processing");
                 button.disabled = true;
 
-                const settingRow = button.closest(".setting-row");
-                let resultContainer = settingRow?.nextElementSibling;
-
-                if (
-                  !resultContainer ||
-                  !resultContainer.id ||
-                  resultContainer.id !== "reset-result-container"
-                ) {
-                  resultContainer = document.createElement("div");
-                  resultContainer.id = "reset-result-container";
-                  resultContainer.style.cssText = "margin-top: -1px;";
-                  settingRow?.parentNode?.insertBefore(
-                    resultContainer,
-                    settingRow.nextSibling
-                  );
-                }
+                const resultContainer = getSettingsResultContainer(button, "reset-result-container");
 
                 try {
                   // localStorage에서 ivLyrics 관련 모든 항목 제거
@@ -12713,25 +12467,7 @@ const ConfigModal = ({
                 button.disabled = true;
 
                 // setting-row 다음에 결과 컨테이너 찾기/생성
-                const settingRow = button.closest(".setting-row");
-                let resultContainer = settingRow?.nextElementSibling;
-
-                if (
-                  !resultContainer ||
-                  !resultContainer.id ||
-                  resultContainer.id !== "update-result-container"
-                ) {
-                  // 결과 컨테이너가 없으면 생성
-                  resultContainer = document.createElement("div");
-                  resultContainer.id = "update-result-container";
-                  resultContainer.style.cssText = "margin-top: -1px;";
-                  settingRow?.parentNode?.insertBefore(
-                    resultContainer,
-                    settingRow.nextSibling
-                  );
-                  // 이전 형제 요소에 클래스 추가 (CSS :has() 대체)
-                  settingRow?.classList.add("has-update-result");
-                }
+                const resultContainer = getSettingsResultContainer(button, "update-result-container", "has-update-result");
 
                 if (resultContainer) resultContainer.innerHTML = "";
 

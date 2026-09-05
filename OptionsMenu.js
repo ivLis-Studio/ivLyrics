@@ -3019,102 +3019,6 @@ function openLocalLyricsLrclibSearchModal({ trackInfo, onApplyLocalLyrics }) {
   });
 }
 
-// Debounce handle for adjustments modal
-let adjustmentsDebounceTimeout = null;
-
-// Define static options as a function to support i18n (called at render time)
-const getStaticOptions = () => ({
-  modeBase: {
-    none: I18n.t("translationMenu.none"),
-  },
-  geminiModes: {
-    gemini_romaji: I18n.t("translationMenu.geminiRomaji"),
-    gemini_ko: I18n.t("translationMenu.geminiKo"),
-  },
-  languageModes: {
-    japanese: {
-      furigana: I18n.t("translationMenu.furigana"),
-      romaji: I18n.t("translationMenu.romaji"),
-      hiragana: I18n.t("translationMenu.hiragana"),
-      katakana: I18n.t("translationMenu.katakana"),
-    },
-    korean: {
-      romaja: I18n.t("translationMenu.romaji"),
-    },
-    chinese: {
-      cn: I18n.t("translationMenu.simplifiedChinese"),
-      hk: I18n.t("translationMenu.traditionalChineseHK"),
-      tw: I18n.t("translationMenu.traditionalChineseTW"),
-      pinyin: I18n.t("translationMenu.pinyin"),
-    },
-    // Gemini-powered languages
-    russian: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-    vietnamese: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-    german: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-    swedish: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-    spanish: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-    french: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-    italian: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-    portuguese: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-    dutch: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-    polish: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-    turkish: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-    arabic: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-    hindi: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-    thai: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-    indonesian: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-    malay: {
-      gemini_romaji: I18n.t("translationMenu.romajiGemini"),
-      gemini_ko: I18n.t("translationMenu.koGemini"),
-    },
-  },
-});
-
 const TranslationMenu = react.memo(({ friendlyLanguage, hasTranslation }) => {
   // Open modal on click instead of ContextMenu to avoid xpui hook errors
   const open = () => {
@@ -3145,9 +3049,6 @@ const TranslationMenu = react.memo(({ friendlyLanguage, hasTranslation }) => {
       `translation-mode-2:${modeKey} =`,
       CONFIG.visual[`translation-mode-2:${modeKey}`]
     );
-
-    const STATIC_OPTIONS = getStaticOptions();
-    let modeOptions = STATIC_OPTIONS.geminiModes;
 
     // 감지된 언어를 사용자 친화적인 이름으로 변환
     const getDisplayLanguageName = (lang) => {
@@ -3204,9 +3105,6 @@ const TranslationMenu = react.memo(({ friendlyLanguage, hasTranslation }) => {
         value: I18n.t("menu.pronunciationNotationIpa") || "International Phonetic Alphabet (IPA)",
       },
     ];
-
-    // 현재 트랙 URI 가져오기
-    const currentTrackUri = Spicetify.Player.data?.item?.uri || "";
 
     // 지원되는 언어 목록
     const supportedLanguages = [

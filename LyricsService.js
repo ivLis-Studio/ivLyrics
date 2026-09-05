@@ -10753,44 +10753,9 @@
                 Spicetify.Player.addEventListener('songchange', this._songChangeListener);
             }
         },
-        teardownOffsetListener: {
-            value: function () {
-                if (!this._offsetListenerSetup) return;
-                this._offsetListenerSetup = false;
-
-                if (this._storageListener) {
-                    window.removeEventListener('storage', this._storageListener);
-                    this._storageListener = null;
-                }
-                if (this._delayChangedListener) {
-                    window.removeEventListener('ivLyrics:delay-changed', this._delayChangedListener);
-                    this._delayChangedListener = null;
-                }
-                if (this._offsetChangedListener) {
-                    window.removeEventListener('ivLyrics:offset-changed', this._offsetChangedListener);
-                    window.removeEventListener('ivLyrics:global-offset-changed', this._offsetChangedListener);
-                    this._offsetChangedListener = null;
-                }
-                if (this._lyricsReadyListener) {
-                    window.removeEventListener('ivLyrics:lyrics-ready', this._lyricsReadyListener);
-                    this._lyricsReadyListener = null;
-                }
-                if (this._visibilityChangeListener) {
-                    document.removeEventListener('visibilitychange', this._visibilityChangeListener);
-                    this._visibilityChangeListener = null;
-                }
-                if (this._focusListener) {
-                    window.removeEventListener('focus', this._focusListener);
-                    this._focusListener = null;
-                }
-                if (this._songChangeListener && typeof Spicetify.Player?.removeEventListener === 'function') {
-                    try {
-                        Spicetify.Player.removeEventListener('songchange', this._songChangeListener);
-                    } catch (e) { }
-                    this._songChangeListener = null;
-                }
-            }
-        },
+        // Reuse the same lifecycle code while retaining own method descriptors and
+        // the independent worker/listener state declared above.
+        teardownOffsetListener: { value: OverlaySender.teardownOffsetListener },
         startProgressSync: {
             value: function () {
                 if (this._worker) return;
@@ -10894,100 +10859,11 @@
                 this._worker.postMessage('start');
             }
         },
-        stopProgressSync: {
-            value: function () {
-                if (!this._worker) return;
-                cleanupWorker(this._worker);
-                this._worker = null;
-                this._isSendingProgress = false;
-                this._lastProgressUri = null;
-            }
-        },
-        scheduleConnectionCheck: {
-            value: function () {
-                if (this._connectionCheckTimer) {
-                    clearTimeout(this._connectionCheckTimer);
-                }
-
-                if (!this.enabled) {
-                    this._connectionCheckTimer = null;
-                    return;
-                }
-
-                this._connectionCheckTimer = setTimeout(() => {
-                    this._connectionCheckTimer = null;
-                    this.checkConnection();
-                }, 1000);
-            }
-        },
-        syncRuntimeState: {
-            value: function () {
-                const enabled = !!this.enabled;
-                if (this._runtimeEnabledState === enabled) {
-                    return;
-                }
-
-                this._runtimeEnabledState = enabled;
-                if (enabled) {
-                    this.startProgressSync();
-                    this.setupOffsetListener();
-                    this.scheduleConnectionCheck();
-                    scheduleSenderBootstrap();
-                } else {
-                    this.stopProgressSync();
-                    this.teardownOffsetListener();
-                    clearSettingsPolling(this);
-                    this.lastSentUri = null;
-                    this.lastSentLyrics = null;
-                    this.lastSentOffset = null;
-                    this._lastSentDedupeToken = null;
-                    this.lastDeliveredUri = null;
-                    this._deliveryGeneration += 1;
-                    this._deliveryKey = null;
-                    this._terminalDeliveryFailure = null;
-                    this._pendingLyricsSend = null;
-                    this._lastTrackInfo = null;
-                    this._lastLyrics = null;
-                    this._offsetCache = {};
-                    this.isConnected = false;
-                }
-            }
-        },
-        setupRuntimeListener: {
-            value: function () {
-                if (this._runtimeListenerSetup) return;
-                this._runtimeListenerSetup = true;
-
-                this._runtimeStorageListener = () => {
-                    this.syncRuntimeState();
-                };
-                this._runtimeEventListener = () => {
-                    this.syncRuntimeState();
-                };
-
-                window.addEventListener('storage', this._runtimeStorageListener);
-                window.addEventListener('ivLyrics', this._runtimeEventListener);
-            }
-        },
-        teardownRuntimeListener: {
-            value: function () {
-                if (!this._runtimeListenerSetup) return;
-                this._runtimeListenerSetup = false;
-
-                if (this._runtimeStorageListener) {
-                    window.removeEventListener('storage', this._runtimeStorageListener);
-                    this._runtimeStorageListener = null;
-                }
-                if (this._runtimeEventListener) {
-                    window.removeEventListener('ivLyrics', this._runtimeEventListener);
-                    this._runtimeEventListener = null;
-                }
-                if (this._connectionCheckTimer) {
-                    clearTimeout(this._connectionCheckTimer);
-                    this._connectionCheckTimer = null;
-                }
-            }
-        },
+        stopProgressSync: { value: OverlaySender.stopProgressSync },
+        scheduleConnectionCheck: { value: OverlaySender.scheduleConnectionCheck },
+        syncRuntimeState: { value: OverlaySender.syncRuntimeState },
+        setupRuntimeListener: { value: OverlaySender.setupRuntimeListener },
+        teardownRuntimeListener: { value: OverlaySender.teardownRuntimeListener },
         checkConnection: {
             value: async function () {
                 if (!this.enabled) return false;
@@ -11018,14 +10894,7 @@
                 helperDebug('[lyricsHelperSender] Initialized in Extension');
             }
         },
-        destroy: {
-            value: function () {
-                this.stopProgressSync();
-                this.teardownOffsetListener();
-                this.teardownRuntimeListener();
-                clearSettingsPolling(this);
-            }
-        }
+        destroy: { value: OverlaySender.destroy }
     });
 
 

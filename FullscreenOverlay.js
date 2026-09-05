@@ -1543,6 +1543,21 @@ const FullscreenOverlay = (() => {
         );
     };
 
+    const renderQueueItem = (track, key, onTrackClick) => react.createElement("div", {
+        key,
+        className: "fullscreen-queue-item",
+        onClick: () => onTrackClick(track)
+    },
+        track.image && react.createElement("img", {
+            src: track.image,
+            className: "fullscreen-queue-item-image"
+        }),
+        react.createElement("div", { className: "fullscreen-queue-item-info" },
+            react.createElement("div", { className: "fullscreen-queue-item-title" }, track.title),
+            react.createElement("div", { className: "fullscreen-queue-item-artist" }, track.artist)
+        )
+    );
+
     // Queue Panel Component - 오른쪽 hover 시 재생 대기열 표시
     const QueuePanel = ({ show, isFullscreen }) => {
         const [isHovered, setIsHovered] = useState(false);
@@ -1825,20 +1840,7 @@ const FullscreenOverlay = (() => {
                             ),
                             react.createElement("div", { className: "fullscreen-queue-list" },
                                 upNextTracks.map((track, idx) =>
-                                    react.createElement("div", {
-                                        key: track.key || `next-${track.uid || track.uri || idx}`,
-                                        className: "fullscreen-queue-item",
-                                        onClick: () => handleTrackClick(track)
-                                    },
-                                        track.image && react.createElement("img", {
-                                            src: track.image,
-                                            className: "fullscreen-queue-item-image"
-                                        }),
-                                        react.createElement("div", { className: "fullscreen-queue-item-info" },
-                                            react.createElement("div", { className: "fullscreen-queue-item-title" }, track.title),
-                                            react.createElement("div", { className: "fullscreen-queue-item-artist" }, track.artist)
-                                        )
-                                    )
+                                    renderQueueItem(track, track.key || `next-${track.uid || track.uri || idx}`, handleTrackClick)
                                 )
                             )
                         ),
@@ -1850,20 +1852,7 @@ const FullscreenOverlay = (() => {
                             ),
                             react.createElement("div", { className: "fullscreen-queue-list" },
                                 recommendedTracks.map((track, idx) =>
-                                    react.createElement("div", {
-                                        key: track.key || `recommended-${track.uid || track.uri || idx}`,
-                                        className: "fullscreen-queue-item",
-                                        onClick: () => handleTrackClick(track)
-                                    },
-                                        track.image && react.createElement("img", {
-                                            src: track.image,
-                                            className: "fullscreen-queue-item-image"
-                                        }),
-                                        react.createElement("div", { className: "fullscreen-queue-item-info" },
-                                            react.createElement("div", { className: "fullscreen-queue-item-title" }, track.title),
-                                            react.createElement("div", { className: "fullscreen-queue-item-artist" }, track.artist)
-                                        )
-                                    )
+                                    renderQueueItem(track, track.key || `recommended-${track.uid || track.uri || idx}`, handleTrackClick)
                                 )
                             )
                         ),
@@ -1876,20 +1865,7 @@ const FullscreenOverlay = (() => {
                         // 최근 재생 곡들
                         recentTracks.length > 0 ? react.createElement("div", { className: "fullscreen-queue-list" },
                             recentTracks.map((track, idx) =>
-                                react.createElement("div", {
-                                    key: `recent-${idx}`,
-                                    className: "fullscreen-queue-item",
-                                    onClick: () => handleTrackClick(track)
-                                },
-                                    track.image && react.createElement("img", {
-                                        src: track.image,
-                                        className: "fullscreen-queue-item-image"
-                                    }),
-                                    react.createElement("div", { className: "fullscreen-queue-item-info" },
-                                        react.createElement("div", { className: "fullscreen-queue-item-title" }, track.title),
-                                        react.createElement("div", { className: "fullscreen-queue-item-artist" }, track.artist)
-                                    )
-                                )
+                                renderQueueItem(track, `recent-${idx}`, handleTrackClick)
                             )
                         ) : react.createElement("div", { className: "fullscreen-queue-empty" },
                             I18n.t("fullscreen.queue.noRecent")

@@ -1777,6 +1777,26 @@ ${JSON.stringify(payload)}`;
             }
         }
 
+        // Keep each request's prompt, callbacks and result handling inside the
+        // attempt so failures at any of those stages still try the next addon.
+        async _runProviderFallback(providers, method, type, attempt, onAllFailed = null) {
+            let lastError = null;
+            for (const addon of providers) {
+                if (typeof addon[method] !== 'function') continue;
+                try {
+                    return await attempt(addon);
+                } catch (error) {
+                    console.warn(`[AIAddonManager] Provider ${addon.id} failed for ${method}:`, error.message);
+                    lastError = error;
+                }
+            }
+
+            if (onAllFailed) onAllFailed();
+            const errorMsg = lastError?.message || this._t('aiProviders.allProvidersFailed', 'All AI providers failed to process the request.');
+            this.emit('ai:request:error', { type, error: errorMsg });
+            throw new Error(errorMsg);
+        }
+
         /**
          * 모든 AI 제공자가 공유하는 가사 번역 시스템 프롬프트 생성
          * @param {Object} params - { text, lang, translationStyle }
@@ -2368,50 +2388,34 @@ ${normalizedText}
             // 이벤트 발생
             this.emit('ai:request:start', { type: 'metadata', providers: providers.map(p => p.id), params });
 
-            let lastError = null;
-
-            for (const addon of providers) {
-                if (typeof addon.translateMetadata !== 'function') continue;
-
-                try {
-                    window.__ivLyricsDebugLog?.(`[AIAddonManager] Trying metadata provider: ${addon.id}`);
-                    const result = await this._callProvider(addon, 'translateMetadata', {
+            return this._runProviderFallback(providers, 'translateMetadata', 'metadata', async (addon) => {
+                window.__ivLyricsDebugLog?.(`[AIAddonManager] Trying metadata provider: ${addon.id}`);
+                const result = await this._callProvider(addon, 'translateMetadata', {
+                    ...params,
+                    metadataPrompt: this.buildMetadataTranslationPrompt({
                         ...params,
-                        metadataPrompt: this.buildMetadataTranslationPrompt({
-                            ...params,
-                            providerId: addon.id
-                        })
-                    });
+                        providerId: addon.id
+                    })
+                });
 
-                    // 디버그 타이머 종료
-                    if (window.AddonDebug?.isEnabled()) {
-                        window.AddonDebug.timeEnd('ai', 'translateMetadata');
-                    }
-
-                    // 이벤트 발생
-                    this.emit('ai:request:success', { type: 'metadata', provider: addon.id });
-
-                    return result;
-                } catch (e) {
-                    console.warn(`[AIAddonManager] Provider ${addon.id} failed for translateMetadata:`, e.message);
-                    lastError = e;
-
-                    // 다음 provider 시도
-                    continue;
+                // 디버그 타이머 종료
+                if (window.AddonDebug?.isEnabled()) {
+                    window.AddonDebug.timeEnd('ai', 'translateMetadata');
                 }
-            }
 
-            // 모든 provider 실패
-            console.error('[AIAddonManager] All metadata providers failed');
+                // 이벤트 발생
+                this.emit('ai:request:success', { type: 'metadata', provider: addon.id });
 
-            if (window.AddonDebug?.isEnabled()) {
-                window.AddonDebug.timeEnd('ai', 'translateMetadata');
-                window.AddonDebug.error('ai', 'translateMetadata all providers failed');
-            }
+                return result;
+            }, () => {
+                // 모든 provider 실패
+                console.error('[AIAddonManager] All metadata providers failed');
 
-            const errorMsg = lastError?.message || this._t('aiProviders.allProvidersFailed', 'All AI providers failed to process the request.');
-            this.emit('ai:request:error', { type: 'metadata', error: errorMsg });
-            throw new Error(errorMsg);
+                if (window.AddonDebug?.isEnabled()) {
+                    window.AddonDebug.timeEnd('ai', 'translateMetadata');
+                    window.AddonDebug.error('ai', 'translateMetadata all providers failed');
+                }
+            });
         }
 
         /**
@@ -3187,39 +3191,25 @@ ${normalizedText}
                 params: { ...params, lines: '[...]' }
             });
 
-            let lastError = null;
+            return this._runProviderFallback(providers, 'generateLyricsStudy', 'lyricsStudy', async (addon) => {
+                window.__ivLyricsDebugLog?.(`[AIAddonManager] Trying lyrics study provider: ${addon.id}`);
+                const result = await this._callProvider(addon, 'generateLyricsStudy', {
+                    ...params,
+                    lyricsStudyPrompt: this.buildLyricsStudyPrompt(params)
+                });
 
-            for (const addon of providers) {
-                if (typeof addon.generateLyricsStudy !== 'function') continue;
-
-                try {
-                    window.__ivLyricsDebugLog?.(`[AIAddonManager] Trying lyrics study provider: ${addon.id}`);
-                    const result = await this._callProvider(addon, 'generateLyricsStudy', {
-                        ...params,
-                        lyricsStudyPrompt: this.buildLyricsStudyPrompt(params)
-                    });
-
-                    if (window.AddonDebug?.isEnabled()) {
-                        window.AddonDebug.timeEnd('ai', 'generateLyricsStudy');
-                    }
-
-                    this.emit('ai:request:success', { type: 'lyricsStudy', provider: addon.id });
-                    return result;
-                } catch (e) {
-                    console.warn(`[AIAddonManager] Provider ${addon.id} failed for generateLyricsStudy:`, e.message);
-                    lastError = e;
-                    continue;
+                if (window.AddonDebug?.isEnabled()) {
+                    window.AddonDebug.timeEnd('ai', 'generateLyricsStudy');
                 }
-            }
 
-            if (window.AddonDebug?.isEnabled()) {
-                window.AddonDebug.timeEnd('ai', 'generateLyricsStudy');
-                window.AddonDebug.error('ai', 'generateLyricsStudy all providers failed');
-            }
-
-            const errorMsg = lastError?.message || this._t('aiProviders.allProvidersFailed', 'All AI providers failed to process the request.');
-            this.emit('ai:request:error', { type: 'lyricsStudy', error: errorMsg });
-            throw new Error(errorMsg);
+                this.emit('ai:request:success', { type: 'lyricsStudy', provider: addon.id });
+                return result;
+            }, () => {
+                if (window.AddonDebug?.isEnabled()) {
+                    window.AddonDebug.timeEnd('ai', 'generateLyricsStudy');
+                    window.AddonDebug.error('ai', 'generateLyricsStudy all providers failed');
+                }
+            });
         }
 
         /**
@@ -3244,41 +3234,29 @@ ${normalizedText}
                 params: { ...params, lines: '[...]' }
             });
 
-            let lastError = null;
-            for (const addon of providers) {
-                if (typeof addon.generateCulturalAnnotations !== 'function') continue;
-
-                try {
-                    if (typeof params?.onProviderLoading === 'function') {
-                        params.onProviderLoading({
-                            providerId: addon.id,
-                            providerName: addon.name || addon.id
-                        });
-                    }
-                    window.__ivLyricsDebugLog?.(`[AIAddonManager] Trying cultural annotations provider: ${addon.id}`);
-                    const result = normalizeCulturalAnnotationsResult(
-                        await this._callProvider(addon, 'generateCulturalAnnotations', {
-                            ...params,
-                            culturalAnnotationsPrompt: this.buildCulturalAnnotationsPrompt({
-                                ...params,
-                                providerId: addon.id
-                            })
-                        }),
-                        params?.lines,
-                        addon.id
-                    );
-
-                    this.emit('ai:request:success', { type: 'culturalAnnotations', provider: addon.id });
-                    return result;
-                } catch (error) {
-                    console.warn(`[AIAddonManager] Provider ${addon.id} failed for generateCulturalAnnotations:`, error.message);
-                    lastError = error;
+            return this._runProviderFallback(providers, 'generateCulturalAnnotations', 'culturalAnnotations', async (addon) => {
+                if (typeof params?.onProviderLoading === 'function') {
+                    params.onProviderLoading({
+                        providerId: addon.id,
+                        providerName: addon.name || addon.id
+                    });
                 }
-            }
+                window.__ivLyricsDebugLog?.(`[AIAddonManager] Trying cultural annotations provider: ${addon.id}`);
+                const result = normalizeCulturalAnnotationsResult(
+                    await this._callProvider(addon, 'generateCulturalAnnotations', {
+                        ...params,
+                        culturalAnnotationsPrompt: this.buildCulturalAnnotationsPrompt({
+                            ...params,
+                            providerId: addon.id
+                        })
+                    }),
+                    params?.lines,
+                    addon.id
+                );
 
-            const errorMsg = lastError?.message || this._t('aiProviders.allProvidersFailed', 'All AI providers failed to process the request.');
-            this.emit('ai:request:error', { type: 'culturalAnnotations', error: errorMsg });
-            throw new Error(errorMsg);
+                this.emit('ai:request:success', { type: 'culturalAnnotations', provider: addon.id });
+                return result;
+            });
         }
 
         /**
