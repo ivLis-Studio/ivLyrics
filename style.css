@@ -5603,6 +5603,11 @@ ruby rt {
   padding: 50vh 0 50vh;
 }
 
+/* Give standard fullscreen lyrics equal breathing room on both sides. */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active:not(:is(.tv-mode-active, .portrait-mode, .fullscreen-single-column, .fullscreen-focus-active, .fullscreen-no-lyrics, .marketplace-active)) > :is(.lyrics-lyricsContainer-SyncedLyricsPage, .lyrics-lyricsContainer-UnsyncedLyricsPage) {
+  padding-inline: 64px;
+}
+
 /* Center within the visible space beside the album, rather than the grid's
    second half. Absolute positioning keeps lyric width out of album sizing. */
 .lyrics-lyricsContainer-LyricsContainer.fullscreen-active[data-album-centered-lyrics="true"]:not(:is(.tv-mode-active, .portrait-mode, .fullscreen-single-column, .fullscreen-focus-active, .fullscreen-no-lyrics, .marketplace-active)) > :is(.lyrics-lyricsContainer-SyncedLyricsPage, .lyrics-lyricsContainer-UnsyncedLyricsPage) {
@@ -5615,7 +5620,6 @@ ruby rt {
   max-width: none !important;
   min-width: 0;
   margin: 0 !important;
-  padding-inline: 40px;
   scrollbar-gutter: stable both-edges;
 }
 
