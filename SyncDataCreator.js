@@ -139,6 +139,47 @@ const getSyncCreatorPreviewProgressIndex = (chars, currentTimeSec) => {
 	}
 	return -1;
 };
+const buildSyncCreatorPlaybackTimeline = (lyricsLines, syncData, sourceLines) => {
+	const timings = new Map();
+	const source = (Array.isArray(sourceLines) ? sourceLines : []).filter(line => (
+		typeof line?.text === 'string' && line.text.trim()
+	));
+	const normalizedSource = normalizeSyncCreatorStandaloneParentheticalLines(source.map(line => line.text).join('\n'))
+		.split('\n').map((text, index) => ({ text: text.trim(), startTime: source[index]?.startTime })).filter(line => line.text);
+	// Only use LRCLIB timing when it belongs to this exact lyric text/order.
+	if (normalizedSource.length === lyricsLines.length && normalizedSource.every((line, index) => line.text === lyricsLines[index])) {
+		normalizedSource.forEach((line, index) => {
+			if (Number.isFinite(line.startTime) && line.startTime >= 0) timings.set(index, line.startTime);
+		});
+	}
+	const indexesByStart = new Map();
+	let offset = 0;
+	lyricsLines.forEach((line, index) => { indexesByStart.set(offset, index); offset += Array.from(line).length; });
+	for (const line of Array.isArray(syncData?.lines) ? syncData.lines : []) {
+		const index = indexesByStart.get(line.start);
+		if (index === undefined) continue;
+		let firstTime = Infinity;
+		for (const chars of [line.chars, ...(line.parallel?.parts || []).map(part => part.chars)]) {
+			for (const time of Array.isArray(chars) ? chars : []) {
+				if (typeof time === 'number' && Number.isFinite(time) && time >= 0) firstTime = Math.min(firstTime, time);
+			}
+		}
+		if (Number.isFinite(firstTime)) timings.set(index, firstTime * 1000);
+	}
+	return [...timings].map(([lineIndex, startTime]) => ({ lineIndex, startTime }))
+		.sort((left, right) => left.startTime - right.startTime || left.lineIndex - right.lineIndex);
+};
+const getSyncCreatorPlaybackLineIndex = (timeline, positionMs) => {
+	if (!timeline.length || !Number.isFinite(positionMs) || positionMs < 0) return -1;
+	let low = 0;
+	let high = timeline.length;
+	while (low < high) {
+		const middle = Math.floor((low + high) / 2);
+		if (timeline[middle].startTime <= positionMs) low = middle + 1;
+		else high = middle;
+	}
+	return low > 0 ? timeline[low - 1].lineIndex : 0;
+};
 const countSyncCreatorRangeChars = (ranges) => (Array.isArray(ranges) ? ranges : []).reduce((sum, range) => {
 	const start = Number(range?.start);
 	const end = Number(range?.end);
@@ -2865,6 +2906,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const lastPaintedPlaybackIndexRef = useRef(-1);
 	const preventNextTrackRef = useRef(false);
 	const hasAutoLoadedLyricsRef = useRef(false);
+	const pendingPlaybackNavigationRef = useRef(true);
 	const providerRef = useRef(provider);
 	const selectedLrclibSourceRef = useRef(selectedLrclibSource);
 	const customSpeakerMetaMemoryRef = useRef(new Map());
@@ -2901,6 +2943,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		return sessionClientRevisionRef.current;
 	}, []);
 	const claimSessionForLocalEditing = useCallback(() => {
+		pendingPlaybackNavigationRef.current = false;
 		// Once the user starts editing, no pending or newly scheduled automatic
 		// recovery may replace the live editor state.
 		sessionAutoRecoveryBlockedRef.current = true;
@@ -3162,13 +3205,23 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const buildSyntheticLrclibResult = useCallback((candidate) => {
 		const text = getLrclibCandidateText(candidate);
 		const lines = buildLineObjectsFromText(text);
+		const timedSource = String(candidate?.syncedLyrics || '').split('\n')
+			.filter(line => stripLrclibTimestamp(line));
+		const timedLines = normalizeSyncCreatorStandaloneParentheticalLines(timedSource.map(stripLrclibTimestamp).join('\n'))
+			.split('\n').map((text, index) => {
+				const line = { text: text.trim() };
+				const match = timedSource[index]?.trim().match(/^\[(\d+):(\d+(?:[.,]\d+)?)\]/);
+				return match ? { ...line, startTime: (Number(match[1]) * 60 + Number(match[2].replace(',', '.'))) * 1000 } : line;
+			}).filter(line => line.text);
+		const syncedLines = timedLines.length === lines.length && timedLines.every((line, index) => line.text === lines[index].text)
+			? timedLines : lines;
 		return {
 			provider: 'lrclib',
 			lrclibSource: buildLrclibSyncSource(candidate),
-			synced: candidate?.preferredLyricsSource === 'synced' ? lines : null,
+			synced: candidate?.preferredLyricsSource === 'synced' ? syncedLines : null,
 			unsynced: lines
 		};
-	}, [buildLineObjectsFromText, buildLrclibSyncSource, getLrclibCandidateText]);
+	}, [buildLineObjectsFromText, buildLrclibSyncSource, getLrclibCandidateText, stripLrclibTimestamp]);
 
 	const clearLrclibCandidateState = useCallback(() => {
 		setLrclibCandidates([]);
@@ -3182,6 +3235,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	), []);
 	const beginSyncCreatorSourceChange = useCallback(() => {
 		const sourceChangeRequestId = ++sessionSourceChangeRequestRef.current;
+		pendingPlaybackNavigationRef.current = true;
 		const latestRecord = latestSessionRecordRef.current;
 		if (sessionAutosaveTimerRef.current) {
 			clearTimeout(sessionAutosaveTimerRef.current);
@@ -4695,6 +4749,24 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		void loadLyrics();
 	}, [loadLyrics]);
 
+	const playbackTimeline = useMemo(() => {
+		const linesByStart = new Map((syncData?.lines || []).map(line => [line.start, line]));
+		return buildSyncCreatorPlaybackTimeline(lyricsLines, syncData, lyrics?.synced)
+			.filter(entry => !isLineCoveredByMergedPrevious(entry.lineIndex, linesByStart));
+	}, [lyricsLines, syncData, lyrics?.synced, isLineCoveredByMergedPrevious]);
+
+	// Resolve once the asynchronous source/timing load (or vocal choice) is ready.
+	useEffect(() => {
+		if (!pendingPlaybackNavigationRef.current || isLoading || !lyricsText || pendingMultiVocalDecision) return;
+		pendingPlaybackNavigationRef.current = false;
+		const pos = Number(Spicetify.Player?.getProgress?.());
+		const lineIndex = getSyncCreatorPlaybackLineIndex(playbackTimeline, pos);
+		if (lineIndex >= 0) {
+			setCurrentLineIndex(lineIndex);
+			if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
+		}
+	}, [isLoading, lyricsText, playbackTimeline, pendingMultiVocalDecision]);
+
 	// 재생 위치 업데이트 + 미리보기 자동 줄 이동
 	useEffect(() => {
 		let lastCommittedPosition = -1;
@@ -4715,22 +4787,11 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				setPosition(pos);
 			}
 
-			if (mode === 'preview' && syncData && syncData.lines) {
-				const currentTimeSec = pos / 1000;
-
-				for (let i = syncData.lines.length - 1; i >= 0; i--) {
-					const lineData = syncData.lines[i];
-					if (lineData.chars && lineData.chars[0] <= currentTimeSec) {
-						const lineIdx = lineIndexByStart.get(lineData.start) ?? -1;
-
-						if (lineIdx >= 0 && lineIdx !== currentLineIndex) {
-							setCurrentLineIndex(lineIdx);
-							if (lyricsScrollRef.current) {
-								lyricsScrollRef.current.scrollLeft = 0;
-							}
-						}
-						break;
-					}
+			if (mode === 'preview') {
+				const lineIndex = getSyncCreatorPlaybackLineIndex(playbackTimeline, pos);
+				if (lineIndex >= 0 && lineIndex !== currentLineIndex) {
+					setCurrentLineIndex(lineIndex);
+					if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
 				}
 			}
 		};
@@ -4749,7 +4810,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				positionUpdateTimerRef.current = null;
 			}
 		};
-	}, [mode, syncData, lineIndexByStart, currentLineIndex]);
+	}, [mode, playbackTimeline, currentLineIndex]);
 
 	const autoScroll = useCallback((charIndex) => {
 		if (!lyricsScrollRef.current || charIndex < 0) return;
@@ -7292,7 +7353,6 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				return;
 			}
 			setMode(newMode);
-			if (newMode === 'preview') Spicetify.Player.seek(0);
 			if (!Spicetify.Player.isPlaying()) Spicetify.Player.play();
 		}
 	}, [claimSessionForLocalEditing, mode, isCurrentSyncTargetMetaComplete, showMissingMetaToast]);
@@ -7399,6 +7459,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		);
 		if (!confirmed) return;
 
+		pendingPlaybackNavigationRef.current = false;
 		setCurrentLineIndex(0);
 		setSyncData(null);
 		setParallelPartMetaDrafts({});
@@ -7786,12 +7847,17 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 
 		setProviderValue(restoredProvider);
 		setAddonId(SYNC_CREATOR_SOURCE_ADDON_ID);
-		setLyrics({
+		setLyrics(previousLyrics => ({
 			provider: restoredProvider,
-			synced: restoredLines,
+			synced: options.automatic === true
+				&& previousLyrics?.provider === restoredProvider
+				&& extractLyricsText(previousLyrics?.synced) === restoredLyricsText
+				&& String(previousLyrics?.lrclibSource?.lrclibId || '') === String(record.lrclibSource?.lrclibId || '')
+					? previousLyrics.synced : restoredLines,
 			unsynced: restoredLines,
+			lrclibSource: record.lrclibSource || undefined,
 			karaokeSource: record.karaokeSource || undefined
-		});
+		}));
 		setLyricsText(restoredLyricsText);
 		setSyncData(restoredSyncData);
 		setSelectedLrclibSourceValue(record.lrclibSource || null);
@@ -7799,6 +7865,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			? ''
 			: String(record.lrclibSource.lrclibId));
 		setSelectedLrclibCandidateKey(String(editor.selectedLrclibCandidateKey || ''));
+		pendingPlaybackNavigationRef.current = options.automatic === true;
 		setCurrentLineIndex(restoredLineIndex);
 		setActiveParallelPartId(String(editor.activeParallelPartId || 'full'));
 		setMultiVocalMode(editor.multiVocalMode === true);
@@ -7852,6 +7919,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	}, [
 		announceHistoryStatus,
 		clearRecordingLock,
+		extractLyricsText,
 		setProviderValue,
 		setRecordingProgressIndex,
 		setSelectedLrclibSourceValue,
