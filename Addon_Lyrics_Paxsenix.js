@@ -27,7 +27,7 @@
     const getEndpointLabel = value => String(value || '').split('://').pop().replace(/\/$/, '');
     const CATALOG_SEARCH_HOST = new URL(ENDPOINTS.catalogSearch).hostname;
     const ATTRIBUTION = `Lyrics via Lyrically API (${ENDPOINTS.homepage}).`;
-    const CACHE_VERSION = 'paxsenix-provider-v15';
+    const CACHE_VERSION = 'paxsenix-provider-v16';
     const REQUEST_TIMEOUT_MS = 9000;
     const PROVIDER_TIMEOUT_MS = 12000;
     const JAPANESE_LINE_SPLIT_TRIGGER_WIDTH = 22;
@@ -934,7 +934,6 @@
                 ?? (Number.isFinite(nextStart) ? nextStart : startTime + 3000);
 
             if (durationMs > 0) endTime = Math.min(endTime, durationMs);
-            if (Number.isFinite(nextStart) && endTime > nextStart + 15000) endTime = nextStart;
             endTime = Math.max(startTime + 1, endTime);
 
             const presentation = getSpeakerPresentation(line, agentOrder);

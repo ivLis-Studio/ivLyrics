@@ -20,6 +20,7 @@ function positionHarness({sourceType = 'paxsenix', trackOffset = 0, globalOffset
   const context = vm.createContext({
     window, Spicetify: {Player: player, LocalStorage: {get: () => null}}, Event: class {constructor(type) {this.type = type;}},
     lyrics: [{startTime: 0}, {startTime: 1000}], isEnabled: true,
+    panelPlaybackTimeline: [], getPanelSingingLineIndices: () => [], setSingingLineIndices: () => {},
     currentIndex: -1, visualIndex: -1, trackOffset, globalOffset,
     karaokeSource: sourceType, pseudoKaraokeAdvanceMs: 150, PSEUDO_KARAOKE_SOURCES: new Set(['pseudo']),
     hasKaraokeTiming: true, reducePanelMotion: false, PANEL_LINE_TRANSITION_DURATION_MS: 520,
