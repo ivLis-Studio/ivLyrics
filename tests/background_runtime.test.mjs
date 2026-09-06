@@ -75,7 +75,7 @@ const createSender = ({ failWorker = false } = {}) => {
   });
   vm.runInContext(`
     const cleanupWorker = (worker) => { worker.postMessage('stop'); worker.terminate(); };
-    globalThis.sender = { enabled: true, ${serviceSource.slice(workerStart, workerEnd)} };
+    globalThis.sender = { enabled: true, isConnected: true, ${serviceSource.slice(workerStart, workerEnd)} };
   `, context);
   return { sender: context.sender, urls, workers };
 };

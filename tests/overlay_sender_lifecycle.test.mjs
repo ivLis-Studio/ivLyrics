@@ -15,7 +15,7 @@ const sharedMethods = ['teardownOffsetListener', 'stopProgressSync', 'scheduleCo
 const serial = value => JSON.parse(JSON.stringify(value));
 
 function load(text) {
-  const trace = [], timers = new Map(), workers = [], values = new Map();
+  const trace = [], timers = new Map(), workers = [], values = new Map(), pendingFetches = [];
   let nextId = 0, removePlayerThrows = false;
   const surface = name => {
     const listeners = new Map();
@@ -43,7 +43,7 @@ function load(text) {
     Utils: {getPlayerPlaybackSnapshot: () => ({uri: player.data.item.uri})},
     // Keep connection probes pending: no external transport or asynchronous
     // recovery changes interfere with the lifecycle scheduling assertions.
-    fetch: (url, options) => { trace.push(['fetch', url, JSON.parse(options.body)]); return new Promise(() => {}); },
+    fetch: (url, options) => { trace.push(['fetch', url, JSON.parse(options.body)]); return new Promise((resolve, reject) => pendingFetches.push({resolve, reject})); },
     AbortSignal: {timeout: ms => ({timeout: ms})},
   });
   vm.runInContext(section(text, '    const cleanupWorker =', '    serviceDebug("[LyricsService] Initializing')
@@ -59,7 +59,8 @@ function load(text) {
       runtimeEnabled: s._runtimeEnabledState, settingsOpen: s._isSettingsOpen})),
     listeners: [window.counts(), document.counts(), player.counts()], timers: [...timers].map(([id, t]) => [id, t.ms]),
   });
-  return {overlay, helper, window, player, trace, state, workers, values,
+  return {overlay, helper, window, player, trace, state, workers, values, pendingFetches,
+    timerCallbacks: ms => [...timers.values()].filter(timer => timer.ms === ms).map(timer => timer.fn),
     removePlayerThrows: value => { removePlayerThrows = value; },
     runTimer(ms) { const entry = [...timers].find(([, t]) => t.ms === ms); assert.ok(entry); timers.delete(entry[0]); entry[1].fn(); },
   };
@@ -68,13 +69,15 @@ function load(text) {
 function lifecycle(text) {
   const h = load(text), {overlay, helper} = h, snapshots = [];
   overlay.init(); helper.init(); overlay.init(); helper.init(); snapshots.push(h.state());
+  assert.equal(h.workers.length, 0, 'disconnected senders must not create progress workers');
+  overlay.isConnected = true; helper.isConnected = true;
   assert.equal(h.workers.length, 2, 'duplicate initialization must not create more workers');
   assert.equal(h.player.counts().songchange, 2, 'each sender owns exactly one track listener');
   assert.notStrictEqual(overlay._worker, helper._worker);
   assert.notStrictEqual(overlay._offsetCache, helper._offsetCache);
   assert.notStrictEqual(overlay._storageListener, helper._storageListener);
   helper.setSettingsOpen(true); helper.scheduleConnectionCheck(); helper.scheduleConnectionCheck();
-  assert.equal(h.state().timers.filter(([, ms]) => ms === 1000).length, 2, 'connection checks coalesce per sender');
+  assert.equal(h.state().timers.filter(([, ms]) => ms === 1000).length, 1, 'connected senders cancel probes; explicit checks still coalesce');
   helper._lastTrackInfo = {uri: 'old'}; helper._lastLyrics = [{text: 'original'}];
   helper._lastPresentationContext = {displayMode2: 'translated'}; helper._lastPresentationKey = 'presentation';
   helper.lastSentUri = 'old'; helper.lastDeliveredUri = 'old'; helper._pendingLyricsSend = {payload: 'old'};
@@ -99,6 +102,7 @@ function lifecycle(text) {
   assert.equal(helper._runtimeStorageListener, null); assert.equal(helper._runtimeEventListener, null);
   assert.strictEqual(overlay._worker, overlayWorker, 'destroy must affect only its sender');
   helper.enabled = false; helper.init(); helper.enabled = true; helper.init(); snapshots.push(h.state());
+  helper.isConnected = true;
   assert.ok(helper._worker, 'sender can resume after destroy and reinitialization');
   assert.notStrictEqual(helper._worker, overlayWorker);
   assert.equal(h.player.counts().songchange, 2);
@@ -113,6 +117,101 @@ test('overlay/helper lifecycle isolates enable, duplicate init, disable, songcha
   if (baseline) assert.deepEqual(actual, lifecycle(baseline));
 });
 
+test('connection loss stops only its worker and reconnect resumes exactly once', () => {
+  const h = load(source);
+  h.overlay.init(); h.helper.init();
+  h.overlay.isConnected = true; h.helper.isConnected = true;
+  const previous = h.helper._worker;
+  h.helper.isConnected = false;
+  assert.equal(previous.terminated, true);
+  assert.equal(h.helper._worker, null);
+  assert.ok(h.overlay._worker);
+  assert.equal(h.state().timers.filter(([, ms]) => ms === 5000).length, 1);
+  h.helper.isConnected = true; h.helper.isConnected = true;
+  assert.equal(h.workers.length, 3);
+  assert.equal(h.state().timers.filter(([, ms]) => ms === 5000).length, 0);
+  h.overlay.enabled = false; h.helper.enabled = false;
+  assert.ok(h.workers.every(worker => worker.terminated));
+});
+
+test('late probes and progress responses cannot revive a destroyed or replaced sender runtime', async () => {
+  for (const senderName of ['overlay', 'helper']) {
+    for (const method of ['checkConnection', 'sendToEndpoint']) {
+      for (const outcome of ['success', 'failure', 'rejected']) {
+        for (const reinitialize of [false, true]) {
+          const h = load(source), sender = h[senderName]; sender.init();
+          const request = method === 'checkConnection' ? sender.checkConnection()
+            : sender.sendToEndpoint('/lyrics/progress', {position: 123, isPlaying: false});
+          sender.destroy();
+          if (reinitialize) { sender.init(); sender.isConnected = true; }
+          const before = h.state(), traceCount = h.trace.length;
+          if (outcome === 'rejected') h.pendingFetches[0].reject(Error('old request'));
+          else h.pendingFetches[0].resolve({ok: outcome === 'success', text: async () => 'old failure'});
+          await request;
+          assert.deepEqual(h.state(), before, `${senderName}/${method}/${outcome} must preserve replacement state`);
+          assert.equal(h.trace.length, traceCount, 'stale transport must not emit recovery events or schedule work');
+        }
+      }
+    }
+  }
+});
+
+test('late error-body reads and queued recovery callbacks preserve the new runtime', async () => {
+  for (const senderName of ['overlay', 'helper']) {
+    const h = load(source), sender = h[senderName]; sender.init(); sender.isConnected = true;
+    const oldRecovery = [...h.timerCallbacks(100), ...h.timerCallbacks(150)];
+    let finishBody;
+    const request = sender.sendToEndpoint('/lyrics/progress', {position: 123});
+    h.pendingFetches[0].resolve({ok: false, text: () => new Promise(resolve => { finishBody = resolve; })});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(typeof finishBody, 'function');
+    sender.destroy();
+    assert.equal(sender._connectionRecoveryTimer, null);
+    assert.equal(sender._connectionRecoveryBootstrapTimer, null);
+    assert.equal(h.state().timers.length, 0, 'destroy cancels both recovery timers');
+    sender.init(); sender.isConnected = true;
+    const before = h.state(), traceCount = h.trace.length;
+    for (const callback of oldRecovery) callback(); // Already dequeued before clearTimeout.
+    finishBody('late response body'); await request;
+    assert.deepEqual(h.state(), before);
+    assert.equal(h.trace.length, traceCount);
+  }
+});
+
+test('disable/re-enable invalidates probes while the other sender remains live', async () => {
+  const h = load(source); h.overlay.init(); h.helper.init(); h.overlay.isConnected = true;
+  const overlayWorker = h.overlay._worker;
+  const request = h.helper.checkConnection();
+  h.helper.enabled = false; h.helper.enabled = true;
+  const before = h.state();
+  h.pendingFetches[0].resolve({ok: true}); await request;
+  assert.deepEqual(h.state(), before);
+  assert.strictEqual(h.overlay._worker, overlayWorker);
+  assert.notEqual(h.helper._runtimeGeneration, h.overlay._runtimeGeneration, 'epochs belong to each sender');
+});
+
+test('paused progress is deduplicated without losing heartbeat, seek, track or queue changes', async () => {
+  const h = load(source), sent = [];
+  Object.defineProperty(h.helper, 'sendToEndpoint', {value: async (endpoint, payload) => { sent.push([endpoint, payload]); return true; }});
+  const payload = {position: 1000, isPlaying: false, nextTrack: null};
+  await h.helper.sendProgressPayload('/lyrics/progress', payload, 'one');
+  for (let i = 0; i < 20; i++) await h.helper.sendProgressPayload('/lyrics/progress', payload, 'one');
+  assert.equal(sent.length, 1);
+  h.helper._lastProgressSentAt -= 2000;
+  await h.helper.sendProgressPayload('/lyrics/progress', payload, 'one');
+  assert.equal(sent.length, 2, 'heartbeat arrives before receiver timeout');
+  await h.helper.sendProgressPayload('/lyrics/progress', {...payload, position: 5000}, 'one');
+  await h.helper.sendProgressPayload('/lyrics/progress', payload, 'two');
+  await h.helper.sendProgressPayload('/lyrics/progress', {...payload, nextTrack: {title: 'next'}}, 'two');
+  assert.equal(sent.length, 5);
+  for (let i = 0; i < 4; i++) await h.helper.sendProgressPayload('/lyrics/progress', {...payload, isPlaying: true}, 'two');
+  assert.equal(sent.length, 9, 'playing keeps all 250ms anchors');
+  assert.equal(h.overlay._lastProgressPayloadKey, undefined, 'helper dedupe state stays independent');
+  h.helper.stopProgressSync();
+  await h.helper.sendProgressPayload('/lyrics/progress', payload, 'one');
+  assert.equal(sent.length, 10);
+});
+
 test('helper reuses lifecycle methods without changing its own property descriptors or state isolation', () => {
   const after = load(source);
   for (const name of sharedMethods) {
@@ -122,7 +221,8 @@ test('helper reuses lifecycle methods without changing its own property descript
     assert.strictEqual(after.helper[name], after.overlay[name]);
   }
   for (const name of ['_worker', '_offsetCache', '_settingsTimer', '_pendingLyricsSend', '_deliveryGeneration',
-    '_storageListener', '_songChangeListener', '_runtimeStorageListener', '_runtimeEventListener']) {
+    '_storageListener', '_songChangeListener', '_runtimeStorageListener', '_runtimeEventListener',
+    '_runtimeGeneration', '_connectionRecoveryTimer', '_connectionRecoveryBootstrapTimer']) {
     assert.equal(Object.getOwnPropertyDescriptor(after.helper, name)?.writable, true, `${name} must remain independently writable`);
   }
   if (baseline) assert.deepEqual(Object.getOwnPropertyNames(after.helper), Object.getOwnPropertyNames(load(baseline).helper));

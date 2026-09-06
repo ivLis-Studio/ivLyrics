@@ -9510,6 +9510,9 @@
         _lastReqId: 0,
         _pendingLyricsSend: null,
         _lyricsSendActive: false,
+        _runtimeGeneration: 0,
+        _connectionRecoveryTimer: null,
+        _connectionRecoveryBootstrapTimer: null,
 
         // 포트 설정 (localStorage에 저장)
         get port() {
@@ -9570,6 +9573,7 @@
         set isConnected(value) {
             const wasConnected = this._isConnected;
             this._isConnected = value;
+            this.syncProgressConnection();
 
             window.dispatchEvent(new CustomEvent('ivLyrics:overlay-connection', {
                 detail: { connected: value }
@@ -9585,6 +9589,9 @@
         },
 
         handleConnectionRecovery() {
+            const runtimeGeneration = this._runtimeGeneration;
+            if (!this.isRuntimeRequestCurrent(runtimeGeneration) || !this.isConnected) return;
+            this.clearConnectionRecovery();
             // 가사 요청 자체가 연결을 복구한 경우 현재 큐가 성공 상태를 기록하므로
             // 여기서 같은 payload를 다시 예약하지 않는다.
             if (this._lyricsSendActive) return;
@@ -9596,7 +9603,9 @@
                 if (failure.reconnectUsed) return;
                 failure.reconnectUsed = true;
                 const { generation, key } = failure;
-                setTimeout(() => {
+                this._connectionRecoveryTimer = setTimeout(() => {
+                    if (!this.isRuntimeRequestCurrent(runtimeGeneration) || !this.isConnected) return;
+                    this._connectionRecoveryTimer = null;
                     const currentFailure = this._terminalDeliveryFailure;
                     if (!this.enabled || !currentFailure
                         || currentFailure.generation !== generation
@@ -9610,24 +9619,49 @@
                 return;
             }
 
-            setTimeout(() => this.resendWithNewOffset('reconnect'), 100);
-            scheduleSenderBootstrap(150);
+            this._connectionRecoveryTimer = setTimeout(() => {
+                if (!this.isRuntimeRequestCurrent(runtimeGeneration) || !this.isConnected) return;
+                this._connectionRecoveryTimer = null;
+                this.resendWithNewOffset('reconnect');
+            }, 100);
+            this._connectionRecoveryBootstrapTimer = setTimeout(() => {
+                if (!this.isRuntimeRequestCurrent(runtimeGeneration) || !this.isConnected) return;
+                this._connectionRecoveryBootstrapTimer = null;
+                scheduleSenderBootstrap(0);
+            }, 150);
+        },
+
+        isRuntimeRequestCurrent(generation, port = this.port) {
+            return this._runtimeListenerSetup && this.enabled
+                && this._runtimeGeneration === generation && this.port === port;
+        },
+
+        clearConnectionRecovery() {
+            if (this._connectionRecoveryTimer !== null) clearTimeout(this._connectionRecoveryTimer);
+            if (this._connectionRecoveryBootstrapTimer !== null) clearTimeout(this._connectionRecoveryBootstrapTimer);
+            this._connectionRecoveryTimer = null;
+            this._connectionRecoveryBootstrapTimer = null;
         },
 
         async checkConnection() {
             if (!this.enabled) return false;
+            const runtimeGeneration = this._runtimeGeneration;
+            const port = this.port;
+            if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
 
             try {
-                const response = await fetch(`http://localhost:${this.port}/progress`, {
+                const response = await fetch(`http://localhost:${port}/progress`, {
                     method: 'POST',
                     mode: 'cors',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ position: 0, isPlaying: false }),
                     signal: AbortSignal.timeout(1000)
                 });
+                if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
                 this.isConnected = response.ok;
                 return this.isConnected;
             } catch (e) {
+                if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
                 this.isConnected = false;
                 return false;
             }
@@ -9648,11 +9682,14 @@
 
         async sendToEndpoint(endpoint, data) {
             if (!this.enabled) return;
+            const runtimeGeneration = this._runtimeGeneration;
+            const port = this.port;
+            if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
 
             const isProgressEndpoint = endpoint === '/progress' || endpoint === '/lyrics/progress';
 
             try {
-                const response = await fetch(`http://localhost:${this.port}${endpoint}`, {
+                const response = await fetch(`http://localhost:${port}${endpoint}`, {
                     method: 'POST',
                     mode: 'cors',
                     headers: { 'Content-Type': 'application/json' },
@@ -9660,11 +9697,13 @@
                     signal: AbortSignal.timeout(2000)
                 });
 
+                if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
                 if (!response.ok) {
                     let responseDetail = '';
                     try {
                         responseDetail = await response.text();
                     } catch (e) { }
+                    if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
                     if (this._isConnected) {
                         this.isConnected = false;
                     }
@@ -9684,6 +9723,7 @@
                 }
                 return true;
             } catch (e) {
+                if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
                 if (this._isConnected) {
                     this.isConnected = false;
                 }
@@ -10039,9 +10079,43 @@
             );
         },
 
+        syncProgressConnection() {
+            // An in-flight probe may resolve after destroy. Only the installed
+            // runtime may create another worker or reconnect timer.
+            if (!this._runtimeListenerSetup) {
+                this.stopProgressSync();
+                return;
+            }
+            if (this.isConnected && this.enabled) {
+                if (this._connectionCheckTimer) clearTimeout(this._connectionCheckTimer);
+                this._connectionCheckTimer = null;
+                this.startProgressSync();
+            } else {
+                this.clearConnectionRecovery();
+                this.stopProgressSync();
+                if (this.enabled) this.scheduleConnectionCheck(5000);
+            }
+        },
+
+        async sendProgressPayload(endpoint, payload, trackUri) {
+            const runtimeGeneration = this._runtimeGeneration;
+            const worker = this._worker;
+            const key = JSON.stringify([trackUri, payload]);
+            const now = Date.now();
+            // Receivers hide stale data after five seconds. Retain a two-second
+            // heartbeat, while sending pause, seek, queue and track changes now.
+            if (!payload.isPlaying && key === this._lastProgressPayloadKey
+                && now - this._lastProgressSentAt < 2000) return;
+            if (await this.sendToEndpoint(endpoint, payload)
+                && runtimeGeneration === this._runtimeGeneration && worker === this._worker) {
+                this._lastProgressPayloadKey = key;
+                this._lastProgressSentAt = now;
+            }
+        },
+
         startProgressSync() {
             if (this._worker) return;
-            if (!this.enabled) return;
+            if (!this.enabled || !this.isConnected) return;
 
             const blob = new Blob([`
               let interval = null;
@@ -10082,6 +10156,7 @@
                 }
 
                 this._isSendingProgress = true;
+                const sendingWorker = this._worker;
                 try {
                     const playbackSnapshot = Utils.getPlayerPlaybackSnapshot();
                     const progressTiming = normalizeOverlayProgressTiming(
@@ -10128,7 +10203,7 @@
                         }
                     } catch (e) { }
 
-                    await this.sendToEndpoint('/progress', {
+                    await this.sendProgressPayload('/progress', {
                         trackUri: currentUri || null,
                         position: position,
                         isPlaying: getOverlayProgressIsPlaying(),
@@ -10136,9 +10211,9 @@
                         remaining: remaining,
                         currentTrack: currentTrack,
                         nextTrack: nextTrack
-                    });
+                    }, currentUri);
                 } finally {
-                    this._isSendingProgress = false;
+                    if (this._worker === sendingWorker) this._isSendingProgress = false;
                 }
             };
 
@@ -10146,6 +10221,8 @@
         },
 
         stopProgressSync() {
+            this._lastProgressPayloadKey = null;
+            this._lastProgressSentAt = 0;
             if (!this._worker) return;
             cleanupWorker(this._worker);
             this._worker = null;
@@ -10285,20 +10362,22 @@
             }
         },
 
-        scheduleConnectionCheck() {
+        scheduleConnectionCheck(delay = 1000) {
             if (this._connectionCheckTimer) {
                 clearTimeout(this._connectionCheckTimer);
             }
 
-            if (!this.enabled) {
+            const runtimeGeneration = this._runtimeGeneration;
+            if (!this.isRuntimeRequestCurrent(runtimeGeneration)) {
                 this._connectionCheckTimer = null;
                 return;
             }
 
             this._connectionCheckTimer = setTimeout(() => {
+                if (!this.isRuntimeRequestCurrent(runtimeGeneration)) return;
                 this._connectionCheckTimer = null;
                 this.checkConnection();
-            }, 1000);
+            }, delay);
         },
 
         syncRuntimeState() {
@@ -10308,6 +10387,8 @@
             }
 
             this._runtimeEnabledState = enabled;
+            this._runtimeGeneration += 1;
+            this.clearConnectionRecovery();
             if (enabled) {
                 this.startProgressSync();
                 this.setupOffsetListener();
@@ -10335,6 +10416,7 @@
 
         setupRuntimeListener() {
             if (this._runtimeListenerSetup) return;
+            this._runtimeGeneration += 1;
             this._runtimeListenerSetup = true;
 
             this._runtimeStorageListener = () => {
@@ -10375,10 +10457,26 @@
         },
 
         destroy() {
+            if (this._runtimeListenerSetup || this._initialized) {
+                this._runtimeGeneration += 1;
+                this._deliveryGeneration += 1;
+            }
+            this._pendingLyricsSend = null;
+            this._deliveryKey = null;
+            this._terminalDeliveryFailure = null;
+            this._lastSentDedupeToken = null;
+            this.lastSentUri = null;
+            this.lastSentLyrics = null;
+            this.lastSentOffset = null;
+            this.lastDeliveredUri = null;
+            this.clearConnectionRecovery();
             this.stopProgressSync();
             this.teardownOffsetListener();
             this.teardownRuntimeListener();
             clearSettingsPolling(this);
+            this._isConnected = false;
+            this._initialized = false;
+            this._runtimeEnabledState = undefined;
         }
     };
 
@@ -10414,10 +10512,15 @@
         _worker: { value: null, writable: true },
         _isSendingProgress: { value: false, writable: true },
         _lastProgressUri: { value: null, writable: true },
+        _lastProgressPayloadKey: { value: null, writable: true },
+        _lastProgressSentAt: { value: 0, writable: true },
         _reqId: { value: 0, writable: true },
         _lastReqId: { value: 0, writable: true },
         _pendingLyricsSend: { value: null, writable: true },
         _lyricsSendActive: { value: false, writable: true },
+        _runtimeGeneration: { value: 0, writable: true },
+        _connectionRecoveryTimer: { value: null, writable: true },
+        _connectionRecoveryBootstrapTimer: { value: null, writable: true },
         _initialized: { value: false, writable: true },
         _offsetListenerSetup: { value: false, writable: true },
         _runtimeListenerSetup: { value: false, writable: true },
@@ -10477,6 +10580,7 @@
             set(value) {
                 const wasConnected = this._isConnected;
                 this._isConnected = value;
+                this.syncProgressConnection();
 
                 window.dispatchEvent(new CustomEvent('ivLyrics:lyrics-helper-connection', {
                     detail: { connected: value }
@@ -10759,7 +10863,7 @@
         startProgressSync: {
             value: function () {
                 if (this._worker) return;
-                if (!this.enabled) return;
+                if (!this.enabled || !this.isConnected) return;
 
                 const blob = new Blob([`
                   let interval = null;
@@ -10797,6 +10901,7 @@
                     }
 
                     this._isSendingProgress = true;
+                    const sendingWorker = this._worker;
                     try {
                         const playbackSnapshot = Utils.getPlayerPlaybackSnapshot();
                         const progressTiming = normalizeOverlayProgressTiming(
@@ -10843,16 +10948,16 @@
                         } catch (e) { }
 
                         // 새로운 엔드포인트 사용: /lyrics/progress
-                        await this.sendToEndpoint('/lyrics/progress', {
+                        await this.sendProgressPayload('/lyrics/progress', {
                             position: position,
                             isPlaying: getOverlayProgressIsPlaying(),
                             duration: duration,
                             remaining: remaining,
                             currentTrack: currentTrack,
                             nextTrack: nextTrack
-                        });
+                        }, currentUri);
                     } finally {
-                        this._isSendingProgress = false;
+                        if (this._worker === sendingWorker) this._isSendingProgress = false;
                     }
                 };
 
@@ -10867,19 +10972,24 @@
         checkConnection: {
             value: async function () {
                 if (!this.enabled) return false;
+                const runtimeGeneration = this._runtimeGeneration;
+                const port = this.port;
+                if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
 
                 try {
                     // /lyrics/progress 엔드포인트로 연결 확인
-                    const response = await fetch(`http://localhost:${this.port}/lyrics/progress`, {
+                    const response = await fetch(`http://localhost:${port}/lyrics/progress`, {
                         method: 'POST',
                         mode: 'cors',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ position: 0, isPlaying: false }),
                         signal: AbortSignal.timeout(1000)
                     });
+                    if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
                     this.isConnected = response.ok;
                     return this.isConnected;
                 } catch (e) {
+                    if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
                     this.isConnected = false;
                     return false;
                 }
