@@ -38,6 +38,7 @@
       displayMode2: options.displayMode2 ?? null,
       detectedLanguage: options.detectedLanguage ?? null,
       translationTargetLanguage: options.translationTargetLanguage ?? null,
+      pronunciationNotation: options.pronunciationNotation ?? null,
       presentationComplete: options.presentationComplete !== false,
     };
 
