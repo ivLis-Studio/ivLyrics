@@ -126,6 +126,19 @@ const getSyncCreatorLockedPlaybackProgressIndex = (previewIndex, lockIndex, reco
 	if (!Number.isFinite(numericPreviewIndex)) return -1;
 	return Math.max(-1, Math.min(numericLockIndex, numericPreviewIndex));
 };
+const getSyncCreatorPreviewProgressIndex = (chars, currentTimeSec) => {
+	if (!Array.isArray(chars) || chars.length === 0 || !Number.isFinite(currentTimeSec)) return -1;
+	if (currentTimeSec < chars[0]) return -1;
+	for (let i = chars.length - 1; i >= 0; i--) {
+		if (currentTimeSec < chars[i]) continue;
+		if (i >= chars.length - 1) return i;
+		const currentCharTime = Number(chars[i]);
+		const nextCharTime = Number(chars[i + 1]);
+		if (!Number.isFinite(currentCharTime) || !Number.isFinite(nextCharTime) || nextCharTime <= currentCharTime) return i;
+		return i + Math.max(0, Math.min(1, (currentTimeSec - currentCharTime) / (nextCharTime - currentCharTime)));
+	}
+	return -1;
+};
 const countSyncCreatorRangeChars = (ranges) => (Array.isArray(ranges) ? ranges : []).reduce((sum, range) => {
 	const start = Number(range?.start);
 	const end = Number(range?.end);
@@ -2838,6 +2851,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const positionUpdateTimerRef = useRef(null);
 	const charTimesRef = useRef([]);
 	const charElementsRef = useRef([]);
+	const parallelPreviewElementsRef = useRef(new Map());
 	const charHitBoxesRef = useRef([]);
 	const charScrollMetricsRef = useRef([]);
 	const rtlTextRunRef = useRef(null);
@@ -3872,6 +3886,38 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	]);
 	const currentParallelParts = currentParallelData?.parts || [];
 	const hasCurrentParallelParts = currentParallelParts.length > 1;
+	const currentParallelPreviewTargets = useMemo(() => {
+		const targets = new Map();
+		for (const part of currentParallelData?.parts || []) {
+			const savedPart = currentExistingLineData?.parallel?.parts?.find(item => item.id === part.id);
+			const timingSource = hasReusableSyncCreatorParallelChars(part, part) ? part : savedPart;
+			// Re-splitting can inherit out-of-order timings from overlapping vocals.
+			const chars = hasReusableSyncCreatorParallelChars(part, timingSource)
+				&& Array.from(timingSource.chars).every((time, index, times) => (
+					isFiniteSyncCreatorTime(time) && time >= 0 && (index === 0 || time >= times[index - 1])
+				)) ? timingSource.chars : [];
+			const text = rangesToCharRefs(part.ranges, currentFullLineChars, currentLineStart).map(ref => ref.char).join('');
+			const color = getSyncCreatorSpeakerTextColor(part.speaker, part['speaker-color'], part['speaker-fallback']);
+			const preview = {
+				chars, color, mutedColor: `color-mix(in srgb, ${color} 54%, transparent)`,
+				direction: getSyncCreatorTextDirection(text), useTextRun: hasSyncCreatorRtlText(text)
+			};
+			preview.ref = (element) => {
+				if (!element) {
+					parallelPreviewElementsRef.current.delete(part.id);
+					return;
+				}
+				parallelPreviewElementsRef.current.set(part.id, {
+					...preview,
+					elements: Array.from(element.querySelectorAll('[data-iv-sync-creator-preview-index]')),
+					textRun: element.querySelector('[data-iv-sync-creator-preview-text-run]'),
+					lastIndex: -2, lastPosition: NaN
+				});
+			};
+			targets.set(part.id, preview);
+		}
+		return targets;
+	}, [currentParallelData, currentExistingLineData, currentFullLineChars, currentLineStart]);
 	const currentParentheticalLayoutCandidate = useMemo(() => {
 		if (
 			!multiVocalMode
@@ -8803,30 +8849,39 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		const chars = activeParallelPart
 			? (hasReusableSyncCreatorParallelChars(activeParallelPart, savedPart) ? savedPart.chars : null)
 			: lineData?.chars;
-		if (!lineData || !Array.isArray(chars) || chars.length === 0) return -1;
-		if (currentTimeSec < chars[0]) return -1;
-
-		for (let i = chars.length - 1; i >= 0; i--) {
-			if (currentTimeSec < chars[i]) continue;
-			if (i >= chars.length - 1) return i;
-
-			const currentCharTime = Number(chars[i]);
-			const nextCharTime = Number(chars[i + 1]);
-			if (!Number.isFinite(currentCharTime) || !Number.isFinite(nextCharTime) || nextCharTime <= currentCharTime) {
-				return i;
-			}
-
-			const ratio = Math.max(0, Math.min(1, (currentTimeSec - currentCharTime) / (nextCharTime - currentCharTime)));
-			return i + ratio;
-		}
-
-		return -1;
+		return getSyncCreatorPreviewProgressIndex(chars, currentTimeSec);
 	}, [syncLinesByStart, lineCharOffsets, activeParallelPart]);
 
 	const getPreviewProgressIndex = useCallback((lineIndex) => {
 		const progressIndex = getPreviewProgressIndexAtTime(lineIndex, position / 1000);
 		return Number.isFinite(progressIndex) ? Math.floor(progressIndex) : -1;
 	}, [getPreviewProgressIndexAtTime, position]);
+
+	const applyParallelPlaybackProgressVisual = useCallback((currentTimeSec) => {
+		// These read-only previews never share recording refs or lock state.
+		for (const preview of parallelPreviewElementsRef.current.values()) {
+			if (preview.lastPosition === currentTimeSec) continue;
+			preview.lastPosition = currentTimeSec;
+			const nextIndex = Math.floor(getSyncCreatorPreviewProgressIndex(preview.chars, currentTimeSec));
+			const previousIndex = preview.lastIndex;
+			if (previousIndex === nextIndex) continue;
+			preview.lastIndex = nextIndex;
+			if (preview.textRun) {
+				const percent = preview.chars.length > 0 ? ((nextIndex + 1) / preview.chars.length) * 100 : 0;
+				preview.textRun.style.backgroundImage = getSyncCreatorProgressGradient(
+					preview.direction, percent, preview.color, preview.mutedColor
+				);
+				continue;
+			}
+			const first = previousIndex < -1 ? 0 : Math.max(0, Math.min(previousIndex, nextIndex));
+			const last = previousIndex < -1 ? preview.elements.length - 1 : Math.max(previousIndex, nextIndex);
+			for (let i = first; i <= last && i < preview.elements.length; i++) {
+				preview.elements[i].style.background = i < preview.chars.length
+					? (i <= nextIndex ? SYNC_CREATOR_PROGRESS_BACKGROUND : SYNC_CREATOR_SYNCED_BACKGROUND)
+					: '';
+			}
+		}
+	}, []);
 
 	const applyPlaybackProgressVisual = useCallback((nextIndex) => {
 		const numericIndex = Number(nextIndex);
@@ -8925,6 +8980,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		const paint = () => {
 			if (disposed) return;
 			const pos = Number(Spicetify.Player?.getProgress?.() || 0);
+			applyParallelPlaybackProgressVisual(pos / 1000);
 			// Keep polling for seeks/resume. A paused preview needs no repeat lookup,
 			// unless another effect invalidated its paint; recording locks stay live.
 			if (mode !== 'record' && Number.isFinite(pos) && pos === lastPreviewPosition
@@ -8965,6 +9021,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		activeParallelPartId,
 		lyricsLines.length,
 		getPreviewProgressIndexAtTime,
+		applyParallelPlaybackProgressVisual,
 		applyPlaybackProgressVisual,
 		applyRecordingProgressVisual,
 		getActiveRecordingLockIndex
@@ -10210,16 +10267,11 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		const partCharRefs = rangesToCharRefs(part.ranges, currentFullLineChars, currentLineStart);
 		const partChars = partCharRefs.map(ref => ref.char);
 		const partDisplayItems = getSyncCreatorParallelPartDisplayItems(part, currentFullLineChars, currentLineStart);
-		const savedPart = currentLineData?.parallel?.parts?.find(item => item.id === part.id);
-		const syncedCount = hasReusableSyncCreatorParallelChars(part, savedPart)
-			? Math.min(savedPart.chars.length, partChars.length)
-			: 0;
+		const preview = currentParallelPreviewTargets.get(part.id);
+		const { chars: previewChars, color: partSpeakerTextColor, mutedColor: partMutedColor,
+			direction: partDirection, useTextRun: usePartTextRun } = preview;
+		const syncedCount = previewChars.length;
 		const speakerLabel = part.speaker || SYNC_CREATOR_DEFAULT_SPEAKER;
-		const partSpeakerTextColor = getSyncCreatorSpeakerTextColor(
-			speakerLabel,
-			part['speaker-color'],
-			part['speaker-fallback']
-		);
 		const isDuetSpeaker = isSyncCreatorDuetSpeaker(speakerLabel, part['speaker-fallback']);
 		const kindLabel = getSyncCreatorKindLabel(part.kind) || part.kind || SYNC_CREATOR_DEFAULT_KIND;
 		const handlePartPointerDown = (e) => {
@@ -10259,8 +10311,26 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				},
 					renderCurrentLineCharacters()
 				)
-				: react.createElement('div', { style: s.parallelStackText },
-					partDisplayItems.map((item) => {
+				: react.createElement('div', {
+					style: { ...s.parallelStackText, direction: partDirection },
+					ref: preview.ref
+				}, usePartTextRun ? react.createElement('span', {
+					'data-iv-sync-creator-preview-text-run': 'true',
+					dir: partDirection,
+					style: {
+						...s.rtlTextRun,
+						...s.parallelStackChar,
+						whiteSpace: 'pre-wrap',
+						overflowWrap: 'anywhere',
+						color: 'transparent',
+						backgroundImage: getSyncCreatorProgressGradient(
+							partDirection,
+							0,
+							partSpeakerTextColor,
+							partMutedColor
+						)
+					}
+				}, partDisplayItems.map(item => item.text || item.char || '').join('')) : partDisplayItems.map((item) => {
 						if (item.type === 'separator') {
 							return react.createElement('span', {
 								key: `${part.id}-${item.key}`,
@@ -10269,6 +10339,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 						}
 						return react.createElement('span', {
 							key: `${part.id}-${item.charIndex}`,
+							'data-iv-sync-creator-preview-index': item.charIndex,
 							style: {
 								...s.parallelStackChar,
 								...(item.charIndex < syncedCount ? s.parallelStackCharSynced : null),
