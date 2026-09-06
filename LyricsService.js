@@ -9550,6 +9550,48 @@
             this.syncRuntimeState();
         },
 
+        get trimMetadata() {
+            const stored = window.ivLyricsStoragePersistence
+                ? window.ivLyricsStoragePersistence.getItem('ivLyrics:overlay-trim-metadata')
+                : Spicetify.LocalStorage.get('ivLyrics:overlay-trim-metadata');
+            return stored === 'true';
+        },
+        set trimMetadata(value) {
+            const nextValue = !!value;
+            if (nextValue === this.trimMetadata) return;
+            if (window.ivLyricsStoragePersistence) {
+                window.ivLyricsStoragePersistence.setItem('ivLyrics:overlay-trim-metadata', String(nextValue));
+            } else {
+                Spicetify.LocalStorage.set('ivLyrics:overlay-trim-metadata', String(nextValue));
+            }
+            this.refreshMetadata();
+        },
+
+        formatMetadataText(text) {
+            if (!this.trimMetadata || !text) return text;
+            // Match FullscreenOverlay's Shorten Titles option, independently.
+            const trimmed = text
+                .replace(/\(.+?\)/g, '')
+                .replace(/\[.+?\]/g, '')
+                .replace(/\s-\s.+?$/g, '')
+                .trim();
+            return trimmed || text;
+        },
+
+        async refreshMetadata() {
+            this._lastProgressUri = null;
+            this._lastProgressPayloadKey = null;
+            if (!this.enabled || !this._lastTrackInfo || !this._lastLyrics) return;
+            // Retain the original cache so turning the option off restores it.
+            await this.sendLyrics(
+                this._lastTrackInfo,
+                this._lastLyrics,
+                true,
+                'metadata-option',
+                this._lastPresentationContext
+            );
+        },
+
         setSettingsOpen(isOpen) {
             clearSettingsPolling(this);
             this._isSettingsOpen = Boolean(isOpen);
@@ -9976,16 +10018,22 @@
                 return;
             }
 
+            const originalTitle = trackInfo.title || Spicetify.Player.data?.item?.metadata?.title || '';
+            const originalArtist = trackInfo.artist || Spicetify.Player.data?.item?.metadata?.artist_name || '';
+            const translatedMetadata = trackInfo.translatedMetadata || null;
+            const currentTitle = this.formatMetadataText(translatedMetadata?.translated?.title || originalTitle);
+            const currentArtist = this.formatMetadataText(translatedMetadata?.translated?.artist || originalArtist);
             const lyricsHash = JSON.stringify(lyricsToSend);
+            const deliveryKey = JSON.stringify([trackInfo.uri, lyricsHash, offset, currentTitle, currentArtist]);
 
             if (!forceResend &&
                 this.lastSentUri === trackInfo.uri &&
                 this.lastSentLyrics === lyricsHash &&
-                this.lastSentOffset === offset) {
+                this.lastSentOffset === offset &&
+                this._deliveryKey === deliveryKey) {
                 return;
             }
 
-            const deliveryKey = JSON.stringify([trackInfo.uri, lyricsHash, offset]);
             const isReconnectCycle = sendReason === 'reconnect';
             let deliveryGeneration = this._deliveryGeneration;
             if (!isReconnectCycle || this._deliveryKey !== deliveryKey) {
@@ -10009,15 +10057,7 @@
 
             const mappedLines = mapLyricsForSender(lyricsToSend, offset, supplementVisibility);
 
-            // 현재 트랙 정보 가져오기 (Spicetify.Player.data에서 최신 정보 사용)
-            const originalTitle = trackInfo.title || Spicetify.Player.data?.item?.metadata?.title || '';
-            const originalArtist = trackInfo.artist || Spicetify.Player.data?.item?.metadata?.artist_name || '';
             const currentAlbum = Spicetify.Player.data?.item?.metadata?.album_title || '';
-
-            // 번역된 메타데이터가 있으면 대체
-            const translatedMetadata = trackInfo.translatedMetadata || null;
-            const currentTitle = translatedMetadata?.translated?.title || originalTitle;
-            const currentArtist = translatedMetadata?.translated?.artist || originalArtist;
 
             helperDebug('[OverlaySender] 가사 전송:', {
                 lines: mappedLines.length,
@@ -10178,8 +10218,8 @@
                             let albumArt = null;
                             albumArt = resolveSpotifyImageUrl(imageUrl);
                             currentTrack = {
-                                title: currentItem?.metadata?.title || currentItem?.name || '',
-                                artist: currentItem?.metadata?.artist_name || '',
+                                title: this.formatMetadataText(currentItem?.metadata?.title || currentItem?.name || ''),
+                                artist: this.formatMetadataText(currentItem?.metadata?.artist_name || ''),
                                 album: currentItem?.metadata?.album_title || '',
                                 albumArt: albumArt
                             };
@@ -10195,8 +10235,8 @@
                                 const imageUrl = next.contextTrack.metadata.image_url || next.contextTrack.metadata.image_xlarge_url;
                                 const albumArt = resolveSpotifyImageUrl(imageUrl);
                                 nextTrack = {
-                                    title: next.contextTrack.metadata.title || '',
-                                    artist: next.contextTrack.metadata.artist_name || '',
+                                    title: this.formatMetadataText(next.contextTrack.metadata.title || ''),
+                                    artist: this.formatMetadataText(next.contextTrack.metadata.artist_name || ''),
                                     albumArt: albumArt
                                 };
                             }
@@ -10239,6 +10279,8 @@
             this._storageListener = (e) => {
                 if (e.key && e.key.startsWith('lyrics-delay:')) {
                     this.resendWithNewOffset();
+                } else if (e.key === 'ivLyrics:overlay-trim-metadata') {
+                    this.refreshMetadata();
                 }
             };
 

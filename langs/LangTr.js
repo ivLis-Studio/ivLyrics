@@ -119,6 +119,10 @@ window.LANG_TR = {
       "label": "Masaüstü Katmanını Etkinleştir",
       "desc": "Sözleri masaüstü katman uygulamasına gönder"
     },
+    "trimMetadata": {
+      "label": "Başlıkları ve sanatçı adlarını kısalt",
+      "desc": "Tam ekrandaki gibi, katmana gönderilen başlıklardan ve sanatçı adlarından parantez, köşeli parantez içindeki ve \" - \" sonrasındaki metni kaldırır. Geçerli ve sonraki parçaya uygulanır."
+    },
     "port": {
       "label": "Bağlantı Portu",
       "desc": "Katman uygulaması ile bağlantı kurulacak port numarası (1024-65535)"

@@ -119,6 +119,10 @@ window.LANG_PT = {
       "label": "Usar Overlay de Desktop",
       "desc": "Envia a letra para o aplicativo de overlay de desktop"
     },
+    "trimMetadata": {
+      "label": "Encurtar títulos e nomes de artistas",
+      "desc": "Como em tela cheia, remove o texto entre parênteses, entre colchetes e após \" - \" dos títulos e nomes de artistas enviados ao overlay. Aplica-se à faixa atual e à próxima."
+    },
     "port": {
       "label": "Porta de Conexão",
       "desc": "Número da porta para conectar ao app de overlay (1024-65535)"

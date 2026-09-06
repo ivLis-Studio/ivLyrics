@@ -119,6 +119,10 @@ window.LANG_ES = {
       "label": "Usar superposición de escritorio",
       "desc": "Envía las letras a la aplicación de superposición de escritorio"
     },
+    "trimMetadata": {
+      "label": "Acortar títulos y nombres de artistas",
+      "desc": "Como en pantalla completa, elimina el texto entre paréntesis, entre corchetes y después de \" - \" de los títulos y nombres de artistas enviados a la superposición. Se aplica a la canción actual y a la siguiente."
+    },
     "port": {
       "label": "Puerto de conexión",
       "desc": "Número de puerto para conectar con la app (1024-65535)"

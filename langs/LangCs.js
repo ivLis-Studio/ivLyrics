@@ -119,6 +119,10 @@ window.LANG_CS = {
       "label": "Povolit překrytí plochy",
       "desc": "Odešlete texty do překryvné aplikace na ploše"
     },
+    "trimMetadata": {
+      "label": "Zkrátit názvy skladeb a jména interpretů",
+      "desc": "Stejně jako v režimu celé obrazovky odstraní z názvů a jmen interpretů odesílaných do překrytí text v kulatých a hranatých závorkách a za \" - \". Platí pro aktuální i následující skladbu."
+    },
     "port": {
       "label": "Port připojení",
       "desc": "Číslo portu pro připojení k překryvné aplikaci (1024-65535)"

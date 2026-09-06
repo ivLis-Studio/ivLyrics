@@ -160,6 +160,7 @@ const ProviderSupportIconChip = ({ type, label }) =>
 // 데스크탑 오버레이 설정 컴포넌트
 const OverlaySettings = () => {
   const [enabled, setEnabled] = useState(window.OverlaySender?.enabled ?? false);
+  const [trimMetadata, setTrimMetadata] = useState(window.OverlaySender?.trimMetadata ?? false);
   const [isConnected, setIsConnected] = useState(window.OverlaySender?.isConnected ?? false);
   const [checking, setChecking] = useState(false);
   const [port, setPort] = useState(window.OverlaySender?.port ?? 15000);
@@ -197,6 +198,12 @@ const OverlaySettings = () => {
       window.OverlaySender.enabled = newValue;
       window.OverlaySender.setSettingsOpen?.(newValue);
     }
+  };
+
+  const handleTrimMetadata = (value) => {
+    if (!window.OverlaySender) return;
+    window.OverlaySender.trimMetadata = value;
+    setTrimMetadata(value);
   };
 
   // 포트 변경 핸들러
@@ -320,6 +327,30 @@ const OverlaySettings = () => {
               },
             })
           )
+        )
+      )
+    ),
+    react.createElement(
+      "div",
+      { className: "setting-row", "data-setting-key": "overlay-trim-metadata" },
+      react.createElement(
+        "div",
+        { className: "setting-row-content" },
+        react.createElement(
+          "div",
+          { className: "setting-row-left" },
+          react.createElement("div", { className: "setting-name" }, I18n.t("overlay.trimMetadata.label")),
+          react.createElement("div", { className: "setting-description" }, I18n.t("overlay.trimMetadata.desc"))
+        ),
+        react.createElement(
+          "div",
+          { className: "setting-row-right" },
+          react.createElement(ConfigSlider, {
+            name: I18n.t("overlay.trimMetadata.label"),
+            defaultValue: trimMetadata,
+            disabled: !enabled || !window.OverlaySender,
+            onChange: handleTrimMetadata
+          })
         )
       )
     ),
@@ -7140,6 +7171,14 @@ const ConfigModal = ({
       name: I18n.t("overlay.enabled.label"),
       desc: I18n.t("overlay.enabled.desc"),
       i18nKeys: ["tabs.general", "overlay.enabled.label", "overlay.enabled.desc"]
+    },
+    {
+      section: I18n.t("tabs.general"),
+      sectionKey: "general",
+      settingKey: "overlay-trim-metadata",
+      name: I18n.t("overlay.trimMetadata.label"),
+      desc: I18n.t("overlay.trimMetadata.desc"),
+      i18nKeys: ["tabs.general", "sections.desktopOverlay", "overlay.trimMetadata.label", "overlay.trimMetadata.desc"]
     },
     {
       section: I18n.t("tabs.appearance"),

@@ -119,6 +119,10 @@ window.LANG_IT = {
       "label": "Abilita overlay desktop",
       "desc": "Invia i testi all'app di overlay desktop"
     },
+    "trimMetadata": {
+      "label": "Abbrevia titoli e nomi degli artisti",
+      "desc": "Come a schermo intero, rimuove il testo tra parentesi tonde, quadre e dopo \" - \" dai titoli e dai nomi degli artisti inviati all’overlay. Si applica al brano attuale e al successivo."
+    },
     "port": {
       "label": "Porta di connessione",
       "desc": "Numero di porta per connettersi all'app overlay (1024-65535)"

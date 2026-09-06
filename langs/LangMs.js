@@ -119,6 +119,10 @@ window.LANG_MS = {
       "label": "Gunakan Tindihan Desktop",
       "desc": "Hantar lirik ke aplikasi tindihan desktop"
     },
+    "trimMetadata": {
+      "label": "Pendekkan tajuk dan nama artis",
+      "desc": "Seperti mod skrin penuh, buang teks dalam kurungan, kurungan siku dan selepas \" - \" daripada tajuk serta nama artis yang dihantar ke tindihan. Terpakai pada lagu semasa dan seterusnya."
+    },
     "port": {
       "label": "Port Sambungan",
       "desc": "Nombor port untuk disambungkan ke aplikasi tindihan (1024-65535)"

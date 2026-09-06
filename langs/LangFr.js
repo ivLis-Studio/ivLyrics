@@ -119,6 +119,10 @@ window.LANG_FR = {
       "label": "Activer l'overlay de bureau",
       "desc": "Envoie les paroles vers l'application d'overlay"
     },
+    "trimMetadata": {
+      "label": "Raccourcir les titres et noms d’artistes",
+      "desc": "Comme en plein écran, supprime le texte entre parenthèses, entre crochets et après \" - \" dans les titres et noms d’artistes envoyés à l’overlay. S’applique au morceau actuel et au suivant."
+    },
     "port": {
       "label": "Port de connexion",
       "desc": "Numéro de port pour la connexion (1024-65535)"

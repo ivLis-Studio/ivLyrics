@@ -119,6 +119,10 @@ window.LANG_DE = {
       "label": "Desktop-Overlay aktivieren",
       "desc": "Sendet Songtexte an die Desktop-Overlay-App"
     },
+    "trimMetadata": {
+      "label": "Titel und Künstlernamen kürzen",
+      "desc": "Entfernt wie im Vollbildmodus Text in runden und eckigen Klammern sowie nach \" - \" aus Titeln und Künstlernamen, die ans Overlay gesendet werden. Gilt für den aktuellen und den nächsten Titel."
+    },
     "port": {
       "label": "Verbindungsport",
       "desc": "Portnummer für die Verbindung zur Overlay-App (1024-65535)"

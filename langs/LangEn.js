@@ -119,6 +119,10 @@ window.LANG_EN = {
       "label": "Enable Desktop Overlay",
       "desc": "Send lyrics to the desktop overlay app"
     },
+    "trimMetadata": {
+      "label": "Shorten titles and artists",
+      "desc": "Remove text in parentheses, square brackets, and after ' - ' from titles and artists sent to the overlay, just like fullscreen. Applies to the current and next track."
+    },
     "port": {
       "label": "Connection Port",
       "desc": "Port number to connect with the overlay app (1024-65535)"

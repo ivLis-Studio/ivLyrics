@@ -119,6 +119,10 @@ window.LANG_SV = {
       "label": "Aktivera skrivbordsöverlägg",
       "desc": "Skicka texter till skrivbordsöverläggsappen"
     },
+    "trimMetadata": {
+      "label": "Korta titlar och artistnamn",
+      "desc": "Tar som i helskärmsläget bort text inom parenteser, hakparenteser och efter \" - \" från titlar och artistnamn som skickas till överlägget. Gäller den aktuella och nästa låten."
+    },
     "port": {
       "label": "Anslutningsport",
       "desc": "Portnummer för att ansluta till overlay-appen (1024-65535)"

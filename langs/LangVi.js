@@ -119,6 +119,10 @@ window.LANG_VI = {
       "label": "Bật lớp phủ desktop",
       "desc": "Gửi lời bài hát đến ứng dụng lớp phủ trên desktop"
     },
+    "trimMetadata": {
+      "label": "Rút gọn tên bài hát và nghệ sĩ",
+      "desc": "Giống chế độ toàn màn hình, bỏ phần chữ trong ngoặc đơn, ngoặc vuông và sau \" - \" khỏi tên bài hát và nghệ sĩ gửi đến lớp phủ. Áp dụng cho bài hiện tại và bài tiếp theo."
+    },
     "port": {
       "label": "Cổng kết nối",
       "desc": "Số cổng để kết nối với ứng dụng lớp phủ (1024-65535)"

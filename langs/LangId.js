@@ -119,6 +119,10 @@ window.LANG_ID = {
       "label": "Aktifkan Overlay Desktop",
       "desc": "Kirim lirik ke aplikasi overlay desktop"
     },
+    "trimMetadata": {
+      "label": "Persingkat judul dan nama artis",
+      "desc": "Seperti pada layar penuh, hapus teks dalam tanda kurung, kurung siku, dan setelah \" - \" dari judul dan nama artis yang dikirim ke overlay. Berlaku untuk lagu saat ini dan berikutnya."
+    },
     "port": {
       "label": "Port Koneksi",
       "desc": "Nomor port untuk terhubung dengan aplikasi overlay (1024-65535)"
