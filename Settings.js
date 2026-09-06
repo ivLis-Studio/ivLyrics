@@ -11760,17 +11760,6 @@ const ConfigModal = ({
               defaultValue: CONFIG.visual["fullscreen-artist-size"] || 24,
             },
             ...createTextOutlineSettingItems("fullscreen-artist"),
-            {
-              desc: I18n.t("settingsAdvanced.fullscreenStyle.lyricsRightMargin.desc"),
-              info: I18n.t("settingsAdvanced.fullscreenStyle.lyricsRightMargin.info"),
-              key: "fullscreen-lyrics-right-padding",
-              type: ConfigSliderRange,
-              min: 0,
-              max: 300,
-              step: 10,
-              unit: "px",
-              defaultValue: CONFIG.visual["fullscreen-lyrics-right-padding"] || 0,
-            },
           ],
           onChange: (name, value) => {
             CONFIG.visual[name] = value;

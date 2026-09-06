@@ -3125,6 +3125,8 @@ const getLyricsTypographyStyleVariables = (visual = CONFIG?.visual || {}) => {
 			visual["fullscreen-tmi-outline-color"]
 		),
 		"--lyrics-text-shadow": textShadow,
+		// Decorative karaoke glows share the shadow switch; text outlines remain independent.
+		"--lyrics-shadow-enabled": visual["text-shadow-enabled"] ? 1 : 0,
 		"--lyrics-text-drop-shadow": visual["text-shadow-enabled"]
 			? `drop-shadow(0 0 ${shadowBlur}px ${resolvedShadowColor})`
 			: "none",

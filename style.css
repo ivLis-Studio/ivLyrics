@@ -1753,7 +1753,9 @@ body.ivlyrics-page-active .main-topBar-container {
 .lyrics-lyricsContainer-LyricsContainer.highlight-mode-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine.lyrics-lyricsContainer-LyricsLine-active,
 .lyrics-lyricsContainer-LyricsContainer.highlight-mode-enabled .lyrics-lyricsContainer-SyncedScrollView .lyrics-lyricsContainer-LyricsLine.lyrics-lyricsContainer-LyricsLine-active {
   opacity: 1 !important;
-  text-shadow: 0 0 20px rgba(255, 255, 255, 0.3), 0 3px 10px rgba(0, 0, 0, 0.7);
+  text-shadow:
+    var(--lyrics-original-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
 }
 
 /* 하이라이트 모드: Unsynced 가사에도 적용 */
@@ -1764,7 +1766,9 @@ body.ivlyrics-page-active .main-topBar-container {
 
 .lyrics-lyricsContainer-LyricsContainer.highlight-mode-enabled .lyrics-lyricsContainer-UnsyncedLyricsPage .lyrics-lyricsContainer-LyricsLine.lyrics-lyricsContainer-LyricsLine-active {
   opacity: 1 !important;
-  text-shadow: 0 0 20px rgba(255, 255, 255, 0.3), 0 3px 10px rgba(0, 0, 0, 0.7);
+  text-shadow:
+    var(--lyrics-original-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
 }
 
 /* 하이라이트 모드 + 호버 효과: 마우스 올리면 밝게 */
@@ -1928,7 +1932,9 @@ body.ivlyrics-page-active .main-topBar-container {
       var(--lyrics-font-family, var(--font-family)));
   letter-spacing: var(--lyrics-original-letter-spacing, 0);
   line-height: 1.2;
-  text-shadow: var(--lyrics-text-shadow);
+  text-shadow:
+    var(--lyrics-original-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
   opacity: var(--lyrics-original-opacity, 1);
   overflow-wrap: break-word;
   margin-bottom: 32px;
@@ -1983,7 +1989,9 @@ body.ivlyrics-page-active .main-topBar-container {
   font-family: var(--lyrics-original-font-family,
       var(--lyrics-font-family, var(--font-family)));
   letter-spacing: var(--lyrics-original-letter-spacing, 0);
-  text-shadow: var(--lyrics-text-shadow);
+  text-shadow:
+    var(--lyrics-original-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
   line-height: 1;
   opacity: var(--lyrics-original-opacity, 1);
   white-space: normal;
@@ -2448,14 +2456,14 @@ div.lyrics-tabBar-headerItemLink {
     filter: brightness(calc(1 + (0.22 * var(--ivlyrics-effect-strength))));
     text-shadow:
       var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
-      0 0 0.18em rgb(255 255 255 / calc(0.34 * var(--ivlyrics-effect-strength))),
-      0 0 0.42em color-mix(in srgb, currentColor calc(100% * var(--ivlyrics-effect-strength)), transparent);
+      0 0 0.18em rgb(255 255 255 / calc(0.34 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0))),
+      0 0 0.42em color-mix(in srgb, currentColor calc(100% * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)), transparent);
   }
   58% {
     filter: brightness(calc(1 - (0.04 * var(--ivlyrics-effect-strength))));
     text-shadow:
       var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
-      0 0 0.08em rgb(255 255 255 / calc(0.16 * var(--ivlyrics-effect-strength)));
+      0 0 0.08em rgb(255 255 255 / calc(0.16 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)));
   }
 }
 
@@ -2466,10 +2474,10 @@ div.lyrics-tabBar-headerItemLink {
   50% {
     text-shadow:
       var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
-      0.07em 0.04em 0 rgb(255 255 255 / calc(0.18 * var(--ivlyrics-effect-strength))),
+      0.07em 0.04em 0 rgb(255 255 255 / calc(0.18 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0))),
       0.14em 0.08em 0.22em color-mix(
         in srgb,
-        var(--lyrics-color-active, #fff) calc(36% * var(--ivlyrics-effect-strength)),
+        var(--lyrics-color-active, #fff) calc(36% * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)),
         transparent
       );
   }
@@ -2517,17 +2525,17 @@ div.lyrics-tabBar-headerItemLink {
     filter: brightness(calc(1 + (0.08 * var(--ivlyrics-effect-strength))));
     text-shadow:
       var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
-      0 0 0.12em rgb(255 255 255 / calc(0.3 * var(--ivlyrics-effect-strength))),
-      0 0 0.48em color-mix(in srgb, var(--lyrics-color-active, #fff) calc(42% * var(--ivlyrics-effect-strength)), transparent),
-      0 0 0.76em color-mix(in srgb, var(--lyrics-color-active, #fff) calc(20% * var(--ivlyrics-effect-strength)), transparent);
+      0 0 0.12em rgb(255 255 255 / calc(0.3 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0))),
+      0 0 0.48em color-mix(in srgb, var(--lyrics-color-active, #fff) calc(42% * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)), transparent),
+      0 0 0.76em color-mix(in srgb, var(--lyrics-color-active, #fff) calc(20% * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)), transparent);
   }
   50% {
     filter: brightness(calc(1 + (0.03 * var(--ivlyrics-effect-strength))));
     text-shadow:
       var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
-      0 0 0.1em rgb(255 255 255 / calc(0.24 * var(--ivlyrics-effect-strength))),
-      0 0 0.4em color-mix(in srgb, var(--lyrics-color-active, #fff) calc(36% * var(--ivlyrics-effect-strength)), transparent),
-      0 0 0.68em color-mix(in srgb, var(--lyrics-color-active, #fff) calc(16% * var(--ivlyrics-effect-strength)), transparent);
+      0 0 0.1em rgb(255 255 255 / calc(0.24 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0))),
+      0 0 0.4em color-mix(in srgb, var(--lyrics-color-active, #fff) calc(36% * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)), transparent),
+      0 0 0.68em color-mix(in srgb, var(--lyrics-color-active, #fff) calc(16% * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)), transparent);
   }
 }
 
@@ -2540,15 +2548,15 @@ div.lyrics-tabBar-headerItemLink {
     translate: calc(-0.035em * var(--ivlyrics-effect-strength)) calc(0.01em * var(--ivlyrics-effect-strength));
     text-shadow:
       var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
-      0.045em 0 rgb(111 211 255 / calc(0.34 * var(--ivlyrics-effect-strength))),
-      -0.045em 0 rgb(255 116 172 / calc(0.3 * var(--ivlyrics-effect-strength)));
+      0.045em 0 rgb(111 211 255 / calc(0.34 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0))),
+      -0.045em 0 rgb(255 116 172 / calc(0.3 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)));
   }
   18% {
     translate: calc(0.03em * var(--ivlyrics-effect-strength)) calc(-0.01em * var(--ivlyrics-effect-strength));
     text-shadow:
       var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
-      -0.04em 0 rgb(111 211 255 / calc(0.26 * var(--ivlyrics-effect-strength))),
-      0.04em 0 rgb(255 116 172 / calc(0.28 * var(--ivlyrics-effect-strength)));
+      -0.04em 0 rgb(111 211 255 / calc(0.26 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0))),
+      0.04em 0 rgb(255 116 172 / calc(0.28 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)));
   }
   20%, 64% {
     translate: 0 0;
@@ -2558,8 +2566,8 @@ div.lyrics-tabBar-headerItemLink {
     translate: calc(0.025em * var(--ivlyrics-effect-strength)) 0;
     text-shadow:
       var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
-      0.035em 0 rgb(111 211 255 / calc(0.24 * var(--ivlyrics-effect-strength))),
-      -0.035em 0 rgb(255 116 172 / calc(0.24 * var(--ivlyrics-effect-strength)));
+      0.035em 0 rgb(111 211 255 / calc(0.24 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0))),
+      -0.035em 0 rgb(255 116 172 / calc(0.24 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)));
   }
   68% {
     translate: 0 0;
@@ -4586,9 +4594,7 @@ body:has(#lyrics-fullscreen-container) [data-tippy-root] {
 .lyrics-lyricsContainer-LyricsLine,
 /* Lyrics sub-lines base style (backwards compatibility) */
 .lyrics-lyricsContainer-LyricsLine-sub {
-  text-shadow: var(--lyrics-text-shadow,
-      0 2px 6px rgba(0, 0, 0, 0.55),
-      0 0 14px rgba(0, 0, 0, 0.45));
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent);
   -webkit-text-stroke: 0px rgba(0, 0, 0, 0.35);
   font-family: "Pretendard Variable", Pretendard, -apple-system,
     BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI",
@@ -4611,9 +4617,7 @@ body:has(#lyrics-fullscreen-container) [data-tippy-root] {
   margin-top: var(--lyrics-phonetic-spacing, 4px);
   opacity: var(--lyrics-phonetic-opacity, 0.7);
   line-height: calc(var(--lyrics-phonetic-font-size, calc(var(--lyrics-font-size) * 0.6)) * 1.3);
-  text-shadow: var(--lyrics-text-shadow,
-      0 2px 6px rgba(0, 0, 0, 0.55),
-      0 0 14px rgba(0, 0, 0, 0.45));
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent);
   -webkit-text-stroke: 0px rgba(0, 0, 0, 0.35);
   font-family: "Pretendard Variable", Pretendard, -apple-system,
     BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI",
@@ -4630,9 +4634,7 @@ body:has(#lyrics-fullscreen-container) [data-tippy-root] {
   margin-top: var(--lyrics-translation-spacing, 8px);
   opacity: var(--lyrics-translation-opacity, 0.6);
   line-height: calc(var(--lyrics-translation-font-size, calc(var(--lyrics-font-size) * 0.7)) * 1.4);
-  text-shadow: var(--lyrics-text-shadow,
-      0 2px 6px rgba(0, 0, 0, 0.55),
-      0 0 14px rgba(0, 0, 0, 0.45));
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent);
   -webkit-text-stroke: 0px rgba(0, 0, 0, 0.35);
   font-family: "Pretendard Variable", Pretendard, -apple-system,
     BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI",
@@ -4676,9 +4678,7 @@ body:has(#lyrics-fullscreen-container) [data-tippy-root] {
   overflow-wrap: anywhere;
   white-space: normal;
   text-align: var(--lyrics-align-text, center);
-  text-shadow: var(--lyrics-text-shadow,
-      0 2px 6px rgba(0, 0, 0, 0.55),
-      0 0 14px rgba(0, 0, 0, 0.45));
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent);
   transition:
     transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
     opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
@@ -4702,7 +4702,7 @@ body:has(#lyrics-fullscreen-container) [data-tippy-root] {
 }
 
 .lyrics-lyricsContainer-LyricsLine-active {
-  text-shadow: 0 3px 10px rgba(0, 0, 0, 0.7), 0 0 18px rgba(0, 0, 0, 0.65);
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent);
   -webkit-text-stroke: 0px rgba(0, 0, 0, 0.45);
 }
 
@@ -4996,7 +4996,7 @@ ruby rt {
 /* Active line furigana styling */
 .lyrics-lyricsContainer-LyricsLine-active ruby rt {
   opacity: 0.9;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent);
 }
 
 
@@ -5510,7 +5510,7 @@ ruby rt {
   height: 100vh;
   /* Reserve space for ticker */
   width: 100%;
-  padding: 0 var(--lyrics-fullscreen-right-padding, 40px) 0 40px;
+  padding: 0 40px;
   box-sizing: border-box;
   display: grid;
   grid-template-rows: 1fr 30px;
@@ -5531,7 +5531,7 @@ ruby rt {
   height: 100vh;
   /* Reserve space for ticker */
   width: 100%;
-  padding: 60px var(--lyrics-fullscreen-right-padding, 40px) 60px 40px;
+  padding: 60px 40px;
   box-sizing: border-box;
   display: block;
   overflow-y: auto;
@@ -5572,15 +5572,6 @@ ruby rt {
   height: 20px;
 }
 
-/* Reversed layout: Left padding instead of right */
-.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.layout-reversed .lyrics-lyricsContainer-SyncedLyricsPage {
-  padding: 0 40px 0 var(--lyrics-fullscreen-right-padding, 40px);
-}
-
-.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.layout-reversed .lyrics-lyricsContainer-UnsyncedLyricsPage {
-  padding: 60px 40px 60px var(--lyrics-fullscreen-right-padding, 40px);
-}
-
 /* Adjust lyrics text size and alignment in fullscreen */
 .lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-lyricsContainer-LyricsLine {
   text-align: var(--lyrics-align-text);
@@ -5599,7 +5590,7 @@ ruby rt {
 .lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-lyricsContainer-SyncedLyricsPage.scrolling-active {
   overflow-y: auto !important;
   overflow-x: hidden;
-  padding: 0 var(--lyrics-fullscreen-right-padding, 40px) 0 40px;
+  padding: 0 40px;
   margin: 0;
   width: 100%;
   max-width: none;
@@ -5607,14 +5598,25 @@ ruby rt {
   box-sizing: border-box;
 }
 
-/* Reversed layout: Scrolling mode left padding */
-.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.layout-reversed .lyrics-lyricsContainer-SyncedLyricsPage.scrolling-active {
-  padding: 0 40px 0 var(--lyrics-fullscreen-right-padding, 40px);
-}
-
 .lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-lyricsContainer-SyncedLyricsPage.scrolling-active .lyrics-lyricsContainer-SyncedScrollView {
   width: 100%;
   padding: 50vh 0 50vh;
+}
+
+/* Center within the visible space beside the album, rather than the grid's
+   second half. Absolute positioning keeps lyric width out of album sizing. */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active[data-album-centered-lyrics="true"]:not(:is(.tv-mode-active, .portrait-mode, .fullscreen-single-column, .fullscreen-focus-active, .fullscreen-no-lyrics, .marketplace-active)) > :is(.lyrics-lyricsContainer-SyncedLyricsPage, .lyrics-lyricsContainer-UnsyncedLyricsPage) {
+  position: absolute;
+  top: 0;
+  left: var(--lyrics-fullscreen-region-left, 50%);
+  right: var(--lyrics-fullscreen-region-right, 0px);
+  /* Also override the fullscreen scrolling page's ID-scoped width cap. */
+  width: auto !important;
+  max-width: none !important;
+  min-width: 0;
+  margin: 0 !important;
+  padding-inline: 40px;
+  scrollbar-gutter: stable both-edges;
 }
 
 .lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui {
@@ -9306,7 +9308,7 @@ html.is-lp-view-exit::view-transition-new(root) {
   transform: translateX(-50%);
   color: var(--spice-text, #fff);
   text-align: center;
-  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.62);
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent);
   pointer-events: none;
   contain: layout style;
 }
@@ -10699,9 +10701,7 @@ html.is-lp-view-exit::view-transition-new(root) {
       transparent);
   font-family: var(--iv-video-stage-original-font-family,
       var(--iv-vinyl-original-font-family, 'Pretendard Variable')), Pretendard, sans-serif !important;
-  text-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.62),
-    0 2px 5px rgba(0, 0, 0, 0.2) !important;
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent) !important;
 }
 
 .fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-phonetic,
@@ -10717,8 +10717,7 @@ html.is-lp-view-exit::view-transition-new(root) {
       var(--iv-video-stage-lyric-background-color, #000000)
       var(--iv-video-stage-lyric-background-opacity, 46%),
       transparent);
-  text-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.52) !important;
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent) !important;
 }
 
 .fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-culturalNote {
@@ -10733,8 +10732,7 @@ html.is-lp-view-exit::view-transition-new(root) {
       transparent);
   font-family: var(--iv-video-stage-cultural-font-family,
       var(--iv-vinyl-cultural-note-font-family, 'Pretendard Variable')), Pretendard, sans-serif !important;
-  text-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.52) !important;
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent) !important;
 }
 
 .fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-phonetic {
@@ -10767,9 +10765,7 @@ html.is-lp-view-exit::view-transition-new(root) {
 }
 
 .fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-karaoke-line {
-  filter:
-    drop-shadow(0 1px 2px rgba(0, 0, 0, 0.62))
-    drop-shadow(0 2px 5px rgba(0, 0, 0, 0.2));
+  filter: var(--lyrics-text-drop-shadow, none);
 }
 
 .fullscreen-vinyl-overlay.is-presentation-compact-vinyl:not(.has-lyric-slot) {
@@ -12409,6 +12405,8 @@ html.is-lp-view-exit::view-transition-new(root) {
 .lyrics-lyricsContainer-LyricsContainer.fullscreen-active.tv-mode-active .lyrics-lyricsContainer-SyncedLyricsPage,
 .lyrics-lyricsContainer-LyricsContainer.fullscreen-active.tv-mode-active .lyrics-lyricsContainer-UnsyncedLyricsPage {
   grid-column: 1 !important;
+  /* Keep the full-width TV lyrics centered with symmetric side padding. */
+  padding-inline: 40px;
   padding-bottom: 200px;
 }
 
@@ -18083,17 +18081,13 @@ html.is-lp-view-exit::view-transition-new(root) {
 }
 
 .lyrics-lyricsContainer-LyricsLine-active {
-  text-shadow:
-    var(--lyrics-original-outline-shadow, 0 0 0 transparent),
-    0 3px 10px rgba(0, 0, 0, 0.7),
-    0 0 18px rgba(0, 0, 0, 0.65);
+  text-shadow: var(--lyrics-original-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
 }
 
 .lyrics-lyricsContainer-LyricsLine-active > p:first-child {
-  text-shadow:
-    var(--lyrics-original-outline-shadow, 0 0 0 transparent),
-    0 3px 10px rgba(0, 0, 0, 0.7),
-    0 0 18px rgba(0, 0, 0, 0.65);
+  text-shadow: var(--lyrics-original-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
 }
 
 /* The depth blur is applied to the whole inactive line. Re-blurring dozens of
@@ -18170,8 +18164,8 @@ html.is-lp-view-exit::view-transition-new(root) {
   pointer-events: none;
 }
 
-/* A small, fixed-radius glow is painted only for currently moving glyphs.
-   Animate its opacity, leaving fill, outline and measured text boxes intact. */
+/* A small, fixed-radius glow is painted only for currently moving glyphs when
+   text shadows are enabled. Animate opacity without changing glyph geometry. */
 .lyrics-karaoke-char.is-bouncing::after,
 .lyrics-karaoke-text-run-segment.is-bouncing::after,
 .lyrics-karaoke-word.is-word-timed.is-bouncing .lyrics-karaoke-char::after {
@@ -18183,7 +18177,7 @@ html.is-lp-view-exit::view-transition-new(root) {
   -webkit-text-fill-color: transparent;
   -webkit-text-stroke: 0 transparent;
   text-shadow: 0 0 0.16em var(--lyrics-color-active);
-  opacity: var(--karaoke-motion-glow, 0);
+  opacity: calc(var(--karaoke-motion-glow, 0) * var(--lyrics-shadow-enabled, 0));
   transition: opacity 75ms linear;
   pointer-events: none;
 }
@@ -18255,9 +18249,8 @@ html.is-lp-view-exit::view-transition-new(root) {
 }
 
 .lyrics-lyricsContainer-LyricsLine-active ruby rt {
-  text-shadow:
-    var(--lyrics-furigana-outline-shadow, 0 0 0 transparent),
-    0 1px 4px rgba(0, 0, 0, 0.5);
+  text-shadow: var(--lyrics-furigana-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
 }
 
 .lyrics-break-label {
@@ -18269,9 +18262,8 @@ html.is-lp-view-exit::view-transition-new(root) {
   --lyrics-current-original-outline-shadow: var(--iv-vinyl-original-outline-shadow, 0 0 0 transparent);
   --lyrics-current-original-outline-stroke-width: var(--iv-vinyl-original-outline-stroke-width, 0px);
   --lyrics-current-original-outline-stroke-color: var(--iv-vinyl-original-outline-stroke-color, #000000);
-  text-shadow:
-    var(--iv-vinyl-original-outline-shadow, 0 0 0 transparent),
-    0 2px 18px rgba(0, 0, 0, 0.62);
+  text-shadow: var(--iv-vinyl-original-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
 }
 
 .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine .lyrics-karaoke-line {
@@ -18279,46 +18271,38 @@ html.is-lp-view-exit::view-transition-new(root) {
 }
 
 .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-phonetic {
-  text-shadow:
-    var(--iv-vinyl-phonetic-outline-shadow, 0 0 0 transparent),
-    0 2px 18px rgba(0, 0, 0, 0.62);
+  text-shadow: var(--iv-vinyl-phonetic-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
 }
 
 .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-translation {
-  text-shadow:
-    var(--iv-vinyl-translation-outline-shadow, 0 0 0 transparent),
-    0 2px 18px rgba(0, 0, 0, 0.62);
+  text-shadow: var(--iv-vinyl-translation-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
 }
 
 .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-culturalNote {
-  text-shadow:
-    var(--iv-vinyl-cultural-note-outline-shadow, 0 0 0 transparent),
-    0 2px 18px rgba(0, 0, 0, 0.62);
+  text-shadow: var(--iv-vinyl-cultural-note-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
 }
 
 .fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine > p {
-  text-shadow:
-    var(--iv-vinyl-original-outline-shadow, 0 0 0 transparent),
-    0 1px 2px rgba(0, 0, 0, 0.62),
-    0 2px 5px rgba(0, 0, 0, 0.2) !important;
+  text-shadow: var(--iv-vinyl-original-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent) !important;
 }
 
 .fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-phonetic {
-  text-shadow:
-    var(--iv-vinyl-phonetic-outline-shadow, 0 0 0 transparent),
-    0 1px 2px rgba(0, 0, 0, 0.52) !important;
+  text-shadow: var(--iv-vinyl-phonetic-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent) !important;
 }
 
 .fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-translation {
-  text-shadow:
-    var(--iv-vinyl-translation-outline-shadow, 0 0 0 transparent),
-    0 1px 2px rgba(0, 0, 0, 0.52) !important;
+  text-shadow: var(--iv-vinyl-translation-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent) !important;
 }
 
 .fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-culturalNote {
-  text-shadow:
-    var(--iv-vinyl-cultural-note-outline-shadow, 0 0 0 transparent),
-    0 1px 2px rgba(0, 0, 0, 0.52) !important;
+  text-shadow: var(--iv-vinyl-cultural-note-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent) !important;
 }
 
 .fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine > p:has(.lyrics-karaoke-line),

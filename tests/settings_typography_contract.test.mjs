@@ -113,6 +113,29 @@ const normalize = (value) => {
   return value;
 };
 
+const retiredFullscreenMarginKey = "fullscreen-lyrics-right-padding";
+const normalizeReleasedTree = (tree) => {
+  const expected = normalize(tree);
+  // The right-margin slider was intentionally retired. Keep the rest of the
+  // released tree as the oracle, including every other item and its defaults.
+  for (const element of elements(expected)) {
+    if (element.type === "[function:OptionList]" && Array.isArray(element.props.items)) {
+      element.props.items = element.props.items.filter(item => item.key !== retiredFullscreenMarginKey);
+    }
+  }
+  return expected;
+};
+
+test("fullscreen no longer exposes the right-margin slider, including with a saved value", () => {
+  for (const value of [undefined, 0, 280]) {
+    const tree = createHarness(currentSource, { [retiredFullscreenMarginKey]: value }).render("fullscreen");
+    const items = elements(tree).filter(element => element.type.name === "OptionList")
+      .flatMap(element => element.props.items || []);
+    assert.ok(items.length > 0, "fullscreen settings are rendered");
+    assert.equal(items.some(item => item.key === retiredFullscreenMarginKey), false);
+  }
+});
+
 const typographyControls = (tree) => elements(tree).flatMap((element) => {
   if (element.type.name === "OptionList") {
     return (element.props.items || []).filter((item) => /^(?:fullscreen-vinyl-)?(?:original|phonetic|translation)-/.test(item.key))
@@ -136,12 +159,12 @@ for (const tab of ["appearance", "fullscreen"]) {
       const before = createHarness(releasedSource, config);
       const after = createHarness(currentSource, config);
       const first = after.render(tab);
-      assert.deepEqual(normalize(first), normalize(before.render(tab)));
+      assert.deepEqual(normalize(first), normalizeReleasedTree(before.render(tab)));
       const next = after.render(tab);
       assert.deepEqual(elements(next).map((element) => element.type), elements(first).map((element) => element.type));
       before.setLanguage("zh-TW");
       after.setLanguage("zh-TW");
-      assert.deepEqual(normalize(after.render(tab)), normalize(before.render(tab)));
+      assert.deepEqual(normalize(after.render(tab)), normalizeReleasedTree(before.render(tab)));
     }
   });
 

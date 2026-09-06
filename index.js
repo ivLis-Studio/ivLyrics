@@ -3019,9 +3019,6 @@ const CONFIG = {
       StorageManager.getItem("ivLyrics:visual:fullscreen-artist-outline-width") || "0",
     "fullscreen-artist-outline-color":
       StorageManager.getItem("ivLyrics:visual:fullscreen-artist-outline-color") || "#000000",
-    "fullscreen-lyrics-right-padding":
-      Number(StorageManager.getItem("ivLyrics:visual:fullscreen-lyrics-right-padding")) ||
-      0,
     // Fullscreen UI elements
     "fullscreen-show-clock": StorageManager.get(
       "ivLyrics:visual:fullscreen-show-clock",
@@ -9504,7 +9501,6 @@ class LyricsContainer extends react.Component {
       ...this.styleVariables,
       ...getLyricsTypographyStyleVariables(CONFIG.visual),
       "--animation-tempo": this.state.tempo,
-      "--lyrics-fullscreen-right-padding": `${CONFIG.visual["fullscreen-lyrics-right-padding"] || 40}px`,
       "--fullscreen-tmi-font-size": (CONFIG.visual["fullscreen-tmi-font-size"] || 100) / 100,
     };
 
@@ -9721,7 +9717,6 @@ class LyricsContainer extends react.Component {
       "--highlight-inactive-opacity":
         (100 - (CONFIG.visual["highlight-intensity"] || 70)) / 100,
       "--animation-tempo": this.state.tempo,
-      "--lyrics-fullscreen-right-padding": `${CONFIG.visual["fullscreen-lyrics-right-padding"] || 40}px`,
       "--fullscreen-tmi-font-size": (CONFIG.visual["fullscreen-tmi-font-size"] || 100) / 100,
       "--iv-motion-ease-standard": "cubic-bezier(0.22, 1, 0.36, 1)",
       "--iv-motion-duration-fast": this.shouldReduceMotion() ? "1ms" : "180ms",
@@ -9746,7 +9741,8 @@ class LyricsContainer extends react.Component {
         "--lyrics-original-opacity": 1,
         "--lyrics-translation-opacity": 0,
         "--lyrics-phonetic-opacity": 0,
-        "--lyrics-text-shadow": "none",
+        "--lyrics-text-shadow": "0 0 0 transparent",
+        "--lyrics-shadow-enabled": 0,
         "--lyrics-text-drop-shadow": "none",
       };
     }
