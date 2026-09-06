@@ -172,6 +172,7 @@
         let predictedProgress = null;
         let lastSnapshot = null;
         let forceSnap = false;
+        let sampleGeneration = 0;
 
         const readContext = () => {
             const playerData = options.getPlayerData?.() || null;
@@ -466,6 +467,7 @@
             }
 
             pollPending = true;
+            const requestGeneration = sampleGeneration;
             const requestStartedAt = now();
             try {
                 const result = await options.getLocalPositionState();
@@ -473,7 +475,8 @@
                 const after = readContext();
                 if (
                     before.identityKey &&
-                    before.identityKey === after.identityKey
+                    before.identityKey === after.identityKey &&
+                    requestGeneration === sampleGeneration
                 ) {
                     const position = toFiniteNumber(result?.position ?? result);
                     if (Number.isFinite(position)) {
@@ -498,7 +501,10 @@
                 options.onError?.(error);
             } finally {
                 pollPending = false;
-                scheduleNextPoll(localSampleIntervalMs);
+                const context = readContext();
+                scheduleNextPoll(context.isLocal && context.isPlaying
+                    ? localSampleIntervalMs
+                    : idleSampleIntervalMs);
             }
         };
 
@@ -511,11 +517,13 @@
         }
 
         const invalidate = () => {
+            sampleGeneration += 1;
             localAnchor = null;
             lastStateReading = null;
             pendingStateDiscontinuity = null;
             predictedProgress = null;
             forceSnap = true;
+            if (started) scheduleNextPoll(0);
         };
 
         const handleSongChange = () => {
@@ -553,7 +561,7 @@
 
     const createSpotifyPlaybackClock = (spicetify, options = {}) => {
         const playerApi = () => spicetify?.Platform?.PlayerAPI;
-        return createPlaybackClock({
+        const clock = createPlaybackClock({
             ...options,
             getPlayerData: () => spicetify?.Player?.data || null,
             getPlayerState: () => playerApi()?._state || null,
@@ -567,6 +575,19 @@
             getLocalPositionState: () => playerApi()?._contextPlayer?.getPositionState?.({}),
             onError: options.onError || (() => {})
         });
+        const wake = () => clock.invalidate();
+        const player = spicetify?.Player;
+        for (const event of ["onplaypause", "onseek"]) {
+            player?.addEventListener?.(event, wake);
+        }
+        const destroy = clock.destroy;
+        clock.destroy = () => {
+            for (const event of ["onplaypause", "onseek"]) {
+                player?.removeEventListener?.(event, wake);
+            }
+            destroy();
+        };
+        return clock;
     };
 
     return {

@@ -6218,6 +6218,23 @@ const AnimationManager = {
 	lastTime: 0,
 	targetFPS: DEFAULT_TRACK_POSITION_FPS,
 	boundAnimate: null,
+	boundWake: null,
+	pausedSignature: null,
+	settleUntil: 0,
+	idle: false,
+	suspended: false,
+
+	wake() {
+		if (!this.active) return;
+		this.settleUntil = performance.now() + 1200;
+		this.idle = false;
+		this.lastTime = 0;
+		if (this.timerId !== null) {
+			clearTimeout(this.timerId);
+			this.timerId = null;
+		}
+		if (this.frameId === null) this.scheduleNext(false);
+	},
 
 	updateFrameInterval() {
 		this.targetFPS = getTrackPositionFPS();
@@ -6233,20 +6250,27 @@ const AnimationManager = {
 		if (!this.boundAnimate) {
 			this.boundAnimate = this.animate.bind(this);
 		}
+		if (!this.boundWake) this.boundWake = this.wake.bind(this);
+		for (const event of ["onplaypause", "songchange", "onseek"]) {
+			Spicetify.Player?.addEventListener?.(event, this.boundWake);
+		}
+		window.addEventListener("ivLyrics", this.boundWake);
+		document.addEventListener("visibilitychange", this.boundWake);
+		this.settleUntil = performance.now() + 1200;
 		this.scheduleNext(false);
 	},
 
 	scheduleNext(settingsOpen) {
 		if (!this.active) return;
 
-		if (!document.hidden && !settingsOpen && typeof requestAnimationFrame === "function") {
+		if (!document.hidden && !settingsOpen && !this.idle && typeof requestAnimationFrame === "function") {
 			this.frameId = requestAnimationFrame(this.boundAnimate);
 			return;
 		}
 
 		this.timerId = setTimeout(
 			this.boundAnimate,
-			document.hidden || settingsOpen ? 250 : this.frameInterval
+			document.hidden || settingsOpen || this.idle ? 250 : this.frameInterval
 		);
 	},
 
@@ -6261,11 +6285,20 @@ const AnimationManager = {
 		}
 		this.active = false;
 		this.lastTime = 0;
+		this.pausedSignature = null;
+		this.idle = false;
+		this.suspended = false;
+		for (const event of ["onplaypause", "songchange", "onseek"]) {
+			Spicetify.Player?.removeEventListener?.(event, this.boundWake);
+		}
+		window.removeEventListener("ivLyrics", this.boundWake);
+		document.removeEventListener("visibilitychange", this.boundWake);
 	},
 
 	addCallback(callback) {
 		this.callbacks.add(callback);
 		this.start();
+		this.wake();
 	},
 
 	removeCallback(callback) {
@@ -6284,12 +6317,39 @@ const AnimationManager = {
 			|| document.body?.classList.contains("ivlyrics-settings-open");
 		this.updateFrameInterval();
 		if (document.hidden || settingsOpen) {
+			this.suspended = true;
 			this.lastTime = 0;
 			this.scheduleNext(settingsOpen);
 			return;
 		}
 
 		const now = Number.isFinite(timestamp) ? timestamp : performance.now();
+		if (this.suspended) {
+			this.suspended = false;
+			this.settleUntil = now + 1200;
+		}
+		const player = Spicetify.Player;
+		const paused = Spicetify.Platform?.PlayerAPI?._state?.isPaused
+			?? player?.data?.isPaused
+			?? (typeof player?.isPlaying === "function" ? !player.isPlaying() : false);
+		if (paused) {
+			// Keep a low-frequency seek safety check for Spotify versions that do
+			// not emit a seek event, without running every lyric callback at rest.
+			const signature = `${player?.data?.item?.uri || ""}:${player?.getProgress?.()}`;
+			if (signature !== this.pausedSignature) {
+				this.pausedSignature = signature;
+				this.settleUntil = now + 1200;
+			}
+			this.idle = now >= this.settleUntil;
+		} else {
+			this.pausedSignature = null;
+			this.idle = false;
+		}
+		if (this.idle) {
+			this.lastTime = 0;
+			this.scheduleNext(false);
+			return;
+		}
 		const elapsed = this.lastTime > 0 ? now - this.lastTime : Infinity;
 		// requestAnimationFrame timestamps can land a fraction below the nominal
 		// interval (16.666 ms vs 16.667 ms). A small tolerance prevents an
