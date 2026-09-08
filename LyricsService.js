@@ -8011,7 +8011,47 @@
                 serviceDebug('[LyricsService] 언어 감지:', { detectedLanguage, friendlyLanguage, modeKey, mode1, mode2 });
 
                 // 5. 발음/번역 요청 (설정에 따라)
-                const translationConfigured = mode1 !== "none" || mode2 !== "none";
+                // Display slots are independent: mode 1 is not inherently
+                // pronunciation and mode 2 is not inherently translation.
+                // Keep AI mode handling available during a partial update where
+                // the shared conversion helper has not loaded yet.
+                const translationModes = window.ivLyricsTranslationModes || {};
+                const normalizeMode = typeof translationModes.normalizeMode === 'function'
+                    ? translationModes.normalizeMode
+                    : (mode) => String(mode ?? '').trim().toLowerCase();
+                const isActiveMode = typeof translationModes.isActiveMode === 'function'
+                    ? translationModes.isActiveMode
+                    : (mode) => {
+                        const normalized = normalizeMode(mode);
+                        return normalized !== '' && normalized !== 'none';
+                    };
+                const isPronunciationMode = typeof translationModes.isPronunciationMode === 'function'
+                    ? translationModes.isPronunciationMode
+                    : (mode) => new Set([
+                        'gemini_romaji', 'romaji', 'romaja', 'pinyin',
+                        'hiragana', 'katakana', 'furigana'
+                    ]).has(normalizeMode(mode));
+                const getModeTargetField = typeof translationModes.getTargetField === 'function'
+                    ? translationModes.getTargetField
+                    : (mode) => isPronunciationMode(mode) ? 'phonetic' : 'translation';
+                const isAiMode = typeof translationModes.isAiMode === 'function'
+                    ? translationModes.isAiMode
+                    : (mode) => normalizeMode(mode).startsWith('gemini');
+                const needsTraditionalConverter = typeof translationModes.needsTraditionalConverter === 'function'
+                    ? translationModes.needsTraditionalConverter
+                    : (language, mode) => {
+                        const source = String(language || '').toLowerCase().replace(/_/g, '-');
+                        const target = normalizeMode(mode);
+                        if (source === 'ja' || source.startsWith('ja-')) {
+                            return ['romaji', 'furigana', 'hiragana', 'katakana'].includes(target);
+                        }
+                        if (source === 'ko' || source.startsWith('ko-')) return target === 'romaja';
+                        const chinese = source === 'zh' || source === 'zh-hans' || source === 'zh-cn'
+                            || source === 'zh-sg' || source === 'zh-hant' || source === 'zh-tw' || source === 'zh-hk';
+                        return chinese && ['pinyin', 'cn', 'tw', 'hk'].includes(target)
+                            && !(source !== 'zh-hant' && source !== 'zh-tw' && source !== 'zh-hk' && target === 'cn');
+                    };
+                const translationConfigured = [mode1, mode2].some(isActiveMode);
                 const needsTranslation = translationConfigured && !skipTranslation;
                 // multi-vocal 라인은 각 파트를 별도 요청 줄로 펼친 뒤 다시 파트별로 매핑한다.
                 const translationRequests = lyrics.flatMap((line, lineIndex) => {
@@ -8058,125 +8098,203 @@
                     });
                 }
 
-                if (needsTranslation && window.Translator?.callGemini) {
+                const activeSlots = [
+                    { slot: 1, mode: mode1 },
+                    { slot: 2, mode: mode2 }
+                ].filter(({ mode }) => isActiveMode(mode));
+                let successfulSlots = [];
+
+                const normalizeResultLines = (result) => {
+                    if (Array.isArray(result)) {
+                        return result.map((line) => {
+                            if (line && typeof line === 'object') {
+                                return String(line.text ?? line.value ?? '');
+                            }
+                            return String(line ?? '');
+                        });
+                    }
+                    if (typeof result === 'string') {
+                        return result.replace(/\r\n?/g, '\n').split('\n');
+                    }
+                    return null;
+                };
+
+                let traditionalTranslatorPromise = null;
+                const getTraditionalTranslator = () => {
+                    if (!traditionalTranslatorPromise) {
+                        traditionalTranslatorPromise = Promise.resolve().then(() => {
+                            const Translator = window.Translator;
+                            if (typeof Translator === 'function') return new Translator(detectedLanguage);
+                            return Translator;
+                        });
+                    }
+                    return traditionalTranslatorPromise;
+                };
+
+                const processSlot = async ({ slot, mode }) => {
+                    const targetField = getModeTargetField(mode);
+                    let output;
+                    if (isAiMode(mode)) {
+                        if (typeof window.Translator?.callGemini !== 'function') {
+                            throw new Error('AI translator is not available');
+                        }
+                        const response = await window.Translator.callGemini({
+                            trackId: Utils.extractTrackId(info.uri),
+                            artist: info.artist,
+                            title: info.title,
+                            text: lyricsText,
+                            wantSmartPhonetic: targetField === 'phonetic',
+                            sourceLang: detectedLanguage || 'auto',
+                            provider
+                        });
+                        if (!isCurrentRequest()) return { stale: true };
+                        output = targetField === 'phonetic'
+                            ? response?.phonetic
+                            : (response?.translation ?? response?.vi);
+                    } else {
+                        const translator = needsTraditionalConverter(detectedLanguage, mode)
+                            ? await getTraditionalTranslator()
+                            : null;
+                        if (!isCurrentRequest()) return { stale: true };
+                        if (typeof translationModes.convertTraditional !== 'function') {
+                            throw new Error('Shared lyric conversion helper is not available');
+                        }
+                        output = await translationModes.convertTraditional({
+                            language: detectedLanguage,
+                            mode,
+                            texts: translationRequests.map(request => request.text || ''),
+                            translator
+                        });
+                        if (!isCurrentRequest()) return { stale: true };
+                    }
+
+                    const lines = normalizeResultLines(output);
+                    const outputIsComplete = lines
+                        && lines.length >= translationRequests.length
+                        && translationRequests.every((request, index) => {
+                            if (!String(request.text || '').trim()) return true;
+                            const value = String(lines[index] ?? '').trim();
+                            return !!value;
+                        });
+                    if (!outputIsComplete) {
+                        throw new Error(`Incomplete ${targetField} result`);
+                    }
+                    return { slot, mode, targetField, lines };
+                };
+
+                if (needsTranslation && activeSlots.length > 0) {
                     serviceDebug('[LyricsService] 발음/번역 요청:', { mode1, mode2 });
-
-                    try {
-                        // Gemini API를 통한 발음/번역 요청
-                        // 발음 요청 (mode1 = gemini_romaji)
-                        let pronResult = null;
-                        if (mode1 && mode1 !== 'none' && String(mode1).startsWith('gemini')) {
-                            const wantPhonetic = mode1 === 'gemini_romaji';
-                            const response = await window.Translator.callGemini({
-                                trackId: Utils.extractTrackId(info.uri),
-                                artist: info.artist,
-                                title: info.title,
-                                text: lyricsText,
-                                wantSmartPhonetic: wantPhonetic,
-                                sourceLang: detectedLanguage || 'auto',
-                                provider: provider
-                            });
-                            if (!isCurrentRequest()) return staleResult();
-                            pronResult = wantPhonetic ? response.phonetic : response.translation;
+                    // Keep slot order deterministic and stop launching later
+                    // work as soon as a stale request is observed. A failed
+                    // slot still does not block the next independent slot.
+                    const settledSlots = [];
+                    for (const slot of activeSlots) {
+                        try {
+                            const value = await processSlot(slot);
+                            settledSlots.push({ status: 'fulfilled', value });
+                            if (value?.stale) break;
+                        } catch (error) {
+                            console.warn(`[LyricsService] ${slot.mode} 처리 실패:`, error);
+                            settledSlots.push({ status: 'rejected', reason: error, mode: slot.mode });
+                            if (!isCurrentRequest()) break;
                         }
+                    }
+                    if (!isCurrentRequest()) return staleResult();
+                    successfulSlots = settledSlots
+                        .filter(result => result.status === 'fulfilled' && !result.value?.stale)
+                        .map(result => result.value);
 
-                        // 번역 요청 (mode2 = gemini_ko 등)
-                        let transResult = null;
-                        if (mode2 && mode2 !== 'none' && String(mode2).startsWith('gemini')) {
-                            const wantPhonetic = mode2 === 'gemini_romaji';
-                            const response = await window.Translator.callGemini({
-                                trackId: Utils.extractTrackId(info.uri),
-                                artist: info.artist,
-                                title: info.title,
-                                text: lyricsText,
-                                wantSmartPhonetic: wantPhonetic,
-                                sourceLang: detectedLanguage || 'auto',
-                                provider: provider
-                            });
-                            if (!isCurrentRequest()) return staleResult();
-                            transResult = wantPhonetic ? response.phonetic : response.translation;
-                        }
-
-                        // 결과 병합
-                        if (pronResult || transResult) {
-                            const pronLines = Array.isArray(pronResult) ? pronResult : (pronResult ? pronResult.split('\n') : []);
-                            const transLines = Array.isArray(transResult) ? transResult : (transResult ? transResult.split('\n') : []);
-
-                            const requestResultsByLine = new Map();
+                    if (successfulSlots.length > 0) {
+                        const requestResultsByLine = new Map();
+                        successfulSlots.forEach(({ slot, targetField, lines }) => {
                             translationRequests.forEach((request, requestIndex) => {
+                                const value = String(lines[requestIndex] ?? '').trim();
                                 const entry = {
                                     ...request,
-                                    pronText: pronLines[requestIndex]?.trim() || null,
-                                    transText: transLines[requestIndex]?.trim() || null
+                                    slot,
+                                    [`${targetField}Text`]: value || null
                                 };
                                 const entries = requestResultsByLine.get(request.lineIndex) || [];
                                 entries.push(entry);
                                 requestResultsByLine.set(request.lineIndex, entries);
                             });
+                        });
 
-                            lyrics = lyrics.map((line, idx) => {
-                                const isKaraokeLine = Array.isArray(line.syllables)
-                                    || Array.isArray(line.vocals?.lead?.syllables);
-                                const originalText = isKaraokeLine && line.originalText
-                                    ? line.originalText
-                                    : (line.text || line.originalText || '');
-                                const requestEntries = requestResultsByLine.get(idx) || [];
-                                const pronText = requestEntries.map(entry => entry.pronText).filter(Boolean).join(' / ') || null;
-                                const transText = requestEntries.map(entry => entry.transText).filter(Boolean).join(' / ') || null;
-
-                                // Determine the final original text.
-                                // If pronText exists, the current 'text' is the original.
-                                // If pronText doesn't exist, but line.originalText exists, use that.
-                                // Otherwise, the current 'text' is the original.
-                                const finalOriginal = pronText ? originalText : (line.originalText || originalText);
-                                const vocalPartEntries = requestEntries.filter(entry => entry.vocalPart);
-                                let vocals = line.vocals;
-                                if (vocalPartEntries.length > 0 && line.vocals?.lead) {
-                                    const nextVocals = {
-                                        ...line.vocals,
-                                        lead: { ...line.vocals.lead },
-                                        background: Array.isArray(line.vocals.background)
-                                            ? line.vocals.background.map(part => ({ ...part }))
-                                            : line.vocals.background
-                                    };
-
-                                    vocalPartEntries.forEach((entry) => {
-                                        const target = entry.vocalPart.role === 'lead'
-                                            ? nextVocals.lead
-                                            : nextVocals.background?.[entry.vocalPart.index];
-                                        if (!target) return;
-                                        if (entry.pronText) {
-                                            target.phonetic = entry.pronText;
-                                        }
-                                        if (entry.transText) {
-                                            target.translation = entry.transText;
-                                        }
-                                    });
-
-                                    vocals = nextVocals;
-                                }
-
-                                return {
-                                    ...line,
-                                    vocals,
-                                    originalText: finalOriginal, // The original text before any phonetic/translation
-                                    text: isKaraokeLine ? finalOriginal : (pronText || originalText), // Keep karaoke timing text original.
-                                    phoneticText: pronText || line.phoneticText || null,
-                                    text2: transText, // The secondary displayed text (translation)
-                                    translation: transText, // For compatibility
-                                    translationText: transText // For compatibility
+                        lyrics = lyrics.map((line, idx) => {
+                            const isKaraokeLine = Array.isArray(line.syllables)
+                                || Array.isArray(line.vocals?.lead?.syllables);
+                            const originalText = isKaraokeLine && line.originalText
+                                ? line.originalText
+                                : (line.text || line.originalText || '');
+                            const requestEntries = requestResultsByLine.get(idx) || [];
+                            const getSlotText = (field) => {
+                                const bySlot = new Map();
+                                requestEntries.forEach((entry) => {
+                                    const value = entry[`${field}Text`];
+                                    if (!value) return;
+                                    const values = bySlot.get(entry.slot) || [];
+                                    values.push(value);
+                                    bySlot.set(entry.slot, values);
+                                });
+                                const ordered = [...bySlot.entries()]
+                                    .sort((left, right) => left[0] - right[0]);
+                                const last = ordered.at(-1)?.[1] || [];
+                                return last.join(' / ') || null;
+                            };
+                            // If both configured modes target the same semantic
+                            // field, the later slot has the same precedence as
+                            // page optimizeTranslations; distinct fields remain
+                            // independent and are both retained.
+                            const pronText = getSlotText('phonetic');
+                            const transText = getSlotText('translation');
+                            const finalOriginal = line.originalText || originalText;
+                            const vocalPartEntries = requestEntries.filter(entry => entry.vocalPart);
+                            let vocals = line.vocals;
+                            if (vocalPartEntries.length > 0 && line.vocals?.lead) {
+                                const nextVocals = {
+                                    ...line.vocals,
+                                    lead: { ...line.vocals.lead },
+                                    background: Array.isArray(line.vocals.background)
+                                        ? line.vocals.background.map(part => ({ ...part }))
+                                        : line.vocals.background
                                 };
-                            });
 
-                            serviceDebug('[LyricsService] 발음/번역 완료');
-                        }
-                    } catch (translationError) {
-                        console.warn('[LyricsService] 발음/번역 실패:', translationError);
-                        // 발음/번역 실패해도 원본 가사는 반환
+                                vocalPartEntries.forEach((entry) => {
+                                    const target = entry.vocalPart.role === 'lead'
+                                        ? nextVocals.lead
+                                        : nextVocals.background?.[entry.vocalPart.index];
+                                    if (!target) return;
+                                    if (entry.phoneticText) target.phonetic = entry.phoneticText;
+                                    if (entry.translationText) target.translation = entry.translationText;
+                                });
+
+                                vocals = nextVocals;
+                            }
+
+                            return {
+                                ...line,
+                                vocals,
+                                originalText: finalOriginal,
+                                text: isKaraokeLine ? finalOriginal : (pronText || originalText),
+                                phoneticText: pronText || line.phoneticText || null,
+                                text2: transText || line.text2 || null,
+                                translation: transText || line.translation || null,
+                                translationText: transText || line.translationText || null
+                            };
+                        });
+                        serviceDebug('[LyricsService] 발음/번역 완료:', {
+                            successful: successfulSlots.length,
+                            requested: activeSlots.length
+                        });
                     }
                 }
 
-                const presentationComplete = !translationConfigured || !skipTranslation;
+                const processingComplete = !translationConfigured
+                    || (needsTranslation
+                        && activeSlots.length > 0
+                        && successfulSlots.length === activeSlots.length);
+
+                const presentationComplete = !translationConfigured || processingComplete;
                 const sendReason = presentationComplete
                     ? 'translation-complete'
                     : 'translation-pending';
@@ -9868,45 +9986,132 @@
 
         // 싱크 오프셋 가져오기
         async getSyncOffset(uri) {
-            let offset = 0;
+            const normalizeStoredOffset = (value, { clamp = false } = {}) => {
+                if (value === null || value === undefined) return 0;
+                if (typeof value === 'string' && !value.trim()) return 0;
+                const numericValue = typeof value === 'number' || typeof value === 'string'
+                    ? Number(value)
+                    : 0;
+                if (!Number.isFinite(numericValue)) return 0;
+                if (!clamp) return numericValue;
+                return Math.max(-10000, Math.min(10000, Math.round(numericValue)));
+            };
 
-            // 1. 전역 딜레이 설정 (CONFIG가 로드되면)
-            if (typeof window.CONFIG !== 'undefined' && window.CONFIG.visual && typeof window.CONFIG.visual.delay === 'number') {
-                offset += window.CONFIG.visual.delay;
-            }
-
-            const globalSyncOffset = Number(
-                window.Utils?.getGlobalSyncOffset?.()
-                ?? window.CONFIG?.visual?.["global-sync-offset"]
-                ?? 0
-            );
-            if (Number.isFinite(globalSyncOffset)) {
-                offset += globalSyncOffset;
-            }
-
-            // 2. TrackSyncDB에서 트랙별 오프셋
-            if (this._offsetCache && this._offsetCache[uri] !== undefined) {
-                offset += this._offsetCache[uri];
-            } else {
+            // StoragePersistence is loaded before this extension in production, but
+            // retain the older Spotify storage path for an in-flight/partial load.
+            const readPersistedValue = (key) => {
                 try {
-                    if (typeof window.TrackSyncDB !== 'undefined' && window.TrackSyncDB.getOffset) {
-                        const dbOffset = await window.TrackSyncDB.getOffset(uri);
-                        if (dbOffset) {
-                            offset += dbOffset;
-                            this._offsetCache[uri] = dbOffset;
+                    if (typeof getStorageItem === 'function') {
+                        const persistedValue = getStorageItem(key);
+                        if (persistedValue !== null && persistedValue !== undefined) {
+                            return persistedValue;
                         }
                     }
                 } catch (e) { }
+
+                try {
+                    if (window.StorageManager && typeof window.StorageManager.getItem === 'function') {
+                        const persistedValue = window.StorageManager.getItem(key);
+                        if (persistedValue !== null && persistedValue !== undefined) {
+                            return persistedValue;
+                        }
+                    }
+                } catch (e) { }
+
+                try {
+                    if (window.ivLyricsStoragePersistence &&
+                        typeof window.ivLyricsStoragePersistence.getItem === 'function') {
+                        const persistedValue = window.ivLyricsStoragePersistence.getItem(key);
+                        if (persistedValue !== null && persistedValue !== undefined) {
+                            return persistedValue;
+                        }
+                    }
+                } catch (e) { }
+
+                try {
+                    const spicetifyValue = Spicetify.LocalStorage.get(key);
+                    if (spicetifyValue !== null && spicetifyValue !== undefined) {
+                        return spicetifyValue;
+                    }
+                } catch (e) { }
+
+                try {
+                    if (typeof localStorage !== 'undefined') {
+                        return localStorage.getItem(key);
+                    }
+                } catch (e) { }
+                return null;
+            };
+
+            let offset = 0;
+            const visualConfig = window.CONFIG?.visual;
+            const delayKey = uri ? `lyrics-delay:${uri}` : null;
+            const storedDelay = delayKey ? readPersistedValue(delayKey) : null;
+            const normalizedStoredDelay = normalizeStoredOffset(storedDelay);
+            const configuredDelay = visualConfig?.delay;
+            const mountedLyricsContainer = window.lyricContainer;
+            const mountedTrackUri = mountedLyricsContainer?.currentTrackUri
+                || mountedLyricsContainer?.state?.uri
+                || null;
+            const isCurrentMountedPage = Boolean(
+                uri &&
+                mountedLyricsContainer &&
+                mountedLyricsContainer._isComponentMounted !== false &&
+                mountedTrackUri === uri
+            );
+
+            // CONFIG.visual.delay is reset for the page's current track. It can
+            // survive page unmount, so only let a mounted page matching `uri`
+            // override the persisted per-track delay. Preserve an explicit live
+            // zero rather than falling back to a stale stored value.
+            if (isCurrentMountedPage && visualConfig &&
+                Object.prototype.hasOwnProperty.call(visualConfig, 'delay')) {
+                offset += normalizeStoredOffset(configuredDelay);
+            } else {
+                offset += normalizedStoredDelay;
             }
 
-            // 3. localStorage 개별 트랙 딜레이
+            let globalSyncOffset;
             try {
-                const delayKey = `lyrics-delay:${uri}`;
-                const delay = Spicetify.LocalStorage.get(delayKey);
-                if (delay) offset += Number(delay);
+                globalSyncOffset = window.Utils?.getGlobalSyncOffset?.();
             } catch (e) { }
+            if (globalSyncOffset === null || globalSyncOffset === undefined) {
+                globalSyncOffset = visualConfig?.["global-sync-offset"];
+            }
+            if (globalSyncOffset === null || globalSyncOffset === undefined) {
+                globalSyncOffset = readPersistedValue('ivLyrics:visual:global-sync-offset');
+            }
+            offset += normalizeStoredOffset(globalSyncOffset, { clamp: true });
 
-            return -offset;
+            // TrackSyncDB only exists after the ivLyrics page has initialized. The
+            // extension can read the same database directly on every Spotify page.
+            let trackOffset = 0;
+            if (uri && this._offsetCache && this._offsetCache[uri] !== undefined) {
+                trackOffset = normalizeStoredOffset(this._offsetCache[uri]);
+                this._offsetCache[uri] = trackOffset;
+            } else if (uri) {
+                try {
+                    let dbOffset = null;
+                    if (typeof window.TrackSyncDB?.getOffset === 'function') {
+                        dbOffset = await window.TrackSyncDB.getOffset(uri);
+                    } else if (typeof readTrackOverride === 'function') {
+                        dbOffset = await readTrackOverride(
+                            'ivLyrics-db',
+                            'track-sync-offsets',
+                            uri
+                        );
+                    }
+                    trackOffset = normalizeStoredOffset(dbOffset);
+                    if (this._offsetCache) {
+                        // Cache zero as well so a missing/zero row does not cause a
+                        // database read on every overlay resend.
+                        this._offsetCache[uri] = trackOffset;
+                    }
+                } catch (e) { }
+            }
+            offset += trackOffset;
+
+            return offset === 0 ? 0 : -offset;
         },
 
         // 현재 재생 중인 곡과 다른(이전) 곡의 가사 전송인지 확인

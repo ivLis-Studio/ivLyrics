@@ -20,8 +20,10 @@ const richLyrics = () => rawLyrics().map((line, index) => ({ ...line, phoneticTe
 
 // Exercise the actual sender, preservation and mapper. Capture the complete
 // payload at the transport queue boundary; transport retry policy has its own tests.
-const load = () => {
+const load = ({ globalFallback = false } = {}) => {
 	const packets = [];
+	const timers = new Map(), values = new Map();
+	let timerId = 0, translationCalls = 0;
 	const surface = () => {
 		const listeners = new Map();
 		return {
@@ -33,14 +35,21 @@ const load = () => {
 	const window = surface(), document = surface(), player = surface();
 	const CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options?.detail; } };
 	window.CustomEvent = CustomEvent;
-	player.data = { item: { uri } };
+	player.data = { item: { uri, name: 'Title', metadata: { artist_name: 'Artist' } } };
 	player.getDuration = () => 180000;
+	const history = { location: { pathname: '/ivLyrics' } };
+	document.body = { classList: { contains: () => false } };
 	const context = vm.createContext({
 		window, document, CustomEvent,
-		Spicetify: { Player: player, LocalStorage: { get: () => null, set() {} } },
-		Utils: { getPlayerPlaybackSnapshot: () => ({ uri: player.data.item.uri }) },
+		Spicetify: { Player: player, Platform: { History: history }, LocalStorage: { get: key => values.get(key), set() {} } },
+		Utils: { getPlayerPlaybackSnapshot: () => ({ uri: player.data.item.uri }),
+			resolveStablePlaybackTrack: () => player.data.item, detectLanguage: () => 'en',
+			extractTrackId: value => value.split(':').at(-1), isSectionHeader: () => false },
+		getTranslationTargetLanguage: () => 'ko', getServicePronunciationNotation: () => 'latin',
+		serviceDebug() {},
 		helperDebug() {}, resolveSpotifyImageUrl: () => null,
-		setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
+		setTimeout: (fn, delay) => { timers.set(++timerId, { fn, delay }); return timerId; },
+		clearTimeout: id => timers.delete(id), setInterval: () => 1, clearInterval() {},
 	});
 	vm.runInContext([
 		section('    const getLyricsTextCacheHash =', '    const isCachedTranslationStructurallyValid ='),
@@ -63,8 +72,31 @@ const load = () => {
 	for (const [name, sender] of [['overlay', overlay], ['helper', helper]]) {
 		Object.defineProperty(sender, 'queueLyricsSend', { value: async (endpoint, trackUri, payload) => {
 			packets.push({ name, endpoint, trackUri, payload: clone(payload) });
+			if (globalFallback) sender.lastDeliveredUri = trackUri;
 		} });
 		sender.setupOffsetListener();
+	}
+	if (globalFallback) {
+		values.set('ivLyrics:visual:translation-mode:english', 'gemini_ko');
+		values.set('ivLyrics:visual:translation-mode-2:english', 'gemini_romaji');
+		Object.assign(window, { Spicetify: context.Spicetify, Utils: context.Utils,
+			LyricsAddonManager: { getLyrics: async () => ({ uri, provider: 'lrclib', synced: rawLyrics() }) },
+			Translator: { callGemini: async ({ wantSmartPhonetic }) => {
+				translationCalls++;
+				return wantSmartPhonetic ? { phonetic: 'herro\nwarudo' } : { translation: '안녕\n세상' };
+			} },
+		});
+		vm.runInContext([
+			readFileSync(new URL('../TranslationModeHelper.js', import.meta.url), 'utf8'),
+			section('    const getTranslationPartText =', '    const getLyricsTextCacheHash ='),
+			`Object.assign(LyricsService, {
+				${section('        async getLyricsFromProviders(', '\n        /**\n         * 싱크 데이터 서비스 접근')}
+				${section('        async getFullLyrics(', '\n        /**\n         * 커뮤니티 싱크 데이터 가져오기')}
+				emit() {}
+			});`,
+			readFileSync(new URL('../OverlayService.js', import.meta.url), 'utf8'),
+		].join('\n'), context);
+		overlay._isConnected = helper._isConnected = true;
 	}
 	return {
 		overlay, helper, packets, window, player, getKey: context.getKey,
@@ -72,12 +104,44 @@ const load = () => {
 		send: (sender, lines, presentationContext, reason = 'normal', trackUri = uri) => sender.sendLyrics(
 			{ uri: trackUri, title: 'Title', artist: 'Artist' }, lines, true, reason, presentationContext),
 		last: name => packets.filter(packet => packet.name === name).at(-1).payload.lyrics,
+		translationCalls: () => translationCalls,
+		runScheduled: async () => {
+			const entry = [...timers].sort((a, b) => a[1].delay - b[1].delay)[0];
+			assert.ok(entry, 'expected scheduled overlay work');
+			timers.delete(entry[0]);
+			await entry[1].fn(); await flush();
+		},
 	};
 };
 const assertSupplements = (lines, pronunciation = ['herro', 'warudo'], translation = ['안녕', '세상']) => {
 	assert.deepEqual(lines.map(line => line.pronText), pronunciation);
 	assert.deepEqual(lines.map(line => line.transText), translation);
 };
+
+test('page departure finishes translation and reversed pronunciation slots through the production service and both senders', async () => {
+	const h = load({ globalFallback: true });
+	h.publisher.publishLyricsReady({ trackInfo: { uri, title: 'Title', artist: 'Artist' },
+		lyrics: rawLyrics(), ...richContext(), displayMode1: 'gemini_ko', displayMode2: 'gemini_romaji',
+		presentationComplete: false });
+	await flush();
+	for (const name of ['overlay', 'helper']) {
+		assert.equal(h[name].lastDeliveredUri, uri);
+		assertSupplements(h.last(name), [null, null], [null, null]);
+	}
+	await h.runScheduled();
+	assert.equal(h.translationCalls(), 0, 'the mounted page owns pending translation');
+	h.window.dispatchEvent({ type: 'ivLyrics:presentation-owner-released', detail: { source: 'ivlyrics-page', trackUri: uri } });
+	await h.runScheduled();
+	assert.equal(h.translationCalls(), 2);
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name));
+	assert.equal(h.service.getLyricsSnapshot(uri).presentationComplete, true);
+	assert.equal(h.service.getLyricsSnapshot(uri).source, 'lyrics-service-presentation');
+	const packetCount = h.packets.length;
+	h.window.ivLyricsOverlayService.syncNow(); await h.runScheduled();
+	assert.equal(h.translationCalls(), 2);
+	assert.equal(h.packets.length, packetCount, 'the completed presentation is not retransmitted');
+	h.window.ivLyricsOverlayService.destroy();
+});
 
 test('same presentation preserves completed translation through a subsequent raw pending update', async () => {
 	for (const name of ['overlay', 'helper']) {

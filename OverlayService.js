@@ -13,8 +13,8 @@
     });
 
     const dependenciesReady = () => (
-        !!window.Spicetify?.Player
-        && !!window.LyricsService?.getFullLyrics
+        typeof window.Spicetify?.Player?.addEventListener === 'function'
+        && typeof window.LyricsService?.getFullLyrics === 'function'
         && !!window.OverlaySender
         && !!window.lyricsHelperSender
     );
@@ -45,6 +45,9 @@
     let pageGraceUri = null;
     let pageGraceUntil = 0;
     let lastObservedUri = Spicetify.Player.data?.item?.uri || null;
+    let disposed = false;
+    let pageOwnerReleased = false;
+    let historyUnsubscribe = null;
 
     const finishChain = (chain) => {
         if (scheduledChain?.id === chain.id) {
@@ -142,7 +145,10 @@
 
     const hasActivePresentationOwner = () => {
         const pathname = Spicetify.Platform?.History?.location?.pathname || "";
-        return pathname.includes("/ivLyrics")
+        // 같은 경로에서 페이지 인스턴스가 교체되면 이전 인스턴스의 release가
+        // 먼저 도착할 수 있다. 새로 마운트된 인스턴스가 있으면 소유권을 유지한다.
+        const mountedPage = window.lyricContainer?._isComponentMounted === true;
+        return mountedPage || (!pageOwnerReleased && pathname.includes("/ivLyrics"))
             || document.body?.classList?.contains("ivlyrics-panel-lyrics-active");
     };
 
@@ -154,10 +160,26 @@
             return fallbackRequests.get(requestKey);
         }
 
-        const request = Promise.resolve(window.LyricsService.getFullLyrics(
-            trackInfo,
-            { sendToOverlay: true, skipTranslation }
-        )).catch((error) => {
+        const originalRequest = !skipTranslation
+            ? fallbackRequests.get(`${trackInfo.uri}:original`)
+            : null;
+        const request = Promise.resolve(originalRequest).then(() => {
+            if (disposed || getCurrentTrack()?.uri !== trackInfo.uri
+                || !hasCurrentDelivery(trackInfo.uri).anyConnected) return;
+            // 원문 보충이 늦게 끝나 번역 스냅샷을 무효화하지 않도록 같은 곡의
+            // 원문 요청 뒤에 이어 실행한다. 다른 곡의 요청은 기다리지 않는다.
+            if (originalRequest) {
+                if (hasActivePresentationOwner()) {
+                    schedule(0);
+                    return;
+                }
+                if (getSharedPresentation(trackInfo.uri)?.presentationComplete !== false
+                    && hasCurrentDelivery(trackInfo.uri).complete) return;
+            }
+            return window.LyricsService.getFullLyrics(trackInfo, {
+                sendToOverlay: true, skipTranslation
+            });
+        }).catch((error) => {
             console.error("[OverlayService] 현재 곡 가사 동기화 실패:", error);
         }).finally(() => {
             if (fallbackRequests.get(requestKey) === request) {
@@ -170,6 +192,7 @@
     };
 
     const schedule = (delay = 1200, previousUri = null, existingChain = null) => {
+        if (disposed) return;
         let chain = existingChain;
         if (chain) {
             if (chain.id !== scheduledChain?.id) {
@@ -201,7 +224,7 @@
             if (scheduledTimer?.handle === timerHandle) {
                 scheduledTimer = null;
             }
-            if (scheduledChain?.id !== chain.id) return;
+            if (disposed || scheduledChain?.id !== chain.id) return;
 
             const trackInfo = getCurrentTrack();
             if (!trackInfo) {
@@ -224,14 +247,16 @@
             lastObservedUri = trackInfo.uri;
 
             const delivery = hasCurrentDelivery(trackInfo.uri);
-            if (!delivery.anyEnabled || delivery.complete) {
+            // 연결된 소비자가 없으면 번역을 시작하지 않는다. 재연결 시 sender가
+            // schedule()을 호출해 현재 표시 결과를 다시 확인한다.
+            if (!delivery.anyEnabled || !delivery.anyConnected) {
                 finishChain(chain);
                 return;
             }
 
             if (trackInfo.isDjNarration) {
                 try {
-                    await sendEmptyLyricsForDjNarration(trackInfo);
+                    if (!delivery.complete) await sendEmptyLyricsForDjNarration(trackInfo);
                 } finally {
                     finishChain(chain);
                 }
@@ -239,23 +264,32 @@
             }
 
             const sharedPresentation = getSharedPresentation(trackInfo.uri);
-            if (sharedPresentation) {
-                await sendSharedPresentation(trackInfo, sharedPresentation);
+            const presentationIncomplete = sharedPresentation?.presentationComplete === false;
+            // 원문 전송 성공은 번역/발음 생성 완료를 의미하지 않는다.
+            if (delivery.complete && !presentationIncomplete) {
                 finishChain(chain);
                 return;
             }
-
-            // 활성화 설정만 켜져 있고 실제 앱/헬퍼가 연결되지 않은 경우에는
-            // 표시할 대상이 없으므로 별도의 AI 번역을 만들지 않는다. 연결 복구 시
-            // sender가 schedule()을 다시 호출한다.
-            if (!delivery.anyConnected) {
+            if (sharedPresentation && !delivery.complete) {
+                await sendSharedPresentation(trackInfo, sharedPresentation);
+                if (disposed || scheduledChain?.id !== chain.id) return;
+                if (getCurrentTrack()?.uri !== trackInfo.uri) {
+                    schedule(0, null, chain);
+                    return;
+                }
+                if (getSharedPresentation(trackInfo.uri) !== sharedPresentation) {
+                    schedule(0, null, chain);
+                    return;
+                }
+            }
+            if (sharedPresentation && !presentationIncomplete) {
                 finishChain(chain);
                 return;
             }
 
             // ivLyrics 페이지나 우측 패널이 이미 동일 곡의 표시 결과를 만들고 있으면
-            // 그 공유 스냅샷을 기다린다. 제한 시간이 지나도 AI를 다시 호출하지 않고
-            // 원문만 보충하여 두 경로의 번역 표현이 달라지는 일을 막는다.
+            // 중복 번역 없이 기다린다. 원문을 보충한 뒤에도 미완성 결과를 관찰해
+            // 페이지/패널이 닫히면 전역 서비스가 번역을 이어받는다.
             const presentationOwnerActive = hasActivePresentationOwner();
             if (presentationOwnerActive) {
                 if (pageGraceUri !== trackInfo.uri) {
@@ -266,11 +300,16 @@
                     schedule(PRESENTATION_RETRY_MS, null, chain);
                     return;
                 }
+                if (!sharedPresentation && chain.originalFallbackUri !== trackInfo.uri) {
+                    chain.originalFallbackUri = trackInfo.uri;
+                    startFallbackRequest(trackInfo, { skipTranslation: true });
+                }
+                schedule(PRESENTATION_RETRY_MS, null, chain);
+                return;
             }
 
-            startFallbackRequest(trackInfo, {
-                skipTranslation: presentationOwnerActive
-            });
+            pageGraceUri = null;
+            startFallbackRequest(trackInfo, { skipTranslation: false });
             finishChain(chain);
         }, Math.max(0, Number(delay) || 0));
 
@@ -286,25 +325,46 @@
     const sharedLyricsListener = (event) => {
         const snapshot = event.detail || {};
         const trackInfo = getCurrentTrack();
-        // ivLyrics 페이지와 LyricsService 자체 결과는 기존 lyrics-ready/direct
-        // 전송 경로가 담당한다. 별도 이벤트 발행이 없는 패널 결과만 이어 준다.
-        if (snapshot.source !== 'now-playing-panel'
+        if (!['ivlyrics-page', 'now-playing-panel'].includes(snapshot.source)
             || !trackInfo || snapshot.trackUri !== trackInfo.uri
             || !Array.isArray(snapshot.displayLyrics)
             || snapshot.displayLyrics.length === 0) {
             return;
         }
 
-        void sendSharedPresentation(trackInfo, snapshot, 'shared-snapshot-update');
+        // 페이지는 lyrics-ready가 직접 전송한다. 패널의 표시 결과만 중계한다.
+        if (snapshot.source === 'now-playing-panel') {
+            void sendSharedPresentation(trackInfo, snapshot, 'shared-snapshot-update');
+        } else if (document.body?.classList?.contains('ivlyrics-page-active')) {
+            pageOwnerReleased = false;
+        }
+        schedule(0);
+    };
+
+    const presentationOwnerReleasedListener = () => {
+        pageOwnerReleased = true;
+        schedule(0);
+    };
+
+    const historyListener = () => {
+        if (Spicetify.Platform?.History?.location?.pathname?.includes('/ivLyrics')) {
+            pageOwnerReleased = false;
+            pageGraceUri = null;
+        }
+        schedule(0);
     };
 
     const destroy = () => {
+        disposed = true;
         if (scheduledTimer) {
             clearTimeout(scheduledTimer.handle);
             scheduledTimer = null;
         }
-        Spicetify.Player.removeEventListener("songchange", songChangeListener);
+        Spicetify.Player.removeEventListener?.("songchange", songChangeListener);
         window.removeEventListener("ivLyrics:shared-lyrics-updated", sharedLyricsListener);
+        window.removeEventListener("ivLyrics:presentation-owner-released", presentationOwnerReleasedListener);
+        historyUnsubscribe?.();
+        historyUnsubscribe = null;
         scheduledChain = null;
         fallbackRequests.clear();
         moduleState.initialized = false;
@@ -330,6 +390,11 @@
     window.ivLyricsOverlayService = api;
     Spicetify.Player.addEventListener("songchange", songChangeListener);
     window.addEventListener("ivLyrics:shared-lyrics-updated", sharedLyricsListener);
+    window.addEventListener("ivLyrics:presentation-owner-released", presentationOwnerReleasedListener);
+    if (typeof Spicetify.Platform?.History?.listen === 'function') {
+        const unsubscribe = Spicetify.Platform.History.listen(historyListener);
+        if (typeof unsubscribe === 'function') historyUnsubscribe = unsubscribe;
+    }
 
     // Extension이 늦게 로드되어 songchange를 놓친 경우에도 현재 곡을 보충한다.
     schedule(1200);

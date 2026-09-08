@@ -4,6 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../LyricsService.js', import.meta.url), 'utf8');
+const helperSource = readFileSync(new URL('../TranslationModeHelper.js', import.meta.url), 'utf8');
 const section = (start, end) => {
     const from = source.indexOf(start), to = source.indexOf(end, from + start.length);
     assert.ok(from >= 0 && to > from);
@@ -41,6 +42,7 @@ function load() {
         serviceDebug() {}, console: { warn() {}, error() {} },
         sendLyricsToConsumers: async payload => { sent.push(payload); },
     });
+    vm.runInContext(helperSource, context);
     vm.runInContext(`let lyricsProviderRequestGeneration = 0;
         const lyricsProviderInflightRequests = new Map();
         globalThis.bumpGeneration = () => ++lyricsProviderRequestGeneration;

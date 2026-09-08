@@ -86,6 +86,7 @@
 		"Addon_Lyrics_Spotify.js",
 		"AIAddonManager.js",
 		"LyricsAddonManager.js",
+		"TranslationModeHelper.js",
 		"OverlayProtocol.js",
 		"PlaybackClock.js",
 		"LyricsService.js",

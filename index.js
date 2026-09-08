@@ -8909,7 +8909,6 @@ class LyricsContainer extends react.Component {
 
   componentDidMount() {
     this._isComponentMounted = true;
-    document.body.classList.add('ivlyrics-page-active');
 
     // Prevent duplicate global registration
     if (window.lyricContainer && window.lyricContainer !== this) {
@@ -8920,6 +8919,7 @@ class LyricsContainer extends react.Component {
 
     // Register instance for external access
     window.lyricContainer = this;
+    document.body.classList.add('ivlyrics-page-active');
     // Note: reloadLyrics will be exposed after it's defined below
 
     this._unsubscribeLyricsProviderAttempt = window.LyricsAddonManager?.on?.(
@@ -9350,6 +9350,7 @@ class LyricsContainer extends react.Component {
   }
 
   componentWillUnmount() {
+    if (this._isComponentMounted === false) return;
     this._isComponentMounted = false;
     this._lyricsEditRequestSeq += 1;
     document.body.classList.remove('ivlyrics-page-active');
@@ -9465,6 +9466,12 @@ class LyricsContainer extends react.Component {
     if (this._dmResults) {
       this._dmResults = null;
     }
+
+    // 페이지가 더 이상 표시 결과를 발행하지 않으므로 전역 오버레이 서비스가
+    // 아직 끝나지 않은 번역/발음 생성을 이어받게 한다.
+    window.dispatchEvent(new CustomEvent('ivLyrics:presentation-owner-released', {
+      detail: { source: 'ivlyrics-page', trackUri: this.currentTrackUri }
+    }));
 
     // Force garbage collection hint
     if (window.gc && typeof window.gc === "function") {
