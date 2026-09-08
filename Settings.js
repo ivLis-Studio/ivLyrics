@@ -9823,14 +9823,14 @@ const ConfigModal = ({
               key: "lines-before",
               info: I18n.t("settingsAdvanced.syncMode.linesBefore.desc"),
               type: ConfigSelection,
-              options: [0, 1, 2, 3, 4],
+              options: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             },
             {
               desc: I18n.t("settingsAdvanced.syncMode.linesAfter.label"),
               key: "lines-after",
               info: I18n.t("settingsAdvanced.syncMode.linesAfter.desc"),
               type: ConfigSelection,
-              options: [0, 1, 2, 3, 4],
+              options: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             },
             {
               desc: I18n.t("settingsAdvanced.syncMode.fadeoutBlur.label"),

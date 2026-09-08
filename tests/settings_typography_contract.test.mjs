@@ -116,11 +116,16 @@ const normalize = (value) => {
 const retiredFullscreenMarginKey = "fullscreen-lyrics-right-padding";
 const normalizeReleasedTree = (tree) => {
   const expected = normalize(tree);
-  // The right-margin slider was intentionally retired. Keep the rest of the
-  // released tree as the oracle, including every other item and its defaults.
+  // Account for the retired right-margin slider and the expanded surrounding
+  // lyric choices. Keep every other released item and its defaults as the oracle.
   for (const element of elements(expected)) {
     if (element.type === "[function:OptionList]" && Array.isArray(element.props.items)) {
       element.props.items = element.props.items.filter(item => item.key !== retiredFullscreenMarginKey);
+      for (const item of element.props.items) {
+        if (item.key === "lines-before" || item.key === "lines-after") {
+          item.options = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        }
+      }
     }
   }
   return expected;
