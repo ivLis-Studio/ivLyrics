@@ -103,13 +103,27 @@ const syncYouTubePlayerTimeline = ({
 
     const playerState = player.getPlayerState();
     if (shouldHoldAtStart) {
-        if (!wasHoldingAtStart) {
+        const currentVideoTime = player.getCurrentTime();
+        const isAtStart = Number.isFinite(currentVideoTime) &&
+            Math.abs(currentVideoTime) <= VIDEO_SYNC_SEEK_THRESHOLD_SECONDS;
+        if (!wasHoldingAtStart || (!holdState.primePending && !isAtStart)) {
             // A paused YouTube iframe can keep painting its previous decoded frame
             // after seekTo(0). Let it reach PLAYING once so the frame is refreshed;
             // onStateChange pauses it again as soon as that frame is available.
             holdState.primePending = true;
             player.seekTo(0, true);
             player.playVideo();
+            return;
+        }
+
+        if (holdState.primePending) {
+            // Buffering can outlast a sync tick. Pausing here would cancel the
+            // refresh and leave the previous frame visible for the whole intro.
+            if (!settleYouTubeHoldPrime({ player, playerState, holdState }) &&
+                playerState !== 1 && playerState !== 3) {
+                if (!isAtStart) player.seekTo(0, true);
+                player.playVideo();
+            }
             return;
         }
 
@@ -145,6 +159,14 @@ const settleYouTubeHoldPrime = ({ player, playerState, holdState }) => {
         holdState?.primePending !== true ||
         holdState?.isHolding !== true
     ) {
+        return false;
+    }
+
+    // PLAYING may be queued from before seekTo(0). Wait until the player also
+    // reports the start position, rather than freezing that stale frame again.
+    const currentVideoTime = player.getCurrentTime();
+    if (!Number.isFinite(currentVideoTime) ||
+        Math.abs(currentVideoTime) > VIDEO_SYNC_SEEK_THRESHOLD_SECONDS) {
         return false;
     }
 
@@ -1114,6 +1136,7 @@ const VideoBackground = ({ trackUri, firstLyricTime, brightness, blurAmount, cov
                 lyricsStartTime,
                 videoInfo,
                 additionalDelaySeconds: (trackOffsetMsRef.current + globalDelayMs + globalSyncOffsetMs) / 1000,
+                mapVideoTime: Utils.mapVideoTimeWithSkipSegments.bind(Utils),
             })
             : null;
         const shouldPlayVideo = isPlaying && !syncState?.shouldHoldAtStart;
@@ -1136,20 +1159,18 @@ const VideoBackground = ({ trackUri, firstLyricTime, brightness, blurAmount, cov
         }
 
         const player = playerRef.current;
-        if (!player || !isPlayerReady || typeof player.getPlayerState !== 'function') return;
+        if (!player || !isPlayerReady || !syncState || typeof player.getPlayerState !== 'function') return;
 
         try {
-            const playerState = player.getPlayerState();
-            if (!shouldPlayVideo) {
-                if (playerState === 1 || playerState === 3) {
-                    player.pauseVideo();
-                }
-                return;
-            }
-
-            if (playerState !== 1) {
-                player.playVideo();
-            }
+            // Playback events must use the same hold/seek state as the timer so
+            // pausing Spotify cannot interrupt an in-flight start-frame refresh.
+            syncYouTubePlayerTimeline({
+                player,
+                targetVideoTime: wrapVideoSyncTime(syncState.targetVideoTime, player.getDuration?.()),
+                shouldHoldAtStart: syncState.shouldHoldAtStart,
+                shouldPlay: isPlaying,
+                holdState: youtubeHoldStateRef.current,
+            });
         } catch (e) { }
     }, [useHelper, isPlaying, isPlayerReady, helperVideoUrl, videoInfo]);
 
@@ -1328,6 +1349,7 @@ const VideoBackground = ({ trackUri, firstLyricTime, brightness, blurAmount, cov
                             failPlayerLifecycle(new Error(`YouTube player error: ${event?.data ?? "unknown"}`));
                         },
                         onStateChange: (event) => {
+                            if (isCancelled || playerLifecycleFailed) return;
                             const state = event?.data;
                             settleYouTubeHoldPrime({
                                 player: event?.target,
@@ -1428,7 +1450,7 @@ const VideoBackground = ({ trackUri, firstLyricTime, brightness, blurAmount, cov
         const syncInterval = setInterval(syncVideo, VIDEO_SYNC_INTERVAL_MS);
 
         return () => clearInterval(syncInterval);
-    }, [isPlayerReady, videoInfo, firstLyricTime, trackOffsetMs, isPlaying]);
+    }, [useHelper, isPlayerReady, videoInfo, firstLyricTime, trackOffsetMs, isPlaying]);
 
     // Render Album Art Background (Fallback)
     const renderFallback = () => {
