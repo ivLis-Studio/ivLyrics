@@ -32,7 +32,7 @@ const createHarness = () => {
     ...events(),
     requestAnimationFrame(callback) { frames.set(++nextFrame, callback); return nextFrame; },
     cancelAnimationFrame(id) { frames.delete(id); },
-    getComputedStyle(node) { return node.computed || { display: "block", visibility: "visible" }; },
+    getComputedStyle(node) { return { display: "block", visibility: "visible", opacity: "1", ...node.computed }; },
     MutationObserver: class {
       targets = [];
       constructor(callback) { this.callback = callback; mutations.push(this); }
@@ -74,10 +74,16 @@ const createHarness = () => {
     classList: { contains: name => panelClasses.has(name) },
     closest() { return root; },
     querySelector() { return this.album; },
+    querySelectorAll() { return [this.album, this.record].filter(Boolean); },
   };
   const album = {
     parent: panel,
     rect: { left: 220, right: 620, width: 400, height: 400 },
+    getBoundingClientRect() { return this.rect; },
+  };
+  const record = {
+    parent: panel,
+    rect: { left: 452, right: 820, width: 368, height: 368 },
     getBoundingClientRect() { return this.rect; },
   };
   panel.album = album;
@@ -94,7 +100,7 @@ const createHarness = () => {
     }
   };
   return {
-    root, panel, album, config, view, rootClasses, panelClasses,
+    root, panel, album, record, config, view, rootClasses, panelClasses,
     frames, mutations, resizes, properties, stop, flush, notify,
     enabled: () => root.getAttribute("data-album-centered-lyrics") === "true",
     insets: () => ["left", "right"].map(side => Number.parseFloat(properties.get(`--lyrics-fullscreen-region-${side}`))),
@@ -126,6 +132,127 @@ test("mirrors the measured area when the album is on the right", () => {
   assert.equal(h.root.rect.left + (left + h.root.rect.width - right) / 2,
     (h.root.rect.left + h.album.rect.left) / 2);
   h.stop();
+});
+
+test("centers beyond the visible record protruding toward the lyrics", () => {
+  const h = createHarness();
+  h.panel.record = h.record;
+  h.flush();
+  assert.equal(h.enabled(), true);
+  assert.deepEqual(h.insets(), [700, 0]);
+  const [left, right] = h.insets();
+  assert.equal(h.root.rect.left + (left + h.root.rect.width - right) / 2,
+    (h.record.rect.right + h.root.rect.right) / 2);
+  assert.equal(h.resizes[0].targets.has(h.album), true);
+  assert.equal(h.resizes[0].targets.has(h.record), true);
+  h.stop();
+});
+
+test("reversed layout keeps the album edge when the record protrudes away from the lyrics", () => {
+  const h = createHarness();
+  h.rootClasses.add("layout-reversed");
+  h.album.rect = { left: 820, right: 1220, width: 400, height: 400 };
+  h.record.rect = { left: 1052, right: 1420, width: 368, height: 368 };
+  h.panel.record = h.record;
+  h.flush();
+  assert.deepEqual(h.insets(), [0, 500]);
+  h.stop();
+});
+
+test("reversed layout uses the record edge when it protrudes toward the lyrics", () => {
+  const h = createHarness();
+  h.rootClasses.add("layout-reversed");
+  h.album.rect = { left: 820, right: 1220, width: 400, height: 400 };
+  h.record.rect = { left: 620, right: 988, width: 368, height: 368 };
+  h.panel.record = h.record;
+  h.flush();
+  assert.deepEqual(h.insets(), [0, 700]);
+  const [left, right] = h.insets();
+  assert.equal(h.root.rect.left + (left + h.root.rect.width - right) / 2,
+    (h.root.rect.left + h.record.rect.left) / 2);
+  h.stop();
+});
+
+test("hidden and invalid record bounds leave the visible album as the boundary", () => {
+  const h = createHarness();
+  h.panel.record = h.record;
+  const recordRect = { ...h.record.rect };
+  for (const computed of [
+    { visibility: "hidden" }, { visibility: "collapse" },
+    { display: "none" }, { opacity: "0" },
+  ]) {
+    h.record.computed = computed;
+    h.notify(h.record, "attributes", "style");
+    h.flush();
+    assert.deepEqual(h.insets(), [500, 0], JSON.stringify(computed));
+  }
+  h.record.computed = {};
+  for (const rect of [
+    { width: 0 }, { height: 0 }, { left: Number.NaN }, { right: Number.POSITIVE_INFINITY },
+  ]) {
+    h.record.rect = { ...recordRect, ...rect };
+    h.resizes[0].callback();
+    h.flush();
+    assert.deepEqual(h.insets(), [500, 0]);
+  }
+  h.record.rect = recordRect;
+  h.notify(h.record, "attributes", "style");
+  h.flush();
+  assert.deepEqual(h.insets(), [700, 0]);
+  h.stop();
+});
+
+test("uses a visible record even when the album is hidden or absent", () => {
+  const h = createHarness();
+  h.panel.record = h.record;
+  h.album.computed = { opacity: "0" };
+  h.flush();
+  assert.equal(h.enabled(), true);
+  assert.deepEqual(h.insets(), [700, 0]);
+  h.panel.album = null;
+  h.notify(h.panel, "childList");
+  h.flush();
+  assert.equal(h.enabled(), true);
+  assert.deepEqual(h.insets(), [700, 0]);
+  assert.equal(h.resizes[0].targets.has(h.album), false);
+  h.record.computed = { display: "none" };
+  h.notify(h.record, "attributes", "style");
+  h.flush();
+  assert.equal(h.enabled(), false);
+  assert.equal(h.properties.size, 0);
+  h.stop();
+});
+
+test("tracks record insertion, resizing, removal and replacement without stale observers", () => {
+  const h = createHarness();
+  h.flush();
+  h.panel.record = h.record;
+  h.notify(h.panel, "childList");
+  h.flush();
+  assert.deepEqual(h.insets(), [700, 0]);
+  assert.equal(h.resizes[0].targets.has(h.record), true);
+  h.record.rect = { left: 452, right: 920, width: 468, height: 468 };
+  h.resizes[0].callback();
+  h.flush();
+  assert.deepEqual(h.insets(), [800, 0]);
+  h.panel.record = null;
+  h.notify(h.panel, "childList");
+  h.flush();
+  assert.deepEqual(h.insets(), [500, 0]);
+  assert.equal(h.resizes[0].targets.has(h.record), false);
+  const replacement = {
+    ...h.record,
+    rect: { left: 452, right: 870, width: 418, height: 418 },
+  };
+  h.panel.record = replacement;
+  h.notify(h.panel, "childList");
+  h.flush();
+  assert.deepEqual(h.insets(), [750, 0]);
+  assert.equal(h.resizes[0].targets.has(replacement), true);
+  assert.equal(h.resizes[0].targets.has(h.record), false);
+  assert.equal(h.frames.size, 0);
+  h.stop();
+  assert.equal(h.resizes[0].targets.size, 0);
 });
 
 test("tracks image resizing and settled transforms without a playback timer", () => {

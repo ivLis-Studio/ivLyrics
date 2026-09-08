@@ -1990,8 +1990,8 @@ const FullscreenOverlay = (() => {
         );
     });
 
-    // Center standard fullscreen lyrics in the space beside the rendered album,
-    // including configured album sizes and the album's visibility transforms.
+    // Center standard fullscreen lyrics beside the outer edge of the album and
+    // any protruding compact LP, including configured sizes and transforms.
     // Keep observation away from the frequently changing karaoke subtree.
     const observeFullscreenAlbumLyricsRegion = (panel) => {
         const root = panel?.closest?.(".lyrics-lyricsContainer-LyricsContainer");
@@ -2006,7 +2006,7 @@ const FullscreenOverlay = (() => {
         ];
         let frame = null;
         let disposed = false;
-        let observedAlbum = null;
+        const observedVisuals = new Set();
         let resizeObserver = null;
         const reset = () => {
             if (root.hasAttribute(attribute)) root.removeAttribute(attribute);
@@ -2017,34 +2017,49 @@ const FullscreenOverlay = (() => {
         const measure = () => {
             frame = null;
             if (disposed) return;
-            const album = panel.querySelector(".lyrics-fullscreen-album-art");
-            if (album !== observedAlbum) {
-                if (observedAlbum) resizeObserver?.unobserve(observedAlbum);
-                observedAlbum = album;
-                if (album) resizeObserver?.observe(album);
+            const visuals = new Set(panel.querySelectorAll(
+                ".lyrics-fullscreen-album-art, .ivlyrics-compact-album-record"
+            ));
+            for (const visual of observedVisuals) {
+                if (!visuals.has(visual)) {
+                    resizeObserver?.unobserve(visual);
+                    observedVisuals.delete(visual);
+                }
+            }
+            for (const visual of visuals) {
+                if (!observedVisuals.has(visual)) {
+                    resizeObserver?.observe(visual);
+                    observedVisuals.add(visual);
+                }
             }
             if (!root.isConnected || !panel.isConnected ||
                 !root.classList.contains("fullscreen-active") ||
                 excludedClasses.some(name => root.classList.contains(name)) ||
                 panel.classList.contains("tmi-mode") ||
-                (CONFIG?.visual?.alignment || "center") !== "center" || !album) {
+                (CONFIG?.visual?.alignment || "center") !== "center") {
                 reset();
                 return;
             }
             const rootBox = root.getBoundingClientRect();
-            const albumBox = album.getBoundingClientRect();
-            const albumStyle = view.getComputedStyle(album);
-            if (rootBox.width <= 0 || rootBox.height <= 0 ||
-                albumBox.width <= 0 || albumBox.height <= 0 ||
-                albumStyle.visibility === "hidden" || albumStyle.visibility === "collapse" ||
-                albumStyle.display === "none") {
+            const visibleBoxes = [];
+            for (const visual of visuals) {
+                const box = visual.getBoundingClientRect();
+                const style = view.getComputedStyle(visual);
+                if (box.width > 0 && box.height > 0 &&
+                    Number.isFinite(box.left) && Number.isFinite(box.right) &&
+                    style.visibility !== "hidden" && style.visibility !== "collapse" &&
+                    style.display !== "none" && Number.parseFloat(style.opacity) !== 0) {
+                    visibleBoxes.push(box);
+                }
+            }
+            if (rootBox.width <= 0 || rootBox.height <= 0 || !visibleBoxes.length) {
                 reset();
                 return;
             }
             const reversed = root.classList.contains("layout-reversed");
             const inset = reversed
-                ? rootBox.right - albumBox.left
-                : albumBox.right - rootBox.left;
+                ? rootBox.right - Math.min(...visibleBoxes.map(box => box.left))
+                : Math.max(...visibleBoxes.map(box => box.right)) - rootBox.left;
             if (!Number.isFinite(inset) || inset <= 0 || inset >= rootBox.width) {
                 reset();
                 return;
@@ -2073,7 +2088,7 @@ const FullscreenOverlay = (() => {
             childList: true, subtree: true,
         });
         // ResizeObserver does not report CSS transforms. Recheck their settled
-        // image edge after hover and controls-hidden transitions, without polling.
+        // visual edges after hover and controls-hidden transitions, without polling.
         panel.addEventListener("transitionend", schedule);
         panel.addEventListener("transitioncancel", schedule);
         view.addEventListener("resize", schedule);
@@ -2083,6 +2098,7 @@ const FullscreenOverlay = (() => {
             if (frame !== null) view.cancelAnimationFrame(frame);
             mutationObserver?.disconnect();
             resizeObserver?.disconnect();
+            observedVisuals.clear();
             panel.removeEventListener("transitionend", schedule);
             panel.removeEventListener("transitioncancel", schedule);
             view.removeEventListener("resize", schedule);
