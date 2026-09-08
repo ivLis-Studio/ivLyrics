@@ -51,6 +51,7 @@ const createPreview = ({ mode = "preview", initialPosition = 0, textRun = false,
 		getActiveRecordingLockIndex: () => lockIndex,
 		applyRecordingProgressVisual: (value) => recordingCalls.push(value),
 		useCallback: (callback) => callback,
+		useMemo: (callback) => callback(),
 		useEffect: (effect, dependencies) => {
 			if (effectDependencies && dependencies.length === effectDependencies.length
 				&& dependencies.every((value, index) => Object.is(value, effectDependencies[index]))) return;
@@ -71,7 +72,7 @@ const createPreview = ({ mode = "preview", initialPosition = 0, textRun = false,
 	].join("\n"), context);
 	const refreshCallbacks = () => {
 		vm.runInContext(`globalThis.previewHelpers = (() => {
-			${slice("\tconst getPreviewProgressIndexAtTime =", "\tconst getPreviewProgressIndex =")}
+			${slice("\tconst getPreviewCharsForLine =", "\tconst getPreviewProgressIndex =")}
 			${slice("\tconst applyParallelPlaybackProgressVisual =", "\n\tuseEffect(() => {\n\t\tcharElementsRef.current = [];")}
 			return { getPreviewProgressIndexAtTime, applyPlaybackProgressVisual, applyParallelPlaybackProgressVisual };
 		})();`, context);
@@ -286,6 +287,9 @@ const attachParallelRenderer = (preview, { text = "ABCD", lineStart = 0, selecte
 			if (!node || typeof node !== "object") return node;
 			const dom = {
 				props: node.props,
+				dataset: Object.fromEntries(Object.entries(node.props)
+					.filter(([key]) => key.startsWith("data-"))
+					.map(([key, value]) => [key.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()), value])),
 				style: new Proxy({ ...node.props.style }, { set(target, key, value) {
 					styleWrites.push({ partId: part.id, key, value });
 					target[key] = value;
@@ -333,6 +337,159 @@ const part = (id, chars, ranges = [{ start: 0, end: 3 }], extra = {}) => ({
 	id, role: "background", speaker: "FEMALE 1", kind: "vocal", ranges, join: [], chars, ...extra,
 });
 const backgrounds = (row) => Array.from(row.elements, (element) => element.style.background || "");
+
+// Mount the selected row with its production glyph renderer and timing lookups,
+// so synced flags and playback paint are checked together rather than replaced
+// by the selected-content stub used in the independent-vocal tests below.
+const createSelectedPartPreview = ({ savedLine, targetPart, text = "ABCD", initialPosition = 2000 } = {}) => {
+	const preview = createPreview({ initialPosition });
+	const renderer = attachParallelRenderer(preview, { text, selected: targetPart.id });
+	const { context } = preview;
+	Object.assign(context, {
+		activeParallelPart: targetPart, activeParallelPartId: targetPart.id,
+		currentLineData: savedLine,
+		syncLinesByStart: new Map([[0, savedLine]]),
+		currentParallelData: { parts: [targetPart] },
+		currentLineStyleRanges: [], currentLineFuriganaMap: new Map(),
+		currentLineCharacterPronunciationMap: new Map(), currentLineRenderedPronunciationUnits: [],
+		currentLineRenderedPronunciationUnitByStart: new Map(), currentLineRenderedPronunciationCoveredIndexes: new Set(),
+		currentWordBoundaryStartIndexes: new Set(),
+		usePrimaryCharacterPronunciation: false, useFixedPrimaryCharacterCells: false,
+		currentRecordingCharIndex: -1, isRecordingLockArmed: false, recordingLockIndex: -1,
+		currentLockedPlaybackIndex: null, syncGranularity: "character",
+		formatSeconds: (value) => `${value.toFixed(1)}s`,
+		charElementsRef: { current: [] },
+	});
+	Object.assign(context.s, {
+		charSynced: { background: "synced" },
+		charPlayed: { background: "progress" },
+	});
+	vm.runInContext(`globalThis.selectedHelpers = (() => {
+		${slice("\tconst getPreviewCharsForLine =", "\tconst getPreviewProgressIndex =")}
+		return { isCharSynced, getCharSyncTime, getPreviewProgressIndexAtTime };
+	})();`, context);
+	Object.assign(context, context.selectedHelpers);
+	vm.runInContext(`globalThis.currentLineCharRefs = rangesToCharRefs(activeParallelPart.ranges, currentFullLineChars, currentLineStart);
+		globalThis.currentLineChars = currentLineCharRefs.map(ref => ref.char);
+		globalThis.currentLineText = currentLineChars.join('');
+		globalThis.renderCurrentLineCharacters = (() => {
+			${slice("\tconst renderCharacterSpan =", "\tconst renderParallelPartLine =")}
+			return renderCurrentLineCharacters;
+		})();`, context);
+	context.currentLinePreviewIndex = Math.floor(context.getPreviewProgressIndexAtTime(0, initialPosition / 1000));
+	const mounted = renderer.mount(targetPart, 0);
+	preview.refreshCallbacks();
+	preview.render();
+	return { preview, context, renderer, mounted };
+};
+
+test("selected split vocals preview inherited line timings and retain time labels", () => {
+	const savedLine = freeze({ start: 0, end: 3, chars: [1, 2, 3, 4] });
+	const targetPart = freeze(part("a", [1, 2], [{ start: 0, end: 1 }]));
+	const { preview, context, mounted } = createSelectedPartPreview({ savedLine, targetPart });
+	assert.equal(context.isCharSynced(0, 0), true);
+	assert.equal(context.getCharSyncTime(0, 0), 1);
+	assert.equal(context.getPreviewProgressIndexAtTime(0, 1.5), 0.5);
+	const glyphs = mounted.tree.children[1].children;
+	assert.deepEqual(glyphs.map(glyph => glyph.props["data-iv-sync-creator-synced"]), ["1", "1"]);
+	assert.deepEqual(glyphs.map(glyph => glyph.children.at(-1).children[0]), ["1.0s", "2.0s"]);
+	for (const [position, expected] of [
+		[2000, ["progress", "progress"]],
+		[500, ["synced", "synced"]],
+		[1500, ["progress", "synced"]],
+	]) {
+		preview.setProgress(position);
+		preview.tick();
+		assert.deepEqual(Array.from(context.charElementsRef.current, glyph => glyph.style.background), expected);
+	}
+	assert.deepEqual(savedLine.chars, [1, 2, 3, 4]);
+	preview.dispose();
+});
+
+test("selected merged and regrouped vocals use inherited timings after part IDs change", () => {
+	const oldPart = freeze(part("old-background", [4, 5], [{ start: 2, end: 3 }]));
+	const savedLine = freeze({ start: 0, end: 3, chars: [1, 2, 4, 5], parallel: { parts: [oldPart] } });
+	const targetPart = freeze(part("b", [4, 5], [{ start: 2, end: 3 }]));
+	const { preview, context } = createSelectedPartPreview({ savedLine, targetPart, initialPosition: 4500 });
+	assert.equal(context.isCharSynced(0, 1), true);
+	assert.equal(context.getCharSyncTime(0, 1), 5);
+	assert.equal(context.getPreviewProgressIndexAtTime(0, 4.5), 0.5);
+	preview.tick();
+	assert.deepEqual(Array.from(context.charElementsRef.current, glyph => glyph.style.background), ["progress", "synced"]);
+	preview.dispose();
+});
+
+test("selected vocals fall back to matching saved timings when inherited timings are absent", () => {
+	const saved = freeze(part("a", [1, 2], [{ start: 0, end: 1 }]));
+	const savedLine = freeze({ start: 0, end: 3, chars: [1, 2, 3, 4], parallel: { parts: [saved] } });
+	const targetPart = freeze(part("a", undefined, [{ start: 0, end: 1 }]));
+	const { preview, context } = createSelectedPartPreview({ savedLine, targetPart, initialPosition: 1500 });
+	assert.equal(context.isCharSynced(0, 0), true);
+	assert.equal(context.getCharSyncTime(0, 1), 2);
+	assert.equal(context.getPreviewProgressIndexAtTime(0, 1.5), 0.5);
+	preview.tick();
+	assert.deepEqual(Array.from(context.charElementsRef.current, glyph => glyph.style.background), ["progress", "synced"]);
+	preview.dispose();
+});
+
+test("selected unsynced, invalid and out-of-order vocals never display false playback progress", () => {
+	for (const chars of [undefined, [], [1], [1, null], [1, NaN], [1, Infinity], [1, "2"], [-1, 2], [2, 1], new Array(2), [, 2]]) {
+		const targetPart = part("a", chars, [{ start: 0, end: 1 }]);
+		const savedLine = { start: 0, end: 3, chars: [1, 2, 3, 4], parallel: { parts: [targetPart] } };
+		const { preview, context, mounted } = createSelectedPartPreview({ savedLine, targetPart });
+		assert.equal(context.isCharSynced(0, 0), false, `invalid timings: ${JSON.stringify(chars)}`);
+		assert.equal(context.getCharSyncTime(0, 0), null);
+		assert.equal(context.getPreviewProgressIndexAtTime(0, 10), -1);
+		assert.ok(mounted.tree.children[1].children.every(glyph => glyph.props["data-iv-sync-creator-synced"] === "0"));
+		preview.tick();
+		assert.ok(context.charElementsRef.current.every(glyph => !glyph.style.background));
+		preview.dispose();
+	}
+});
+
+test("selected glyphs and preview polls share validation until the vocal or saved timing changes", () => {
+	const preview = createPreview();
+	attachParallelRenderer(preview);
+	const resolveChars = vm.runInContext("getSyncCreatorParallelPreviewChars", preview.context);
+	const resolveProgress = vm.runInContext("getSyncCreatorPreviewProgressIndex", preview.context);
+	let validations = 0;
+	let memoValue;
+	let memoDependencies;
+	const context = vm.createContext({
+		activeParallelPart: part("a", [1, 2], [{ start: 0, end: 1 }]),
+		lineCharOffsets: [0], syncLinesByStart: new Map([[0, { chars: [1, 2] }]]),
+		useCallback: callback => callback,
+		useMemo: (callback, dependencies) => {
+			if (!memoDependencies || dependencies.some((value, index) => !Object.is(value, memoDependencies[index]))) {
+				memoValue = callback();
+				memoDependencies = dependencies;
+			}
+			return memoValue;
+		},
+		getSyncCreatorParallelPreviewChars: (...args) => { validations++; return resolveChars(...args); },
+		getSyncCreatorPreviewProgressIndex: resolveProgress,
+	});
+	const render = () => vm.runInContext(`globalThis.selected = (() => {
+		${slice("\tconst getPreviewCharsForLine =", "\tconst getPreviewProgressIndex =")}
+		return { isCharSynced, getCharSyncTime, getPreviewProgressIndexAtTime };
+	})();`, context);
+	for (let frame = 0; frame < 100; frame++) {
+		render();
+		assert.equal(context.selected.isCharSynced(0, 0), true);
+		assert.equal(context.selected.getCharSyncTime(0, 1), 2);
+		assert.equal(context.selected.getPreviewProgressIndexAtTime(0, 1.5), 0.5);
+	}
+	assert.equal(validations, 1, "position-only renders and per-glyph queries reuse the validated timeline");
+	context.activeParallelPart = part("b", undefined, [{ start: 0, end: 1 }]);
+	for (const [times, expected] of [[[4, 5], 4], [[6, 7], 6]]) {
+		context.syncLinesByStart = new Map([[0, { parallel: { parts: [part("b", times, [{ start: 0, end: 1 }])] } }]]);
+		render();
+		assert.equal(context.selected.getCharSyncTime(0, 0), expected);
+		assert.equal(context.selected.getPreviewProgressIndexAtTime(0, 2), -1);
+	}
+	assert.equal(validations, 3, "target changes and saved timing updates invalidate the cached timeline");
+	preview.dispose();
+});
 
 test("nonselected saved parts advance and seek while only the selected part is recording", () => {
 	const preview = createPreview({ mode: "record", initialPosition: 1000 });

@@ -571,6 +571,14 @@ const hasReusableSyncCreatorParallelChars = (targetPart, sourcePart) => (
 	&& areSyncCreatorParallelRangesEqual(targetPart?.ranges, sourcePart?.ranges)
 	&& sourcePart.chars.length === countSyncCreatorRangeChars(targetPart?.ranges)
 );
+const getSyncCreatorParallelPreviewChars = (part, savedPart) => {
+	const timingSource = hasReusableSyncCreatorParallelChars(part, part) ? part : savedPart;
+	// Re-splitting can inherit out-of-order timings from overlapping vocals.
+	return hasReusableSyncCreatorParallelChars(part, timingSource)
+		&& Array.from(timingSource.chars).every((time, index, times) => (
+			isFiniteSyncCreatorTime(time) && time >= 0 && (index === 0 || time >= times[index - 1])
+		)) ? timingSource.chars : [];
+};
 const countSyncCreatorParallelRangeOverlap = (leftRanges, rightRanges) => {
 	let overlap = 0;
 	for (const left of Array.isArray(leftRanges) ? leftRanges : []) {
@@ -3944,12 +3952,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		const targets = new Map();
 		for (const part of currentParallelData?.parts || []) {
 			const savedPart = currentExistingLineData?.parallel?.parts?.find(item => item.id === part.id);
-			const timingSource = hasReusableSyncCreatorParallelChars(part, part) ? part : savedPart;
-			// Re-splitting can inherit out-of-order timings from overlapping vocals.
-			const chars = hasReusableSyncCreatorParallelChars(part, timingSource)
-				&& Array.from(timingSource.chars).every((time, index, times) => (
-					isFiniteSyncCreatorTime(time) && time >= 0 && (index === 0 || time >= times[index - 1])
-				)) ? timingSource.chars : [];
+			const chars = getSyncCreatorParallelPreviewChars(part, savedPart);
 			const text = rangesToCharRefs(part.ranges, currentFullLineChars, currentLineStart).map(ref => ref.char).join('');
 			const color = getSyncCreatorSpeakerTextColor(part.speaker, part['speaker-color'], part['speaker-fallback']);
 			const preview = {
@@ -8882,43 +8885,35 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		return new Map(syncData.lines.map((line) => [line.start, line]));
 	}, [syncData]);
 
-	const isCharSynced = useCallback((lineIndex, charIndex) => {
-		if (!syncLinesByStart) return false;
-		const lineStart = lineCharOffsets[lineIndex];
-		const lineData = syncLinesByStart.get(lineStart);
-		if (activeParallelPart) {
-			const part = lineData?.parallel?.parts?.find(item => item.id === activeParallelPart.id);
-			return hasReusableSyncCreatorParallelChars(activeParallelPart, part)
-				&& part.chars.length > charIndex;
-		}
-		return lineData && lineData.chars && lineData.chars.length > charIndex;
+	const getPreviewCharsForLine = useMemo(() => {
+		const cache = new Map();
+		return (lineIndex) => {
+			if (cache.has(lineIndex)) return cache.get(lineIndex);
+			const lineData = syncLinesByStart?.get(lineCharOffsets[lineIndex]);
+			const savedPart = activeParallelPart
+				? lineData?.parallel?.parts?.find(item => item.id === activeParallelPart.id)
+				: null;
+			const chars = activeParallelPart
+				? getSyncCreatorParallelPreviewChars(activeParallelPart, savedPart)
+				: lineData?.chars;
+			// The selected glyphs, timestamps and animation share one validated
+			// timeline, including timings inherited when a vocal part is split.
+			cache.set(lineIndex, chars);
+			return chars;
+		};
 	}, [syncLinesByStart, lineCharOffsets, activeParallelPart]);
+
+	const isCharSynced = useCallback((lineIndex, charIndex) => {
+		return (getPreviewCharsForLine(lineIndex)?.length || 0) > charIndex;
+	}, [getPreviewCharsForLine]);
 
 	const getCharSyncTime = useCallback((lineIndex, charIndex) => {
-		if (!syncLinesByStart) return null;
-		const lineStart = lineCharOffsets[lineIndex];
-		const lineData = syncLinesByStart.get(lineStart);
-		if (activeParallelPart) {
-			const part = lineData?.parallel?.parts?.find(item => item.id === activeParallelPart.id);
-			return hasReusableSyncCreatorParallelChars(activeParallelPart, part)
-				? part.chars[charIndex] ?? null
-				: null;
-		}
-		return lineData?.chars?.[charIndex] ?? null;
-	}, [syncLinesByStart, lineCharOffsets, activeParallelPart]);
+		return getPreviewCharsForLine(lineIndex)?.[charIndex] ?? null;
+	}, [getPreviewCharsForLine]);
 
 	const getPreviewProgressIndexAtTime = useCallback((lineIndex, currentTimeSec) => {
-		if (!syncLinesByStart) return -1;
-		const lineStart = lineCharOffsets[lineIndex];
-		const lineData = syncLinesByStart.get(lineStart);
-		const savedPart = activeParallelPart
-			? lineData?.parallel?.parts?.find(item => item.id === activeParallelPart.id)
-			: null;
-		const chars = activeParallelPart
-			? (hasReusableSyncCreatorParallelChars(activeParallelPart, savedPart) ? savedPart.chars : null)
-			: lineData?.chars;
-		return getSyncCreatorPreviewProgressIndex(chars, currentTimeSec);
-	}, [syncLinesByStart, lineCharOffsets, activeParallelPart]);
+		return getSyncCreatorPreviewProgressIndex(getPreviewCharsForLine(lineIndex), currentTimeSec);
+	}, [getPreviewCharsForLine]);
 
 	const getPreviewProgressIndex = useCallback((lineIndex) => {
 		const progressIndex = getPreviewProgressIndexAtTime(lineIndex, position / 1000);
