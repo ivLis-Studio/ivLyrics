@@ -46,11 +46,16 @@ const VinylActiveLyricRenderer = (() => {
     ) => {
         const scrollEntriesRef = useRef(new Map());
         const progressRef = useRef(0);
+        const hasScrollTiming = Number.isFinite(lineStartTime)
+            && Number.isFinite(lineEndTime)
+            && lineEndTime > lineStartTime;
         progressRef.current = getLineScrollProgress(position, lineStartTime, lineEndTime);
 
         useLayoutEffect(() => {
             const root = rootRef.current;
             if (!root) return undefined;
+            // A newly active lyric must start at the top of the wrapped scroll area.
+            if (root.parentElement) root.parentElement.scrollTop = 0;
 
             const motionPreference = typeof window.matchMedia === "function"
                 ? window.matchMedia("(prefers-reduced-motion: reduce)")
@@ -63,6 +68,7 @@ const VinylActiveLyricRenderer = (() => {
             const clearScrollEntries = () => {
                 scrollEntriesRef.current.forEach((_, content) => {
                     content.style.transform = "";
+                    content.parentElement?.classList.remove("is-vinyl-lyric-overflowing");
                 });
                 scrollEntriesRef.current.clear();
             };
@@ -72,20 +78,24 @@ const VinylActiveLyricRenderer = (() => {
                 if (disposed || !root.isConnected) return;
 
                 clearScrollEntries();
-                const canMove = motionEnabled && motionPreference?.matches !== true;
+                const canMove = motionEnabled && hasScrollTiming && motionPreference?.matches !== true;
                 const viewports = root.querySelectorAll(".ivlyrics-vinyl-lyric-scroll-viewport");
 
                 viewports.forEach((viewport) => {
                     const content = viewport.querySelector(":scope > .ivlyrics-vinyl-lyric-scroll-content");
                     viewport.classList.remove("is-vinyl-lyric-overflowing");
-                    if (!content) return;
+                    if (!content || !canMove) return;
 
+                    // Wrapping is the safe default. Only clip a row after measuring
+                    // it unwrapped and confirming that playback can reveal its end.
+                    viewport.classList.add("is-vinyl-lyric-measuring");
                     const viewportWidth = viewport.clientWidth;
                     const naturalContentWidth = Math.max(
                         content.scrollWidth,
                         content.getBoundingClientRect().width
                     );
                     const naturalTravel = naturalContentWidth - viewportWidth;
+                    viewport.classList.remove("is-vinyl-lyric-measuring");
 
                     if (viewportWidth <= 0 || naturalTravel <= SCROLL_OVERFLOW_THRESHOLD_PX) {
                         return;
@@ -99,15 +109,16 @@ const VinylActiveLyricRenderer = (() => {
                     const travel = Math.max(0, Math.ceil(paddedContentWidth - viewportWidth));
 
                     if (travel <= SCROLL_OVERFLOW_THRESHOLD_PX) {
+                        viewport.classList.remove("is-vinyl-lyric-overflowing");
                         return;
                     }
 
                     const direction = window.getComputedStyle(viewport).direction === "rtl" ? "rtl" : "ltr";
-                    scrollEntriesRef.current.set(content, { travel, direction, canMove });
+                    scrollEntriesRef.current.set(content, { travel, direction });
                     content.style.transform = getScrollTransform(
                         travel,
                         direction,
-                        canMove ? progressRef.current : 0
+                        progressRef.current
                     );
                 });
             };
@@ -145,14 +156,14 @@ const VinylActiveLyricRenderer = (() => {
                 motionPreference?.removeEventListener?.("change", scheduleMeasure);
                 document.fonts?.removeEventListener?.("loadingdone", scheduleMeasure);
             };
-        }, [rootRef, resetKey, motionEnabled]);
+        }, [rootRef, resetKey, motionEnabled, hasScrollTiming]);
 
         useLayoutEffect(() => {
-            scrollEntriesRef.current.forEach(({ travel, direction, canMove }, content) => {
+            scrollEntriesRef.current.forEach(({ travel, direction }, content) => {
                 content.style.transform = getScrollTransform(
                     travel,
                     direction,
-                    canMove ? progressRef.current : 0
+                    progressRef.current
                 );
             });
         }, [position, lineStartTime, lineEndTime, motionEnabled]);
@@ -206,7 +217,7 @@ const VinylActiveLyricRenderer = (() => {
             Math.max(lyrics.length - 1, 0)
         );
         const sourceLine = Array.isArray(lyrics) ? lyrics[safeLineIndex] : null;
-        const scrollResetKey = `${safeLineIndex}:${sourceLine?.startTime || 0}:${isKara ? 1 : 0}:${settingsRevision}`;
+        const scrollResetKey = `${safeLineIndex}:${sourceLine?.startTime || 0}:${!!sourceLine}:${isKara ? 1 : 0}:${settingsRevision}`;
         const lineStartTime = Number(sourceLine?.startTime) || 0;
         const directLineEndTime = Number(sourceLine?.endTime);
         const nextLineStartTime = Number(lyrics[safeLineIndex + 1]?.startTime);
@@ -221,7 +232,7 @@ const VinylActiveLyricRenderer = (() => {
         useOverflowAutoScroll(
             rootRef,
             scrollResetKey,
-            motionEnabled,
+            motionEnabled && singleLineScroll,
             position,
             lineStartTime,
             lineEndTime

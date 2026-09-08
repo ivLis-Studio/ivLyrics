@@ -9325,6 +9325,7 @@ html.is-lp-view-exit::view-transition-new(root) {
   left: 0;
   width: 100%;
   overflow: visible;
+  overflow-wrap: anywhere;
   transform: translateY(0);
   transform-origin: center bottom;
   font-family: var(--iv-vinyl-original-font-family, 'Pretendard Variable'), Pretendard, sans-serif;
@@ -9347,6 +9348,15 @@ html.is-lp-view-exit::view-transition-new(root) {
 
 .fullscreen-vinyl-active-lyric > .ivlyrics-active-lyric-renderer {
   width: 100%;
+}
+
+.fullscreen-vinyl-overlay:not(.is-presentation-video) .fullscreen-vinyl-active-lyric {
+  max-height: 40svh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+  scrollbar-width: thin;
 }
 
 .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine {
@@ -9374,8 +9384,9 @@ html.is-lp-view-exit::view-transition-new(root) {
   margin-inline: 0;
   overflow: hidden;
   text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
   transform: none !important;
 }
 
@@ -9394,32 +9405,43 @@ html.is-lp-view-exit::view-transition-new(root) {
   width: 100%;
   max-width: 100%;
   overflow: visible !important;
-  clip-path: inset(-0.8em 0 -0.8em 0);
   text-align: center !important;
   text-overflow: clip;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-content {
   display: inline-block;
   box-sizing: content-box;
-  width: max-content;
-  min-width: 100%;
-  max-width: none;
-  white-space: nowrap;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
   text-align: center;
   transform: translate3d(0, 0, 0);
 }
 
 .fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-content > .lyrics-karaoke-line,
 .fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-content > .lyrics-karaoke-stack {
-  width: max-content;
-  min-width: 100%;
-  max-width: none;
+  max-width: 100%;
+  white-space: normal;
+}
+
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-viewport:is(.is-vinyl-lyric-measuring, .is-vinyl-lyric-overflowing),
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-viewport:is(.is-vinyl-lyric-measuring, .is-vinyl-lyric-overflowing) > .ivlyrics-vinyl-lyric-scroll-content,
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-viewport:is(.is-vinyl-lyric-measuring, .is-vinyl-lyric-overflowing) > .ivlyrics-vinyl-lyric-scroll-content > :is(.lyrics-karaoke-line, .lyrics-karaoke-stack) {
   white-space: nowrap;
 }
 
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-viewport:is(.is-vinyl-lyric-measuring, .is-vinyl-lyric-overflowing) > .ivlyrics-vinyl-lyric-scroll-content,
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-viewport:is(.is-vinyl-lyric-measuring, .is-vinyl-lyric-overflowing) > .ivlyrics-vinyl-lyric-scroll-content > :is(.lyrics-karaoke-line, .lyrics-karaoke-stack) {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+}
+
 .fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-viewport.is-vinyl-lyric-overflowing {
+  clip-path: inset(-0.8em 0 -0.8em 0);
   text-align: start !important;
   -webkit-mask-image: linear-gradient(
     90deg,

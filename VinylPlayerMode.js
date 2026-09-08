@@ -1516,7 +1516,7 @@ const VinylPlayerMode = (() => {
                     positionOverride: null,
                     motionEnabled: animationsEnabled,
                     durationMs: duration,
-                    singleLineScroll: !isVideoPresentation
+                    singleLineScroll: !isVideoPresentation && renderableLyrics === snapshot.lyrics
                 })
                 : snapshot.plainText);
         };
