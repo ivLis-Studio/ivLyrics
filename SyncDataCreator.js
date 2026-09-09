@@ -2942,6 +2942,97 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const characterPronunciationGenerationRequestRef = useRef(0);
 	const characterPronunciationProgressOwnerRef = useRef(0);
 	const characterPronunciationConsentForceRef = useRef(false);
+	const scoreTrackerRef = useRef(null);
+	const scoreContextRef = useRef(null);
+	const scorePendingEventsRef = useRef([]);
+	const scorePendingEffectsRef = useRef(new Map());
+	const scoreInputContextRef = useRef(null);
+	const scoreInputRef = useRef(null);
+	const [scoreResolvedIsrc, setScoreResolvedIsrc] = useState('');
+	const ensureScoreTracker = useCallback(() => {
+		const context = scoreContextRef.current;
+		if (!context?.ready || !context.accountId || !context.isrc || !context.initialSyncData?.source || !window.SyncCreatorScoreTracker) return null;
+		const ownsEvent = event => event.trackUri === context.trackUri
+			&& (event.accountId === context.accountId || (!event.accountId && event.action === 'import'));
+		const scope = `${context.accountId}:${context.isrc}:lrclib`;
+		if (scoreTrackerRef.current?.scope !== scope) {
+			scoreTrackerRef.current?.stop();
+			const pendingBaseline = scorePendingEventsRef.current.find(ownsEvent)?.baseline;
+			scoreTrackerRef.current = window.SyncCreatorScoreTracker.create({
+				accountId: context.accountId,
+				isrc: context.isrc,
+				initialSyncData: pendingBaseline ? { ...pendingBaseline, source: pendingBaseline.source || context.initialSyncData.source } : context.initialSyncData,
+				storage: window.SyncCreatorDraftStore,
+				isAuthorized: () => Boolean(Utils.getAuthToken?.()) && Utils.getUserHash?.() === context.accountId,
+				isActive: () => document.visibilityState === 'visible'
+					&& document.hasFocus()
+					&& Boolean(containerRef.current?.isConnected)
+					&& ['record', 'preview', 'idle'].includes(scoreContextRef.current?.mode)
+					&& Spicetify.Player?.data?.item?.uri === context.trackUri,
+				request: async payload => {
+					const controller = new AbortController();
+					const timeout = setTimeout(() => controller.abort(), 15000);
+					try {
+						const response = await fetch('https://lyrics.api.ivl.is/lyrics/sync-data/work', {
+							method: 'POST', signal: controller.signal,
+							headers: Utils.getApiHeaders({ 'Content-Type': 'application/json' }),
+							body: JSON.stringify(payload)
+						});
+						const result = await response.json();
+						if (!response.ok) {
+							const failure = new Error(result.error || 'Sync work could not be saved.');
+							failure.status = response.status;
+							throw failure;
+						}
+						return result;
+					} finally { clearTimeout(timeout); }
+				}
+			});
+		}
+		const tracker = scoreTrackerRef.current;
+		for (const event of scorePendingEventsRef.current.filter(ownsEvent)) {
+			if (ownsEvent(event)) {
+				tracker.enqueue(event.action, { ...event.syncData, source: event.syncData.source || context.initialSyncData.source }, event.target);
+			}
+		}
+		scorePendingEventsRef.current = scorePendingEventsRef.current.filter(event => !ownsEvent(event));
+		return tracker;
+	}, []);
+	const captureScoreWork = useCallback((action, data, target) => {
+		const context = scoreContextRef.current;
+		if (!context) return;
+		const snapshot = context.buildSnapshot(data);
+		if (!snapshot) return;
+		if (!context.accountId || context.accountId !== Utils.getUserHash?.() || !Utils.getAuthToken?.()) {
+			// Import provenance can be retained before login. It can only grant
+			// the external-work tier; anonymous timing/time claims are discarded.
+			if (action === 'import') scorePendingEventsRef.current.push({
+				action: 'import', syncData: snapshot, baseline: context.initialSyncData,
+				accountId: '', trackUri: context.trackUri
+			});
+			return;
+		}
+		const tracker = ensureScoreTracker();
+		if (tracker) tracker.enqueue(action, snapshot, target);
+		else scorePendingEventsRef.current.push({ action, syncData: snapshot, target, baseline: context.initialSyncData, accountId: context.accountId, trackUri: context.trackUri });
+	}, [ensureScoreTracker]);
+	const markScoreTimingInput = useCallback((start, end, granularity) => {
+		const context = scoreInputContextRef.current;
+		if (!context || end < start) return;
+		if (scoreInputRef.current?.key !== context.key) {
+			scoreInputRef.current = { key: context.key, indexes: new Set(), anchors: new Set(), granularity, inputCount: 0 };
+		}
+		const input = scoreInputRef.current;
+		const levels = ['line', 'word', 'character'];
+		input.granularity = levels[Math.min(levels.indexOf(input.granularity), levels.indexOf(granularity))] || 'line';
+		const anchor = context.refs[Math.max(0, start)]?.absoluteIndex;
+		if (Number.isInteger(anchor)) input.anchors.add(anchor);
+		for (let index = Math.max(0, start); index <= end && index < context.refs.length; index++) {
+			input.indexes.add(context.refs[index].absoluteIndex);
+		}
+		input.inputCount++;
+		ensureScoreTracker()?.interact();
+	}, [ensureScoreTracker]);
 	const nextSessionClientRevision = useCallback(() => {
 		const wallClockRevision = Date.now() * 1000;
 		sessionClientRevisionRef.current = Math.max(
@@ -3242,6 +3333,8 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		requestId === sessionSourceChangeRequestRef.current
 	), []);
 	const beginSyncCreatorSourceChange = useCallback(() => {
+		scoreInputRef.current = null;
+		scorePendingEffectsRef.current?.clear();
 		const sourceChangeRequestId = ++sessionSourceChangeRequestRef.current;
 		pendingPlaybackNavigationRef.current = true;
 		const latestRecord = latestSessionRecordRef.current;
@@ -4126,6 +4219,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		() => currentLineCharRefs.map(ref => ref.char),
 		[currentLineCharRefs]
 	);
+	scoreInputContextRef.current = { key: `${currentLineStart}:${activeParallelTargetId}`, refs: currentLineCharRefs };
 	const getCurrentSyncTargetSavedChars = useCallback(() => {
 		const expectedLength = currentLineChars.length;
 		if (!expectedLength) return [];
@@ -4982,6 +5076,11 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 
 	const setRecordingProgressIndex = useCallback((nextIndex, options = {}) => {
 		const normalizedIndex = Number.isInteger(nextIndex) ? nextIndex : -1;
+		if (normalizedIndex < recordingCharIndexRef.current && scoreInputRef.current) {
+			const retained = new Set((scoreInputContextRef.current?.refs || []).slice(0, normalizedIndex + 1).map(ref => ref.absoluteIndex));
+			scoreInputRef.current.indexes = new Set([...scoreInputRef.current.indexes].filter(index => retained.has(index)));
+			scoreInputRef.current.anchors = new Set([...scoreInputRef.current.anchors].filter(index => retained.has(index)));
+		}
 		recordingCharIndexRef.current = normalizedIndex;
 		recordingVisualTargetIndexRef.current = normalizedIndex;
 		if (mode === 'record') {
@@ -5268,7 +5367,8 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			}
 		}
 		charTimesRef.current = nextCharTimes;
-	}, [mode, currentLineIndex, lyricsLines.length, currentLineChars.length, setRecordingProgressIndex, cacheCharHitBoxes, getActiveRecordingLockIndex, buildLockedCharTimes, getGranularityEndIndex]);
+		markScoreTimingInput(requestedStartIndex, startIndex, syncGranularity);
+	}, [mode, currentLineIndex, lyricsLines.length, currentLineChars.length, setRecordingProgressIndex, cacheCharHitBoxes, getActiveRecordingLockIndex, buildLockedCharTimes, getGranularityEndIndex, markScoreTimingInput, syncGranularity]);
 
 	const handleDragMove = useCallback((charIndex, e) => {
 		if (mode !== 'record' || !isDragging || dragStartTime === null) return;
@@ -5298,6 +5398,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		}
 
 		if (charIndex >= previousRecordingCharIndex) {
+			if (charIndex > previousRecordingCharIndex) markScoreTimingInput(Math.max(firstEditableIndex, previousRecordingCharIndex + 1), charIndex, syncGranularity);
 			// 정방향 진행
 			for (let i = previousRecordingCharIndex + 1; i <= charIndex; i++) {
 				if (!isFiniteSyncCreatorTime(charTimesRef.current[i])) {
@@ -5313,7 +5414,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			}
 			setRecordingProgressIndex(Math.max(charIndex, lockIndex), { commitState: false });
 		}
-	}, [mode, isDragging, dragStartTime, currentLineChars.length, setRecordingProgressIndex, getActiveRecordingLockIndex, getGranularityEndIndex]);
+	}, [mode, isDragging, dragStartTime, currentLineChars.length, setRecordingProgressIndex, getActiveRecordingLockIndex, getGranularityEndIndex, markScoreTimingInput, syncGranularity]);
 
 	// Commit-time normalization keeps the client aligned with backend validation:
 	// chars must be non-decreasing and a line must not start before the previous line ends.
@@ -5743,6 +5844,43 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		const nextSyncData = validLines.length > 0
 			? { version: SYNC_CREATOR_SYNC_DATA_VERSION, lines: validLines }
 			: null;
+		const scoreInput = scoreInputRef.current;
+		if (scoreInput?.key === `${lineStart}:${activeParallelTargetId}` && scoreInput.inputCount > 0) {
+			// Metadata selected before the first recording becomes committed with
+			// that line. Keep its explicit effect action separate from timing so
+			// neither event consumes the other's before/after comparison.
+			let timingSnapshot = nextSyncData;
+			const pendingEffects = [...scorePendingEffectsRef.current.values()].filter(effect => effect.start === lineStart);
+			if (pendingEffects.length) {
+				timingSnapshot = JSON.parse(JSON.stringify(nextSyncData));
+				const timingLine = timingSnapshot.lines.find(line => line.start === lineStart);
+				for (const pending of pendingEffects) {
+					const previousItem = pending.partId ? existingLine?.parallel?.parts?.find(part => part.id === pending.partId) : existingLine;
+					const nextItem = pending.partId ? timingLine.parallel?.parts?.find(part => part.id === pending.partId) : timingLine;
+					if (!nextItem) continue;
+					const field = pending.style ? 'styleRanges' : 'kind';
+					if (previousItem?.[field] !== undefined) nextItem[field] = previousItem[field];
+					else delete nextItem[field];
+				}
+			}
+			const recordedIndexes = currentLineCharRefs
+				.filter((ref, index) => scoreInput.indexes.has(ref.absoluteIndex) && isFiniteSyncCreatorTime(rawChars[index]))
+				.map(ref => ref.absoluteIndex).sort((a, b) => a - b);
+			const ranges = [];
+			for (const index of recordedIndexes) {
+				if (ranges.length && ranges[ranges.length - 1].end + 1 === index) ranges[ranges.length - 1].end = index;
+				else ranges.push({ start: index, end: index });
+			}
+			if (ranges.length) captureScoreWork('record', timingSnapshot, {
+				start: lineStart, end: lineEnd,
+				...(activeParallelPart ? { partId: activeParallelPart.id } : {}),
+				granularity: scoreInput.granularity,
+				inputCount: scoreInput.inputCount,
+				inputIndexes: [...scoreInput.anchors].filter(index => recordedIndexes.includes(index)),
+				ranges
+			});
+		}
+		scoreInputRef.current = null;
 		setSyncData(nextSyncData);
 		return normalizedLineData;
 	}, [
@@ -5767,7 +5905,8 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		showMissingMetaToast,
 		normalizeCommittedLineChars,
 		syncGranularity,
-		currentLineChars
+		currentLineChars,
+		captureScoreWork
 	]);
 
 	const handleDragEnd = useCallback((e) => {
@@ -5874,6 +6013,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const interpolationEnabledRef = useRef(true);
 
 	const resetCurrentSyncInput = useCallback(() => {
+		scoreInputRef.current = null;
 		isKeyboardSyncingRef.current = false;
 		keyboardCharIndexRef.current = -1;
 		charTimesRef.current = [];
@@ -6017,6 +6157,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 
 		// record 모드가 아니거나 라인이 변경되면 키보드 싱크 상태 초기화
 		const shouldReset = mode !== 'record' || lineChanged || targetChanged;
+		if (shouldReset) scoreInputRef.current = null;
 		if (shouldReset && recordingLockIndexRef.current >= 0) {
 			clearRecordingLock();
 		}
@@ -6090,6 +6231,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			const lockIndex = getActiveRecordingLockIndex();
 			if (lockIndex >= 0) clearRecordingLock();
 			const chars = new Array(currentLineChars.length).fill(roundSyncTime(currentTime));
+			markScoreTimingInput(0, currentLineChars.length - 1, 'line');
 			const committedLine = commitCurrentLineSync(chars, { createCheckpoint: true });
 			if (committedLine) advanceAfterCompletedTarget(committedLine);
 			isKeyboardSyncingRef.current = false;
@@ -6180,6 +6322,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 						}
 					}
 
+					markScoreTimingInput(Math.max(0, lockIndex + 1), startIndex, 'character');
 					keyboardCharIndexRef.current = startIndex;
 					setDragStartTime(currentTime);
 					setRecordingProgressIndex(startIndex, { commitState: false });
@@ -6189,6 +6332,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					// 다음 글자로 진행
 					const lockIndex = getActiveRecordingLockIndex();
 					let nextIndex = Math.max(keyboardCharIndexRef.current + 1, lockIndex + 1);
+					const scoreStartIndex = nextIndex;
 					if (nextIndex < currentLineChars.length) {
 						charTimesRef.current[nextIndex] = currentTime;
 
@@ -6208,6 +6352,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 							}
 						}
 
+						markScoreTimingInput(scoreStartIndex, nextIndex, 'character');
 						keyboardCharIndexRef.current = nextIndex;
 						setRecordingProgressIndex(nextIndex, { commitState: false });
 						window.__ivLyricsDebugLog?.('[SyncDataCreator] Advanced to char:', nextIndex);
@@ -6310,6 +6455,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 						charTimesRef.current[endIdx] = currentTime;
 					}
 
+					markScoreTimingInput(wordStartIdx, endIdx, 'word');
 					keyboardCharIndexRef.current = endIdx;
 					setRecordingProgressIndex(endIdx, { commitState: false });
 
@@ -6375,6 +6521,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 
 				// endIdx는 마지막으로 처리된 글자의 다음 인덱스이므로 -1
 				const finalEndIdx = endIdx - 1;
+				markScoreTimingInput(nextWordStartIdx, Math.max(0, finalEndIdx), 'word');
 				keyboardCharIndexRef.current = Math.max(0, finalEndIdx);
 
 				setRecordingProgressIndex(keyboardCharIndexRef.current, { commitState: false });
@@ -6476,6 +6623,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				for (let index = start; index <= nextRange.end; index++) {
 					charTimesRef.current[index] = currentTime;
 				}
+				markScoreTimingInput(start, nextRange.end, 'word');
 				keyboardCharIndexRef.current = nextRange.end;
 				setRecordingProgressIndex(nextRange.end, { commitState: false });
 				if (nextRange.end >= currentLineChars.length - 1) {
@@ -6595,6 +6743,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 						charTimesRef.current[i] = currentTime;
 					}
 
+					markScoreTimingInput(segmentStart, firstSegment.end, 'character');
 					keyboardCharIndexRef.current = firstSegment.end;
 					setRecordingProgressIndex(firstSegment.end, { commitState: false });
 					window.__ivLyricsDebugLog?.('[SyncDataCreator] Syllable sync started, segment:', firstSegment.start, '-', firstSegment.end);
@@ -6633,6 +6782,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					charTimesRef.current[i] = currentTime;
 				}
 
+				markScoreTimingInput(segmentStart, nextSegment.end, 'character');
 				keyboardCharIndexRef.current = nextSegment.end;
 				setRecordingProgressIndex(nextSegment.end, { commitState: false });
 				window.__ivLyricsDebugLog?.('[SyncDataCreator] Syllable advanced to segment:', nextSegment.start, '-', nextSegment.end);
@@ -6725,6 +6875,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			// Backspace: 현재 라인 싱크 취소
 			if (normalizedHotkey === 'backspace') {
 				consumeKeyboardEvent();
+				scoreInputRef.current = null;
 				if (isKeyboardSyncingRef.current) {
 					isKeyboardSyncingRef.current = false;
 					keyboardCharIndexRef.current = -1;
@@ -6876,6 +7027,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		claimSessionForLocalEditing();
 		const lineStart = lineCharOffsets[currentLineIndex];
 		const draftKey = `${lineStart}:${partId}`;
+		if (field === 'kind') {
+			scorePendingEffectsRef.current.set(`part:${draftKey}`, { start: lineStart, partId, expectedKind: safeValue });
+		}
 		setParallelPartMetaDrafts(prev => ({
 			...prev,
 			[draftKey]: {
@@ -6926,6 +7080,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			(field === 'speaker' && safeValue === SYNC_CREATOR_DEFAULT_SPEAKER)
 			|| (field === 'kind' && safeValue === SYNC_CREATOR_DEFAULT_KIND)
 		);
+		if (field === 'kind') {
+			scorePendingEffectsRef.current.set(`line:${lineStart}`, { start: lineStart, expectedKind: safeValue });
+		}
 		setLineMetaDrafts(prev => ({
 			...prev,
 			[lineStart]: {
@@ -6998,6 +7155,13 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		);
 		claimSessionForLocalEditing();
 		setLineStyleDrafts(prev => ({ ...prev, [currentLineStart]: nextRanges }));
+		if (Object.prototype.hasOwnProperty.call(patch, 'kind')) {
+			scorePendingEffectsRef.current.set(`style:${currentLineStart}:${localStart}:${localEnd}`, {
+				start: currentLineStart,
+				ranges: [{ start: currentLineStart + localStart, end: currentLineStart + localEnd }],
+				expectedKind: patch.kind, style: true
+			});
+		}
 		setSyncData(prev => {
 			if (!prev || !Array.isArray(prev.lines)) return prev;
 			let changed = false;
@@ -7666,6 +7830,87 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		selectedLrclibCandidateKey
 	]);
 
+	// Capture the baseline before edits. ISRC resolution can finish later; queued
+	// edits retain their original snapshots instead of turning into imported work.
+	const buildScoreSnapshot = useCallback((data) => {
+		const raw = data || { version: SYNC_CREATOR_SYNC_DATA_VERSION, lines: [] };
+		const expanded = attachSelectedLrclibSource(raw);
+		if (!expanded) return null;
+		if (isCompleteSyncCreatorLrclibSource(raw.source)) expanded.source = raw.source;
+		return compactSyncCreatorSyncData({
+			...expanded, ...(trackDurationMs > 0 ? { trackDurationMs } : {})
+		}, lyricsFullTextChars, lyricsLanguage || undefined);
+	}, [attachSelectedLrclibSource, lyricsFullTextChars, lyricsLanguage, trackDurationMs]);
+	const scoreCurrentSnapshot = useMemo(() => buildScoreSnapshot(syncData), [buildScoreSnapshot, syncData]);
+	scoreContextRef.current = {
+		ready: !isLoading && sessionHydrationComplete && Boolean(activeSessionDraftKey)
+			&& sessionReadyDraftKey === activeSessionDraftKey,
+		accountId: Utils.getAuthToken?.() ? Utils.getUserHash?.() : '',
+		isrc: trackIsrc || scoreResolvedIsrc,
+		trackUri, mode,
+		initialSyncData: scoreCurrentSnapshot,
+		buildSnapshot: buildScoreSnapshot
+	};
+	useEffect(() => {
+		let canceled = false;
+		setScoreResolvedIsrc('');
+		if (!trackIsrc && trackId) {
+			Promise.resolve(window.SyncDataService?.resolveTrackIsrc?.(trackId, trackInfo))
+				.then(value => { if (!canceled) setScoreResolvedIsrc(value || ''); })
+				.catch(() => undefined);
+		}
+		return () => { canceled = true; };
+	}, [trackId, trackIsrc]);
+	useEffect(() => {
+		const tracker = ensureScoreTracker();
+		const snapshot = scoreContextRef.current?.initialSyncData;
+		if (!snapshot) return;
+		// State changes without a timing input (undo, source load, offsets, draft
+		// restore) are snapshots only and never promote manual timing provenance.
+		tracker?.observe(snapshot);
+		const effectTargets = [];
+		for (const [key, pending] of scorePendingEffectsRef.current) {
+			if (!pending.expectedKind || pending.expectedKind === SYNC_CREATOR_DEFAULT_KIND) {
+				scorePendingEffectsRef.current.delete(key);
+				continue;
+			}
+			const line = syncData?.lines?.find(item => item.start === pending.start);
+			if (!line) continue;
+			const item = pending.partId ? line.parallel?.parts?.find(part => part.id === pending.partId) : line;
+			const matches = pending.style
+				? line.styleRanges?.some(range => range.kind === pending.expectedKind && pending.ranges.some(target => range.start <= target.end && range.end >= target.start))
+				: item?.kind === pending.expectedKind;
+			if (!matches) continue;
+			const { expectedKind, style, ...target } = pending;
+			effectTargets.push({ ...target, end: line.end });
+			scorePendingEffectsRef.current.delete(key);
+		}
+		if (effectTargets.length) captureScoreWork('effect', syncData,
+			effectTargets.length === 1 ? effectTargets[0] : { targets: effectTargets });
+	}, [syncData, selectedLrclibSource, trackIsrc, scoreResolvedIsrc, ensureScoreTracker, captureScoreWork,
+		isLoading, sessionHydrationComplete, activeSessionDraftKey, sessionReadyDraftKey]);
+	useEffect(() => {
+		const onInteraction = event => {
+			if (event.isTrusted && containerRef.current?.contains(event.target)) ensureScoreTracker()?.interact();
+		};
+		const onBlur = () => scoreTrackerRef.current?.suspend();
+		const onVisibility = () => { if (document.visibilityState !== 'visible') onBlur(); };
+		document.addEventListener('pointerdown', onInteraction, true);
+		document.addEventListener('keydown', onInteraction, true);
+		document.addEventListener('visibilitychange', onVisibility);
+		window.addEventListener('blur', onBlur);
+		return () => {
+			document.removeEventListener('pointerdown', onInteraction, true);
+			document.removeEventListener('keydown', onInteraction, true);
+			document.removeEventListener('visibilitychange', onVisibility);
+			window.removeEventListener('blur', onBlur);
+			scoreTrackerRef.current?.stop();
+			scoreTrackerRef.current = null;
+			scoreInputRef.current = null;
+			scorePendingEffectsRef.current?.clear();
+		};
+	}, [trackUri, ensureScoreTracker]);
+
 	const buildSyncCreatorSessionRecord = useCallback((syncDataOverride = syncData, editorOverrides = {}) => {
 		if (!syncCreatorDraftStore || !activeSessionDraftKey || !sessionTrackKey || !lyricsText) return null;
 
@@ -7681,6 +7926,10 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		}
 
 		const editor = {
+			// This draft field is deliberately import-only and cannot assert
+			// manual provenance, recording inputs, effects, or elapsed time.
+			scoreImportBaseline: syncCreatorDraftStore.cloneValue(scorePendingEventsRef.current.find(event =>
+				!event.accountId && event.action === 'import' && event.trackUri === trackUri)?.baseline || null),
 			currentLineIndex,
 			activeParallelPartId,
 			multiVocalMode,
@@ -7847,6 +8096,16 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		};
 		if (options.validateOnly === true) return validatedRecord;
 		if (options.automatic === true && sessionAutoRecoveryBlockedRef.current) return null;
+		scoreInputRef.current = null;
+		scorePendingEffectsRef.current?.clear();
+		if (editor.scoreImportBaseline && restoredSyncData) {
+			try {
+				const baseline = sanitizeSyncCreatorSyncData(editor.scoreImportBaseline, flatLyricsChars);
+				if (baseline && !scorePendingEventsRef.current.some(event => !event.accountId && event.trackUri === trackUri)) {
+					scorePendingEventsRef.current.push({ action: 'import', baseline, syncData: restoredSyncData, accountId: '', trackUri });
+				}
+			} catch (_) { /* Invalid local import hints are never trusted as manual work. */ }
+		}
 
 		setProviderValue(restoredProvider);
 		setAddonId(SYNC_CREATOR_SOURCE_ADDON_ID);
@@ -8661,7 +8920,17 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		setIsSubmitting(true);
 
 		try {
+			await Utils.requireDiscordAuth?.(I18n.t('syncCreator.loginRequired'));
+			let workMetadata = {};
+			if (Utils.getAuthToken?.()) {
+				scoreContextRef.current.isrc = resolvedTrackIsrc;
+				scoreContextRef.current.accountId = Utils.getUserHash?.();
+				const tracker = ensureScoreTracker();
+				if (!tracker) throw new Error('Sync work could not be saved. Please try submitting again.');
+				workMetadata = await tracker.submission(compactSyncDataToSubmit);
+			}
 			const submitMetadata = {
+				...workMetadata,
 				isrc: resolvedTrackIsrc,
 				title: trackName,
 				artist: artistName,
@@ -8726,7 +8995,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		}
 
 		setIsSubmitting(false);
-	}, [syncData, lyricsLines, lyricsFullTextChars, lyricsLanguage, lineCharOffsets, multiVocalMode, trackId, trackIsrc, provider, trackName, artistName, albumName, trackInfo, onClose, attachSelectedLrclibSource, clearLyricsCachesAfterSyncSubmit, deleteActiveSyncCreatorDraft, getParallelTemplateForLineData, getMergedLineIndexesForStart, isLineCoveredByMergedPrevious, materializeSyncCreatorParallelDrafts]);
+	}, [syncData, lyricsLines, lyricsFullTextChars, lyricsLanguage, lineCharOffsets, multiVocalMode, trackId, trackIsrc, provider, trackName, artistName, albumName, trackInfo, onClose, attachSelectedLrclibSource, clearLyricsCachesAfterSyncSubmit, deleteActiveSyncCreatorDraft, getParallelTemplateForLineData, getMergedLineIndexesForStart, isLineCoveredByMergedPrevious, materializeSyncCreatorParallelDrafts, ensureScoreTracker]);
 
 	// 싱크 데이터 내보내기 (JSON 파일로 저장)
 	const exportSyncData = useCallback(async () => {
@@ -8743,6 +9012,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				lyricsFullTextChars,
 				lyricsLanguage || undefined
 			);
+			captureScoreWork('checkpoint', expandedExportData);
+			// Saving a file remains usable offline; the durable work queue retries.
+			scoreTrackerRef.current?.flush().catch(() => undefined);
 			const exportBaseName = [trackName, artistName]
 				.map(value => String(value || '').trim())
 				.filter(Boolean)
@@ -8764,7 +9036,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			console.error('[SyncDataCreator] Export error:', error);
 			Toast.error(error?.message || I18n.t('syncCreator.submitError'));
 		}
-	}, [artistName, attachSelectedLrclibSource, lyricsFullTextChars, lyricsLanguage, materializeSyncCreatorParallelDrafts, syncData, trackId, trackName]);
+	}, [artistName, attachSelectedLrclibSource, lyricsFullTextChars, lyricsLanguage, materializeSyncCreatorParallelDrafts, syncData, trackId, trackName, captureScoreWork]);
 
 	// 싱크 데이터 불러오기 (JSON 파일에서)
 	const importSyncData = useCallback(() => {
@@ -8787,6 +9059,11 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				// 싱크 데이터 적용
 				const sanitizedData = sanitizeSyncCreatorSyncData(importedData, lyricsFullTextChars);
 				assertValidSyncCreatorSyncData(sanitizedData);
+				// Import is an immutable queue boundary, including small/repeated
+				// imports and files previously exported from this editor.
+				scoreInputRef.current = null;
+				scorePendingEffectsRef.current?.clear();
+				captureScoreWork('import', sanitizedData);
 				if (sessionAutosaveTimerRef.current) {
 					clearTimeout(sessionAutosaveTimerRef.current);
 					sessionAutosaveTimerRef.current = null;
@@ -8831,7 +9108,8 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		sessionLyricsFingerprint,
 		sessionTrackKey,
 		setSelectedLrclibSourceValue,
-		syncCreatorDraftStore
+		syncCreatorDraftStore,
+		captureScoreWork
 	]);
 
 	// 가사 전체 복사

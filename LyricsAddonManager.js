@@ -1378,7 +1378,7 @@
                                 result.syncDataProvider = syncProvider;
                                 result.syncDataRendererVersion = SYNC_DATA_RENDERER_VERSION;
 								result.syncType = syncData.syncType || 'unknown';
-								result.syncPoints = Number(syncData.syncPoints || 2);
+								result.syncPoints = Number(syncData.syncPoints ?? 2);
 								result.syncTypeBreakdown = syncData.syncTypeBreakdown || null;
                                 syncDataAppliedThisCall = true;
 

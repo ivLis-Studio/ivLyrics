@@ -13,9 +13,10 @@
   "use strict";
 
   const DB_NAME = "ivLyricsSyncCreatorDrafts";
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
   const STORE_NAME = "drafts";
   const CHARACTER_PRONUNCIATION_STORE_NAME = "characterPronunciations";
+  const SCORE_WORK_STORE_NAME = "scoreWork";
   const RECORD_VERSION = 1;
   // v2 invalidates results generated before the pronunciation writing-system
   // selector and script validation were introduced.
@@ -383,6 +384,9 @@
       const request = root.indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = () => {
         const database = request.result;
+        if (!database.objectStoreNames.contains(SCORE_WORK_STORE_NAME)) {
+          database.createObjectStore(SCORE_WORK_STORE_NAME, { keyPath: "scope" });
+        }
         if (!database.objectStoreNames.contains(STORE_NAME)) {
           const store = database.createObjectStore(STORE_NAME, { keyPath: "draftKey" });
           store.createIndex("trackKey", "trackKey", { unique: false });
@@ -785,6 +789,25 @@
 
   const flush = () => waitForWrites();
 
+  const getScoreWork = async (scope) => {
+    await waitForWrites();
+    const database = await openDatabase();
+    const transaction = database.transaction(SCORE_WORK_STORE_NAME, "readonly");
+    const record = await requestResult(transaction.objectStore(SCORE_WORK_STORE_NAME).get(scope));
+    return record?.value ? cloneValue(record.value) : null;
+  };
+
+  const saveScoreWork = (scope, value) => enqueueWrite(async () => {
+    const database = await openDatabase();
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(SCORE_WORK_STORE_NAME, "readwrite");
+      transaction.objectStore(SCORE_WORK_STORE_NAME).put({ scope, value: cloneValue(value), updatedAt: Date.now() });
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error || new Error("Failed to save sync work."));
+      transaction.onabort = () => reject(transaction.error || new Error("Sync work save was aborted."));
+    });
+  });
+
   return {
     DB_NAME,
     RECORD_VERSION,
@@ -805,6 +828,8 @@
     getCheckpointCandidate,
     restoreCheckpoint,
     deleteDraft,
+    getScoreWork,
+    saveScoreWork,
     flush,
     __test: {
       mergeAutosaveRecord,

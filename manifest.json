@@ -60,6 +60,7 @@
 		"SongInfoTicker.js",
 		"NoticeSystem.js",
 		"SyncCreatorDraftStore.js",
+		"SyncCreatorScoreTracker.js",
 		"SyncDataCreator.js",
 		"Marketplace.js",
 		"LearningMode.js"

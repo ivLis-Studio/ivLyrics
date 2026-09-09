@@ -83,8 +83,10 @@ const SyncTypeBadge = ({ type, points = null, compact = false, hideUnknown = fal
 	const presentation = getSyncTypePresentation(type, copy);
 	if (hideUnknown && presentation.type === "unknown") return null;
 	const numericPoints = Number(points);
-	const title = Number.isFinite(numericPoints) && numericPoints > 0
-		? `${presentation.label} · ${numericPoints} ${copy.pointsShort}`
+	const hasPoints = points != null && Number.isFinite(numericPoints) && numericPoints >= 0;
+	const formattedPoints = numericPoints.toLocaleString(undefined, { maximumFractionDigits: 2 });
+	const title = hasPoints
+		? `${presentation.label} · ${formattedPoints} ${copy.pointsShort}`
 		: presentation.label;
 	return react.createElement(
 		"span",
@@ -94,8 +96,8 @@ const SyncTypeBadge = ({ type, points = null, compact = false, hideUnknown = fal
 			"aria-label": title
 		},
 		presentation.label,
-		!compact && Number.isFinite(numericPoints) && numericPoints > 0
-			? react.createElement("span", { className: "lyrics-sync-type-points" }, `+${numericPoints}`)
+		!compact && hasPoints
+			? react.createElement("span", { className: "lyrics-sync-type-points" }, `+${formattedPoints}`)
 			: null
 	);
 };
@@ -217,7 +219,7 @@ function normalizeContributorEntry(contributor, options = {}) {
 			? contributor.decoration
 			: null,
 		syncType: normalizePublicSyncType(contributor.syncType),
-		syncPoints: Number.isFinite(Number(contributor.syncPoints)) ? Number(contributor.syncPoints) : null
+		syncPoints: contributor.syncPoints != null && Number.isFinite(Number(contributor.syncPoints)) ? Number(contributor.syncPoints) : null
 	};
 }
 
@@ -1255,7 +1257,7 @@ const SyncCreatorProfileModal = react.memo(({
 					react.createElement(
 						"div",
 						{ className: "lyrics-creator-profile-stat is-points" },
-						react.createElement("strong", null, contributionPoints.toLocaleString()),
+						react.createElement("strong", null, contributionPoints.toLocaleString(undefined, { maximumFractionDigits: 2 })),
 						react.createElement("span", null, copy.points),
 						react.createElement(
 							"span",

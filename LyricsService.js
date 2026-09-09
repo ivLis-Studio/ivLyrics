@@ -3847,7 +3847,7 @@
                             syncData: syncDataBody,
                             contributors: data.contributors || [],
 							syncType: data.syncType || 'unknown',
-							syncPoints: Number(data.syncPoints || 2),
+							syncPoints: Number(data.syncPoints ?? 2),
 							syncTypeSource: data.syncTypeSource || 'legacy',
 							syncTypeBreakdown: data.syncTypeBreakdown || null,
                             createdAt: data.createdAt || null,
@@ -4085,6 +4085,7 @@
                     ...(identity.trackId ? { trackId: identity.trackId } : {}),
                     provider,
                     syncData,
+                    ...(metadata.workSessionId ? { workSessionId: metadata.workSessionId, workSequence: metadata.workSequence } : {}),
                     ...(title ? { title } : {}),
                     ...(artist ? { artist } : {}),
                     ...(album ? { album } : {}),
@@ -8469,7 +8470,7 @@
                     result.syncDataApplied = true;
                     result.syncDataProvider = result.provider;
 					result.syncType = syncData.syncType || 'unknown';
-					result.syncPoints = Number(syncData.syncPoints || 2);
+					result.syncPoints = Number(syncData.syncPoints ?? 2);
 					result.syncTypeBreakdown = syncData.syncTypeBreakdown || null;
 
                     // sync-data가 있으면 synced도 오버라이드
