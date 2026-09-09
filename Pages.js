@@ -14,11 +14,6 @@ function getCreatorProfileCopy() {
 		tracks: I18n.t("creatorProfile.tracks") || "Synced tracks",
 		points: I18n.t("creatorProfile.points") || "Contribution points",
 		pointsShort: I18n.t("creatorProfile.pointsShort") || "pts",
-		typeLine: I18n.t("creatorProfile.typeLine") || "Line",
-		typeWord: I18n.t("creatorProfile.typeWord") || "Word",
-		typeCharacter: I18n.t("creatorProfile.typeCharacter") || "Character",
-		typeMixed: I18n.t("creatorProfile.typeMixed") || "Mixed",
-		typeUnknown: I18n.t("creatorProfile.typeUnknown") || "Legacy sync",
 		likes: I18n.t("creatorProfile.likes") || "Likes",
 		like: I18n.t("creatorProfile.like") || "Like",
 		liked: I18n.t("creatorProfile.liked") || "Liked",
@@ -70,35 +65,21 @@ function normalizePublicSyncType(value) {
 	return ["line", "word", "character", "mixed"].includes(normalized) ? normalized : "unknown";
 }
 
-function getSyncTypePresentation(value, copy = getCreatorProfileCopy()) {
-	const type = normalizePublicSyncType(value);
-	return {
-		type,
-		label: type === "line" ? copy.typeLine : type === "word" ? copy.typeWord : type === "character" ? copy.typeCharacter : type === "mixed" ? copy.typeMixed : copy.typeUnknown
-	};
-}
-
-const SyncTypeBadge = ({ type, points = null, compact = false, hideUnknown = false }) => {
+const SyncScoreBadge = ({ points = null }) => {
 	const copy = getCreatorProfileCopy();
-	const presentation = getSyncTypePresentation(type, copy);
-	if (hideUnknown && presentation.type === "unknown") return null;
 	const numericPoints = Number(points);
 	const hasPoints = points != null && Number.isFinite(numericPoints) && numericPoints >= 0;
+	if (!hasPoints) return null;
 	const formattedPoints = numericPoints.toLocaleString(undefined, { maximumFractionDigits: 2 });
-	const title = hasPoints
-		? `${presentation.label} · ${formattedPoints} ${copy.pointsShort}`
-		: presentation.label;
+	const title = `${formattedPoints} ${copy.pointsShort}`;
 	return react.createElement(
 		"span",
 		{
-			className: `lyrics-sync-type-badge is-${presentation.type}${compact ? " is-compact" : ""}`,
+			className: "lyrics-sync-score-badge",
 			title,
 			"aria-label": title
 		},
-		presentation.label,
-		!compact && hasPoints
-			? react.createElement("span", { className: "lyrics-sync-type-points" }, `+${formattedPoints}`)
-			: null
+		title
 	);
 };
 
@@ -843,9 +824,6 @@ const SyncCreatorProfileModal = react.memo(({
 	const trackCount = Number(profileData.stats?.trackCount || 0);
 	const contributionPoints = Number(profileData.stats?.contributionPoints || 0);
 	const likeCount = Number(profileData.stats?.likeCount || 0);
-	const typeCounts = profileData.stats?.typeCounts && typeof profileData.stats.typeCounts === "object"
-		? profileData.stats.typeCounts
-		: {};
 	const artistGroupCount = Number(profileData.stats?.artistGroupCount || 0);
 	const totalContributionCount = Number(profileData.pagination?.totalCount || trackCount || 0);
 	const loadedContributionCount = contributions.length;
@@ -1258,19 +1236,7 @@ const SyncCreatorProfileModal = react.memo(({
 						"div",
 						{ className: "lyrics-creator-profile-stat is-points" },
 						react.createElement("strong", null, contributionPoints.toLocaleString(undefined, { maximumFractionDigits: 2 })),
-						react.createElement("span", null, copy.points),
-						react.createElement(
-							"span",
-							{ className: "lyrics-creator-profile-type-summary" },
-							...["line", "word", "character", "mixed"]
-								.filter((type) => Number(typeCounts[type] || 0) > 0)
-								.map((type) => react.createElement(
-									"span",
-									{ key: type, className: `lyrics-creator-profile-type-count is-${type}` },
-									react.createElement(SyncTypeBadge, { type, compact: true }),
-									Number(typeCounts[type] || 0).toLocaleString()
-								))
-						)
+						react.createElement("span", null, copy.points)
 					)
 				)
 				: react.createElement(
@@ -1385,7 +1351,7 @@ const SyncCreatorProfileModal = react.memo(({
 										react.createElement(
 										"div",
 										{ className: "lyrics-creator-profile-track-side" },
-										react.createElement(SyncTypeBadge, { type: item.syncType, points: item.syncPoints }),
+										react.createElement(SyncScoreBadge, { points: item.syncPoints }),
 										react.createElement("span", { className: "lyrics-creator-profile-track-provider" }, item.provider),
 											updatedLabel && react.createElement("span", { className: "lyrics-creator-profile-track-updated" }, `${copy.updated} ${updatedLabel}`)
 										)

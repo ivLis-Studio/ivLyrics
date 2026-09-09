@@ -15207,9 +15207,9 @@ html.is-lp-view-exit::view-transition-new(root) {
   pointer-events: auto;
 }
 
-.lyrics-sync-type-badge {
-  --sync-type-color: #94a3b8;
-  --sync-type-bg: rgba(148, 163, 184, 0.12);
+.lyrics-sync-score-badge {
+  --sync-score-color: #94a3b8;
+  --sync-score-bg: rgba(148, 163, 184, 0.12);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -15217,48 +15217,16 @@ html.is-lp-view-exit::view-transition-new(root) {
   min-width: 28px;
   height: 20px;
   padding: 0 6px;
-  border: 1px solid color-mix(in srgb, var(--sync-type-color) 32%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sync-score-color) 32%, transparent);
   border-radius: 999px;
-  background: var(--sync-type-bg);
-  color: var(--sync-type-color);
+  background: var(--sync-score-bg);
+  color: var(--sync-score-color);
   font-size: 10px;
   font-weight: 600;
   line-height: 1;
   letter-spacing: 0;
   white-space: nowrap;
   vertical-align: middle;
-}
-
-.lyrics-sync-type-badge.is-compact {
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  font-size: 9px;
-}
-
-.lyrics-sync-type-badge.is-line {
-  --sync-type-color: #5fd88f;
-  --sync-type-bg: rgba(47, 143, 91, 0.16);
-}
-
-.lyrics-sync-type-badge.is-word {
-  --sync-type-color: #c4a7ff;
-  --sync-type-bg: rgba(135, 92, 210, 0.16);
-}
-
-.lyrics-sync-type-badge.is-character {
-  --sync-type-color: #ff8d91;
-  --sync-type-bg: rgba(200, 70, 75, 0.16);
-}
-
-.lyrics-sync-type-badge.is-mixed {
-  --sync-type-color: #e9bc68;
-  --sync-type-bg: rgba(183, 126, 32, 0.16);
-}
-
-.lyrics-sync-type-points {
-  opacity: 0.78;
-  font-size: 9px;
 }
 
 .lyrics-credit-footer-content {
@@ -15637,27 +15605,6 @@ html.is-lp-view-exit::view-transition-new(root) {
 .lyrics-creator-profile-stat span {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.6);
-}
-
-.lyrics-creator-profile-type-summary {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 5px;
-}
-
-.lyrics-creator-profile-type-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-variant-numeric: tabular-nums;
-}
-
-.lyrics-creator-profile-stat .lyrics-sync-type-badge,
-.lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-stat .lyrics-sync-type-badge {
-  color: var(--sync-type-color);
-  font-size: 9px;
 }
 
 .lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-stat span {
@@ -16902,77 +16849,6 @@ html.is-lp-view-exit::view-transition-new(root) {
   font-size: 12px;
   font-weight: 500;
   line-height: 1.35;
-}
-
-.lyrics-creator-profile-stat .lyrics-creator-profile-type-summary,
-.lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-stat .lyrics-creator-profile-type-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  width: 100%;
-  margin-top: 8px;
-}
-
-.lyrics-creator-profile-stat .lyrics-creator-profile-type-count,
-.lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-stat .lyrics-creator-profile-type-count {
-  --sync-type-color: #94a3b8;
-  --sync-type-bg: rgba(148, 163, 184, 0.12);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-  min-height: 32px;
-  margin: 0;
-  padding: 0 10px;
-  color: var(--creator-ink-2);
-  background: var(--sync-type-bg);
-  border: 1px solid color-mix(in srgb, var(--sync-type-color) 26%, transparent);
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.lyrics-creator-profile-stat .lyrics-creator-profile-type-count.is-line {
-  --sync-type-color: #5fd88f;
-  --sync-type-bg: rgba(47, 143, 91, 0.13);
-}
-
-.lyrics-creator-profile-stat .lyrics-creator-profile-type-count.is-word {
-  --sync-type-color: #c4a7ff;
-  --sync-type-bg: rgba(135, 92, 210, 0.13);
-}
-
-.lyrics-creator-profile-stat .lyrics-creator-profile-type-count.is-character {
-  --sync-type-color: #ff8d91;
-  --sync-type-bg: rgba(200, 70, 75, 0.13);
-}
-
-.lyrics-creator-profile-stat .lyrics-creator-profile-type-count.is-mixed {
-  --sync-type-color: #e9bc68;
-  --sync-type-bg: rgba(183, 126, 32, 0.13);
-}
-
-.lyrics-creator-profile-stat .lyrics-creator-profile-type-count .lyrics-sync-type-badge,
-.lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-stat .lyrics-creator-profile-type-count .lyrics-sync-type-badge {
-  display: inline-flex;
-  flex: 0 1 auto;
-  align-items: center;
-  justify-content: flex-start;
-  width: auto;
-  min-width: 0;
-  height: auto;
-  margin: 0;
-  padding: 0;
-  color: var(--sync-type-color);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
 }
 
 .lyrics-creator-profile-section-header,
