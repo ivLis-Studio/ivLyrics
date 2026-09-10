@@ -4644,7 +4644,7 @@ const KARAOKE_INLINE_STYLE_MAX_RUN_LENGTH = 12;
 const wrapKaraokeInlineStyleRuns = (
 	timedChars,
 	elements,
-	{ keyPrefix = "karaoke-inline-style", sourceIndexOffset = 0 } = {}
+	{ keyPrefix = "karaoke-inline-style", sourceIndexOffset = 0, presentationCache = null } = {}
 ) => {
 	if (!Array.isArray(timedChars)
 		|| !Array.isArray(elements)
@@ -4677,7 +4677,15 @@ const wrapKaraokeInlineStyleRuns = (
 	};
 
 	for (let index = 0; index < timedChars.length; index += 1) {
-		const presentation = getKaraokeInlineStylePresentation(timedChars[index]);
+		const sourceIndex = sourceIndexOffset + index;
+		// The owning line replaces this cache when source data or presentation
+		// settings change. Clock ticks only need the already resolved style.
+		if (presentationCache && timedChars[index]?.inlineStyle === true && !presentationCache.has(sourceIndex)) {
+			presentationCache.set(sourceIndex, getKaraokeInlineStylePresentation(timedChars[index]));
+		}
+		const presentation = presentationCache
+			? presentationCache.get(sourceIndex) || null
+			: getKaraokeInlineStylePresentation(timedChars[index]);
 		const styleKey = presentation?.key || "";
 		if (!run
 			|| run.styleKey !== styleKey
@@ -4699,7 +4707,7 @@ const wrapKaraokeInlineStyleRuns = (
 const buildKaraokeWordElements = (
 	timedChars,
 	charElements,
-	{ position = 0, isActive = false, isComplete = false, globalCharOffset = 0, activeGlobalCharIndex = -1, wordTimed = false, wordRenderCache = null } = {}
+	{ position = 0, isActive = false, isComplete = false, globalCharOffset = 0, activeGlobalCharIndex = -1, wordTimed = false, wordRenderCache = null, presentationCache = null } = {}
 ) => {
 	if (!Array.isArray(timedChars) || !Array.isArray(charElements) || timedChars.length !== charElements.length) {
 		return charElements;
@@ -4748,6 +4756,7 @@ const buildKaraokeWordElements = (
 		const styledWordElements = wrapKaraokeInlineStyleRuns(wordChars, currentWord, {
 			keyPrefix: "karaoke-word-inline-style",
 			sourceIndexOffset: currentWordStart,
+			presentationCache,
 		});
 		wordElements.push(react.createElement(
 			"span",
@@ -4794,6 +4803,7 @@ const buildKaraokeWordElements = (
 			wordElements.push(...wrapKaraokeInlineStyleRuns([charInfo], [element], {
 				keyPrefix: "karaoke-space-inline-style",
 				sourceIndexOffset: index,
+				presentationCache,
 			}));
 			continue;
 		}
@@ -4915,6 +4925,23 @@ const buildKaraokeTextRunSegments = (timedChars, wordTimed = false, preserveInli
 	return segments;
 };
 
+const getKaraokeTextRunPresentation = (segment) => {
+	let className = "";
+	let style = {};
+	if (segment.styleKind || segment.styleSpeaker) {
+		const kindClasses = getKaraokeKindClassParts(segment.styleKind);
+		className = ` ivlyrics-karaoke-range-style${kindClasses.length ? ` ${kindClasses.join(' ')}` : ''}`;
+		const speakerClass = normalizeKaraokeSpeakerClass(
+			segment.styleSpeaker, segment.styleSpeakerColor, segment.styleSpeakerFallback
+		);
+		if (speakerClass) className += ` speaker-${speakerClass}`;
+		style = getKaraokeSpeakerStyle(
+			segment.styleSpeaker, segment.styleSpeakerColor, segment.styleSpeakerFallback
+		);
+	}
+	return { className, style };
+};
+
 const buildKaraokeTextRunElements = (
 	timedChars,
 	position,
@@ -4925,7 +4952,8 @@ const buildKaraokeTextRunElements = (
 	activeGlobalCharIndex = -1,
 	wordTimed = false,
 	preserveInlineStyles = true,
-	preparedSegments = null
+	preparedSegments = null,
+	presentationCache = null
 ) => {
 	const segments = preparedSegments || buildKaraokeTextRunSegments(timedChars, wordTimed, preserveInlineStyles);
 	const renderSegments = textDirection === "rtl" ? [...segments].reverse() : segments;
@@ -4975,19 +5003,13 @@ const buildKaraokeTextRunElements = (
 		);
 		if (wordTimed) segmentClassName += " is-word-timed";
 		if (segment.styleKind || segment.styleSpeaker) {
-			const kindClasses = getKaraokeKindClassParts(segment.styleKind);
-			segmentClassName += ` ivlyrics-karaoke-range-style${kindClasses.length ? ` ${kindClasses.join(' ')}` : ''}`;
-			const speakerClass = normalizeKaraokeSpeakerClass(
-				segment.styleSpeaker,
-				segment.styleSpeakerColor,
-				segment.styleSpeakerFallback
-			);
-			if (speakerClass) segmentClassName += ` speaker-${speakerClass}`;
-			Object.assign(segmentStyle, getKaraokeSpeakerStyle(
-				segment.styleSpeaker,
-				segment.styleSpeakerColor,
-				segment.styleSpeakerFallback
-			));
+			let presentation = presentationCache?.get(segment);
+			if (!presentation) {
+				presentation = getKaraokeTextRunPresentation(segment);
+				presentationCache?.set(segment, presentation);
+			}
+			segmentClassName += presentation.className;
+			Object.assign(segmentStyle, presentation.style);
 		}
 		segmentStyle['--ivlyrics-range-index'] = segment.startIndex;
 
@@ -7471,7 +7493,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 
 	const furiganaEnabled = CONFIG?.visual?.["furigana-enabled"] === true;
 	const furiganaReady = window.FuriganaConverter?.isAvailable?.() === true;
-	const { furiganaMap, timedChars, motionProfiles, endTime, wrapByWord, textDirection, useTextRun, preserveInlineStyles, timedText, wordStartTimes, wordRenderCache, textRunSegments } = useMemo(() => {
+	const { furiganaMap, timedChars, motionProfiles, endTime, wrapByWord, textDirection, useTextRun, preserveInlineStyles, timedText, wordStartTimes, wordRenderCache, textRunSegments, hasInlinePresentation } = useMemo(() => {
 		const sourceSyllables = Array.isArray(line.syllables) && line.syllables.length > 0
 			? line.syllables
 			: getTimedSyllablesFromLine(line);
@@ -7514,6 +7536,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 			textDirection: detectedTextDirection,
 			useTextRun,
 			preserveInlineStyles,
+			hasInlinePresentation: preserveInlineStyles && renderTimedChars.some(charInfo => charInfo?.inlineStyle === true),
 			timedText: renderTimedChars.map(charInfo => String(charInfo?.char || "")).join(""),
 			wordStartTimes,
 			wordRenderCache: new Map(),
@@ -7528,6 +7551,20 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 	}, [line, furiganaEnabled, furiganaReady, furiganaMapOverride, wordTimed, lyricsLocale, settingsRevision,
 		window.LyricsWordSegmenter?.segmentGraphemes, window.LyricsWordSegmenter?.segmentRanges,
 		window.LyricsService?.buildKaraokeWordSegments]);
+	const configuredCreatorColorsEnabled = CONFIG?.visual?.["sync-data-custom-speaker-colors-enabled"] !== false;
+	const inlineCreatorColorsEnabled = hasInlinePresentation
+		? (speakerColors?.isCreatorColorEnabled?.() ?? configuredCreatorColorsEnabled) : false;
+	const inlineTextEffectsEnabled = CONFIG?.visual?.["karaoke-text-effects"] !== false;
+	const inlineReducedMotion = hasInlinePresentation && prefersReducedLyricsMotion();
+	const presentationCaches = useMemo(() => ({
+		characters: hasInlinePresentation ? new Map() : null,
+		textRuns: hasInlinePresentation ? new Map() : null,
+	}), [
+		timedChars, hasInlinePresentation, settingsRevision, configuredCreatorColorsEnabled, inlineCreatorColorsEnabled,
+		inlineTextEffectsEnabled, inlineReducedMotion, speakerColors, speakerColors?.getPresentation,
+		speakerColors?.isCreatorColorEnabled, speakerColors?.[PAGES_IV_LYRICS_SPEAKER_CLASS_CONTRACT],
+		speakerColors?.[PAGES_IV_LYRICS_SPEAKER_CLASS_CONTRACT]?.getClassName,
+	]);
 	// Keep completed glyphs on the active paint path while the parent line fades
 	// out. Gating this by isActive made the fill disappear in a single frame at
 	// every line hand-off.
@@ -7671,7 +7708,8 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 			activeGlobalCharIndex,
 			wordTimed,
 			preserveInlineStyles,
-			textRunSegments
+			textRunSegments,
+			presentationCaches.textRuns
 		)
 		: (wrapByWord || wordTimed)
 		? buildKaraokeWordElements(timedChars, charElements, {
@@ -7682,8 +7720,9 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 			activeGlobalCharIndex,
 			wordTimed,
 			wordRenderCache,
+			presentationCache: presentationCaches.characters,
 		})
-		: wrapKaraokeInlineStyleRuns(timedChars, charElements);
+		: wrapKaraokeInlineStyleRuns(timedChars, charElements, { presentationCache: presentationCaches.characters });
 
 	return react.createElement(
 		"span",

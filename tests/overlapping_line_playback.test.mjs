@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
 import test from 'node:test';
 import vm from 'node:vm';
 
@@ -118,4 +119,50 @@ test('panel clock only publishes active row changes at vocal boundaries, includi
   vm.runInContext(`(() => {${body}})()`, context);
   for (const p of [1000, 1100, 2000, 2200, 3000, 4000, 4000, 10000, 2500, 0]) {position = p; tick();}
   assert.deepEqual(activeChanges, [[], [0], [0,1], [0], [], [0,1], []]);
+});
+
+test('panel postlude reuses lyric bounds and refreshes late duration, settings, seeks and new lyrics', () => {
+  const previousSource = execFileSync('git', ['show', 'aae1e95:NowPlayingPanelLyrics.js'], {
+    cwd: new URL('..', import.meta.url), encoding: 'utf8',
+  });
+  const build = source => {
+    let scans = 0;
+    const state = { duration: null, enabled: true };
+    const context = vm.createContext({
+      toFiniteTime: value => Number.isFinite(Number(value)) ? Number(value) : null,
+      getLastSyllableEndTime: row => { scans++; return fillEnd(row); },
+      isAutoInstrumentalBreakEnabled: () => state.enabled,
+      isInterludeMarkerText: () => false, getInterludeCandidateText: row => row?.text ?? '',
+      getCurrentTrackDurationMs: () => state.duration,
+      KARAOKE_TRAILING_INTERLUDE_DELAY_MS: 500, INTERLUDE_MIN_DURATION_MS: 1000,
+    });
+    vm.runInContext([
+      slice(source, '    const buildPanelLinePlaybackTimeline', '    const getInterludeInfo'),
+      slice(source, '    const getTrailingKaraokeInterludeInfo', '    // ============================================\n    // 노래방 단어'),
+      'globalThis.makeResolver = createTrailingKaraokeInterludeResolver;',
+    ].join('\n'), context);
+    return { state, makeResolver: rows => context.makeResolver(rows), count: () => scans, reset: () => { scans = 0; } };
+  };
+  const current = build(panelSource), previous = build(previousSource);
+  let resolve = current.makeResolver(lyrics), oldResolve = previous.makeResolver(lyrics);
+  const compare = index => assert.deepEqual(plain(resolve(index)), plain(oldResolve(index)));
+  compare(2);
+  current.reset(); previous.reset();
+  for (let frame = 0; frame < 120; frame++) compare(2);
+  assert.equal(current.count(), 0);
+  assert.equal(previous.count(), 120);
+  for (const duration of [20000, 16000, null, 24000]) {
+    current.state.duration = previous.state.duration = duration;
+    compare(2);
+    for (let frame = 0; frame < 10; frame++) compare(2);
+  }
+  for (const enabled of [false, true]) {
+    current.state.enabled = previous.state.enabled = enabled;
+    compare(2);
+  }
+  for (const index of [1, 0, 2, 1, 2]) compare(index);
+  const replacement = [...lyrics.slice(0, -1), line('edited ending', 14000, 19000)];
+  resolve = current.makeResolver(replacement); oldResolve = previous.makeResolver(replacement);
+  compare(2);
+  assert.equal(resolve(2).startTime, 19500);
 });

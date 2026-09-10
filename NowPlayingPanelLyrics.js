@@ -3131,24 +3131,17 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
         let cachedLineIndex = -1;
         let cachedInfo = null;
         let cachedAutoInstrumentalBreakEnabled = null;
+        let cachedTrackDuration = null;
 
         return (lineIndex) => {
             const autoInstrumentalBreakEnabled = isAutoInstrumentalBreakEnabled();
-
-            // 마지막 줄의 종료 시각은 Player 메타데이터가 늦게 채워질 수 있어 매번 확인한다.
-            if (lineIndex === lastLineIndex) {
-                return getTrailingKaraokeInterludeInfo(
-                    lyrics[lineIndex],
-                    lyrics[lineIndex + 1],
-                    lineIndex,
-                    lyrics.length,
-                    autoInstrumentalBreakEnabled,
-                    timeline[lineIndex]?.prefixEndTime
-                );
-            }
+            // The final track duration can arrive late. Check that scalar on
+            // every tick, but only rescan syllables when its value changes.
+            const trackDuration = lineIndex === lastLineIndex ? getCurrentTrackDurationMs() : null;
 
             if (!hasCachedLine ||
                 lineIndex !== cachedLineIndex ||
+                trackDuration !== cachedTrackDuration ||
                 autoInstrumentalBreakEnabled !== cachedAutoInstrumentalBreakEnabled) {
                 const info = getTrailingKaraokeInterludeInfo(
                     lyrics[lineIndex],
@@ -3161,6 +3154,7 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
                 cachedLineIndex = lineIndex;
                 cachedInfo = info;
                 cachedAutoInstrumentalBreakEnabled = autoInstrumentalBreakEnabled;
+                cachedTrackDuration = trackDuration;
                 hasCachedLine = true;
             }
 

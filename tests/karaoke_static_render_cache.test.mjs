@@ -43,7 +43,7 @@ baselineSource = baselineSource
 // Counts describe actual helper calls and element construction, not browser cost.
 const createHarness = (source = currentSource, options = {}) => {
   const counts = { graphemes: 0, textRuns: 0, furigana: 0, presentations: 0, leafRenders: 0,
-    activeCharScans: 0, activeCharVisits: 0 };
+    activeCharScans: 0, activeCharVisits: 0, inlinePresentations: 0, textRunPresentations: 0 };
   const states = new Map();
   let activeState;
   const CONFIG = { visual: {
@@ -102,6 +102,10 @@ const createHarness = (source = currentSource, options = {}) => {
     'const getKaraokeSpeakerPresentation = (speaker, speakerColor = "", speakerFallback = "") => { counts.presentations++;');
   source = source.replace('const getActiveKaraokeTimedCharIndex = (timedChars, position) => {',
     'const getActiveKaraokeTimedCharIndex = (timedChars, position) => { counts.activeCharScans++; counts.activeCharVisits += timedChars?.length || 0;');
+  source = source.replace('const getKaraokeInlineStylePresentation = (charInfo) => {',
+    'const getKaraokeInlineStylePresentation = (charInfo) => { counts.inlinePresentations++;');
+  source = source.replace('const getKaraokeTextRunPresentation = (segment) => {',
+    'const getKaraokeTextRunPresentation = (segment) => { counts.textRunPresentations++;');
   context.counts = counts;
   const reducedStart = source.indexOf('const prefersReducedLyricsMotion =');
   const reducedEnd = source.indexOf('\nconst ', reducedStart + 1);
@@ -344,4 +348,73 @@ test('cached annotation, locale and injected helper data refresh on their real d
   leaf.window.LyricsWordSegmenter.segmentGraphemes = (...args) => oldGraphemes(...args);
   leaf.render(leafLine, 1300);
   assert.ok(leaf.counts.graphemes > 0, 'late segmentation helper replacement must rebuild character data');
+});
+
+const beforePresentationCache = execFileSync('git', ['show', 'aae1e95:Pages.js'], {
+  cwd: new URL('..', import.meta.url), encoding: 'utf8',
+});
+const exactTree = value => JSON.parse(JSON.stringify(value));
+
+test('inline style preparation is reused while every glyph and vocal anchor matches the previous renderer', () => {
+  for (const [text, locale] of [['Hello  long styled words!', 'en'], ['漢字の歌、聞こえる', 'ja'],
+    ['ภาษาไทย สวัสดี', 'th'], ['مرحبا بالعالم', 'ar'], ['á 👨‍👩‍👧‍👦 voice', 'en']]) {
+    for (const rowCount of [1, 4]) for (const renderGranularity of ['character', 'word']) {
+      const line = makeLine(text, rowCount, true);
+      const current = createHarness(currentSource, { locale });
+      const previous = createHarness(beforePresentationCache, { locale });
+      const props = { renderGranularity, phonetic: 'reading / reading / reading / reading',
+        translation: 'meaning / meaning / meaning / meaning',
+        culturalAnnotations: [{ expression: text.slice(0, 2), marker: 1 }] };
+      current.render(line, 500, props); previous.render(line, 500, props);
+      current.resetCounts(); previous.resetCounts();
+      for (let frame = 0; frame < 120; frame++) {
+        const position = frame < 100 ? 900 + frame * 73 : 6500 - (frame - 100) * 313;
+        assert.deepEqual(exactTree(current.render(line, position, props)),
+          exactTree(previous.render(line, position, props)), `${locale}/${rowCount}/${renderGranularity}/${position}`);
+      }
+      assert.equal(current.counts.inlinePresentations, 0, 'prepared characters do not repeat style resolution');
+      assert.equal(current.counts.textRunPresentations, 0, 'prepared text runs do not repeat style resolution');
+      assert.equal(current.counts.presentations, 0, 'speaker resolution is independent of the playback clock');
+      if (!['ar'].includes(locale)) assert.ok(previous.counts.presentations > 0);
+    }
+  }
+});
+
+test('cached inline styles refresh for live preferences, helper replacement, source edits and settings revisions', () => {
+  const contractKey = Symbol.for('ivLyrics.speakerColors.classNameContract');
+  for (const [text, locale] of [['Hello world', 'en'], ['漢字の歌', 'ja'], ['ภาษาไทย สวัสดี', 'th']]) for (const renderGranularity of ['character', 'word']) {
+    const current = createHarness(currentSource, { locale });
+    const previous = createHarness(beforePresentationCache, { locale });
+    let line = makeLine(text, 1, true);
+    let revision = 0;
+    for (const change of [
+      () => {},
+      h => { h.CONFIG.visual['karaoke-text-effects'] = false; },
+      h => { h.CONFIG.visual['karaoke-text-effects'] = true; h.window.reducedMotion = true; },
+      h => { h.window.reducedMotion = false; h.CONFIG.visual['sync-data-custom-speaker-colors-enabled'] = false; },
+      h => { h.CONFIG.visual['sync-data-custom-speaker-colors-enabled'] = true; },
+      h => { h.window.creatorEnabled = true; h.window.ivLyricsSpeakerColors = {
+        isCreatorColorEnabled: () => h.window.creatorEnabled,
+        getPresentation: () => ({ speakerClass: 'duet-1', creatorColor: h.window.creatorEnabled ? '#010203' : '' }),
+      }; },
+      h => { h.window.creatorEnabled = false; },
+      h => { h.window.ivLyricsSpeakerColors.getPresentation = () => ({ speakerClass: 'female-2', creatorColor: '#123456' }); },
+      h => { h.window.ivLyricsSpeakerColors[contractKey] = {
+        getPresentation: h.window.ivLyricsSpeakerColors.getPresentation, getClassName: () => 'male-2',
+      }; },
+      h => { h.window.ivLyricsSpeakerColors[contractKey].getClassName = () => 'duet-2'; },
+      h => { delete h.window.ivLyricsSpeakerColors; },
+      h => { h.CONFIG.visual['furigana-enabled'] = true; h.window.furiganaReady = true; },
+    ]) {
+      change(current); change(previous);
+        assert.deepEqual(exactTree(current.render(line, 1320, { renderGranularity, settingsRevision: revision })),
+          exactTree(previous.render(line, 1320, { renderGranularity, settingsRevision: revision })));
+    }
+    line.syllables[0].styleKind = 'glow';
+    revision++;
+    assert.deepEqual(exactTree(current.render(line, 1320, { renderGranularity, settingsRevision: revision })),
+      exactTree(previous.render(line, 1320, { renderGranularity, settingsRevision: revision })));
+    line = makeLine(text + ' changed', 1, true);
+    assert.deepEqual(exactTree(current.render(line, 1320, { renderGranularity })), exactTree(previous.render(line, 1320, { renderGranularity })));
+  }
 });
