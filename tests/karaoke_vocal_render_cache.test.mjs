@@ -256,3 +256,86 @@ test("each vocal keeps a single presentation wrapper inside its measured anchor"
   assert.equal(wrapper.props["data-karaoke-vocal-row-index"], undefined);
  }
 });
+
+
+const makePunctuationCalls = (starts, punctuationDuration) => {
+ const voices = starts.map((startTime, index) => ({
+  text: index === starts.length - 1 ? "アイリスアウト" : "ア、",
+  syllables: index === starts.length - 1
+   ? [{ text: "アイリスアウト", startTime, endTime: startTime + 1300 }]
+   : [{ text: "ア", startTime, endTime: startTime + 1 },
+      { text: "、", startTime: startTime + 1, endTime: startTime + 1 + punctuationDuration }],
+ }));
+ return { startTime: starts[0], endTime: starts.at(-1) + 1300,
+  text: voices.map(row => row.text).join(""), syllables: [],
+  vocals: { lead: voices[0], background: voices.slice(1) } };
+};
+
+test("one-millisecond calls advance on each onset without the long comma holding an earlier anchor", () => {
+ // Three actual source timing patterns; rendering can tick after the 1ms sound.
+ for (const [starts, punctuationDuration] of [
+  [[102014,102203,102482,102673,102897],1183],
+  [[109112,109317,109563,109770,110047],1048],
+  [[115402,115559,115833,115991,116284],500],
+ ]) for (const renderGranularity of ["character", "word"]) {
+  const line = makePunctuationCalls(starts, punctuationDuration);
+  const original = JSON.stringify(line);
+  const renderer = createRenderer();
+  const render = position => renderer.render(line, position, { renderGranularity, isEffectFocused: true });
+  const childReferences = childLines(render(starts[0] - 1));
+  for (let index = 0; index < starts.length; index++) {
+   for (const position of [starts[index], starts[index] + 16, (starts[index + 1] || starts[index] + 300) - 1]) {
+    const result = render(position);
+    assert.equal(result.props["data-karaoke-vocal-anchor-position"], index, `${renderGranularity} at ${position}`);
+    childLines(result).forEach((child, voice) => assert.equal(child, childReferences[voice]));
+   }
+  }
+  assert.equal(render(line.endTime + 900).props["data-karaoke-vocal-anchor-position"], 4);
+  assert.equal(JSON.stringify(line), original, "only the scroll envelope may change, never source fill/effect timing");
+  const final = childLines(render(starts[4]));
+  assert.equal(final[0].syllables[1].endTime, starts[0] + 1 + punctuationDuration);
+ }
+});
+
+test("a punctuation call sequence keeps its quick arrival budget for precentering and the final word", () => {
+ const starts = [115402,115559,115833,115991,116284];
+ const line = makePunctuationCalls(starts, 500);
+ const renderer = createRenderer();
+ const windowAt = (position, extra = {}) => renderer.render(line, position, { isEffectFocused: true, ...extra })
+  .props["data-karaoke-vocal-anchor-window-ms"];
+ assert.equal(windowAt(starts[0] - 200, { isActive: false }), 157);
+ assert.equal(windowAt(starts[1]), 157);
+ assert.equal(windowAt(starts[2]), 158);
+ assert.equal(windowAt(starts[3]), 158);
+ assert.equal(windowAt(starts[4]), 293, "the final word must not fall back to the slow whole-line duration");
+});
+
+test("punctuation trimming preserves simultaneous calls and genuine spoken overlap", () => {
+ const starts = [1000,1000,1200,1400,1600];
+ const simultaneous = makePunctuationCalls(starts, 1000);
+ let renderer = createRenderer();
+ assert.equal(renderer.render(simultaneous, 1017).props["data-karaoke-vocal-anchor-position"], 1);
+ assert.equal(renderer.render(simultaneous, 1217).props["data-karaoke-vocal-anchor-position"], 2);
+ const overlap = makePunctuationCalls([1000,1200,1400,1600,1800], 1200);
+ overlap.vocals.lead.syllables[0].endTime = 1700;
+ overlap.vocals.lead.syllables[1].startTime = 1700;
+ renderer = createRenderer();
+ assert.equal(renderer.render(overlap, 1217).props["data-karaoke-vocal-anchor-position"], 1);
+ assert.equal(renderer.render(overlap, 1417).props["data-karaoke-vocal-anchor-position"], 1,
+  "the first voice is still singing; retain the midpoint instead of forcing the latest row");
+ assert.equal(renderer.render(overlap, 1617).props["data-karaoke-vocal-anchor-position"], 2);
+});
+
+
+test("ordinary spaced vocal phrases retain their existing anchors and motion windows", () => {
+ const line = makePunctuationCalls([1000,1400,1800,2200,2600], 1000);
+ const renderer = createRenderer();
+ const baseline = createRenderer(baselineSource);
+ for (let position = 900; position < 2800; position += 17) {
+  const actual = renderer.render(line, position).props;
+  const expected = baseline.render(line, position).props;
+  for (const key of ["data-karaoke-vocal-anchor-position", "data-karaoke-vocal-anchor-window-ms"]) {
+   assert.equal(actual[key], expected[key], `${key} at ${position}`);
+  }
+ }
+});

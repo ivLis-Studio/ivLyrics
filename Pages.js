@@ -6915,6 +6915,7 @@ const getActiveKaraokeTimedCharIndex = (timedChars, position) => {
 };
 
 const KARAOKE_VOCAL_STACK_CENTER_THRESHOLD = 4;
+const KARAOKE_VOCAL_QUICK_STEP_MAX_MS = 320;
 
 const buildKaraokeVocalRowLine = (line, row) => ({
   ...line,
@@ -6955,6 +6956,30 @@ const getKaraokeVocalRowRenderPosition = (rowData, position) => {
 	return Math.min(position, rowData.renderCompletionPosition);
 };
 
+const prepareKaraokeVocalAnchorWindows = (rows) => {
+	if (!Array.isArray(rows)) return rows;
+	const starts = [...new Set(rows.map(row => row.bounds?.startTime).filter(Number.isFinite))].sort((a, b) => a - b);
+	const nextStarts = new Map(starts.map((start, index) => [start, starts[index + 1]]));
+	return rows.map(row => {
+		const nextStart = nextStarts.get(row.bounds?.startTime);
+		if (!Number.isFinite(nextStart) || nextStart >= row.bounds.endTime
+			|| nextStart - row.bounds.startTime > KARAOKE_VOCAL_QUICK_STEP_MAX_MS) return row;
+		let textEnd = -Infinity;
+		let punctuationEnd = -Infinity;
+		for (const char of row.timedChars) {
+			if (/^[\p{P}\s]+$/u.test(char.char)) punctuationEnd = Math.max(punctuationEnd, char.endTime);
+			else textEnd = Math.max(textEnd, char.endTime);
+		}
+		// Some short calls store almost their entire duration on the trailing
+		// comma. That tail must not keep an earlier voice in the scroll midpoint.
+		// Hold until the next onset so a 1ms call cannot fall between player ticks;
+		// keep simultaneous starts and real spoken overlap, and leave fill intact.
+		return Number.isFinite(textEnd) && textEnd <= nextStart && punctuationEnd > nextStart
+			? { ...row, anchorEndTime: nextStart }
+			: row;
+	});
+};
+
 const getKaraokeVocalAnchorLineKey = (line) => [
   line?.startTime ?? "",
   line?.endTime ?? "",
@@ -6970,12 +6995,14 @@ const getKaraokeVocalAnchorPosition = (vocalRowRenderData, position, activeCharI
   let lastActiveRowIndex = -1;
 
   for (let rowIndex = 0; rowIndex < vocalRowRenderData.length; rowIndex++) {
-          const { timedChars: rowTimedChars, bounds } = vocalRowRenderData[rowIndex];
+          const { timedChars: rowTimedChars, bounds, anchorEndTime } = vocalRowRenderData[rowIndex];
           const activeCharIndex = activeCharIndexes?.[rowIndex]
                   ?? getActiveKaraokeTimedCharIndex(rowTimedChars, position);
           const { startTime, endTime } = bounds;
-          const rowActive = (activeCharIndex >= 0 && activeCharIndex < rowTimedChars.length)
-                  || (position >= startTime && position <= endTime);
+          const rowActive = Number.isFinite(anchorEndTime)
+                  ? position >= startTime && position < anchorEndTime
+                  : (activeCharIndex >= 0 && activeCharIndex < rowTimedChars.length)
+                          || (position >= startTime && position <= endTime);
 
           if (rowActive) {
                   if (firstActiveRowIndex < 0) {
@@ -7011,14 +7038,28 @@ const getKaraokeVocalAnchorWindowMs = (vocalRowRenderData, anchorPosition) => {
 		return null;
 	}
 
+	let nextWindow = null;
 	for (let rowIndex = anchorIndex + 1; rowIndex < vocalRowRenderData.length; rowIndex++) {
 		const nextStartTime = toFiniteTime(vocalRowRenderData[rowIndex]?.bounds?.startTime);
 		if (nextStartTime !== null && nextStartTime > anchorStartTime) {
-			return nextStartTime - anchorStartTime;
+			nextWindow = nextStartTime - anchorStartTime;
+			break;
 		}
 	}
 
-	return null;
+	// The last call in a quick sequence still arrives on that sequence's beat,
+	// even when it is followed by a long note or a pause.
+	for (let rowIndex = anchorIndex - 1; rowIndex >= 0; rowIndex--) {
+		const previous = vocalRowRenderData[rowIndex];
+		const previousStart = toFiniteTime(previous?.bounds?.startTime);
+		if (previousStart === null || previousStart >= anchorStartTime) continue;
+		const precedingWindow = anchorStartTime - previousStart;
+		if (previous.anchorEndTime === anchorStartTime && precedingWindow <= KARAOKE_VOCAL_QUICK_STEP_MAX_MS) {
+			return nextWindow === null ? precedingWindow : Math.min(nextWindow, precedingWindow);
+		}
+		break;
+	}
+	return nextWindow;
 };
 
 const getStableKaraokeVocalAnchorPosition = (stateRef, line, position, nextAnchorPosition) => {
@@ -7285,14 +7326,14 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
           && Array.isArray(vocalRows)
           && vocalRows.length >= KARAOKE_VOCAL_STACK_CENTER_THRESHOLD;
 	const vocalRowRenderData = useMemo(() => Array.isArray(vocalRows)
-		? vocalRows.map((row) => ({
+		? prepareKaraokeVocalAnchorWindows(vocalRows.map((row) => ({
 			...buildKaraokeVocalRowRenderData(line, row, true),
 			charCount: getKaraokeSyllableCharCount(row.syllables),
 			hasInlineEffects: Array.isArray(row.syllables) && row.syllables.some(syllable => (
 				syllable?.inlineStyle === true
 				&& KARAOKE_TEXT_EFFECT_KIND_CLASSES.has(String(syllable?.styleKind || "").trim().toLowerCase())
 			)),
-		}))
+		})))
 			: null, [line, vocalRows, lyricsLocale, window.LyricsWordSegmenter?.segmentGraphemes]);
 	const vocalActiveCharIndexes = useMemo(() => vocalRowRenderData
 		? vocalRowRenderData.map(({ timedChars }) => getActiveKaraokeTimedCharIndex(timedChars, position))
@@ -7316,7 +7357,9 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
           ? Math.round(activeVocalAnchorPosition)
           : -1;
   const activeVocalAnchorWindowMs = shouldUseVocalRowAnchor
-          ? getKaraokeVocalAnchorWindowMs(vocalRowRenderData, activeVocalAnchorPosition)
+          ? getKaraokeVocalAnchorWindowMs(vocalRowRenderData,
+                  activeVocalAnchorPosition < 0 && Number.isFinite(vocalRowRenderData[0]?.anchorEndTime)
+                          ? 0 : activeVocalAnchorPosition)
           : null;
 
 	const vocalAuxiliaryData = useMemo(() => {
