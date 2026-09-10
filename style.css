@@ -1699,6 +1699,12 @@ body.ivlyrics-page-active .main-topBar-container {
   --line-shift-delay: initial;
 }
 
+/* Selection feedback scales the existing content without replacing either
+   the row's scroll transform or the content's active-line translation. */
+.lyrics-lyricsContainer-LyricsLine[role="button"] > p:first-child {
+  transform-origin: var(--lyrics-align-text, center) center;
+}
+
 .lyrics-lyricsContainer-LyricsLine {
   --iv-karaoke-past-color-share: 0%;
 }
@@ -2018,6 +2024,120 @@ body.ivlyrics-page-active .main-topBar-container {
   }
 }
 
+/* Presentation follows source/visual boundaries only. Keep opacity on whole
+   rows and supplemental text; glyph fill and the outer travel keep their clocks. */
+:is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+  > .lyrics-line-detail {
+  --lyrics-detail-exit-delay: 0ms;
+  --lyrics-detail-transition-duration: 360ms;
+  --lyrics-detail-transition-ease: cubic-bezier(0.22, 0.7, 0.3, 1);
+}
+
+:is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+  > .lyrics-line-detail:not(.lyrics-lyricsContainer-LyricsLine-paddingLine) {
+  transition-property: transform, color, opacity, text-shadow !important;
+  transition-duration: var(--line-shift-duration, var(--iv-lyrics-centering-duration, 300ms)),
+    360ms, 360ms, 400ms !important;
+  transition-timing-function: var(--iv-lyrics-centering-ease, ease),
+    cubic-bezier(0.22, 0.7, 0.3, 1), cubic-bezier(0.22, 0.7, 0.3, 1), ease !important;
+  transition-delay: var(--line-shift-delay, 0s), var(--lyrics-detail-exit-delay),
+    var(--lyrics-detail-exit-delay), var(--lyrics-detail-exit-delay) !important;
+}
+
+:is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+  > .lyrics-line-detail-past {
+  --lyrics-detail-exit-delay: 80ms;
+}
+
+:is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+  > .lyrics-line-detail > p:first-child {
+  opacity: 1;
+  transition: transform var(--iv-lyrics-centering-duration, 300ms) var(--iv-lyrics-centering-ease, ease),
+    opacity 420ms cubic-bezier(0.22, 0.7, 0.3, 1),
+    letter-spacing var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    text-shadow var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+:is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+  > .lyrics-line-detail-future:not(.lyrics-line-vocals) > p:first-child {
+  opacity: 0.86;
+}
+
+/* Vocal subtitles share the outer paragraph. Give only their existing main
+   content this envelope so subtitles can brighten on their own later clock. */
+.lyrics-vocal-main {
+  display: block;
+  min-width: 0;
+  width: 100%;
+}
+
+:is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+  > .lyrics-line-detail .lyrics-vocal-main {
+  opacity: 1;
+  transition: opacity 420ms cubic-bezier(0.22, 0.7, 0.3, 1);
+}
+
+:is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+  > .lyrics-line-detail-future .lyrics-vocal-main {
+  opacity: 0.86;
+}
+
+/* Include stacked vocal subtitles and replace-mode supplemental translations.
+   Their configured opacity remains the focused endpoint. Ruby belongs to main text. */
+:is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+  > .lyrics-line-detail :is(.lyrics-lyricsContainer-LyricsLine-phonetic, .lyrics-lyricsContainer-LyricsLine-translation) {
+  transition: transform var(--iv-lyrics-centering-duration, 300ms) var(--iv-lyrics-centering-ease, ease),
+    opacity 420ms cubic-bezier(0.22, 0.7, 0.3, 1) var(--lyrics-detail-exit-delay, 0ms),
+    letter-spacing var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    text-shadow var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+:is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+  > .lyrics-line-detail-current :is(.lyrics-lyricsContainer-LyricsLine-phonetic, .lyrics-lyricsContainer-LyricsLine-translation) {
+  transition-delay: 0ms, 50ms, 0ms, 0ms;
+}
+
+:is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+  > .lyrics-line-detail-future .lyrics-lyricsContainer-LyricsLine-phonetic {
+  opacity: calc(var(--lyrics-phonetic-opacity, 0.7) * 0.86);
+}
+
+:is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+  > .lyrics-line-detail-future .lyrics-lyricsContainer-LyricsLine-translation {
+  opacity: calc(var(--lyrics-translation-opacity, 0.6) * 0.86);
+}
+
+:is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+  > .lyrics-interlude-departing > p.lyrics-lyricsContainer-LyricsLine-interludeMain:first-child {
+  opacity: 0;
+  transition: opacity var(--lyrics-interlude-fade-duration, 220ms) ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+    > .lyrics-line-detail:not(.lyrics-lyricsContainer-LyricsLine-paddingLine) {
+    --lyrics-detail-exit-delay: 0ms !important;
+    transition: none !important;
+  }
+  :is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+    > .lyrics-line-detail > p:first-child,
+  :is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+    > .lyrics-line-detail .lyrics-vocal-main {
+    opacity: 1 !important;
+    transition: none !important;
+  }
+  :is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+    > .lyrics-line-detail .lyrics-lyricsContainer-LyricsLine-phonetic {
+    opacity: var(--lyrics-phonetic-opacity, 0.7) !important;
+    transition: none !important;
+  }
+  :is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView)
+    > .lyrics-line-detail .lyrics-lyricsContainer-LyricsLine-translation {
+    opacity: var(--lyrics-translation-opacity, 0.6) !important;
+    transition: none !important;
+  }
+}
+
 /* Phonetic text style for Synced lyrics */
 .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine-phonetic,
 .lyrics-lyricsContainer-SyncedScrollView .lyrics-lyricsContainer-LyricsLine-phonetic {
@@ -2230,13 +2350,16 @@ div.lyrics-tabBar-headerItemLink {
   transition-property: transform, color, opacity;
   transition-duration:
     var(--line-shift-duration, var(--iv-lyrics-centering-duration, 300ms)),
-    300ms,
-    360ms !important;
+    var(--lyrics-detail-transition-duration, 300ms),
+    var(--lyrics-detail-transition-duration, 360ms),
+    400ms !important;
   transition-timing-function:
     var(--iv-lyrics-centering-ease, cubic-bezier(0.42, 0, 0.58, 1)),
-    cubic-bezier(0.16, 1, 0.3, 1),
-    cubic-bezier(0.16, 1, 0.3, 1) !important;
-  transition-delay: var(--line-shift-delay, 0s), 0s, 0s !important;
+    var(--lyrics-detail-transition-ease, cubic-bezier(0.16, 1, 0.3, 1)),
+    var(--lyrics-detail-transition-ease, cubic-bezier(0.16, 1, 0.3, 1)),
+    ease !important;
+  transition-delay: var(--line-shift-delay, 0s), var(--lyrics-detail-exit-delay, 0ms),
+    var(--lyrics-detail-exit-delay, 0ms), var(--lyrics-detail-exit-delay, 0ms) !important;
 }
 
 .lyrics-lyricsContainer-SyncedLyricsPage:not(.scrolling-active)
@@ -18096,7 +18219,8 @@ html.is-lp-view-exit::view-transition-new(root) {
   overflow: visible;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
-  transition: --iv-karaoke-completed-color 520ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: --iv-karaoke-completed-color 520ms cubic-bezier(0.16, 1, 0.3, 1)
+    var(--lyrics-detail-exit-delay, 0ms);
 }
 
 .lyrics-karaoke-char--done > .lyrics-karaoke-glyph-fill,

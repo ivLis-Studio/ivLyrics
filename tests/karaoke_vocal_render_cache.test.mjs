@@ -19,11 +19,16 @@ const slice = (source, startMarker, endMarker) => {
 // Row clocks can be pinned outside their fill/release window. The recursive
 // output-equivalence suite checks those rendered glyphs; retain all row data,
 // anchor, presentation and active-character contracts in this shallow harness.
-const normalize = (tree) => JSON.parse(JSON.stringify(tree, (key, value) => (
-	key === "position" ? undefined : value
-)));
+const normalize = (tree) => JSON.parse(JSON.stringify(tree, (key, value) => {
+	if (key === "position") return undefined;
+	if (value?.props?.className === "lyrics-vocal-main") return value.children[0];
+	if (key === "className" && typeof value === "string") return value.split(" ").filter(name => name !== "lyrics-line-vocals").join(" ");
+	return value;
+}));
 const rowChildren = (tree) => tree.children[0].filter((node) => node?.props?.["data-karaoke-vocal-row-index"] !== undefined);
-const childLines = (tree) => rowChildren(tree).map((row) => row.children[0].props.line);
+const vocalContent = (row) => row.children[0].props?.className === "lyrics-vocal-main"
+	? row.children[0].children[0] : row.children[0];
+const childLines = (tree) => rowChildren(tree).map((row) => vocalContent(row).props.line);
 
 const createRenderer = (source = currentSource) => {
 	const hooks = [];
@@ -234,4 +239,20 @@ test("phonetic, translation and cultural annotations remain live while timed row
 	const result = current.render(line, 1400, props);
 	assert.equal(childLines(result)[0], prior);
 	assert.deepEqual(normalize(result), normalize(baseline.render(line, 1400, props)));
+});
+
+
+test("each vocal keeps a single presentation wrapper inside its measured anchor", () => {
+ const tree = createRenderer().render(makeLine(), 2200);
+ assert.match(tree.props.className, /lyrics-karaoke-stack/);
+ const rows = rowChildren(tree);
+ assert.equal(rows.length, 4);
+ for (const row of rows) {
+  const wrapper = row.children[0];
+  assert.equal(wrapper.props.className, "lyrics-vocal-main");
+  assert.equal(wrapper.children.length, 1);
+  assert.ok(wrapper.children[0].props.line);
+  assert.equal(wrapper.props.style, undefined, "no per-frame presentation styles");
+  assert.equal(wrapper.props["data-karaoke-vocal-row-index"], undefined);
+ }
 });

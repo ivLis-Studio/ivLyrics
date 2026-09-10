@@ -14,10 +14,13 @@ const serviceSource = readFileSync(new URL('../LyricsService.js', import.meta.ur
 // covered by karaoke_vocal_render_cache. Compare every glyph and presentation
 // value here without requiring the old release-time anchor reset.
 const normalize = value => JSON.parse(JSON.stringify(value, (key, entry) => {
+  // One visual wrapper per voice isolates arrival opacity from glyph effects.
+  // Its structure is checked separately; compare every existing glyph below it.
+  if (entry?.props?.className === 'lyrics-vocal-main') return entry.children[0];
   if (['data-karaoke-vocal-anchor-position', 'data-karaoke-vocal-anchor-window-ms',
     'data-active-karaoke-vocal-row-index'].includes(key)) return undefined;
   if (key === 'className' && typeof entry === 'string') {
-    return entry.split(' ').filter(name => name !== 'active-vocal-row').join(' ');
+    return entry.split(' ').filter(name => !['active-vocal-row', 'lyrics-line-vocals'].includes(name)).join(' ');
   }
   return entry;
 }));

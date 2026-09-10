@@ -19,6 +19,15 @@ const slice = (source, startMarker, endMarker) => {
 	return source.slice(start, end);
 };
 const normalize = (value) => JSON.parse(JSON.stringify(value));
+// Presentation phases are verified below. Exclude only their new fields from
+// the existing full settings/synchronization/geometry equivalence checks.
+const normalizePresentation = (value) => JSON.parse(JSON.stringify(value, (key, entry) => {
+	if (key === "detailClassName" || key === "--lyrics-interlude-fade-duration") return undefined;
+	if (key === "className" && typeof entry === "string") return entry.split(" ")
+		.filter(name => !/^lyrics-line-detail(?:-(?:current|past|future))?$/.test(name)
+			&& name !== "lyrics-interlude-departing").join(" ");
+	return entry;
+}));
 
 // Preserve hook state across frames to detect stale caches. These tests compare
 // the engine's actual LyricsLineBlock/IdlingIndicator props, not its internal
@@ -134,7 +143,7 @@ const createEngine = (source) => {
 				}),
 			};
 			if (raw) return output;
-			const comparable = normalize(output);
+			const comparable = normalizePresentation(output);
 			if (props.compact && !props.isKara && !scrolling && !motionPreference.matches) {
 				// Normal compact rows now delegate movement to WAAPI. Verify that
 				// intentional routing change, then compare every remaining row prop.
@@ -453,4 +462,205 @@ test("prepared interludes wait for an earlier long vocal while a later response 
 			}
 		}
 	}
+});
+
+
+test("arrival presentation prepares the first line without starting its karaoke clock", () => {
+ for (const isKara of [false, true]) {
+  const engine = createEngine(currentSource);
+  const lyrics = [lyric(1000, 2400, "First"), lyric(3000, 4400, "Second")];
+  const render = position => engine.render(lyrics, position, { isKara }, true);
+  const before = render(650);
+  assert.match(sourceElement(before, "First").props.className, /lyrics-line-detail-future/);
+  const handoff = render(750);
+  assert.match(sourceElement(handoff, "First").props.className, /lyrics-line-detail-current/);
+  assert.equal(sourceElement(handoff, "First").props.isActive, false);
+  assert.equal(sourceElement(handoff, "First").props.position, 0);
+  const indicator = handoff.elements.find(item => item.tag === "IdlingIndicator");
+  assert.match(indicator.props.detailClassName, /lyrics-interlude-departing/);
+  assert.equal(indicator.props.durationMs, 1000);
+  const started = render(1000);
+  assert.match(sourceElement(started, "First").props.className, /lyrics-line-detail-current/);
+  assert.equal(started.elements.some(item => item.tag === "IdlingIndicator"), false);
+ }
+});
+
+test("detail phases preserve row styles between boundaries and release a completed line", () => {
+ const engine = createEngine(currentSource);
+ const lyrics = [lyric(1000, 2200, "First"), lyric(3000, 4400, "Second")];
+ const render = position => engine.render(lyrics, position, { isKara: false }, true);
+ const first = render(1500);
+ for (const position of [1517, 1550, 1700]) {
+  const next = render(position);
+  for (const text of ["First", "Second"]) {
+   const previous = sourceElement(first, text).props;
+   const current = sourceElement(next, text).props;
+   assert.equal(current.style, previous.style);
+   assert.equal(current.className, previous.className);
+  }
+ }
+ const next = render(3000);
+ assert.match(sourceElement(next, "First").props.className, /lyrics-line-detail-past/);
+ assert.match(sourceElement(next, "Second").props.className, /lyrics-line-detail-current/);
+});
+
+test("motion guards remove all detail phases without changing source timing", () => {
+ for (const guard of ["reduced", "transition-off", "scrolling"]) {
+  const engine = createEngine(currentSource);
+  if (guard === "reduced") engine.motionPreference.matches = true;
+  if (guard === "transition-off") engine.CONFIG.visual["karaoke-line-transition"] = false;
+  if (guard === "scrolling") engine.setScrolling(true);
+  const lyrics = makeLyrics();
+  for (const position of [750, 1500, 7800, 11800, 12000]) {
+   const result = engine.render(lyrics, position, {}, true);
+   for (const item of result.elements) {
+    assert.doesNotMatch(item.props.className || "", /lyrics-line-detail|lyrics-interlude-departing/);
+    assert.equal(item.props.detailClassName || "", "");
+    assert.equal(item.props.style?.["--lyrics-interlude-fade-duration"], undefined);
+   }
+  }
+ }
+});
+
+
+test("explicit and detected instrumental endings fade before the next lyric without seeking it early", () => {
+ for (const isKara of [false, true]) {
+  const engine = createEngine(currentSource);
+  const lyrics = makeLyrics();
+  const render = position => engine.render(lyrics, position, { isKara }, true);
+  render(11600);
+  const handoff = render(11800);
+  const marker = sourceElement(handoff, "♪");
+  assert.match(marker.props.className, /lyrics-interlude-departing/);
+  assert.equal(marker.props.style["--lyrics-interlude-fade-duration"], "220ms");
+  const next = sourceElement(handoff, "Final vocal");
+  assert.match(next.props.className, /lyrics-line-detail-current/);
+  assert.equal(next.props.isActive, false);
+  assert.equal(next.props.position, 0);
+  assert.doesNotMatch(sourceElement(render(12000), "♪")?.props.className || "", /lyrics-interlude-departing/);
+ }
+ const engine = createEngine(currentSource);
+ engine.render(makeLyrics(), 7500, {}, true);
+ const lyrics = makeLyrics();
+ const handoff = engine.render(lyrics, 7800, {}, true);
+ const virtual = handoff.elements.find(item => String(item.props.key).startsWith("trailing-interlude-"));
+ assert.ok(virtual);
+ assert.match(virtual.props.className, /lyrics-interlude-departing/);
+ assert.equal(virtual.props.style["--lyrics-interlude-fade-duration"], "220ms");
+ assert.match(sourceElement(handoff, "日本語の声").props.className, /lyrics-line-detail-current/);
+});
+
+const makeSilentVocalHandoff = () => {
+ const timings = [[66473, 67355], [66939, 67787], [67326, 68213], [67754, 68551]];
+ const parts = timings.map(([startTime, endTime], index) => ({
+  id: `silence-voice-${index}`, role: index ? "background" : "lead",
+  text: `Voice ${index + 1}`, syllables: [{ text: `Voice ${index + 1}`, startTime, endTime }],
+ }));
+ return [
+  lyric(66473, 68552, "Four voices before silence", {
+   syllables: undefined, vocals: { lead: parts[0], background: parts.slice(1) },
+  }),
+  lyric(74918, 76276, "Following line"),
+ ];
+};
+const virtualInterlude = result => result.elements.find(item => item.props.line?.isVirtualTrailingInterlude);
+
+test("virtual interlude keeps its line and style through silence while handoff boundaries stay live", () => {
+ const engine = createEngine(currentSource);
+ engine.setTrackDuration(151573);
+ const lyrics = makeSilentVocalHandoff();
+ const render = position => virtualInterlude(engine.render(lyrics, position, {}, true));
+ assert.equal(render(70750), undefined);
+ const preview = render(70751);
+ assert.equal(preview.props.line.startTime, 71051);
+ assert.equal(preview.props.line.endTime, 74918);
+ assert.equal(preview.props.line.isPrecentered, true);
+ for (const position of [70768, 70800, 71050]) {
+  const next = render(position);
+  assert.equal(next.props.line, preview.props.line);
+  assert.equal(next.props.style, preview.props.style);
+ }
+ const active = render(71051);
+ assert.equal(active.props.line.isPrecentered, false);
+ assert.notEqual(active.props.line, preview.props.line);
+ for (let frame = 0; frame < 60; frame++) {
+  const next = render(71500 + frame * 16);
+  for (const key of Object.keys(active.props)) {
+   assert.equal(next.props[key], active.props[key], `${key} must not defeat the memoized row during silence`);
+  }
+ }
+ const departing = render(74618);
+ assert.equal(departing.props.line, active.props.line, "handoff changes presentation, not source timing");
+ assert.notEqual(departing.props.style, active.props.style);
+ assert.equal(departing.props.style["--position-index"], -1);
+ assert.equal(departing.props.style["--lyrics-interlude-fade-duration"], "220ms");
+ assert.match(departing.props.className, /lyrics-interlude-departing/);
+ for (const position of [74635, 74700, 74917]) {
+  const next = render(position);
+  assert.equal(next.props.line, departing.props.line);
+  assert.equal(next.props.style, departing.props.style);
+ }
+ assert.equal(render(74918), undefined);
+ assert.equal(render(70751).props.line.isPrecentered, true, "backward seek restores preview");
+ assert.equal(render(70000), undefined, "seek before the gap removes the virtual line");
+ assert.equal(render(71500).props.line.isPrecentered, false, "direct seek restores active gap");
+});
+
+test("virtual interlude caches invalidate on motion controls, settings and lyric replacement", () => {
+ const engine = createEngine(currentSource);
+ engine.setTrackDuration(151573);
+ let lyrics = makeSilentVocalHandoff();
+ const render = (position, settingsRevision = 0) => virtualInterlude(engine.render(lyrics, position, { settingsRevision }, true));
+ const initial = render(71500);
+ const revised = render(71500, 1);
+ assert.notEqual(revised.props.line, initial.props.line);
+ assert.notEqual(revised.props.style, initial.props.style);
+ assert.equal(revised.props.line.startTime, initial.props.line.startTime);
+ engine.CONFIG.visual["instrumental-break-auto-detect"] = false;
+ assert.equal(render(71500, 1), undefined);
+ engine.CONFIG.visual["instrumental-break-auto-detect"] = true;
+ assert.ok(render(70751, 1));
+ engine.CONFIG.visual["karaoke-line-transition"] = false;
+ assert.equal(render(70751, 1), undefined, "disabled precenter removes preview immediately");
+ const noMotion = render(71500, 1);
+ assert.equal(noMotion.props.style["--line-shift-duration"], "var(--iv-lyrics-centering-duration, 300ms)");
+ assert.doesNotMatch(noMotion.props.className, /lyrics-line-detail/);
+ engine.CONFIG.visual["karaoke-line-transition"] = true;
+ engine.motionPreference.matches = true;
+ assert.equal(render(70751, 1), undefined);
+ assert.doesNotMatch(render(71500, 1).props.className, /lyrics-line-detail/);
+ engine.motionPreference.matches = false;
+ const resumed = render(71500, 1);
+ assert.equal(resumed.props.style["--line-shift-duration"], "0s");
+ engine.setScrolling(true);
+ const scrolling = render(71500, 1);
+ assert.equal(scrolling.props.line.startTime, 71051);
+ assert.equal(scrolling.props.line.endTime, 74918);
+ assert.doesNotMatch(scrolling.props.className, /lyrics-line-detail/);
+ engine.setScrolling(false);
+ assert.match(render(71500, 1).props.className, /lyrics-line-detail-current/);
+ const precedingReplacement = render(74700, 1);
+ lyrics = [lyrics[0], { ...lyrics[1], startTime: 78000 }];
+ const replacement = render(74700, 1);
+ assert.notEqual(replacement.props.line, precedingReplacement.props.line);
+ assert.notEqual(replacement.props.style, precedingReplacement.props.style);
+ assert.equal(replacement.props.line.endTime, 78000);
+ assert.equal(replacement.props.style["--lyrics-interlude-fade-duration"], undefined);
+ assert.doesNotMatch(replacement.props.className, /lyrics-interlude-departing/);
+});
+
+test("cached postlude updates track duration and remains visible at the end", () => {
+ const engine = createEngine(currentSource);
+ const lyrics = [lyric(1000, 2000, "Final sound")];
+ engine.setTrackDuration(10000);
+ const render = position => virtualInterlude(engine.render(lyrics, position, {}, true));
+ const before = render(5000);
+ assert.equal(before.props.line.interludeInfo.kind, "postlude");
+ assert.equal(before.props.line.endTime, 10000);
+ assert.equal(render(9000).props.line, before.props.line);
+ engine.setTrackDuration(12000);
+ const changed = render(9000);
+ assert.notEqual(changed.props.line, before.props.line);
+ assert.equal(changed.props.line.endTime, 12000);
+ assert.equal(render(12100).props.line, changed.props.line);
 });
