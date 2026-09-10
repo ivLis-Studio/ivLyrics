@@ -1412,7 +1412,6 @@ const VideoBackground = ({ trackUri, firstLyricTime, brightness, blurAmount, cov
             try {
                 const st = player.getPlayerState();
                 if (st === 1 || st === 3) {
-                    applyFixedQuality(player);
                     const now = Date.now();
                     if (now - lastCaptionDisableRef.current > 5000) {
                         lastCaptionDisableRef.current = now;

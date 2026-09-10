@@ -34,6 +34,7 @@ const createHarness = (page, { mode = "replace", scrolling = false } = {}) => {
 	let locale = "en";
 	let converterReady = false;
 	let originalRenders = 0;
+	let renderedRowElements = [];
 	const useMemo = (factory, dependencies) => {
 		const index = cursor++;
 		if (!hooks[index] || !sameDependencies(hooks[index].dependencies, dependencies)) {
@@ -80,9 +81,12 @@ const createHarness = (page, { mode = "replace", scrolling = false } = {}) => {
 		},
 		emptyLine: { startTime: 0, endTime: 0, text: [] },
 		getInterludeInfo: () => ({ isInterlude: false }),
+		getCurrentTrackDurationMs: () => null,
 		createActiveTrailingKaraokeInterludeLine: () => null,
 		getKaraokeSpeakerStyle: () => ({}),
 		getKaraokeLineMetaClass: () => "",
+		prefersReducedLyricsMotion: () => false,
+		PAGES_IV_LYRICS_SPEAKER_CLASS_CONTRACT: Symbol.for("ivLyrics.speakerColors.classNameContract"),
 		toFiniteTime: value => value == null || !Number.isFinite(Number(value)) ? null : Number(value),
 		EMPTY_GLOBAL_CHAR_STATE: { globalCharOffsets: [], activeGlobalCharIndex: -1 },
 		KARAOKE_COMPLETION_POSITION_OFFSET_MS: 900,
@@ -101,14 +105,15 @@ const createHarness = (page, { mode = "replace", scrolling = false } = {}) => {
 	return {
 		CONFIG,
 		get originalRenders() { return originalRenders; },
+		get rowElements() { return renderedRowElements; },
 		setLocale(value) { locale = value; },
 		setConverterReady(value) { converterReady = value; },
 		render(lyrics, { time = position, settingsRevision = 0 } = {}) {
 			cursor = 0;
 			position = time;
 			const tree = context.pages[page]({ lyrics, isKara: false, reRenderLyricsPage: settingsRevision });
-			return nodes(tree).filter(node => node.type === LyricsLineBlock && node.props.originalText)
-				.map(node => node.props);
+			renderedRowElements = nodes(tree).filter(node => node.type === LyricsLineBlock && node.props.originalText);
+			return renderedRowElements.map(node => node.props);
 		},
 	};
 };
@@ -251,3 +256,22 @@ test("opening the translation menu refreshes a changed display mode once and lea
 		assert.deepEqual(stored, Array.from({ length: 2 }, () => ["ivLyrics:visual:translate:display-mode", "below"]));
 	}
 });
+
+for (const page of ["compact", "expanded"]) {
+	test(`${page}: ordinary sync reuses row elements until a boundary or display setting changes`, () => {
+		const harness = createHarness(page, { mode: "below" });
+		const lyrics = [...makeLyrics(), { text: "Next lyric", originalText: "Next lyric", startTime: 6000, endTime: 8000 }];
+		harness.render(lyrics, { time: 1500 });
+		const originalRows = harness.rowElements;
+		for (const time of [1517, 1534, 1600, 1590]) {
+			harness.render(lyrics, { time });
+			harness.rowElements.forEach((row, index) => assert.equal(row, originalRows[index]));
+		}
+		harness.render(lyrics, { time: 6001 });
+		assert.notEqual(harness.rowElements[0], originalRows[0]);
+		assert.match(harness.rowElements[1].props.className, /LyricsLine-active/);
+		harness.CONFIG.visual["translate:display-mode"] = "replace";
+		const changed = harness.render(lyrics, { time: 6001, settingsRevision: true });
+		assert.equal(changed[0].mainText, pronunciation);
+	});
+}

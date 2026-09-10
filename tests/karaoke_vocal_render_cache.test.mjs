@@ -16,7 +16,12 @@ const slice = (source, startMarker, endMarker) => {
 	assert.ok(start >= 0 && end > start, `missing source section: ${startMarker}`);
 	return source.slice(start, end);
 };
-const normalize = (value) => JSON.parse(JSON.stringify(value));
+// Row clocks can be pinned outside their fill/release window. The recursive
+// output-equivalence suite checks those rendered glyphs; retain all row data,
+// anchor, presentation and active-character contracts in this shallow harness.
+const normalize = (tree) => JSON.parse(JSON.stringify(tree, (key, value) => (
+	key === "position" ? undefined : value
+)));
 const rowChildren = (tree) => tree.children[0].filter((node) => node?.props?.["data-karaoke-vocal-row-index"] !== undefined);
 const childLines = (tree) => rowChildren(tree).map((row) => row.children[0].props.line);
 
@@ -46,6 +51,7 @@ const createRenderer = (source = currentSource) => {
 		KARAOKE_PRE_SPACE_MIN_DURATION_MS: 40,
 		KARAOKE_PRE_SPACE_NEXT_CHAR_RATIO: 0.35,
 		KARAOKE_PRE_SPACE_MAX_DURATION_MS: 60,
+		KARAOKE_COMPLETION_POSITION_OFFSET_MS: 900,
 		useRef: (initial) => {
 			const index = hookIndex++;
 			return hooks[index] ??= { current: initial };
