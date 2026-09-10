@@ -10,6 +10,9 @@ const currentStyles = readFileSync(new URL("../style.css", import.meta.url), "ut
 const baselineSource = execFileSync("git", [
 	"show", "e90ee9c774102d209c6ef17667ac2b42820bbb21:Pages.js",
 ], { cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8" });
+const priorMotionSource = execFileSync("git", ["show", "c4b1b3c23f3d506fce302f50434daf049d22834f:Pages.js"], {
+	cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8",
+});
 const slice = (source, startMarker, endMarker) => {
 	const start = source.indexOf(startMarker);
 	const end = source.indexOf(endMarker, start + startMarker.length);
@@ -17,6 +20,14 @@ const slice = (source, startMarker, endMarker) => {
 	return source.slice(start, end);
 };
 const normalize = value => JSON.parse(JSON.stringify(value));
+// Preserve the old rendering structure while allowing the requested fill-edge
+// and long-note changes. Their numeric behavior is checked separately below.
+const presentationBaselineSource = priorMotionSource
+	.replace(slice(priorMotionSource, "const KARAOKE_FILL_STEPS", "const KaraokeLine = react.memo"),
+		slice(currentSource, "const KARAOKE_FILL_STEPS", "const KaraokeLine = react.memo"))
+	.replace(slice(priorMotionSource, "const getKaraokeSegmentFill", "const getKaraokeInstantWordFill"),
+		slice(currentSource, "const getKaraokeSegmentFill", "const getKaraokeInstantWordFill"))
+	.replace(/const softEdge = (10|16);/g, "const softEdge = getKaraokeFillSoftEdge(fillValue, $1);");
 
 const createHarness = (source = currentSource, options = {}) => {
 	const hooks = [];
@@ -94,6 +105,8 @@ const createHarness = (source = currentSource, options = {}) => {
 		" buildSyncedLinePlaybackWindows, getSyncedLinePlaybackState, getActiveTimedLineIndex,",
 		" getKaraokeBounceValues, getKaraokeWordBounceValues,",
 		" getKaraokeMotionProfile: typeof getKaraokeMotionProfile === 'function' ? getKaraokeMotionProfile : null,",
+		" getKaraokeFillSoftEdge: typeof getKaraokeFillSoftEdge === 'function' ? getKaraokeFillSoftEdge : null,",
+		" smoothKaraokeRelease: typeof smoothKaraokeRelease === 'function' ? smoothKaraokeRelease : null,",
 		" render: KaraokeLine };",
 	].join("\n"), context);
 	return {
@@ -164,10 +177,15 @@ test("adaptive motion preserves source graphemes, fill curves and playback/scrol
 			const baselineWindows = baseline.buildSyncedLinePlaybackWindows(lines, true);
 			assert.deepEqual(normalize(windows), normalize(baselineWindows));
 			for (const position of [0, 999, 1000, 1050, 1400, 2300, 3299, 3300, 3700, 4300]) {
-				currentChars.forEach(char => assert.equal(
-					current.getKaraokeCharFill(position, true, char.startTime, char.endTime),
-					baseline.getKaraokeCharFill(position, true, char.startTime, char.endTime)
-				));
+				currentChars.forEach(char => {
+					const actual = current.getKaraokeCharFill(position, true, char.startTime, char.endTime);
+					const previous = baseline.getKaraokeCharFill(position, true, char.startTime, char.endTime);
+					if (char.endTime - char.startTime < 700 || position <= char.startTime || position >= char.endTime) {
+						assert.equal(actual, previous);
+					} else {
+						assert.ok(Math.abs(actual - previous) <= 0.0200000001, "only the finer long-note quantization may differ");
+					}
+				});
 				assert.equal(current.getActiveTimedLineIndex(lines, position), baseline.getActiveTimedLineIndex(lines, position));
 				assert.deepEqual(normalize(current.getSyncedLinePlaybackState(windows[0], position)),
 					normalize(baseline.getSyncedLinePlaybackState(baselineWindows[0], position)));
@@ -179,7 +197,7 @@ test("adaptive motion preserves source graphemes, fill curves and playback/scrol
 test("native and word-timed sources retain character fill and joining-script text runs", () => {
 	for (const line of timingFixtures()) {
 		const current = createHarness();
-		const baseline = createHarness(baselineSource);
+		const baseline = createHarness(presentationBaselineSource);
 		for (const position of [999, 1000, 1125, 1400, 1900, 2700, 3300, 4500]) {
 			const actualTree = current.render(line, position);
 			const expectedTree = baseline.render(line, position);
@@ -218,6 +236,126 @@ const makeTimedRun = (duration, gap = 0, count = 8) => Array.from({ length: coun
 	char: "빛", startTime: 1000 + index * (duration + gap),
 	endTime: 1000 + index * (duration + gap) + duration, karaokeUnitIndex: index,
 }));
+
+test("only fills of at least 700 ms use 50 steps, with exact timing boundaries and monotonic custom curves", () => {
+	for (const curve of [undefined, "[[0,0],[0.25,0.1],[0.5,0.7],[0.75,0.85],[1,1]]"]) {
+		const harness = createHarness(currentSource, { visual: { "karaoke-fill-correction-curve": curve } });
+		for (const duration of [80, 699, 700, 1000, 2000]) {
+			const steps = duration >= 700 ? 50 : 25;
+			const segment = { startTime: 1000, endTime: 1000 + duration };
+			const values = new Set();
+			let previous = 0;
+			for (let elapsed = 0; elapsed <= duration; elapsed++) {
+				const fill = harness.getKaraokeCharFill(1000 + elapsed, true, segment.startTime, segment.endTime);
+				const runFill = harness.getKaraokeSegmentFill(segment, 1000 + elapsed, true, false) / 100;
+				assert.ok(fill >= previous && fill >= 0 && fill <= 1);
+				assert.ok(Math.abs(fill - runFill) < 1e-12, "glyph and shaped-run quantization must match");
+				assert.ok(Math.abs(fill * steps - Math.round(fill * steps)) < 1e-10);
+				values.add(fill);
+				previous = fill;
+			}
+			if (!curve && duration >= 699) assert.equal(values.size, steps + 1);
+			assert.equal(harness.getKaraokeCharFill(999, true, segment.startTime, segment.endTime), 0);
+			assert.equal(harness.getKaraokeCharFill(segment.endTime, true, segment.startTime, segment.endTime), 1);
+			assert.equal(harness.getKaraokeCharFill(999, false, segment.startTime, segment.endTime, true), 1);
+		}
+	}
+});
+
+test("fill edges narrow at both boundaries without moving their center or reversing RTL progress", () => {
+	const harness = createHarness();
+	for (const maximumEdge of [10, 16]) {
+		assert.equal(harness.getKaraokeFillSoftEdge(0, maximumEdge), 0);
+		assert.equal(harness.getKaraokeFillSoftEdge(100, maximumEdge), 0);
+		assert.equal(harness.getKaraokeFillSoftEdge(50, maximumEdge), maximumEdge);
+		let previousStart = 0;
+		let previousEnd = 0;
+		for (let fill = 0; fill <= 100; fill += 2) {
+			const edge = harness.getKaraokeFillSoftEdge(fill, maximumEdge);
+			const start = fill - edge;
+			const end = fill + edge;
+			assert.ok(edge >= 0 && edge <= maximumEdge);
+			assert.ok(start >= previousStart && end >= previousEnd);
+			assert.ok(start >= 0 && end <= 100);
+			assert.ok(Math.abs((start + end) / 2 - fill) < 1e-10);
+			previousStart = start;
+			previousEnd = end;
+		}
+	}
+	for (const text of ["빛", "مرحبا"]) {
+		const line = { text, syllables: [{ text, startTime: 1000, endTime: 2000 }] };
+		const glyph = fillNodes(harness.render(line, 1960))[0];
+		const fill = Number.parseFloat(glyph.props.style["--karaoke-char-fill"]);
+		const softStart = Number.parseFloat(glyph.props.style["--karaoke-char-fill-soft-start"]);
+		const softEnd = Number.parseFloat(glyph.props.style["--karaoke-char-fill-soft-end"]);
+		assert.equal(fill, 96);
+		assert.ok(softEnd - softStart < 5, "the last gradient must no longer span a broad glyph tail");
+		if (text === "مرحبا") assert.equal(glyph.props.style["--karaoke-gradient-direction"], "to left");
+	}
+});
+
+test("word mode keeps its instant fill while long character motion remains independently animated", () => {
+	for (const line of timingFixtures()) {
+		const current = createHarness();
+		const previous = createHarness(priorMotionSource);
+		for (const position of [999, 1000, 1250, 1400, 1900, 3299, 3300]) {
+			assert.deepEqual(normalize(fillSnapshot(current.render(line, position, { renderGranularity: "word" }))),
+				normalize(fillSnapshot(previous.render(line, position, { renderGranularity: "word" }))));
+		}
+	}
+});
+
+test("fast cadence preserves its old motion exactly and slower motion keeps source bounds and release limits", () => {
+	const current = createHarness();
+	const previous = createHarness(priorMotionSource);
+	for (const duration of [60, 90, 120, 380, 1400]) {
+		const chars = makeTimedRun(duration, 800);
+		const profile = current.getKaraokeMotionProfile(chars, 2);
+		const priorProfile = previous.getKaraokeMotionProfile(chars, 2);
+		const { motionSmoothing, ...sourceProfile } = profile;
+		assert.deepEqual(normalize(sourceProfile), normalize(priorProfile));
+		assert.ok(profile.releaseDuration <= 700);
+		assert.equal(current.getKaraokeMotionProfile(chars, 2), profile);
+		if (duration > 120) continue;
+		assert.equal(motionSmoothing, 0);
+		for (let position = profile.startTime - 10; position <= profile.endTime + profile.releaseDuration + 10; position += 7) {
+			assert.deepEqual(normalize(current.getKaraokeBounceValues(position, true, profile.startTime, profile.endTime, 1, profile)),
+				normalize(previous.getKaraokeBounceValues(position, true, priorProfile.startTime, priorProfile.endTime, 1, priorProfile)));
+		}
+	}
+	const shortBetweenLongNotes = makeTimedRun(1000, 0, 5);
+	shortBetweenLongNotes[2].endTime = shortBetweenLongNotes[2].startTime + 80;
+	const shortProfile = current.getKaraokeMotionProfile(shortBetweenLongNotes, 2);
+	const priorShortProfile = previous.getKaraokeMotionProfile(shortBetweenLongNotes, 2);
+	assert.equal(shortProfile.motionSmoothing, 0, "long neighboring units must not change a short note's motion");
+	for (let position = shortProfile.startTime; position < shortProfile.endTime + shortProfile.releaseDuration; position += 7) {
+		assert.deepEqual(normalize(current.getKaraokeBounceValues(position, true, shortProfile.startTime, shortProfile.endTime, 1, shortProfile)),
+			normalize(previous.getKaraokeBounceValues(position, true, priorShortProfile.startTime, priorShortProfile.endTime, 1, priorShortProfile)));
+	}
+});
+
+test("slow release separates scale and glow gently and settles monotonically at the same end time", () => {
+	const harness = createHarness();
+	const profile = harness.getKaraokeMotionProfile(makeTimedRun(380, 800), 2);
+	assert.equal(profile.motionSmoothing, 1);
+	const sample = phase => harness.getKaraokeBounceValues(profile.endTime + profile.releaseDuration * phase,
+		true, profile.startTime, profile.endTime, 1, profile);
+	const middle = sample(0.5);
+	const liftStrength = -middle.offsetY / profile.amplitude;
+	assert.ok((middle.scale - 1) / profile.scaleAmount < liftStrength, "scale should settle slightly before lift");
+	assert.ok(middle.glow / profile.glow > liftStrength, "the small glow should finish slightly after lift");
+	let previous = sample(0);
+	for (let step = 1; step <= 100; step++) {
+		const next = sample(step / 100);
+		assert.ok(Math.abs(next.offsetY) <= Math.abs(previous.offsetY));
+		assert.ok(next.scale <= previous.scale);
+		assert.ok(next.glow <= previous.glow);
+		previous = next;
+	}
+	assert.deepEqual(normalize(previous), { offsetY: 0, scale: 1, glow: 0, active: false });
+	assert.ok(1 - harness.smoothKaraokeRelease(0.98, 1) < 1 - harness.smoothKaraokeRelease(0.98, 0),
+		"the late release approaches rest more gently without extending its lifetime");
+});
 
 test("long native syllables and word-source characters remain lifted until the sound ends", () => {
 	const harness = createHarness();

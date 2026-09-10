@@ -5,18 +5,36 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const currentSource = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
-const baselineSource = execFileSync('git', ['show', '6bb2348:Pages.js'], {
+let baselineSource = execFileSync('git', ['show', '6bb2348:Pages.js'], {
   cwd: new URL('..', import.meta.url), encoding: 'utf8',
 });
 const segmenterSource = readFileSync(new URL('../LyricsWordSegmenter.js', import.meta.url), 'utf8');
 const serviceSource = readFileSync(new URL('../LyricsService.js', import.meta.url), 'utf8');
-const normalize = value => JSON.parse(JSON.stringify(value));
+// The anchor lifecycle is intentionally fixed independently of caching and is
+// covered by karaoke_vocal_render_cache. Compare every glyph and presentation
+// value here without requiring the old release-time anchor reset.
+const normalize = value => JSON.parse(JSON.stringify(value, (key, entry) => {
+  if (['data-karaoke-vocal-anchor-position', 'data-karaoke-vocal-anchor-window-ms',
+    'data-active-karaoke-vocal-row-index'].includes(key)) return undefined;
+  if (key === 'className' && typeof entry === 'string') {
+    return entry.split(' ').filter(name => name !== 'active-vocal-row').join(' ');
+  }
+  return entry;
+}));
 const slice = (source, startMarker, endMarker) => {
   const start = source.indexOf(startMarker);
   const end = source.indexOf(endMarker, start + startMarker.length);
   assert.ok(start >= 0 && end > start, startMarker);
   return source.slice(start, end);
 };
+// Compare cached and uncached rendering with the same intentional presentation
+// changes. The animation tests independently check the new timing/edge math.
+baselineSource = baselineSource
+  .replace(slice(baselineSource, 'const KARAOKE_FILL_STEPS', 'const KaraokeLine = react.memo'),
+    slice(currentSource, 'const KARAOKE_FILL_STEPS', 'const KaraokeLine = react.memo'))
+  .replace(slice(baselineSource, 'const getKaraokeSegmentFill', 'const getKaraokeInstantWordFill'),
+    slice(currentSource, 'const getKaraokeSegmentFill', 'const getKaraokeInstantWordFill'))
+  .replace(/const softEdge = (10|16);/g, 'const softEdge = getKaraokeFillSoftEdge(fillValue, $1);');
 
 // Resolve nested KaraokeLine elements with separate hook state for each row.
 // Counts describe actual helper calls and element construction, not browser cost.

@@ -110,6 +110,25 @@ const makeLine = (rowCount = 4) => {
 	};
 };
 
+test("focused vocal stacks keep their final anchor after release and when seeking into silence", () => {
+	for (const renderGranularity of ["character", "word"]) {
+		const renderer = createRenderer();
+		const line = makeLine();
+		const anchor = (position, props = {}) => renderer.render(line, position, {
+			renderGranularity, isEffectFocused: true, ...props,
+		}).props["data-karaoke-vocal-anchor-position"];
+		assert.equal(anchor(4000), 3);
+		assert.equal(anchor(5100, { isActive: false }), 3, "release completion must not return to the first row");
+		assert.equal(anchor(6900, { isActive: false }), 3, "hold the anchor throughout silence");
+		assert.equal(anchor(6900, { isActive: false, isEffectFocused: false }), undefined, "hand off when the next line is focused");
+		assert.equal(anchor(0, { isActive: false }), undefined, "seeking before the lyric clears the old anchor");
+		const fresh = createRenderer().render(line, 6900, {
+			renderGranularity, isActive: false, isEffectFocused: true,
+		});
+		assert.equal(fresh.props["data-karaoke-vocal-anchor-position"], 3, "direct seek and continuous playback agree");
+	}
+});
+
 test("vocal rows preserve v6.5.9 anchors, character offsets and presentation across playback and seeks", () => {
 	for (const rowCount of [2, 4]) {
 		const current = createRenderer();

@@ -3831,14 +3831,14 @@ const getElementOffsetTopWithin = (element, container) => {
   return (elementRect.top - containerRect.top) + (container.scrollTop || 0);
 };
 
-const LYRICS_CENTERING_DURATION_MS = 300;
-const LYRICS_CENTERING_LEAD_MS = LYRICS_CENTERING_DURATION_MS;
-const LYRICS_CENTERING_STAGGER_MS = 28;
-const LYRICS_CENTERING_MAX_STAGGER_MS = 112;
+const LYRICS_CENTERING_DURATION_MS = 420;
+const LYRICS_CENTERING_LEAD_MS = 300;
+const LYRICS_CENTERING_STAGGER_MS = 38;
+const LYRICS_CENTERING_MAX_STAGGER_MS = 180;
 const LYRICS_CENTERING_SETTLE_RESERVE_MS = 24;
 const LYRICS_CENTERING_MIN_TOTAL_MS = 80;
-const LYRICS_CENTERING_BEZIER = [0.42, 0, 0.58, 1];
-const LYRICS_CENTERING_EASING_CSS = "cubic-bezier(0.42, 0, 0.58, 1)";
+const LYRICS_CENTERING_BEZIER = [0.22, 1, 0.36, 1];
+const LYRICS_CENTERING_EASING_CSS = "cubic-bezier(0.22, 1, 0.36, 1)";
 const KARAOKE_RELEASE_WINDOW_MS = 820;
 const KARAOKE_COMPLETION_POSITION_OFFSET_MS = 900;
 const syncedLyricsScrollAnimations = new WeakMap();
@@ -3897,7 +3897,7 @@ const getAdaptiveLyricsCenteringTiming = (transitionWindowMs) => {
 		};
 	}
 
-	// A rapid vocal stack can advance again before the previous 300 ms movement
+	// A rapid vocal stack can advance again before the previous movement
 	// (plus its stagger) has settled. Scale the whole motion budget together so
 	// every visible row reaches its destination just before the next row starts.
 	const availableMs = Math.max(
@@ -3910,6 +3910,84 @@ const getAdaptiveLyricsCenteringTiming = (transitionWindowMs) => {
 		staggerMs: Math.max(0, Math.round(LYRICS_CENTERING_STAGGER_MS * timingScale)),
 		maxStaggerMs: Math.max(0, Math.round(LYRICS_CENTERING_MAX_STAGGER_MS * timingScale)),
 	};
+};
+
+// Distribute the delay across all visible rows. Clamping each row separately
+// makes the last rows start together when the configured window is large.
+const getLyricsLineStaggerDelay = (index, count, timing) => {
+	if (count <= 1) return 0;
+	const step = Math.min(timing.staggerMs, timing.maxStaggerMs / (count - 1));
+	return Math.max(0, index) * step;
+};
+
+const getLyricsLineMotionProgress = (progress, initialSlope = 2.2) => {
+	const t = Math.max(0, Math.min(1, progress));
+	const slope = Math.max(0, Math.min(2.5, initialSlope));
+	// Monotonic quintic: retain incoming velocity, settle with zero velocity
+	// and acceleration, and never overshoot the measured lyric anchor.
+	return (6 - 3 * slope) * t ** 5 + (8 * slope - 15) * t ** 4
+		+ (10 - 6 * slope) * t ** 3 + slope * t;
+};
+
+const lyricsLineMotionEasings = new Map();
+const getLyricsLineMotionEasing = (initialSlope) => {
+	if (typeof CSS === "undefined" || !CSS.supports?.("animation-timing-function", "linear(0, 1)")) {
+		return null;
+	}
+	if (!lyricsLineMotionEasings.has(initialSlope)) {
+		// Keep the same sampled curve while handing only two transforms to the
+		// compositor. Bound the cache because interrupted rows have varying slopes.
+		if (lyricsLineMotionEasings.size >= 32) lyricsLineMotionEasings.clear();
+		lyricsLineMotionEasings.set(initialSlope, `linear(${Array.from({ length: 25 }, (_, index) =>
+			getLyricsLineMotionProgress(index / 24, initialSlope)).join(",")})`);
+	}
+	return lyricsLineMotionEasings.get(initialSlope);
+};
+
+const createLyricsLineShiftMotion = (targetTransform, deltaY, durationMs, velocityY = null) => {
+	if (Number.isFinite(velocityY) && velocityY * deltaY < 0) {
+		// A small anchor correction needs less time, not an abrupt loss of
+		// velocity caused by forcing another full-duration monotonic curve.
+		durationMs = Math.min(durationMs, Math.abs(deltaY / velocityY) * 2.5);
+	}
+	durationMs = Math.max(1, durationMs);
+	const initialSlope = Number.isFinite(velocityY) && Math.abs(deltaY) > 0.01
+		? Math.max(0, Math.min(2.5, -velocityY * durationMs / deltaY))
+		: 2.2;
+	const easing = getLyricsLineMotionEasing(initialSlope);
+	const keyframes = easing ? [
+		{ offset: 0, transform: offsetTransformVertically(targetTransform, deltaY) },
+		{ offset: 1, transform: targetTransform },
+	] : Array.from({ length: 25 }, (_, index) => {
+		const progress = index / 24;
+		return {
+			offset: progress,
+			transform: offsetTransformVertically(targetTransform,
+				deltaY * (1 - getLyricsLineMotionProgress(progress, initialSlope))),
+		};
+	});
+	return { targetTransform, deltaY, durationMs, initialSlope, keyframes, easing: easing || "linear" };
+};
+
+const getLyricsLineShiftOffset = (motion, currentTime) => {
+	const progress = Math.max(0, Math.min(1, (currentTime - motion.delay) / motion.durationMs));
+	const step = progress * 24;
+	const segment = Math.min(23, Math.floor(step));
+	const from = getLyricsLineMotionProgress(segment / 24, motion.initialSlope);
+	const to = getLyricsLineMotionProgress((segment + 1) / 24, motion.initialSlope);
+	const eased = from + (to - from) * (step - segment);
+	return motion.deltaY * (1 - eased);
+};
+
+const getLyricsLineShiftVelocity = (motion, currentTime, delay = 0) => {
+	const progress = (currentTime - delay) / motion.durationMs;
+	if (progress < 0 || progress >= 1) return 0;
+	// WAAPI interpolates these keyframes linearly. Read that same segment's
+	// velocity when retargeting, rather than restarting from a resting curve.
+	const segment = Math.min(23, Math.floor(progress * 24));
+	const from = getLyricsLineMotionProgress(segment / 24, motion.initialSlope);
+	const to = getLyricsLineMotionProgress((segment + 1) / 24, motion.initialSlope);
+	return -motion.deltaY * (to - from) * 24 / motion.durationMs;
 };
 
 const cubicBezierCoordinate = (t, first, second) => {
@@ -4746,7 +4824,8 @@ const getKaraokeSegmentFill = (segment, position, isActive, isComplete) => {
 
 	const raw = Math.max(0, Math.min(1, (position - startTime) / Math.max(1, endTime - startTime)));
 	const corrected = applyKaraokeFillCorrectionCurve(raw) * 100;
-	return Math.round(corrected / 4) * 4;
+	const stepSize = 100 / getKaraokeFillSteps(startTime, endTime);
+	return Math.round(corrected / stepSize) * stepSize;
 };
 
 const getKaraokeInstantWordFill = (segment, position, isActive, isComplete) => {
@@ -4876,7 +4955,7 @@ const buildKaraokeTextRunElements = (
 			getKaraokeMotionProfile(timedChars, segment.startIndex, segmentCharCount));
 		const segmentStyle = {};
 		if (segmentState === "active") {
-			const softEdge = 10;
+			const softEdge = getKaraokeFillSoftEdge(fillValue, 10);
 			segmentStyle["--karaoke-gradient-direction"] = gradientDirection;
 			segmentStyle["--karaoke-char-fill"] = `${fillValue}%`;
 			segmentStyle["--karaoke-char-fill-soft-start"] = `${Math.max(0, fillValue - softEdge)}%`;
@@ -5440,8 +5519,9 @@ const useSyncedLyricsEngine = ({
 		&& !isScrolling
 		&& CONFIG.visual["karaoke-line-transition"]
 		&& !prefersReducedLyricsMotion();
-	const usesScriptedCompactLineShift = compact
-		&& shouldPrecenterKaraokeTransitions
+	const usesScriptedCompactLineShift = compact && !isScrolling
+		&& (!isKara || CONFIG.visual["karaoke-line-transition"])
+		&& !prefersReducedLyricsMotion()
 		&& typeof Element !== "undefined"
 		&& typeof Element.prototype?.animate === "function";
 	const visualLineIndex = useMemo(() => {
@@ -5575,6 +5655,10 @@ const useSyncedLyricsEngine = ({
 	const [suppressLayoutShiftAnimation, setSuppressLayoutShiftAnimation] = useState(false);
 	const compactLineShiftAnimationsRef = useRef(new Map());
 	const compactLineTransformSnapshotsRef = useRef(new WeakMap());
+	const compactLineMotionDataRef = useRef(new WeakMap());
+	const compactLineMotionContextRef = useRef(null);
+	const compactLinePlaybackPositionRef = useRef(position);
+	compactLinePlaybackPositionRef.current = position;
 	const previousPreparedLyricsRef = useRef(preparedLyrics);
 	const layoutShiftAnimationFramesRef = useRef({ first: null, second: null });
 	const syncCompactOffset = useCallback(() => {
@@ -5843,156 +5927,162 @@ const useSyncedLyricsEngine = ({
 		linesBefore,
 	]);
 
-	// Compact lyrics change both their relative row index and their measured anchor
-	// offset during a hand-off. Animate every visible row with one shared vertical
-	// delta so their spacing cannot compress while the center anchor moves. This also
-	// gives newly revealed rows the same starting offset as already-mounted rows.
+	useEffect(() => {
+		const player = typeof Spicetify !== "undefined" ? Spicetify.Player : null;
+		const resetLineMotion = () => {
+			compactLineShiftAnimationsRef.current.forEach((animation) => animation.cancel());
+			compactLineShiftAnimationsRef.current.clear();
+			compactLineTransformSnapshotsRef.current = new WeakMap();
+			compactLineMotionContextRef.current = null;
+		};
+		player?.addEventListener?.("onseek", resetLineMotion);
+		return () => player?.removeEventListener?.("onseek", resetLineMotion);
+	}, [lyricsId]);
+
+	// Position-index and anchor-offset still commit together. Only the visual
+	// journey is staggered: each row retains its own position when retargeted.
 	useSyncedLayoutEffect(() => {
 		const animations = compactLineShiftAnimationsRef.current;
 		const snapshots = compactLineTransformSnapshotsRef.current;
+		const motionData = compactLineMotionDataRef.current;
 		if (!usesScriptedCompactLineShift || suppressLayoutShiftAnimation) {
 			animations.forEach((animation) => animation.cancel());
 			animations.clear();
 			compactLineTransformSnapshotsRef.current = new WeakMap();
+			compactLineMotionContextRef.current = null;
 			return undefined;
 		}
 
-		// Ref callbacks, anchor measurement, and compact-offset correction can all
-		// commit during the same browser turn. Defer the FLIP read/write work to one
-		// microtask so those commits collapse into a single animation instead of
-		// repeatedly cancelling and restarting every visible lyric row.
+		// Collapse ref/offset commits before reading geometry. No per-frame DOM
+		// measurements or React updates are introduced by the row animations.
 		let cancelled = false;
 		const runScheduledLineShift = () => {
 			if (cancelled) return;
-		const lineRoot = containerRef.current?.querySelector?.(
-			".lyrics-lyricsContainer-SyncedLyrics"
-		);
-		if (!lineRoot) {
-			return undefined;
-		}
-
-		const allLines = Array.from(lineRoot.children).filter((element) => (
-			element instanceof Element
-			&& element.classList.contains("lyrics-lyricsContainer-LyricsLine")
-		));
-		const paddingBeforeLines = allLines.filter((element) => (
-			element.classList.contains("lyrics-lyricsContainer-LyricsLine-paddingBefore")
-		));
-		const paddingAfterLines = allLines.filter((element) => (
-			element.classList.contains("lyrics-lyricsContainer-LyricsLine-paddingAfter")
-		));
-		const boundaryPaddingLines = new Set([
-			paddingBeforeLines[paddingBeforeLines.length - 1],
-			paddingAfterLines[0],
-		].filter(Boolean));
-		const lines = allLines.filter((element) => (
-			!element.classList.contains("lyrics-lyricsContainer-LyricsLine-paddingLine")
-			|| boundaryPaddingLines.has(element)
-		));
-		const visibleLines = new Set(lines);
-		animations.forEach((animation, element) => {
-			if (!visibleLines.has(element)) {
-				animation.cancel();
-				animations.delete(element);
-			}
-		});
-
-		const previousTransforms = new Map();
-		for (const element of lines) {
-			const runningAnimation = animations.get(element);
-			previousTransforms.set(
-				element,
-				runningAnimation
-					? getComputedStyle(element).transform
-					: snapshots.get(element)
+			const lineRoot = containerRef.current?.querySelector?.(
+				".lyrics-lyricsContainer-SyncedLyrics"
 			);
-		}
-		animations.forEach((animation) => animation.cancel());
-		animations.clear();
+			if (!lineRoot) return;
 
-		const lineStates = lines.map((element) => {
-			const targetTransform = getComputedStyle(element).transform;
-			const previousTransform = previousTransforms.get(element);
-			snapshots.set(element, targetTransform);
-			return { element, previousTransform, targetTransform };
-		});
-		const verticalDeltas = lineStates.flatMap(({ previousTransform, targetTransform }) => {
-			if (!previousTransform) return [];
-			const previousY = getTransformTranslateY(previousTransform);
-			const targetY = getTransformTranslateY(targetTransform);
-			return Number.isFinite(previousY) && Number.isFinite(targetY)
-				? [previousY - targetY]
-				: [];
-		});
-		const sharedVerticalDelta = getMedian(verticalDeltas);
-		if (!Number.isFinite(sharedVerticalDelta) || Math.abs(sharedVerticalDelta) < 0.25) {
-			return undefined;
-		}
-
-		const orderedLineStates = [...lineStates].sort((first, second) => {
-			const firstY = getTransformTranslateY(first.targetTransform) ?? 0;
-			const secondY = getTransformTranslateY(second.targetTransform) ?? 0;
-			return sharedVerticalDelta > 0 ? firstY - secondY : secondY - firstY;
-		});
-		const activeVocalStack = activeLineRef.current?.querySelector?.(
-			".lyrics-karaoke-stack[data-karaoke-vocal-anchor-window-ms]"
-		);
-		const vocalAnchorWindowMs = Number(
-			activeVocalStack?.getAttribute("data-karaoke-vocal-anchor-window-ms")
-		);
-		const centeringTiming = getAdaptiveLyricsCenteringTiming(
-			Number.isFinite(vocalAnchorWindowMs) && vocalAnchorWindowMs > 0
-				? vocalAnchorWindowMs
-				: null
-		);
-		const staggerByElement = new Map(orderedLineStates.map(({ element }, index) => [
-			element,
-			Math.min(index * centeringTiming.staggerMs, centeringTiming.maxStaggerMs),
-		]));
-		const sharedStartTime = document.timeline?.currentTime;
-		for (const { element, targetTransform } of lineStates) {
-			const animation = element.animate(
-				[
-					{ transform: offsetTransformVertically(targetTransform, sharedVerticalDelta) },
-					{ transform: targetTransform },
-				],
-				{
-					duration: centeringTiming.durationMs,
-					delay: staggerByElement.get(element) || 0,
-					easing: LYRICS_CENTERING_EASING_CSS,
-					fill: "backwards",
-				}
-			);
-			if (Number.isFinite(sharedStartTime)) {
-				animation.startTime = sharedStartTime;
-			}
-			animations.set(element, animation);
-			animation.addEventListener("finish", () => {
-				if (animations.get(element) === animation) {
+			const allLines = Array.from(lineRoot.children).filter((element) => (
+				element instanceof Element
+				&& element.classList.contains("lyrics-lyricsContainer-LyricsLine")
+			));
+			const paddingBefore = allLines.filter((element) => element.classList.contains("lyrics-lyricsContainer-LyricsLine-paddingBefore"));
+			const paddingAfter = allLines.filter((element) => element.classList.contains("lyrics-lyricsContainer-LyricsLine-paddingAfter"));
+			const boundaryPadding = new Set([paddingBefore.at(-1), paddingAfter[0]].filter(Boolean));
+			const lines = allLines.filter((element) => (
+				!element.classList.contains("lyrics-lyricsContainer-LyricsLine-paddingLine") || boundaryPadding.has(element)
+			));
+			const visibleLines = new Set(lines);
+			animations.forEach((animation, element) => {
+				if (!visibleLines.has(element)) {
+					animation.cancel();
 					animations.delete(element);
 				}
-			}, { once: true });
-		}
+			});
 
-		};
-		if (typeof queueMicrotask === "function") {
-			queueMicrotask(runScheduledLineShift);
-		} else {
-			Promise.resolve().then(runScheduledLineShift);
-		}
+			const previousContext = compactLineMotionContextRef.current;
+			const sourceChanged = previousContext?.visualLineIndex !== visualLineIndex;
+			const jump = previousContext && (visualLineIndex < previousContext.visualLineIndex
+				|| visualLineIndex - previousContext.visualLineIndex > 1
+				|| settingsRevision !== previousContext.settingsRevision);
+			compactLineMotionContextRef.current = { visualLineIndex, settingsRevision };
+			const previousStates = new Map();
+			for (const element of lines) {
+				const animation = animations.get(element);
+				const motion = animation ? motionData.get(animation) : null;
+				const currentTime = animation?.currentTime ?? 0;
+				previousStates.set(element, {
+					animation,
+					motion,
+					currentTime,
+					startTime: animation?.startTime,
+					// Read our sampled curve, not the animated DOM. This avoids a
+					// forced style pass before cancellation and target measurement.
+					transform: motion ? motion.targetTransform : snapshots.get(element),
+				});
+			}
+			animations.forEach((animation) => animation.cancel());
+			animations.clear();
 
-		return () => {
-			cancelled = true;
+			const lineStates = lines.map((element) => {
+				const targetTransform = getComputedStyle(element).transform;
+				const previous = previousStates.get(element);
+				snapshots.set(element, targetTransform);
+				const targetY = getTransformTranslateY(targetTransform);
+				const previousTargetY = getTransformTranslateY(previous.transform);
+				const previousY = Number.isFinite(previousTargetY) && previous.motion
+					? previousTargetY + getLyricsLineShiftOffset(previous.motion, previous.currentTime)
+					: previousTargetY;
+				return {
+					element, previous, targetTransform, targetY,
+					deltaY: previous.transform && Number.isFinite(previousY) && Number.isFinite(targetY)
+						? previousY - targetY : null,
+				};
+			});
+			if (jump || !previousContext) return;
+			const sharedDelta = getMedian(lineStates.flatMap(({ deltaY }) => Number.isFinite(deltaY) ? [deltaY] : []));
+			if (!Number.isFinite(sharedDelta)) return;
+			const orderedStates = [...lineStates].sort((a, b) => sharedDelta >= 0 ? a.targetY - b.targetY : b.targetY - a.targetY);
+			// Padding participates in the geometry but must not consume a delay
+			// slot ahead of the first visible lyric.
+			const orderedLyrics = orderedStates.filter(({ element }) => !boundaryPadding.has(element));
+			const activeVocalStack = activeLineRef.current?.querySelector?.(".lyrics-karaoke-stack[data-karaoke-vocal-anchor-window-ms]");
+			const vocalWindow = Number(activeVocalStack?.getAttribute("data-karaoke-vocal-anchor-window-ms"));
+			const nextLineStart = paddedLyrics[visualLineIndex + 1]?.startTime;
+			const nextTransitionIn = Number.isFinite(nextLineStart)
+				? nextLineStart - (shouldPrecenterKaraokeTransitions ? LYRICS_CENTERING_LEAD_MS : 0) - compactLinePlaybackPositionRef.current
+				: null;
+			const windows = [vocalWindow, nextTransitionIn].filter((value) => Number.isFinite(value) && value > 0);
+			const transitionWindow = windows.length ? Math.min(...windows) : null;
+			const skipNewMotion = transitionWindow !== null && transitionWindow < LYRICS_CENTERING_MIN_TOTAL_MS;
+			const timing = getAdaptiveLyricsCenteringTiming(transitionWindow);
+			const delayByElement = new Map(orderedLyrics.map(({ element }, index) => [
+				element, getLyricsLineStaggerDelay(index, orderedLyrics.length, timing),
+			]));
+			const sharedStartTime = document.timeline?.currentTime;
+			for (const { element, previous, targetTransform, deltaY } of lineStates) {
+				// Anchor notifications can arrive during an existing stagger. Keep
+				// unchanged targets on their original timeline, including the delay.
+				if (previous.animation && previous.motion?.targetTransform === targetTransform) {
+					previous.animation.play();
+					if (Number.isFinite(previous.startTime)) previous.animation.startTime = previous.startTime;
+					else previous.animation.currentTime = previous.currentTime;
+					animations.set(element, previous.animation);
+					continue;
+				}
+				if (skipNewMotion) continue;
+				const distance = Number.isFinite(deltaY) ? deltaY : sharedDelta;
+				if (Math.abs(distance) < 0.25) continue;
+				const wasMoving = previous.motion && previous.currentTime >= previous.motion.delay
+					&& previous.currentTime < previous.motion.delay + previous.motion.durationMs;
+				const velocity = wasMoving ? getLyricsLineShiftVelocity(previous.motion, previous.currentTime, previous.motion.delay) : null;
+				// A row already in motion must not freeze for a second stagger.
+				const delay = wasMoving ? 0 : !sourceChanged && previous.motion
+					? Math.max(0, previous.motion.delay - previous.currentTime)
+					: delayByElement.get(element) || 0;
+				const duration = wasMoving
+					? Math.min(timing.durationMs, Math.max(1, previous.motion.durationMs - previous.currentTime + previous.motion.delay))
+					: timing.durationMs;
+				const motion = createLyricsLineShiftMotion(targetTransform, distance, duration, velocity);
+				motion.delay = delay;
+				const animation = element.animate(motion.keyframes, {
+					duration: motion.durationMs, delay, easing: motion.easing, fill: "backwards",
+				});
+				if (Number.isFinite(sharedStartTime)) animation.startTime = sharedStartTime;
+				motionData.set(animation, motion);
+				animations.set(element, animation);
+				animation.addEventListener("finish", () => {
+					if (animations.get(element) === animation) animations.delete(element);
+				}, { once: true });
+			}
 		};
+		if (typeof queueMicrotask === "function") queueMicrotask(runScheduledLineShift);
+		else Promise.resolve().then(runScheduledLineShift);
+		return () => { cancelled = true; };
 	}, [
-		usesScriptedCompactLineShift,
-		suppressLayoutShiftAnimation,
-		visualLineIndex,
-		compactOffset,
-		trailingInterludeKey,
-		containerReady,
-		lyricsId,
-		settingsRevision,
+		usesScriptedCompactLineShift, suppressLayoutShiftAnimation, visualLineIndex,
+		compactOffset, trailingInterludeKey, containerReady, lyricsId, settingsRevision,
 	]);
 
 	useEffect(() => () => {
@@ -6877,6 +6967,17 @@ const getStableKaraokeVocalAnchorPosition = (stateRef, line, position, nextAncho
 };
 
 const KARAOKE_FILL_STEPS = 25;
+const KARAOKE_LONG_FILL_STEPS = 50;
+const KARAOKE_LONG_FILL_DURATION_MS = 700;
+const getKaraokeFillSteps = (startTime, endTime) => (
+	endTime - startTime >= KARAOKE_LONG_FILL_DURATION_MS ? KARAOKE_LONG_FILL_STEPS : KARAOKE_FILL_STEPS
+);
+const getKaraokeFillSoftEdge = (fillValue, maximumEdge) => {
+	const progress = Math.max(0, Math.min(1, fillValue / 100));
+	// Keep the timing edge centered while reducing the painted tail at either
+	// boundary, so a nearly complete gradient joins the solid completed glyph.
+	return maximumEdge * 4 * progress * (1 - progress);
+};
 const KARAOKE_BOUNCE_IDLE = { offsetY: 0, scale: 1, glow: 0, active: false };
 // Motion uses the source timing units; character fill and scrolling keep their
 // own clocks. Cache preparation by the memoized grapheme array, never per frame.
@@ -6884,6 +6985,12 @@ const karaokeMotionProfileCache = new WeakMap();
 const smoothKaraokeMotion = (value) => {
 	const x = Math.max(0, Math.min(1, value));
 	return x * x * (3 - 2 * x);
+};
+const smoothKaraokeRelease = (value, smoothing) => {
+	const x = Math.max(0, Math.min(1, value));
+	const cubic = x * x * (3 - 2 * x);
+	const quintic = x * x * x * (10 + x * (6 * x - 15));
+	return cubic + (quintic - cubic) * smoothing;
 };
 
 const createKaraokeMotionProfile = (startTime, endTime, cadence, gap = 0, holdEndTime = endTime) => {
@@ -6898,6 +7005,7 @@ const createKaraokeMotionProfile = (startTime, endTime, cadence, gap = 0, holdEn
 		amplitude: 1.1 + 3.9 * calm + sustained * 0.6,
 		scaleAmount: 0.006 + 0.024 * calm,
 		glow: 0.035 + 0.105 * calm + 0.025 * sustained,
+		motionSmoothing: smoothKaraokeMotion((Math.min(cadence, holdEndTime - startTime) - 120) / 180),
 	};
 };
 
@@ -7012,10 +7120,10 @@ const getKaraokeCharFill = (position, isActive, startTime, endTime, isComplete =
 	}
 	const raw = Math.max(0, Math.min(1, (position - startTime) / Math.max(1, endTime - startTime)));
 	const corrected = applyKaraokeFillCorrectionCurve(raw);
-	// Quantize to 4% steps so per-frame inline-style updates collapse to ~12 changes/sec
-	// instead of 60. React skips DOM writes when the resulting CSS variable string is
-	// unchanged, which removes the matching style recalc + layerize cascade.
-	return Math.round(corrected * KARAOKE_FILL_STEPS) / KARAOKE_FILL_STEPS;
+	// Only long fills need finer steps; short syllables already change at the
+	// playback frame cadence. Pending/completed glyphs keep their stable values.
+	const steps = getKaraokeFillSteps(startTime, endTime);
+	return Math.round(corrected * steps) / steps;
 };
 
 const getKaraokeBounceValues = (position, isActive, startTime, endTime, attenuation = 1, motionProfile = null) => {
@@ -7027,13 +7135,34 @@ const getKaraokeBounceValues = (position, isActive, startTime, endTime, attenuat
 
 	// A completed syllable can still settle after the next row takes the scroll
 	// anchor. Its own playback window, not global character distance, owns motion.
-	const strength = position < profile.endTime
-		? smoothKaraokeMotion((position - profile.startTime) / profile.riseDuration)
-		: 1 - smoothKaraokeMotion((position - profile.endTime) / profile.releaseDuration);
+	let strength;
+	let scaleStrength;
+	let glowStrength;
+	const smoothing = profile.motionSmoothing || 0;
+	if (smoothing <= 0) {
+		strength = position < profile.endTime
+			? smoothKaraokeMotion((position - profile.startTime) / profile.riseDuration)
+			: 1 - smoothKaraokeMotion((position - profile.endTime) / profile.releaseDuration);
+		scaleStrength = glowStrength = strength;
+	} else {
+		if (position < profile.endTime) {
+			const phase = Math.max(0, Math.min(1, (position - profile.startTime) / profile.riseDuration));
+			const phaseSpread = smoothing * phase * (1 - phase);
+			strength = smoothKaraokeMotion(phase + phaseSpread * 0.18);
+			scaleStrength = smoothKaraokeMotion(phase + phaseSpread * 0.28);
+			glowStrength = smoothKaraokeMotion(phase + phaseSpread * 0.08);
+		} else {
+			const phase = Math.max(0, Math.min(1, (position - profile.endTime) / profile.releaseDuration));
+			const phaseSpread = smoothing * phase * (1 - phase) * 0.16;
+			strength = 1 - smoothKaraokeRelease(phase, smoothing);
+			scaleStrength = 1 - smoothKaraokeRelease(phase + phaseSpread, smoothing);
+			glowStrength = 1 - smoothKaraokeRelease(phase - phaseSpread, smoothing);
+		}
+	}
 	const offsetY = Math.round(-profile.amplitude * strength * 4) / 4;
-	const scale = Math.round((1 + profile.scaleAmount * strength) * 500) / 500;
+	const scale = Math.round((1 + profile.scaleAmount * scaleStrength) * 500) / 500;
 	const glow = CONFIG.visual["karaoke-text-effects"] === false ? 0
-		: Math.round(profile.glow * strength * 50) / 50;
+		: Math.round(profile.glow * glowStrength * 50) / 50;
 	if (offsetY === 0 && scale === 1 && glow === 0) return KARAOKE_BOUNCE_IDLE;
 	return { offsetY, scale, glow, active: true };
 };
@@ -7064,7 +7193,10 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 		speakerColors, speakerColors?.getPresentation,
 		speakerColors?.[PAGES_IV_LYRICS_SPEAKER_CLASS_CONTRACT],
 	]);
-  const shouldUseVocalRowAnchor = isActive
+  // The focused block remains the scroll anchor after its glyphs finish.
+  // Dropping it with the release clock re-centers the first vocal row during
+  // a pause, then moves the entire page again at the next lyric hand-off.
+  const shouldUseVocalRowAnchor = (isActive || isEffectFocused)
           && Array.isArray(vocalRows)
           && vocalRows.length >= KARAOKE_VOCAL_STACK_CENTER_THRESHOLD;
 	const vocalRowRenderData = useMemo(() => Array.isArray(vocalRows)
@@ -7081,9 +7213,17 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 		? vocalRowRenderData.map(({ timedChars }) => getActiveKaraokeTimedCharIndex(timedChars, position))
 		: null, [vocalRowRenderData, position]);
   const vocalAnchorStateRef = useRef({ lineKey: null, anchorPosition: -1, lastPlaybackPosition: NaN });
-  const nextVocalAnchorPosition = shouldUseVocalRowAnchor
+  let nextVocalAnchorPosition = shouldUseVocalRowAnchor
           ? getKaraokeVocalAnchorPosition(vocalRowRenderData, position, vocalActiveCharIndexes)
           : -1;
+  if (shouldUseVocalRowAnchor && isEffectFocused && nextVocalAnchorPosition < 0
+          && (vocalAnchorStateRef.current.anchorPosition < 0
+                  || vocalAnchorStateRef.current.lineKey !== getKaraokeVocalAnchorLineKey(line)
+                  || position < vocalAnchorStateRef.current.lastPlaybackPosition - 250)) {
+          // A seek can land in the silence without a previously visited row.
+          // Use the last started voice so seeking and continuous playback agree.
+          nextVocalAnchorPosition = vocalRowRenderData.findLastIndex(row => position >= row.renderStartTime);
+  }
   const activeVocalAnchorPosition = shouldUseVocalRowAnchor
           ? getStableKaraokeVocalAnchorPosition(vocalAnchorStateRef, line, position, nextVocalAnchorPosition)
           : -1;
@@ -7329,7 +7469,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 		const karaokeStyle = {};
 		if (charState === "active") {
 			const fillValue = Math.max(0, Math.min(100, fillRatio * 100));
-			const softEdge = 16;
+			const softEdge = getKaraokeFillSoftEdge(fillValue, 16);
 			karaokeStyle["--karaoke-char-fill"] = `${fillValue}%`;
 			karaokeStyle["--karaoke-char-fill-soft-start"] = `${Math.max(0, fillValue - softEdge)}%`;
 			karaokeStyle["--karaoke-char-fill-soft-end"] = `${Math.min(100, fillValue + softEdge)}%`;

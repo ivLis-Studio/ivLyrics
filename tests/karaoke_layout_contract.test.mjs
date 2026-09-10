@@ -309,38 +309,45 @@ test("measures the active vocal row center instead of the whole multivocal block
 });
 
 test("bounds compact centering and FLIP timing while preserving shared row deltas", () => {
-	const transitionWindows = [null, 40, 300, 1000];
+	// Motion duration/stagger/easing are intentionally tuneable. Preserve the
+	// available timing budget and endpoint geometry, not v6.5.9's 300/28/112ms.
+	const defaultTiming = current.anchor.getAdaptiveLyricsCenteringTiming(null);
+	const defaultTotal = defaultTiming.durationMs + defaultTiming.maxStaggerMs;
+	assert.ok(Number.isFinite(defaultTotal) && defaultTotal > 0);
+	assert.ok(defaultTiming.durationMs >= 1);
+	assert.ok(defaultTiming.staggerMs >= 0);
+	assert.ok(defaultTiming.maxStaggerMs >= defaultTiming.staggerMs);
+	const transitionWindows = [null, -1, 0, 40, 80, 160, 300, defaultTotal, defaultTotal + 24, 1000];
 	for (const transitionWindow of transitionWindows) {
 		const currentTiming = current.anchor.getAdaptiveLyricsCenteringTiming(transitionWindow);
-		const baselineTiming = baseline.anchor.getAdaptiveLyricsCenteringTiming(transitionWindow);
-		assertDifferential(`centering timing ${transitionWindow}`, currentTiming, baselineTiming);
 		const total = currentTiming.durationMs + currentTiming.maxStaggerMs;
-		if (transitionWindow === null || transitionWindow <= 0 || transitionWindow >= 412) {
-			assert.deepEqual(normalizeResult(currentTiming), { durationMs: 300, staggerMs: 28, maxStaggerMs: 112 });
+		assert.ok(Object.values(currentTiming).every(Number.isFinite));
+		assert.ok(currentTiming.durationMs >= 1);
+		assert.ok(currentTiming.staggerMs >= 0);
+		assert.ok(currentTiming.maxStaggerMs >= currentTiming.staggerMs);
+		assert.ok(total <= defaultTotal, "fast phrases must not lengthen the normal motion budget");
+		if (transitionWindow === null || transitionWindow <= 0 || transitionWindow >= defaultTotal + 24) {
+			assert.deepEqual(normalizeResult(currentTiming), normalizeResult(defaultTiming));
 		} else {
-			assert.ok(total <= Math.max(80, transitionWindow - 24));
-			assert.ok(currentTiming.durationMs >= 1);
-			assert.ok(currentTiming.staggerMs >= 0);
-			assert.ok(currentTiming.maxStaggerMs >= currentTiming.staggerMs);
+			assert.ok(total <= Math.max(80, transitionWindow - 24) + 1,
+				"duration and last-row delay must fit before the next window, allowing 1ms rounding");
 		}
 	}
 
-	const progressSamples = [0, 0.25, 0.5, 0.75, 1].map((sample) => ({
-		current: current.anchor.getLyricsCenteringProgress(sample),
-		baseline: baseline.anchor.getLyricsCenteringProgress(sample),
-	}));
+	const progressSamples = Array.from({ length: 101 }, (_, index) => (
+		current.anchor.getLyricsCenteringProgress(index / 100)
+	));
 	for (let index = 0; index < progressSamples.length; index += 1) {
-		assertDifferential(
-			`centering progress ${index}`,
-			progressSamples[index].current,
-		progressSamples[index].baseline
-		);
+		assert.ok(Number.isFinite(progressSamples[index]));
+		assert.ok(progressSamples[index] >= 0 && progressSamples[index] <= 1);
 		if (index > 0) {
-			assert.ok(progressSamples[index].current >= progressSamples[index - 1].current);
+			assert.ok(progressSamples[index] >= progressSamples[index - 1]);
 		}
 	}
-	assert.equal(progressSamples[0].current, 0);
-	assert.equal(progressSamples.at(-1).current, 1);
+	assert.equal(progressSamples[0], 0);
+	assert.equal(progressSamples.at(-1), 1);
+	assert.equal(current.anchor.getLyricsCenteringProgress(-1), 0);
+	assert.equal(current.anchor.getLyricsCenteringProgress(2), 1);
 
 	const previous = ["matrix(1,0,0,1,0,10)", "matrix(1,0,0,1,0,18)", "matrix(1,0,0,1,0,27)"];
 	const target = ["matrix(1,0,0,1,0,0)", "matrix(1,0,0,1,0,8)", "matrix(1,0,0,1,0,15)"];

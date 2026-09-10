@@ -133,7 +133,19 @@ const createEngine = (source) => {
 					karaokeRenderGranularity: options.karaokeRenderGranularity || "character",
 				}),
 			};
-			return raw ? output : normalize(output);
+			if (raw) return output;
+			const comparable = normalize(output);
+			if (props.compact && !props.isKara && !scrolling && !motionPreference.matches) {
+				// Normal compact rows now delegate movement to WAAPI. Verify that
+				// intentional routing change, then compare every remaining row prop.
+				for (const element of comparable.elements) {
+					const style = element.props?.style;
+					if (!style || !Object.hasOwn(style, "--line-shift-duration")) continue;
+					assert.equal(style["--line-shift-duration"], source === currentSource ? "0s" : "var(--iv-lyrics-centering-duration, 300ms)");
+					style["--line-shift-duration"] = "verified-motion-route";
+				}
+			}
+			return comparable;
 		},
 	};
 };
