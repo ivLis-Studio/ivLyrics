@@ -379,6 +379,10 @@ window.ivLyricsSpeakerColors = ivLyricsSpeakerColors;
 setTimeout(() => window.ivLyricsSpeakerColors?.applyCssVariables?.(), 0);
 
 // Optimized Utils with performance improvements and caching
+// Successful checks are reusable only within the same short submission operation.
+const discordAuthOperations = new WeakMap();
+const DISCORD_AUTH_OPERATION_MAX_AGE_MS = 30_000;
+
 const Utils = {
   // LRU caches for frequently used operations (최적화 #10 - LRU 캐시 적용)
   _colorCache: new LRUCache(100),
@@ -2453,20 +2457,37 @@ const Utils = {
       Toast.progress(checkingMessage, 0);
     }
 
+    const operation = options.operation && typeof options.operation === "object" ? options.operation : null;
+    const authToken = this.getAuthToken();
+    const userHash = this.getUserHash();
+    const apiBase = this.getAccountApiBase();
     try {
-      if (!this.getAuthToken()) {
+      if (!authToken) {
         throw new Error(loginRequiredMessage);
       }
 
+      const verified = operation ? discordAuthOperations.get(operation) : null;
+      if (verified && verified.authToken === authToken && verified.userHash === userHash
+        && verified.apiBase === apiBase && Date.now() - verified.checkedAt < DISCORD_AUTH_OPERATION_MAX_AGE_MS) {
+        return verified.profile;
+      }
+      if (operation) discordAuthOperations.delete(operation);
       const profile = await this.fetchAccountProfile({ includeUserHash: false });
+      if (this.getAuthToken() !== authToken || this.getUserHash() !== userHash || this.getAccountApiBase() !== apiBase) {
+        throw new Error(loginRequiredMessage);
+      }
       if (!profile?.authenticated || !profile?.linked || !profile?.account) {
         throw new Error(loginRequiredMessage);
       }
 
+      if (operation) {
+        discordAuthOperations.set(operation, { authToken, userHash, apiBase, profile, checkedAt: Date.now() });
+      }
       return profile;
     } catch (error) {
+      if (operation) discordAuthOperations.delete(operation);
       if (error?.status === 400 || error?.status === 401 || error?.status === 404) {
-        this.clearAuthToken();
+        if (this.getAuthToken() === authToken) this.clearAuthToken();
         throw new Error(loginRequiredMessage);
       }
       throw error;

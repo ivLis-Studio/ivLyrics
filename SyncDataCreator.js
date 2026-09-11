@@ -8920,7 +8920,8 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		setIsSubmitting(true);
 
 		try {
-			await Utils.requireDiscordAuth?.(I18n.t('syncCreator.loginRequired'));
+			const authOperation = {};
+			await Utils.requireDiscordAuth?.(I18n.t('syncCreator.loginRequired'), { operation: authOperation });
 			let workMetadata = {};
 			if (Utils.getAuthToken?.()) {
 				scoreContextRef.current.isrc = resolvedTrackIsrc;
@@ -8938,7 +8939,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				...(trackDurationMs > 0 ? { durationMs: trackDurationMs } : {})
 			};
 			if (typeof SyncDataService !== 'undefined' && SyncDataService.submitSyncData) {
-				const result = await SyncDataService.submitSyncData(trackId, provider, compactSyncDataToSubmit, submitMetadata);
+				const result = await SyncDataService.submitSyncData(trackId, provider, compactSyncDataToSubmit, submitMetadata, { authOperation });
 				if (result) {
 					Toast.success(I18n.t('syncCreator.submitSuccess'));
 					// 캐시 무효화

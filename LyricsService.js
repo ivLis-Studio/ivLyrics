@@ -4020,7 +4020,7 @@
             return _spotifyProfilePromise;
         }
 
-        async function submitSyncData(trackId, provider, syncData, metadata = {}) {
+        async function submitSyncData(trackId, provider, syncData, metadata = {}, options = {}) {
             if (String(provider || '').trim().toLowerCase() === 'lrclib') {
                 const lrclibId = syncData?.source?.lrclibId === null || syncData?.source?.lrclibId === undefined
                     ? ''
@@ -4047,7 +4047,7 @@
             const spotifyProfile = await getCurrentSpotifyProfile();
 
             if (typeof Utils !== "undefined" && Utils.requireDiscordAuth) {
-                await Utils.requireDiscordAuth(I18n.t('syncCreator.loginRequired'));
+                await Utils.requireDiscordAuth(I18n.t('syncCreator.loginRequired'), { operation: options.authOperation });
             } else {
                 const profileResponse = await fetch(`${API_BASE}/user/profile?userHash=${encodeURIComponent(userHash)}`, {
                     cache: 'no-store',
