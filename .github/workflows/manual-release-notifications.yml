@@ -1,0 +1,63 @@
+name: Manual release notifications
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_set:
+        description: "Release set to announce"
+        required: true
+        type: choice
+        options:
+          - latest-all
+        default: latest-all
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    name: Send existing release notes to Discord
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: pc
+            repository: ivLis-Studio/ivLyrics
+            tag: v6.6.17
+            title: ivLyrics PC v6.6.17
+          - platform: ios
+            repository: ivLis-Studio/ivLyrics-IOS
+            tag: v1.3.13
+            title: ivLyrics iOS v1.3.13
+          - platform: android
+            repository: ivLis-Studio/ivLyrics-Android
+            tag: v1.3.16
+            title: ivLyrics Android v1.3.16
+    steps:
+      - name: Checkout notification sender
+        uses: actions/checkout@v4
+
+      - name: Download published release notes
+        id: notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REPOSITORY: ${{ matrix.repository }}
+          RELEASE_TAG: ${{ matrix.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes_path="$RUNNER_TEMP/release-notes.md"
+          gh release view "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" --json body --jq .body > "$notes_path"
+          test -s "$notes_path"
+          echo "path=$notes_path" >> "$GITHUB_OUTPUT"
+
+      - name: Send existing release notification
+        env:
+          RELEASE_WEBHOOK_URL: ${{ secrets.RELEASE_NOTES_WEBHOOK_URL }}
+          RELEASE_PLATFORM: ${{ matrix.platform }}
+          RELEASE_TAG: ${{ matrix.tag }}
+          RELEASE_TITLE: ${{ matrix.title }}
+          RELEASE_NOTES_PATH: ${{ steps.notes.outputs.path }}
+          GITHUB_REPOSITORY: ${{ matrix.repository }}
+        run: node .github/scripts/send_release_webhook.mjs
