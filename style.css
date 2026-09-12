@@ -1669,6 +1669,25 @@ body.ivlyrics-page-active .main-topBar-container {
   initial-value: rgba(255, 255, 255, 1);
 }
 
+/* Row positioning never belongs to its glyphs. Non-inherited registration
+   avoids descendant invalidation during each line shift. The universal syntax
+   keeps the existing unset value and calc() inputs; older engines retain the
+   content-boundary reset below. */
+@property --position-index {
+  syntax: "*";
+  inherits: false;
+}
+
+@property --animation-index {
+  syntax: "*";
+  inherits: false;
+}
+
+@property --blur-index {
+  syntax: "*";
+  inherits: false;
+}
+
 .lyrics-lyricsContainer-SyncedLyrics {
   --lyrics-line-height: calc(4px + var(--lyrics-font-size));
   grid-area: 1 / 1 / -2 / -1;
@@ -2984,7 +3003,6 @@ div.lyrics-tabBar-headerItemLink {
 }
 
 .lyrics-karaoke-text-run-segment {
-  --iv-karaoke-completed-color: color-mix(in srgb, var(--lyrics-color-inactive) var(--iv-karaoke-past-color-share, 0%), var(--lyrics-color-active));
   display: inline-block;
   max-width: 100%;
   white-space: pre-wrap;
@@ -3000,9 +3018,7 @@ div.lyrics-tabBar-headerItemLink {
   box-decoration-break: clone;
   transform-origin: center bottom;
   transform: translateY(var(--karaoke-bounce-y, 0)) scale(var(--karaoke-bounce-scale, 1));
-  transition:
-    transform 75ms linear,
-    --iv-karaoke-completed-color 520ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 75ms linear;
 }
 
 .lyrics-karaoke-text-run-segment.is-word-timed {
@@ -3051,7 +3067,6 @@ div.lyrics-tabBar-headerItemLink {
 }
 
 .lyrics-karaoke-char {
-  --iv-karaoke-completed-color: color-mix(in srgb, var(--lyrics-color-inactive) var(--iv-karaoke-past-color-share, 0%), var(--lyrics-color-active));
   display: inline-block;
   white-space: pre-wrap;
   padding-inline: var(--karaoke-glyph-bleed-x, 0.16em);
@@ -3065,9 +3080,7 @@ div.lyrics-tabBar-headerItemLink {
   box-decoration-break: clone;
   transform-origin: center bottom;
   transform: translateY(var(--karaoke-bounce-y, 0)) scale(var(--karaoke-bounce-scale, 1));
-  transition:
-    transform 75ms linear,
-    --iv-karaoke-completed-color 520ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 75ms linear;
 }
 
 /* As with text runs, the wrapper stays transparent and the nested glyph-fill
