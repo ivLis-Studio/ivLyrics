@@ -466,7 +466,8 @@ window.LANG_DE = {
         "tmi": "TMI",
         "lyricsStudy": "Lernen",
         "characterPronunciation": "Zeichen-Aussprache",
-        "culturalAnnotations": "Kultureller Kontext"
+        "culturalAnnotations": "Kultureller Kontext",
+        "wordSupplements": "Wortdetails"
       },
       "noEnabledProviders": "Keine KI-Anbieter aktiviert. Bitte aktiviere mindestens einen Anbieter in den Einstellungen.",
       "allProvidersFailed": "Alle KI-Anbieter konnten die Anfrage nicht verarbeiten.",
@@ -636,6 +637,7 @@ window.LANG_DE = {
     "regeneratePronunciationOnly": "Nur Aussprache",
     "regenerateTranslationOnly": "Nur Übersetzung",
     "regenerateBoth": "Aussprache und Übersetzung",
+    "regenerateWordDetails": "Wortdetails",
     "regenerateAction": "Neu erzeugen",
     "fullscreen": "Vollbild",
     "exitFullscreen": "Vollbild verlassen"
@@ -852,6 +854,9 @@ window.LANG_DE = {
     "culturalAnnotationsRegenerated": "Die Erklärungen zum kulturellen Kontext wurden neu erstellt.",
     "translationRegenerateFailed": "Neugenerierung fehlgeschlagen",
     "culturalAnnotationsRegenerateFailed": "Die Erklärungen zum kulturellen Kontext konnten nicht neu erstellt werden.",
+    "regeneratingWordDetails": "Wortdetails werden neu generiert...",
+    "wordDetailsRegenerated": "Wortdetails neu generiert.",
+    "wordDetailsRegenerateFailed": "Neugenerierung fehlgeschlagen",
     "lyricsProviderSaved": "Songtextanbieter-Einstellung für diesen Titel gespeichert.",
     "lyricsProviderSaveFailed": "Songtextanbieter-Einstellung konnte nicht gespeichert werden.",
     "translationCacheRemoved": "Übersetzungs-Cache entfernt und neu geladen!",
@@ -1378,6 +1383,10 @@ window.LANG_DE = {
       "videoEnabled": {
         "label": "Video-Hintergrund vorladen",
         "desc": "Lädt Video-Hintergrundinformationen für den nächsten Song vor"
+      },
+      "wordDetailsEnabled": {
+        "label": "Preload Word Details",
+        "desc": "Preload per-word readings and translations for word-level karaoke"
       }
     },
     "communitySync": {
@@ -1948,7 +1957,9 @@ window.LANG_DE = {
   "generationStatus": {
     "complete": "Fertig!",
     "culturalAnnotations": "Kulturellen Kontext erklären",
-    "culturalAnnotationsLoading": "Kultureller Kontext wird analysiert..."
+    "culturalAnnotationsLoading": "Kultureller Kontext wird analysiert...",
+    "wordSupplements": "Wortdetails",
+    "wordSupplementsLoading": "Wortlesungen & Glossen werden geladen..."
   },
   "videoBackground": {
     "loading": "Lade Videoinformationen...",

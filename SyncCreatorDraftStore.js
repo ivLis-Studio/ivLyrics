@@ -20,7 +20,8 @@
   const RECORD_VERSION = 1;
   // v2 invalidates results generated before the pronunciation writing-system
   // selector and script validation were introduced.
-  const CHARACTER_PRONUNCIATION_CACHE_VERSION = 2;
+  // v3 invalidates results generated before Chinese tone marks were required.
+  const CHARACTER_PRONUNCIATION_CACHE_VERSION = 3;
   const MAX_HISTORY_STATES = 40;
   const MAX_TRACK_DRAFTS = 6;
   const MAX_CHARACTER_PRONUNCIATION_CACHE_ENTRIES = 100;

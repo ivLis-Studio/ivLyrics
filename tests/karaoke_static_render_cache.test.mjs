@@ -82,6 +82,11 @@ const createHarness = (source = currentSource, options = {}) => {
       activeState.hooks[index] = { value, dependencies };
       return value;
     },
+    // Production provides these via Spicetify.React; the harness never runs
+    // effects, and word supplements stay disabled without their API present.
+    useState: initial => [initial, () => {}],
+    useEffect: () => {},
+    useCallback: callback => callback,
     react: { Fragment: 'fragment', memo: component => component,
       createElement: (tag, props, ...children) => ({ tag, props: props || {}, children }) },
   });

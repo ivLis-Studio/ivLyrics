@@ -466,7 +466,8 @@ window.LANG_ID = {
         "tmi": "TMI",
         "lyricsStudy": "Belajar",
         "characterPronunciation": "Pelafalan per karakter",
-        "culturalAnnotations": "Konteks budaya"
+        "culturalAnnotations": "Konteks budaya",
+        "wordSupplements": "Detail kata"
       },
       "noEnabledProviders": "Tidak ada penyedia AI yang diaktifkan. Harap aktifkan setidaknya satu penyedia di pengaturan.",
       "allProvidersFailed": "Semua penyedia AI gagal memproses permintaan.",
@@ -636,6 +637,7 @@ window.LANG_ID = {
     "regeneratePronunciationOnly": "Hanya pelafalan",
     "regenerateTranslationOnly": "Hanya terjemahan",
     "regenerateBoth": "Pelafalan dan terjemahan",
+    "regenerateWordDetails": "Detail kata",
     "regenerateAction": "Buat ulang",
     "fullscreen": "Layar Penuh",
     "exitFullscreen": "Keluar dari layar penuh"
@@ -852,6 +854,9 @@ window.LANG_ID = {
     "culturalAnnotationsRegenerated": "Penjelasan konteks budaya berhasil dibuat ulang.",
     "translationRegenerateFailed": "Gagal membuat ulang terjemahan",
     "culturalAnnotationsRegenerateFailed": "Gagal membuat ulang penjelasan konteks budaya.",
+    "regeneratingWordDetails": "Membuat ulang detail kata...",
+    "wordDetailsRegenerated": "Detail kata dibuat ulang.",
+    "wordDetailsRegenerateFailed": "Gagal membuat ulang",
     "lyricsProviderSaved": "Pengaturan penyedia lirik untuk lagu ini disimpan.",
     "lyricsProviderSaveFailed": "Gagal menyimpan pengaturan penyedia lirik.",
     "translationCacheRemoved": "Cache terjemahan dihapus dan dimuat ulang!",
@@ -1378,6 +1383,10 @@ window.LANG_ID = {
       "videoEnabled": {
         "label": "Pra-muat Latar Belakang Video",
         "desc": "Mengambil info latar belakang video lagu berikutnya sebelumnya"
+      },
+      "wordDetailsEnabled": {
+        "label": "Preload Word Details",
+        "desc": "Preload per-word readings and translations for word-level karaoke"
       }
     },
     "communitySync": {
@@ -1948,7 +1957,9 @@ window.LANG_ID = {
   "generationStatus": {
     "complete": "Selesai!",
     "culturalAnnotations": "Penjelasan konteks budaya",
-    "culturalAnnotationsLoading": "Menganalisis konteks budaya..."
+    "culturalAnnotationsLoading": "Menganalisis konteks budaya...",
+    "wordSupplements": "Detail kata",
+    "wordSupplementsLoading": "Memuat bacaan & glosa..."
   },
   "videoBackground": {
     "loading": "Memuat info video...",

@@ -466,7 +466,8 @@ window.LANG_RU = {
         "tmi": "TMI",
         "lyricsStudy": "Обучение",
         "characterPronunciation": "Произношение по символам",
-        "culturalAnnotations": "Культурный контекст"
+        "culturalAnnotations": "Культурный контекст",
+        "wordSupplements": "Детали слов"
       },
       "noEnabledProviders": "AI-провайдеры не включены. Пожалуйста, включите хотя бы одного провайдера в настройках.",
       "allProvidersFailed": "Все AI-провайдеры не смогли обработать запрос.",
@@ -636,6 +637,7 @@ window.LANG_RU = {
     "regeneratePronunciationOnly": "Только произношение",
     "regenerateTranslationOnly": "Только перевод",
     "regenerateBoth": "Произношение и перевод",
+    "regenerateWordDetails": "Детали слов",
     "regenerateAction": "Пересоздать",
     "fullscreen": "Полный экран",
     "exitFullscreen": "Выйти из полноэкранного режима"
@@ -852,6 +854,9 @@ window.LANG_RU = {
     "culturalAnnotationsRegenerated": "Пояснения культурного контекста созданы заново.",
     "translationRegenerateFailed": "Ошибка перегенерации перевода",
     "culturalAnnotationsRegenerateFailed": "Не удалось заново создать пояснения культурного контекста.",
+    "regeneratingWordDetails": "Повторная генерация деталей...",
+    "wordDetailsRegenerated": "Детали перегенерированы.",
+    "wordDetailsRegenerateFailed": "Ошибка регенерации",
     "lyricsProviderSaved": "Источник текста для этого трека сохранён.",
     "lyricsProviderSaveFailed": "Не удалось сохранить источник текста.",
     "translationCacheRemoved": "Кеш перевода удален и перезагружен!",
@@ -1378,6 +1383,10 @@ window.LANG_RU = {
       "videoEnabled": {
         "label": "Предзагрузка видео-фона",
         "desc": "Заранее получает информацию о видео-фоне для следующего трека"
+      },
+      "wordDetailsEnabled": {
+        "label": "Preload Word Details",
+        "desc": "Preload per-word readings and translations for word-level karaoke"
       }
     },
     "communitySync": {
@@ -1948,7 +1957,9 @@ window.LANG_RU = {
   "generationStatus": {
     "complete": "Готово!",
     "culturalAnnotations": "Пояснения культурного контекста",
-    "culturalAnnotationsLoading": "Анализируется культурный контекст..."
+    "culturalAnnotationsLoading": "Анализируется культурный контекст...",
+    "wordSupplements": "Детали слов",
+    "wordSupplementsLoading": "Загрузка чтений и глосс..."
   },
   "videoBackground": {
     "loading": "Загрузка информации о видео...",

@@ -12431,6 +12431,11 @@ html.is-lp-view-exit::view-transition-new(root) {
 
 .fullscreen-tv-title-container {
   gap: 2px;
+  /* Soft halo for the TV titles. A filter on the container (which has no
+     overflow clipping) paints the same halo text-shadow would, without being
+     cut into a rectangle by the titles' overflow:hidden clamp box. */
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.6))
+    drop-shadow(0 4px 16px rgba(0, 0, 0, 0.4));
 }
 
 .fullscreen-tv-artist-container {
@@ -12441,8 +12446,10 @@ html.is-lp-view-exit::view-transition-new(root) {
 .fullscreen-tv-title {
   font-weight: 700;
   color: var(--spice-text, #fff);
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6),
-    0 4px 16px rgba(0, 0, 0, 0.4);
+  /* Outline only: the soft halo lives on .fullscreen-tv-title-container as a
+     filter, so this element's overflow:hidden (required for
+     -webkit-line-clamp) has no halo to cut into a box. */
+  text-shadow: var(--fullscreen-title-outline-shadow, 0 0 0 transparent);
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -12490,6 +12497,16 @@ html.is-lp-view-exit::view-transition-new(root) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Single-line ellipsis keeps working with overflow:clip (verified), so let
+   the shadow halo paint past the box instead of being cut into a rectangle.
+   overflow:hidden above remains the fallback for engines without clip. */
+@supports (overflow: clip) {
+  .fullscreen-tv-artist-secondary {
+    overflow: clip;
+    overflow-clip-margin: 16px;
+  }
 }
 
 /* TV Mode Album Name */
@@ -12580,7 +12597,7 @@ html.is-lp-view-exit::view-transition-new(root) {
 /* TV Mode Controls Wrapper (right side) */
 .fullscreen-tv-controls-wrapper {
   position: fixed;
-  right: var(--fullscreen-tv-edge-offset);
+  right: max(var(--fullscreen-tv-edge-offset), 70px);
   bottom: var(--fullscreen-tv-edge-offset);
   z-index: 100;
   display: flex;
@@ -18317,10 +18334,9 @@ html.is-lp-view-exit::view-transition-new(root) {
 }
 
 .fullscreen-tv-title {
-  text-shadow:
-    var(--fullscreen-title-outline-shadow, 0 0 0 transparent),
-    0 2px 8px rgba(0, 0, 0, 0.6),
-    0 4px 16px rgba(0, 0, 0, 0.4);
+  /* Soft halo moved to .fullscreen-tv-title-container (drop-shadow filter);
+     keep only the crisp outline here so the clamp box has nothing to box. */
+  text-shadow: var(--fullscreen-title-outline-shadow, 0 0 0 transparent);
 }
 
 .lyrics-fullscreen-artist,
@@ -20107,4 +20123,72 @@ a.research-media-item:hover {
   .research-nav button,
   .research-icon-button,
   .research-source-list a { transition: none !important; }
+}
+
+/* Word-stack supplements: original / gloss / reading per karaoke word.
+   Only rendered for suitable source languages (ja/ko/zh) in word mode.
+   Rows are height-normalized across the whole line so annotations line up:
+   every main box shares one min-height with bottom-aligned glyphs (same
+   font size => shared baseline, ruby absorbed above), and gloss/reading are
+   single non-wrapping lines with fixed height (horizontal overflow stays
+   visible, like ruby text). */
+.lyrics-karaoke-line.has-word-stack .lyrics-karaoke-word-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  max-width: 100%;
+  vertical-align: top;
+  line-height: 1.25;
+  /* Gutters keep neighboring columns (and their centered overflow
+     annotations) from visually merging into one string. */
+  margin: 0 0.28em;
+}
+
+.lyrics-karaoke-line.has-word-stack .lyrics-karaoke-word-stack > .lyrics-karaoke-word {
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-height: 2.3em;
+  line-height: 1.25;
+}
+
+.lyrics-karaoke-word-gloss,
+.lyrics-karaoke-word-reading {
+  display: block;
+  max-width: none;
+  overflow: visible;
+  white-space: nowrap;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  line-height: 1.4;
+  min-height: 1.4em;
+}
+
+.lyrics-karaoke-word-gloss {
+  font-size: 0.62em;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.95;
+}
+
+.lyrics-karaoke-word-reading {
+  font-size: 0.68em;
+  opacity: 0.55;
+  font-style: italic;
+  font-weight: 400;
+}
+
+.lyrics-karaoke-line.has-word-stack.is-complete .lyrics-karaoke-word-gloss,
+.lyrics-karaoke-line.has-word-stack.is-complete .lyrics-karaoke-word-reading {
+  opacity: 0.85;
+}
+
+/* Per-word readings replace the line-level pronunciation row (which would
+   duplicate the same content). The full-line translation row stays visible. */
+.lyrics-lyricsContainer-LyricsLine:has(.lyrics-karaoke-line.has-word-stack-readings) > .lyrics-lyricsContainer-LyricsLine-phonetic,
+.fullscreen-vinyl-active-lyric:has(.lyrics-karaoke-line.has-word-stack-readings) .lyrics-lyricsContainer-LyricsLine-phonetic {
+  display: none;
 }

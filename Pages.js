@@ -4961,11 +4961,21 @@ const wrapKaraokeInlineStyleRuns = (
 const buildKaraokeWordElements = (
 	timedChars,
 	charElements,
-	{ position = 0, isActive = false, isComplete = false, globalCharOffset = 0, activeGlobalCharIndex = -1, wordTimed = false, wordRenderCache = null, presentationCache = null, elementCache = null } = {}
+	{ position = 0, isActive = false, isComplete = false, globalCharOffset = 0, activeGlobalCharIndex = -1, wordTimed = false, wordRenderCache = null, presentationCache = null, elementCache = null, wordSupplementByKey = null } = {}
 ) => {
 	if (!Array.isArray(timedChars) || !Array.isArray(charElements) || timedChars.length !== charElements.length) {
 		return charElements;
 	}
+
+	const getWordSupplement = (wordKey) => {
+		if (!wordSupplementByKey || wordKey === null || wordKey === undefined) return null;
+		const supplement = wordSupplementByKey.get(wordKey);
+		if (!supplement) return null;
+		const gloss = String(supplement.gloss || "").trim();
+		const reading = String(supplement.reading || "").trim();
+		if (!gloss && !reading) return null;
+		return { gloss, reading };
+	};
 
 	const wordElements = [];
 	let currentWord = [];
@@ -4974,6 +4984,11 @@ const buildKaraokeWordElements = (
 	const timedCharCount = timedChars.length;
 	const flushWord = () => {
 		if (currentWord.length === 0) return;
+		const supplement = getWordSupplement(currentWordUnit);
+		// Stack mode covers the whole line: words without annotations still
+		// get the stack wrapper so their geometry matches stacked siblings.
+		// (A bare word would align by baseline while stacks align by top.)
+		const wantStack = wordSupplementByKey instanceof Map;
 		// The line owns this cache, so source timing changes replace it while
 		// playback only recomputes the word's visible motion.
 		const cacheKey = `${currentWordStart}:${currentWord.length}`;
@@ -5007,6 +5022,8 @@ const buildKaraokeWordElements = (
 			&& cachedWord.presentationCache === presentationCache
 			&& cachedWord.offsetY === bounce.offsetY && cachedWord.scale === bounce.scale
 			&& cachedWord.glow === bounce.glow && cachedWord.bouncing === bounce.active
+			&& cachedWord.stacked === wantStack
+			&& cachedWord.gloss === (supplement?.gloss || "") && cachedWord.reading === (supplement?.reading || "")
 			&& cachedWord.children.length === currentWord.length
 			&& currentWord.every((element, index) => element === cachedWord.children[index])) {
 			wordElements.push(cachedWord.element);
@@ -5025,7 +5042,7 @@ const buildKaraokeWordElements = (
 			presentationCache,
 			elementCache,
 		});
-		const element = react.createElement(
+		const wordMain = react.createElement(
 			"span",
 			{
 				className: `lyrics-karaoke-word${wordTimed ? " is-word-timed" : ""}${bounce.active ? " is-bouncing" : ""}${isComplete ? " is-complete" : ""}`,
@@ -5034,9 +5051,49 @@ const buildKaraokeWordElements = (
 			},
 			styledWordElements
 		);
+		let element = wordMain;
+		if (wantStack) {
+			// Requested stack order: original word, per-word gloss, per-word
+			// reading. Annotations are static (no karaoke fill) and hidden
+			// from assistive tech to avoid duplicating the sung text.
+			// Words without annotations still stack so the row stays aligned.
+			const stackChildren = [wordMain];
+			if (supplement?.gloss) {
+				stackChildren.push(react.createElement(
+					"span",
+					{
+						className: "lyrics-karaoke-word-gloss",
+						key: `karaoke-word-gloss-${currentWordStart}`,
+						"aria-hidden": true,
+					},
+					supplement.gloss
+				));
+			}
+			if (supplement?.reading) {
+				stackChildren.push(react.createElement(
+					"span",
+					{
+						className: "lyrics-karaoke-word-reading",
+						key: `karaoke-word-reading-${currentWordStart}`,
+						"aria-hidden": true,
+					},
+					supplement.reading
+				));
+			}
+			element = react.createElement(
+				"span",
+				{
+					className: `lyrics-karaoke-word-stack${isComplete ? " is-complete" : ""}`,
+					key: `karaoke-word-stack-${currentWordStart}`,
+				},
+				stackChildren
+			);
+		}
 		wordData.output = {
 			wordTimed, isComplete, presentationCache, offsetY: bounce.offsetY, scale: bounce.scale,
 			glow: bounce.glow, bouncing: bounce.active, children: currentWord, element,
+			stacked: wantStack,
+			gloss: supplement?.gloss || "", reading: supplement?.reading || "",
 		};
 		wordElements.push(element);
 		currentWord = [];
@@ -6623,11 +6680,18 @@ const useSyncedLyricsEngine = ({
 			}
 			const isOutsideVisibleRange = !isHighlightedLine
 				&& lineNumber !== visualAnchorLineNumber
-				&& shouldHideSyncedLine({
+				&& (shouldHideSyncedLine({
 					compact,
 					isScrolling,
 					animationIndex: visibilityAnimationIndex,
-				});
+				}) || (
+					visibilityAnimationIndex < 0
+					&& !(compact && isScrolling)
+					&& (
+						!!paddedLyrics[layoutActiveLineIndex]?.interludeInfo?.isInterlude
+						|| isTrailingInterludeActive
+					)
+				));
 			if (isOutsideVisibleRange) {
 				className += " lyrics-lyricsContainer-LyricsLine-paddingLine";
 				className += visibilityAnimationIndex < 0
@@ -7662,6 +7726,216 @@ const getKaraokeGlyphUpdates = (state, position, isComplete) => {
 	return updates;
 };
 
+// Word-stack supplements (per-word gloss + per-word reading) for suitable
+// source languages. Units are the existing karaoke word units so the sung
+// highlight and the annotations share the same grouping. Returns null when
+// the line should keep the legacy line-level rendering.
+const WORD_SUPPLEMENT_RETRY_MAX = 1;
+const WORD_SUPPLEMENT_RETRY_DELAY_MS = 8000;
+const useKaraokeWordStackSupplements = ({ line, timedChars, timedText, wordTimed, settingsRevision }) => {
+	const supplementsApi = window.ivLyricsWordSupplements || null;
+	const sourceLang = useMemo(() => {
+		if (!supplementsApi) {
+			try {
+				return String(window.Utils?.getDetectedLanguage?.() || "auto");
+			} catch {
+				return "auto";
+			}
+		}
+		try {
+			return supplementsApi.resolveSourceLanguage(timedText);
+		} catch {
+			return "auto";
+		}
+	}, [supplementsApi, timedText]);
+	const suitable = !!supplementsApi && !!wordTimed && supplementsApi.isSuitableSourceLanguage(sourceLang);
+	const units = useMemo(() => {
+		if (!suitable || !supplementsApi) return [];
+		try {
+			return supplementsApi.getWordUnits(timedChars);
+		} catch {
+			return [];
+		}
+	}, [suitable, supplementsApi, timedChars]);
+	const readingMode = useMemo(() => {
+		if (!suitable || !supplementsApi || units.length === 0) return null;
+		try {
+			return supplementsApi.resolveReadingMode(sourceLang);
+		} catch {
+			return null;
+		}
+	}, [suitable, supplementsApi, sourceLang, units]);
+	const glossActive = useMemo(() => {
+		if (!suitable || !supplementsApi || units.length === 0) return false;
+		try {
+			return supplementsApi.isGlossModeActive(sourceLang);
+		} catch {
+			return false;
+		}
+	}, [suitable, supplementsApi, sourceLang, units]);
+	const lineKey = useMemo(() => {
+		if (!suitable || !supplementsApi || units.length === 0) return "";
+		try {
+			return supplementsApi.getLineKey(line, units);
+		} catch {
+			return "";
+		}
+	}, [suitable, supplementsApi, line, units]);
+	const [readings, setReadings] = useState([]);
+	const [glosses, setGlosses] = useState([]);
+	const [wordRevision, setWordRevision] = useState(0);
+	const [wordRetry, setWordRetry] = useState(0);
+	useEffect(() => {
+		if (typeof window.addEventListener !== "function") return undefined;
+		const handleInvalidate = () => {
+			setReadings([]);
+			setGlosses([]);
+			setWordRevision((revision) => revision + 1);
+		};
+		window.addEventListener("ivLyrics:word-supplements-invalidated", handleInvalidate);
+		return () => {
+			try {
+				window.removeEventListener?.("ivLyrics:word-supplements-invalidated", handleInvalidate);
+			} catch { /* ignore */ }
+		};
+	}, []);
+	useEffect(() => {
+		if (!lineKey || (!readingMode && !glossActive)) {
+			setReadings([]);
+			setGlosses([]);
+			return;
+		}
+		let cancelled = false;
+		setReadings([]);
+		setGlosses([]);
+		if (readingMode) {
+			supplementsApi.getWordReadings(units, sourceLang, readingMode, timedText).then((values) => {
+				if (!cancelled) setReadings(Array.isArray(values) ? values : []);
+			}).catch(() => {
+				if (!cancelled) setReadings([]);
+			});
+		}
+		if (glossActive) {
+			supplementsApi.getWordGlosses(units, timedText, sourceLang).then((values) => {
+				if (!cancelled) setGlosses(Array.isArray(values) ? values : []);
+			}).catch(() => {
+				if (!cancelled) setGlosses([]);
+			});
+		}
+		return () => {
+			cancelled = true;
+		};
+	}, [lineKey, readingMode, glossActive, timedText, settingsRevision, wordRevision, wordRetry]);
+	// Self-heal: a transient fetch failure (flaky gateway, poisoned batch)
+	// leaves rows empty with nothing retrying until a remount (scroll). One
+	// delayed retry recovers without user input. Fully-passthrough lines hit
+	// memory cache instantly, so the retry is a no-op for them.
+	useEffect(() => {
+		if (!lineKey || (!readingMode && !glossActive) || wordRetry >= WORD_SUPPLEMENT_RETRY_MAX) {
+			return undefined;
+		}
+		if (!supplementsApi) return undefined;
+		if (readings.some((value) => String(value || "").trim())
+			|| glosses.some((value) => String(value || "").trim())) {
+			return undefined;
+		}
+		try {
+			if (supplementsApi.isAiCoolingDown?.()) return undefined;
+		} catch { /* ignore */ }
+		const timer = setTimeout(() => setWordRetry((retry) => retry + 1), WORD_SUPPLEMENT_RETRY_DELAY_MS);
+		return () => clearTimeout(timer);
+	}, [supplementsApi, lineKey, readingMode, glossActive, readings, glosses, wordRetry]);
+	return useMemo(() => {
+		const debug = {
+			sourceLang,
+			suitable,
+			wordTimed: !!wordTimed,
+			unitCount: units.length,
+			readingMode,
+			glossActive,
+			aiCoolingDown: (() => {
+				try {
+					return !!supplementsApi?.isAiCoolingDown?.();
+				} catch {
+					return false;
+				}
+			})(),
+			aiError: (() => {
+				try {
+					return supplementsApi?.getAiStatus?.().lastError || "";
+				} catch {
+					return "";
+				}
+			})(),
+			hasReading: readings.some((value) => String(value || "").trim()),
+			hasGloss: glosses.some((value) => String(value || "").trim()),
+		};
+		try {
+			window.__ivLyricsLastWordStack = { ...debug, at: Date.now() };
+		} catch { /* diagnostics must never break rendering */ }
+		if (!suitable || units.length === 0) return null;
+		if (!debug.hasReading && !debug.hasGloss) return null;
+		const supplementByKey = new Map();
+		units.forEach((unit, index) => {
+			supplementByKey.set(unit.wordKey, {
+				gloss: String(glosses[index] || "").trim(),
+				reading: String(readings[index] || "").trim(),
+			});
+		});
+		return {
+			units,
+			supplementByKey,
+			hasReading: debug.hasReading,
+			hasGloss: debug.hasGloss,
+		};
+	}, [suitable, units, readings, glosses]);
+};
+
+// Prefetch word supplements for whole karaoke lines using the exact same
+// timed-char pipeline as KaraokeLine, so warmed memory/persistent caches hit
+// on mount. Vocal-row sublines warm on mount instead (row construction needs
+// live render data). Best effort per line: failures stay silent.
+const prefetchWordSupplementsForLyrics = (karaokeLines, { locale = "auto", sourceLang = "auto", trackId = "", force = false } = {}) => {
+	const api = window.ivLyricsWordSupplements;
+	if (!api || !Array.isArray(karaokeLines) || karaokeLines.length === 0) return Promise.resolve(false);
+	// Explicit user actions (e.g. Regenerate) bypass the prefetch toggle;
+	// automatic prefetch still honors it.
+	if (!force && window.CONFIG?.visual?.["prefetch-word-details-enabled"] === false) return Promise.resolve(false);
+	const lyricsLocale = locale && locale !== "auto"
+		? locale
+		: String(window.Utils?.getDetectedLanguage?.() || "auto");
+	// Render-path callers omit trackId and keep the current-player default;
+	// prefetch passes the target track so its warm caches hit on mount.
+	const supplementOptions = trackId ? { trackId: String(trackId) } : {};
+	const jobs = [];
+	for (const line of karaokeLines) {
+		try {
+			if (!line) continue;
+			const timedChars = assignKaraokeWordIndexes(
+				applyKaraokeWhitespaceCompensation(buildKaraokeTimedChars(line)),
+				line?.karaokeGranularity === "word",
+				lyricsLocale
+			);
+			const units = api.getWordUnits(timedChars);
+			if (!units.length) continue;
+			const timedText = timedChars.map((charInfo) => String(charInfo?.char ?? "")).join("");
+			const lang = api.isSuitableSourceLanguage(sourceLang)
+				? sourceLang
+				: api.resolveSourceLanguage(timedText);
+			if (!api.isSuitableSourceLanguage(lang)) continue;
+			const readingMode = api.resolveReadingMode(lang);
+			if (readingMode) {
+				jobs.push(api.getWordReadings(units, lang, readingMode, timedText, supplementOptions).catch(() => []));
+			}
+			jobs.push(api.getWordGlosses(units, timedText, lang, supplementOptions).catch(() => []));
+		} catch { /* per-line best effort */ }
+	}
+	if (!jobs.length) return Promise.resolve(false);
+	return Promise.all(jobs).then(() => true);
+};
+
+window.ivLyricsPrefetchWordSupplements = prefetchWordSupplementsForLyrics;
+
 const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = isActive, isEffectLive = isActive || isEffectFocused, settingsRevision = 0, globalCharOffset = 0, activeGlobalCharIndex = -1, phonetic = null, translation = null, furiganaMapOverride = null, culturalAnnotations = null, renderGranularity = null }) => {
   if (!line) {
           return "";
@@ -7912,6 +8186,10 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 	// out. Gating this by isActive made the fill disappear in a single frame at
 	// every line hand-off.
 	const isComplete = endTime > 0 && position >= endTime;
+	const wordStack = useKaraokeWordStackSupplements({ line, timedChars, timedText, wordTimed, settingsRevision });
+	// Word stacks need per-word DOM nodes; the string-based text-run fast path
+	// cannot host them, so stacked lines use the glyph/word path instead.
+	const effectiveUseTextRun = useTextRun && !wordStack;
 	const { culturalMarkersByCharIndex, fallbackCulturalAnnotations } = useMemo(() => {
 		const culturalMarkersByCharIndex = new Map();
 		const fallbackCulturalAnnotations = [];
@@ -7919,7 +8197,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 			const expressionStart = annotation.expression
 				? timedText.indexOf(annotation.expression)
 				: -1;
-			if (useTextRun || expressionStart < 0) {
+			if (effectiveUseTextRun || expressionStart < 0) {
 				fallbackCulturalAnnotations.push(annotation);
 				continue;
 			}
@@ -7944,13 +8222,13 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 			culturalMarkersByCharIndex.set(markerCharIndex, markers);
 		}
 		return { culturalMarkersByCharIndex, fallbackCulturalAnnotations };
-	}, [timedChars, timedText, useTextRun, culturalAnnotations, settingsRevision]);
+	}, [timedChars, timedText, effectiveUseTextRun, culturalAnnotations, settingsRevision]);
 	// Retain only the latest output per glyph. Timing still runs at the chosen
 	// cadence, while unchanged fill/release values reuse their complete subtree.
 	const glyphElementCache = useMemo(() => [], [timedChars, furiganaMap, culturalMarkersByCharIndex]);
-	const glyphUpdates = useMemo(() => useTextRun ? null
+	const glyphUpdates = useMemo(() => effectiveUseTextRun ? null
 		: prepareKaraokeGlyphUpdates(timedChars, motionProfiles, wordTimed, wordStartTimes),
-		[timedChars, glyphElementCache, useTextRun]);
+		[timedChars, glyphElementCache, effectiveUseTextRun]);
 	const wrapperElementCache = useMemo(() => new Map(), [timedChars, presentationCaches]);
 	const glyphBounceEnabled = !wordTimed && CONFIG.visual["karaoke-bounce"] && Number.isFinite(position);
 
@@ -8059,7 +8337,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 		};
 		return element;
 	};
-	let charElements = useTextRun ? [] : glyphUpdates.elements;
+	let charElements = effectiveUseTextRun ? [] : glyphUpdates.elements;
 	if (glyphUpdates) {
 		const updates = getKaraokeGlyphUpdates(glyphUpdates, position, isComplete);
 		if (updates === null) {
@@ -8075,7 +8353,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 		}
 		glyphUpdates.elements = charElements;
 	}
-	const lineChildren = useTextRun
+	const lineChildren = effectiveUseTextRun
 		? buildKaraokeTextRunElements(
 			timedChars,
 			position,
@@ -8101,6 +8379,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 			wordRenderCache,
 			presentationCache: presentationCaches.characters,
 			elementCache: wrapperElementCache,
+			wordSupplementByKey: wordStack?.supplementByKey || null,
 		})
 		: wrapKaraokeInlineStyleRuns(timedChars, charElements, {
 			presentationCache: presentationCaches.characters,
@@ -8110,8 +8389,8 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 	return react.createElement(
 		"span",
 		{
-			className: `lyrics-karaoke-line${wrapByWord || wordTimed || useTextRun ? " has-word-wrap" : ""}${wordTimed ? " is-word-timed" : ""}${useTextRun ? " is-text-run" : ""}${textDirection === "rtl" ? " is-rtl" : ""}${isActive ? " is-active" : ""}${isEffectLive ? " is-effect-live" : ""}${isEffectFocused ? " is-effect-focused" : ""}${isComplete ? " is-complete" : ""}`,
-			dir: useTextRun ? (textDirection === "rtl" ? "ltr" : textDirection) : undefined,
+			className: `lyrics-karaoke-line${wrapByWord || wordTimed || effectiveUseTextRun ? " has-word-wrap" : ""}${wordTimed ? " is-word-timed" : ""}${effectiveUseTextRun ? " is-text-run" : ""}${wordStack ? " has-word-stack" : ""}${wordStack?.hasReading ? " has-word-stack-readings" : ""}${textDirection === "rtl" ? " is-rtl" : ""}${isActive ? " is-active" : ""}${isEffectLive ? " is-effect-live" : ""}${isEffectFocused ? " is-effect-focused" : ""}${isComplete ? " is-complete" : ""}`,
+			dir: effectiveUseTextRun ? (textDirection === "rtl" ? "ltr" : textDirection) : undefined,
 		},
 		lineChildren,
 		fallbackCulturalAnnotations.map((annotation) => react.createElement(

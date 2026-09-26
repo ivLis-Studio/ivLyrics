@@ -1437,6 +1437,7 @@
             translation: 365,
             phonetic: 365,
             cultural: 365,
+            word: 365,
             metadata: 365,
             sync: 365,
             youtube: 365,
@@ -1797,6 +1798,110 @@
                 return true;
             } catch (error) {
                 console.error('[LyricsCache] setCulturalAnnotations error:', error);
+                return false;
+            }
+        },
+
+        _getWordSupplementsKey(trackId, targetLang, sourceLang, kind, sourceHash) {
+            return `${trackId}:${targetLang}:word:${kind}:${sourceLang || 'auto'}:${sourceHash || 'unknown'}`;
+        },
+
+        async getWordSupplements(trackId, targetLang, sourceLang, kind, sourceHash) {
+            try {
+                const db = await this._openDB();
+                const tx = db.transaction('translations', 'readonly');
+                const store = tx.objectStore('translations');
+                const cacheKey = this._getWordSupplementsKey(
+                    trackId,
+                    targetLang,
+                    sourceLang,
+                    kind,
+                    sourceHash
+                );
+                const result = await new Promise((resolve, reject) => {
+                    const request = store.get(cacheKey);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+
+                if (result && !this._isExpired(result.cachedAt, 'word')) {
+                    return result.data;
+                }
+                return null;
+            } catch (error) {
+                console.error('[LyricsCache] getWordSupplements error:', error);
+                return null;
+            }
+        },
+
+        async setWordSupplements(trackId, targetLang, sourceLang, kind, sourceHash, data) {
+            try {
+                const db = await this._openDB();
+                const tx = db.transaction('translations', 'readwrite');
+                const store = tx.objectStore('translations');
+                const cacheKey = this._getWordSupplementsKey(
+                    trackId,
+                    targetLang,
+                    sourceLang,
+                    kind,
+                    sourceHash
+                );
+                store.put(this._withSize({
+                    cacheKey,
+                    trackId,
+                    lang: targetLang,
+                    sourceLang,
+                    provider: `word:${kind}`,
+                    sourceHash,
+                    type: 'word',
+                    data,
+                    cachedAt: Date.now()
+                }));
+
+                await new Promise((resolve, reject) => {
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => reject(tx.error);
+                });
+                this._scheduleSizeEnforcement();
+                return true;
+            } catch (error) {
+                console.error('[LyricsCache] setWordSupplements error:', error);
+                return false;
+            }
+        },
+
+        async clearWordSupplementsForTrack(trackId) {
+            if (!trackId) return false;
+
+            try {
+                const db = await this._openDB();
+                const trackKeyRange = this._getTrackCacheKeyRange(trackId);
+
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction('translations', 'readwrite');
+                    const store = tx.objectStore('translations');
+                    const request = store.openCursor(trackKeyRange || undefined);
+
+                    request.onsuccess = (event) => {
+                        const cursor = event.target.result;
+                        if (cursor) {
+                            const record = cursor.value;
+                            const belongsToTrack = trackKeyRange || record?.trackId === trackId;
+                            const isWordSupplement =
+                                record?.type === 'word' ||
+                                String(record?.cacheKey || '').includes(':word:');
+                            if (belongsToTrack && isWordSupplement) {
+                                cursor.delete();
+                            }
+                            cursor.continue();
+                        } else {
+                            resolve(true);
+                        }
+                    };
+                    request.onerror = () => reject(request.error);
+                });
+            } catch (error) {
+                console.error('[LyricsCache] clearWordSupplementsForTrack error:', error);
                 return false;
             }
         },
@@ -7813,6 +7918,20 @@
         },
 
         /**
+         * 단어별 보조 가사(줄별 gloss/reading) 가져오기 (캐시 우선)
+         */
+        async getWordSupplements(trackId, targetLang, sourceLang, kind, sourceHash) {
+            return await LyricsCache.getWordSupplements(trackId, targetLang, sourceLang, kind, sourceHash);
+        },
+
+        /**
+         * 단어별 보조 가사 저장
+         */
+        async cacheWordSupplements(trackId, targetLang, sourceLang, kind, sourceHash, data) {
+            return await LyricsCache.setWordSupplements(trackId, targetLang, sourceLang, kind, sourceHash, data);
+        },
+
+        /**
          * 특정 트랙의 모든 캐시 삭제
          * @param {string} trackId - 트랙 ID
          * @returns {Promise<boolean>}
@@ -7828,6 +7947,13 @@
          */
         async clearTranslationCache(trackId) {
             return await LyricsCache.clearTranslationForTrack(trackId);
+        },
+
+        /**
+         * 특정 트랙의 단어별 보조 가사 캐시만 삭제
+         */
+        async clearWordSupplementsCache(trackId) {
+            return await LyricsCache.clearWordSupplementsForTrack(trackId);
         },
 
         /**
@@ -8574,7 +8700,7 @@
     // 전역 요청 상태 관리 (중복 요청 방지)
     const _translatorInflightRequests = new Map();
     const _translatorPendingRetries = new Map();
-    const PHONETIC_PROMPT_CACHE_VERSION = 2;
+    const PHONETIC_PROMPT_CACHE_VERSION = 3;
 
     function normalizeServicePronunciationNotation(value) {
         const normalized = String(value || '').trim().toLowerCase();

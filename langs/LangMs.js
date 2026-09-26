@@ -466,7 +466,8 @@ window.LANG_MS = {
         "tmi": "TMI",
         "lyricsStudy": "Pembelajaran",
         "characterPronunciation": "Sebutan Huruf",
-        "culturalAnnotations": "Konteks budaya"
+        "culturalAnnotations": "Konteks budaya",
+        "wordSupplements": "Perincian perkataan"
       },
       "noEnabledProviders": "Tiada penyedia AI yang aktif. Sila aktifkan sekurang-kurangnya satu penyedia dalam tetapan.",
       "allProvidersFailed": "Semua penyedia AI gagal memproses permintaan.",
@@ -636,6 +637,7 @@ window.LANG_MS = {
     "regeneratePronunciationOnly": "Sebutan sahaja",
     "regenerateTranslationOnly": "Terjemahan sahaja",
     "regenerateBoth": "Sebutan dan terjemahan",
+    "regenerateWordDetails": "Perincian perkataan",
     "regenerateAction": "Jana semula",
     "fullscreen": "Skrin Penuh",
     "exitFullscreen": "Keluar Skrin Penuh"
@@ -852,6 +854,9 @@ window.LANG_MS = {
     "culturalAnnotationsRegenerated": "Penjelasan konteks budaya telah dijana semula.",
     "translationRegenerateFailed": "Gagal menjana semula terjemahan",
     "culturalAnnotationsRegenerateFailed": "Gagal menjana semula penjelasan konteks budaya.",
+    "regeneratingWordDetails": "Menjana semula perincian...",
+    "wordDetailsRegenerated": "Perincian dijana semula.",
+    "wordDetailsRegenerateFailed": "Penjanaan semula gagal",
     "lyricsProviderSaved": "Tetapan penyedia lirik untuk lagu ini telah disimpan.",
     "lyricsProviderSaveFailed": "Gagal menyimpan tetapan penyedia lirik.",
     "translationCacheRemoved": "Cache terjemahan telah dibuang dan dimuatkan semula!",
@@ -1378,6 +1383,10 @@ window.LANG_MS = {
       "videoEnabled": {
         "label": "Pra-muat Latar Belakang Video",
         "desc": "Ambil maklumat latar belakang video untuk lagu seterusnya lebih awal"
+      },
+      "wordDetailsEnabled": {
+        "label": "Preload Word Details",
+        "desc": "Preload per-word readings and translations for word-level karaoke"
       }
     },
     "communitySync": {
@@ -1948,7 +1957,9 @@ window.LANG_MS = {
   "generationStatus": {
     "complete": "Selesai!",
     "culturalAnnotations": "Penjelasan konteks budaya",
-    "culturalAnnotationsLoading": "Menganalisis konteks budaya..."
+    "culturalAnnotationsLoading": "Menganalisis konteks budaya...",
+    "wordSupplements": "Perincian perkataan",
+    "wordSupplementsLoading": "Memuatkan bacaan & glosa..."
   },
   "videoBackground": {
     "loading": "Memuatkan maklumat video...",

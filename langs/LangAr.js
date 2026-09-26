@@ -466,7 +466,8 @@ window.LANG_AR = {
         "tmi": "TMI",
         "lyricsStudy": "التعلّم",
         "characterPronunciation": "نطق كل حرف",
-        "culturalAnnotations": "السياق الثقافي"
+        "culturalAnnotations": "السياق الثقافي",
+        "wordSupplements": "تفاصيل الكلمات"
       },
       "noEnabledProviders": "لم يتم تفعيل أي موفر AI. يرجى تفعيل موفر واحد على الأقل في الإعدادات.",
       "allProvidersFailed": "فشل جميع موفري AI في معالجة الطلب.",
@@ -636,6 +637,7 @@ window.LANG_AR = {
     "regeneratePronunciationOnly": "النطق فقط",
     "regenerateTranslationOnly": "الترجمة فقط",
     "regenerateBoth": "النطق والترجمة",
+    "regenerateWordDetails": "تفاصيل الكلمات",
     "regenerateAction": "إعادة الإنشاء",
     "fullscreen": "ملء الشاشة",
     "exitFullscreen": "الخروج من ملء الشاشة"
@@ -852,6 +854,9 @@ window.LANG_AR = {
     "culturalAnnotationsRegenerated": "تمت إعادة إنشاء شروحات السياق الثقافي.",
     "translationRegenerateFailed": "فشل إعادة إنشاء الترجمة",
     "culturalAnnotationsRegenerateFailed": "تعذرت إعادة إنشاء شروحات السياق الثقافي.",
+    "regeneratingWordDetails": "جارٍ إعادة إنشاء التفاصيل...",
+    "wordDetailsRegenerated": "تمت إعادة إنشاء التفاصيل.",
+    "wordDetailsRegenerateFailed": "فشلت إعادة الإنشاء",
     "lyricsProviderSaved": "تم حفظ إعداد مزود الكلمات لهذا المقطع.",
     "lyricsProviderSaveFailed": "تعذر حفظ إعداد مزود الكلمات.",
     "translationCacheRemoved": "تمت إزالة ذاكرة الترجمة المؤقتة وإعادة التحميل!",
@@ -1378,6 +1383,10 @@ window.LANG_AR = {
       "videoEnabled": {
         "label": "تحميل خلفية الفيديو مسبقًا",
         "desc": "جلب معلومات خلفية الفيديو للأغنية التالية مسبقًا"
+      },
+      "wordDetailsEnabled": {
+        "label": "Preload Word Details",
+        "desc": "Preload per-word readings and translations for word-level karaoke"
       }
     },
     "communitySync": {
@@ -1948,7 +1957,9 @@ window.LANG_AR = {
   "generationStatus": {
     "complete": "تم!",
     "culturalAnnotations": "شرح السياق الثقافي",
-    "culturalAnnotationsLoading": "جارٍ تحليل السياق الثقافي..."
+    "culturalAnnotationsLoading": "جارٍ تحليل السياق الثقافي...",
+    "wordSupplements": "تفاصيل الكلمات",
+    "wordSupplementsLoading": "جارٍ تحميل القراءات والمعاني..."
   },
   "videoBackground": {
     "loading": "جارٍ تحميل معلومات الفيديو...",

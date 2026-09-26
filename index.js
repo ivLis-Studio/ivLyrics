@@ -112,7 +112,11 @@ const FuriganaConverter = (() => {
   };
 
   const containsKanji = (text) => {
-    const kanjiRegex = /[\u4E00-\u9FAF\u3400-\u4DBF]/;
+    // 々 (U+3005), 〻 (U+303B) and the kana iteration marks repeat the
+    // previous character's reading, so they ride along with the kanji
+    // sequence. Without this, 日々 splits into 日 + 々 and the whole
+    // ひび reading lands on 日 while 々 gets no furigana.
+    const kanjiRegex = /[\u4E00-\u9FAF\u3400-\u4DBF\u3005\u303B\u309D\u309E\u30FD\u30FE]/;
     return kanjiRegex.test(text);
   };
 
@@ -356,7 +360,7 @@ const getCurrentTranslationTargetLanguage = () => {
 
 const LYRICS_PRONUNCIATION_NOTATION_STORAGE_KEY =
   "ivLyrics:visual:translate:pronunciation-notation";
-const LYRICS_PHONETIC_PROMPT_CACHE_VERSION = 2;
+const LYRICS_PHONETIC_PROMPT_CACHE_VERSION = 3;
 
 const normalizeIvLyricsPronunciationNotation = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
@@ -1633,7 +1637,10 @@ const CLOUD_SYNC_EXCLUDED_STORAGE_KEYS = new Set([
   TRACK_SYNC_OFFSETS_STORAGE_KEY,
   `${APP_NAME}:settings-presets`,
   `${APP_NAME}:ai:addon:chatgpt:fallback-providers`,
+  `${APP_NAME}:ai:addon:chatgpt:extra-endpoints`,
+  `${APP_NAME}:ai:addon:nvidia-nim:extra-endpoints`,
 ]);
+const CLOUD_SYNC_EXCLUDED_KEY_SUFFIXES = ['extra-endpoints'];
 const CLOUD_SYNC_FORBIDDEN_KEY_PATTERN = /(apikey|token|password|secret|credential|clientid|userhash)/i;
 const CLOUD_SYNC_SAFE_TOKEN_LIMIT_PATTERN = /max(?:output)?tokens?/gi;
 const isCloudSyncCredentialLikeKey = (key) => {
@@ -1646,6 +1653,7 @@ const isCloudSyncSettingKey = (key) => (
   typeof key === "string" &&
   key.startsWith(CURRENT_STORAGE_PREFIX) &&
   !CLOUD_SYNC_EXCLUDED_STORAGE_KEYS.has(key) &&
+  !CLOUD_SYNC_EXCLUDED_KEY_SUFFIXES.some((suffix) => key === suffix || key.endsWith(`:${suffix}`)) &&
   !OBSOLETE_LEGACY_STORAGE_KEYS.has(key) &&
   !PRIVATE_OR_TRANSIENT_STORAGE_KEYS.has(key) &&
   !isCloudSyncCredentialLikeKey(key)
@@ -2779,6 +2787,10 @@ const CONFIG = {
       "ivLyrics:visual:prefetch-video-enabled",
       true
     ),
+    "prefetch-word-details-enabled": StorageManager.get(
+      "ivLyrics:visual:prefetch-word-details-enabled",
+      true
+    ),
     "global-sync-offset":
       Number(StorageManager.getItem("ivLyrics:visual:global-sync-offset")) || 0,
     "quick-sync-controls-enabled": StorageManager.get(
@@ -3653,6 +3665,15 @@ const Prefetcher = {
           if (CONFIG.visual["prefetch-enabled"] !== false) {
             prefetchPromises.push(this._prefetchTranslations(trackInfo, lyrics));
           }
+
+          // 3단계: 단어 수준 보조 가사 프리페치 (word 렌더 모드 + 설정 ON)
+          const prefetchMode = mode >= 0 ? mode : this._lyricsContainer?.getCurrentMode?.();
+          if (
+            CONFIG.visual["prefetch-word-details-enabled"] !== false &&
+            prefetchMode === WORD_KARAOKE
+          ) {
+            prefetchPromises.push(this._prefetchWordSupplements(trackInfo, lyrics));
+          }
         }
 
         if (prefetchPromises.length > 0) {
@@ -3895,6 +3916,29 @@ const Prefetcher = {
 
     this._inflightRequests.set(versionedCacheKeyBase, prefetchPromise);
     return prefetchPromise;
+  },
+
+  /**
+   * 단어 수준 보조 가사(읽기/글로스) 프리페치. Pages.js의 실제 렌더 파이프라인과
+   * 동일한 timed-char 경로로 유닛을 계산하므로, 마운트 시 캐시가 적중한다.
+   */
+  async _prefetchWordSupplements(trackInfo, lyrics) {
+    try {
+      const karaoke = Array.isArray(lyrics?.karaoke) ? lyrics.karaoke : [];
+      if (karaoke.length === 0) return null;
+      const prefetch = window.ivLyricsPrefetchWordSupplements;
+      if (typeof prefetch !== "function") return null;
+      const detected = LyricsService.detectLanguage(karaoke);
+      // Target track must be explicit: supplements cached while prefetching B
+      // must not be keyed by whichever track (A) is still playing.
+      const uri = String(trackInfo?.uri || "");
+      const trackId = Utils.extractTrackId(uri) || (uri.includes(":") ? uri.split(":").pop() : uri);
+      await prefetch(karaoke, { sourceLang: detected, trackId });
+      return true;
+    } catch (error) {
+      console.warn(`[Prefetcher] Word details prefetch failed:`, error?.message || error);
+      return null;
+    }
   },
 
   /**
@@ -4537,6 +4581,13 @@ const GENERATION_REQUEST_PILL_CONFIG = Object.freeze({
     loadingStateKey: "isCulturalAnnotationsLoading",
     loadingDelayMs: 0,
   }),
+  "word-supplements": Object.freeze({
+    tokensKey: "_activeWordSupplementsLoadingTokens",
+    sequenceKey: "_wordSupplementsLoadingSeq",
+    timerKey: "wordSupplementsLoadingTimer",
+    failureKey: "_wordSupplementsLoadingHadFailure",
+    loadingStateKey: null,
+  }),
 });
 
 class LyricsContainer extends react.Component {
@@ -4601,6 +4652,7 @@ class LyricsContainer extends react.Component {
         translation: { phase: "idle", revision: 0 },
         pronunciation: { phase: "idle", revision: 0 },
         "cultural-annotations": { phase: "idle", revision: 0 },
+        "word-supplements": { phase: "idle", revision: 0 },
         "video-background": { phase: "idle", revision: 0 },
       },
       currentLyricIndex: 0,
@@ -4668,18 +4720,22 @@ class LyricsContainer extends react.Component {
     this.phoneticLoadingTimer = null;
     this.translationLoadingTimer = null;
     this.culturalAnnotationsLoadingTimer = null;
+    this.wordSupplementsLoadingTimer = null;
     this._lyricsLoadingSeq = 0;
     this._phoneticLoadingSeq = 0;
     this._translationLoadingSeq = 0;
     this._culturalAnnotationsLoadingSeq = 0;
+    this._wordSupplementsLoadingSeq = 0;
     this._activeLyricsLoadingTokens = new Set();
     this._activePhoneticLoadingTokens = new Set();
     this._activeTranslationLoadingTokens = new Set();
     this._activeCulturalAnnotationsLoadingTokens = new Set();
+    this._activeWordSupplementsLoadingTokens = new Set();
     this._lyricsLoadingHadFailure = false;
     this._phoneticLoadingHadFailure = false;
     this._translationLoadingHadFailure = false;
     this._culturalAnnotationsLoadingHadFailure = false;
+    this._wordSupplementsLoadingHadFailure = false;
     this._generationPillTimers = new Map();
     this._generationPillRevisions = new Map();
     this._generationRequestDetails = new Map();
@@ -6004,6 +6060,14 @@ class LyricsContainer extends react.Component {
     this.clearGenerationRequestLoading("cultural-annotations", token, options);
   }
 
+  startWordSupplementsLoading() {
+    return this.startGenerationRequestLoading("word-supplements");
+  }
+
+  clearWordSupplementsLoading(token = null, options = {}) {
+    this.clearGenerationRequestLoading("word-supplements", token, options);
+  }
+
   publishLyricsPresentation(lyrics, context = {}) {
     const publisher = window.ivLyricsPresentationPublisher;
     if (!publisher?.publishLyricsReady) {
@@ -6162,16 +6226,22 @@ class LyricsContainer extends react.Component {
   handleRegenerateTranslationRequest() {
     const targets = this.getRegenerationTargets();
     const includeCulturalAnnotations = this.isCulturalAnnotationsEnabled();
+    const includeWordSupplements = !!window.ivLyricsWordSupplements;
     if (
-      (includeCulturalAnnotations || (targets.needPhonetic && targets.needTranslation)) &&
+      (includeCulturalAnnotations || includeWordSupplements || (targets.needPhonetic && targets.needTranslation)) &&
       typeof openRegenerateTranslationChoiceModal === "function"
     ) {
       openRegenerateTranslationChoiceModal({
         targets,
         includeCulturalAnnotations,
+        includeWordSupplements,
         onSelect: (target) => {
           if (target === "cultural-annotations") {
             this.regenerateCulturalAnnotations();
+            return;
+          }
+          if (target === "word-supplements") {
+            this.regenerateWordSupplements();
             return;
           }
           this.regenerateTranslation(target);
@@ -6246,6 +6316,76 @@ class LyricsContainer extends react.Component {
         Toast.error(
           `${I18n.t("notifications.culturalAnnotationsRegenerateFailed") ||
             "문화적 배경 설명 재생성 실패"}: ${error.message}`
+        );
+      }
+    }
+  }
+
+  async regenerateWordSupplements() {
+    const uri = this.state.uri || Spicetify.Player.data?.item?.uri;
+    const trackId = Utils.extractTrackId(uri) || uri;
+    if (!uri || !trackId) {
+      Toast.error(I18n.t("notifications.noTrackPlaying"));
+      return;
+    }
+    if (!this.state.currentLyrics || this.state.currentLyrics.length === 0) {
+      Toast.error(I18n.t("notifications.noLyricsLoaded"));
+      return;
+    }
+    // Word details only exist for karaoke lines; without them there is
+    // nothing to resend a request for.
+    const karaokeLines = Array.isArray(this.state.karaoke) && this.state.karaoke.length > 0
+      ? this.state.karaoke
+      : null;
+    if (!karaokeLines) {
+      Toast.error(I18n.t("notifications.noLyricsLoaded"));
+      return;
+    }
+    const prefetch = window.ivLyricsPrefetchWordSupplements;
+    if (typeof prefetch !== "function" || !window.ivLyricsWordSupplements) {
+      Toast.error(
+        `${I18n.t("notifications.wordDetailsRegenerateFailed") || "Word details regeneration failed"}: Word details unavailable.`
+      );
+      return;
+    }
+
+    Toast.show(
+      I18n.t("notifications.regeneratingWordDetails") || "Regenerating word details...",
+      false,
+      2000
+    );
+
+    try {
+      const cacheCleared = await window.LyricsService?.clearWordSupplementsCache?.(trackId);
+      if (cacheCleared === false) {
+        throw new Error("Failed to clear word details cache.");
+      }
+      // Invalidate after the persistent clear so refetching lines cannot
+      // re-read stale entries back into memory.
+      window.ivLyricsWordSupplements?.invalidate?.();
+      if (!this.isCurrentLyricsUri(uri)) return;
+
+      // Explicitly refetch instead of relying on mounted lines' invalidation
+      // effect: this guarantees a fresh AI request (which also drives the
+      // generation status pill) even when no karaoke line is mounted yet.
+      // force bypasses the prefetch toggle; the track id is explicit so
+      // cache keys match the render path.
+      let sourceLang = "auto";
+      try {
+        sourceLang = window.LyricsService?.detectLanguage?.(karaokeLines) || "auto";
+      } catch { /* fall through to auto */ }
+      const refetched = await prefetch(karaokeLines, { sourceLang, trackId, force: true });
+      if (!this.isCurrentLyricsUri(uri)) return;
+      if (!refetched) {
+        throw new Error("No word details available for this track.");
+      }
+      Toast.success(
+        I18n.t("notifications.wordDetailsRegenerated") || "Word details regenerated."
+      );
+    } catch (error) {
+      if (this.isCurrentLyricsUri(uri)) {
+        Toast.error(
+          `${I18n.t("notifications.wordDetailsRegenerateFailed") || "Word details regeneration failed"}: ${error.message}`
         );
       }
     }
@@ -9400,6 +9540,26 @@ class LyricsContainer extends react.Component {
     };
     window.addEventListener("ivLyrics:lyric-index-changed", this.handleLyricIndexChange);
 
+    // Word-level supplements (per-word gloss/reading batches) drive their own
+    // top-left pill through the shared generation status stack.
+    this._wordSupplementsLoadingToken = null;
+    this.handleWordSupplementsLoading = (event) => {
+      const detail = event?.detail || {};
+      if (detail.active) {
+        if (this._wordSupplementsLoadingToken === null) {
+          this._wordSupplementsLoadingToken = this.startWordSupplementsLoading();
+        }
+        return;
+      }
+      if (this._wordSupplementsLoadingToken !== null) {
+        this.clearWordSupplementsLoading(this._wordSupplementsLoadingToken, {
+          completed: detail.completed === true,
+        });
+        this._wordSupplementsLoadingToken = null;
+      }
+    };
+    window.addEventListener("ivLyrics:word-supplements", this.handleWordSupplementsLoading);
+
     // Portrait viewport detection listener
     if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
       this._portraitMql = window.matchMedia("(orientation: portrait)");
@@ -9429,6 +9589,9 @@ class LyricsContainer extends react.Component {
     window.removeEventListener("ivLyrics", this.handleConfigChange);
     window.removeEventListener("furigana-ready", this.handleFuriganaReady);
     window.removeEventListener("ivLyrics:lyric-index-changed", this.handleLyricIndexChange);
+    window.removeEventListener("ivLyrics:word-supplements", this.handleWordSupplementsLoading);
+    this.handleWordSupplementsLoading = null;
+    this._wordSupplementsLoadingToken = null;
     window.removeEventListener("ivLyrics:sync-creator-visibility", this.handleSyncCreatorVisibility);
     this._unsubscribeLyricsProviderAttempt?.();
     this._unsubscribeLyricsProviderAttempt = null;
@@ -9487,8 +9650,9 @@ class LyricsContainer extends react.Component {
     this.clearPhoneticLoading();
     this.clearTranslationLoading();
     this.clearCulturalAnnotationsLoading();
+    this.clearWordSupplementsLoading();
     this.clearVideoBackgroundLoadingDelay();
-    ["lyrics", "translation", "pronunciation", "cultural-annotations", "video-background"].forEach((kind) => {
+    ["lyrics", "translation", "pronunciation", "cultural-annotations", "word-supplements", "video-background"].forEach((kind) => {
       this.clearGenerationPillTimers(kind);
     });
     this._visibleGenerationPills.clear();
@@ -10262,6 +10426,11 @@ class LyricsContainer extends react.Component {
         key: "cultural-annotations",
         label: I18n.t("generationStatus.culturalAnnotations") || "문화적 설명",
         description: I18n.t("generationStatus.culturalAnnotationsLoading") || "문화적 설명을 생성하는 중...",
+      },
+      {
+        key: "word-supplements",
+        label: I18n.t("generationStatus.wordSupplements") || "Word details",
+        description: I18n.t("generationStatus.wordSupplementsLoading") || "Loading word readings & glosses...",
       },
       {
         key: "video-background",

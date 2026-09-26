@@ -8,9 +8,46 @@ import vm from "node:vm";
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const currentSource = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
 const baselineRevision = "6bb234835b0f5762876bbe521ddf665c8f952dfa";
-const baselineSource = execFileSync("git", ["show", `${baselineRevision}:Pages.js`], {
+// While an instrumental or trailing interlude owns the layout, already sung
+// rows now take the padding classes and leave the accessibility tree. The
+// frozen baselines predate that rule, so give them the same edit before every
+// comparison: the equivalence checks stay focused on unrelated regressions and
+// the rule itself is asserted in interlude_padding_collapse.test.mjs.
+// Baselines name the active row `activeLineIndex`; current sources call it
+// `layoutActiveLineIndex`, which they resolve to the same row whenever the
+// rule can fire (layoutPosition only diverges from position while compact and
+// scrolling, and the rule is disabled exactly then).
+const applyInterludeCollapse = (source) => {
+	// Joined with "\n" on purpose: the frozen baseline always comes from the
+	// git object store (LF), whatever line endings the checkout gave this file.
+	const search = [
+		'				&& shouldHideSyncedLine({',
+		'					compact,',
+		'					isScrolling,',
+		'					animationIndex: visibilityAnimationIndex,',
+		'				});',
+	].join('\n');
+	const replacement = [
+		'				&& (shouldHideSyncedLine({',
+		'					compact,',
+		'					isScrolling,',
+		'					animationIndex: visibilityAnimationIndex,',
+		'				}) || (',
+		'					visibilityAnimationIndex < 0',
+		'					&& !(compact && isScrolling)',
+		'					&& (',
+		'						!!paddedLyrics[activeLineIndex]?.interludeInfo?.isInterlude',
+		'						|| isTrailingInterludeActive',
+		'					)',
+		'				));',
+	].join('\n');
+	const collapsed = source.replace(search, replacement);
+	assert.notEqual(collapsed, source, "frozen baseline no longer contains the interlude collapse anchor");
+	return collapsed;
+};
+const baselineSource = applyInterludeCollapse(execFileSync("git", ["show", `${baselineRevision}:Pages.js`], {
 	cwd: repoRoot, encoding: "utf8",
-});
+}));
 
 const slice = (source, startMarker, endMarker) => {
 	const start = source.indexOf(startMarker);

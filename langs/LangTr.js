@@ -466,7 +466,8 @@ window.LANG_TR = {
         "tmi": "Bilgi (TMI)",
         "lyricsStudy": "Öğrenme",
         "characterPronunciation": "Karakter okunuşu",
-        "culturalAnnotations": "Kültürel bağlam"
+        "culturalAnnotations": "Kültürel bağlam",
+        "wordSupplements": "Kelime ayrıntıları"
       },
       "noEnabledProviders": "Etkin YZ sağlayıcısı yok. Lütfen ayarlardan en az bir sağlayıcıyı etkinleştirin.",
       "allProvidersFailed": "Tüm YZ sağlayıcıları isteği işlemekte başarısız oldu.",
@@ -636,6 +637,7 @@ window.LANG_TR = {
     "regeneratePronunciationOnly": "Sadece Okunuş",
     "regenerateTranslationOnly": "Sadece Çeviri",
     "regenerateBoth": "Okunuş ve Çeviri",
+    "regenerateWordDetails": "Kelime ayrıntıları",
     "regenerateAction": "Yeniden Oluştur",
     "fullscreen": "Tam Ekran",
     "exitFullscreen": "Tam Ekrandan Çık"
@@ -852,6 +854,9 @@ window.LANG_TR = {
     "culturalAnnotationsRegenerated": "Kültürel bağlam açıklamaları yeniden oluşturuldu.",
     "translationRegenerateFailed": "Çeviri yeniden oluşturulamadı",
     "culturalAnnotationsRegenerateFailed": "Kültürel bağlam açıklamaları yeniden oluşturulamadı.",
+    "regeneratingWordDetails": "Kelime ayrıntıları yeniden oluşturuluyor...",
+    "wordDetailsRegenerated": "Kelime ayrıntıları oluşturuldu.",
+    "wordDetailsRegenerateFailed": "Yeniden oluşturma başarısız",
     "lyricsProviderSaved": "Söz sağlayıcı ayarı bu parça için kaydedildi.",
     "lyricsProviderSaveFailed": "Söz sağlayıcı ayarı kaydedilemedi.",
     "translationCacheRemoved": "Çeviri önbelleği kaldırıldı ve yeniden yüklendi!",
@@ -1378,6 +1383,10 @@ window.LANG_TR = {
     "videoEnabled": {
       "label": "Video Arka Planını Ön Yükle",
       "desc": "Sonraki şarkı için video arka plan bilgisini önceden getir"
+    },
+    "wordDetailsEnabled": {
+      "label": "Preload Word Details",
+      "desc": "Preload per-word readings and translations for word-level karaoke"
     }
   },
   "communitySync": {
@@ -1948,7 +1957,9 @@ window.LANG_TR = {
   "generationStatus": {
     "complete": "Tamamlandı!",
     "culturalAnnotations": "Kültürel bağlam açıklamaları",
-    "culturalAnnotationsLoading": "Kültürel bağlam analiz ediliyor..."
+    "culturalAnnotationsLoading": "Kültürel bağlam analiz ediliyor...",
+    "wordSupplements": "Kelime ayrıntıları",
+    "wordSupplementsLoading": "Kelime okunuşları ve açıklamalar yükleniyor..."
   },
   "videoBackground": {
     "loading": "Video bilgileri yükleniyor...",

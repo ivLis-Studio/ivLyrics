@@ -928,6 +928,35 @@
     const CHARACTER_PRONUNCIATION_LETTER_RE = /\p{L}/u;
     const CHARACTER_PRONUNCIATION_LATIN_LETTER_RE = /\p{Script=Latin}/u;
 
+    const CHINESE_SOURCE_LANG_RE = /^(zh|cmn|yue|cn|tw|hk)(?:-|$)/i;
+    const HAN_SCRIPT_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u;
+    const NON_CHINESE_CJK_SCRIPT_RE = /[\u3040-\u30ff\uff66-\uff9f\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]/u;
+
+    // Tone/intonation marks belong to Chinese pronunciation tasks only.
+    // A detected language code decides first; when the hint is "auto", Han
+    // characters with no kana/hangul identify Chinese lyrics, so Japanese and
+    // Korean songs never match.
+    const isChinesePronunciationTask = (sourceLang, text) => {
+        const lang = String(sourceLang || '').trim().toLowerCase().replace(/_/g, '-');
+        if (lang && lang !== 'auto') return CHINESE_SOURCE_LANG_RE.test(lang);
+        const sample = String(text || '');
+        return HAN_SCRIPT_RE.test(sample) && !NON_CHINESE_CJK_SCRIPT_RE.test(sample);
+    };
+
+    // Chinese-only tone rule, phrased for the target writing system. Returns
+    // an empty string for output scripts that cannot carry tone marks (tones
+    // are inherent in hanzi) and for every non-Chinese task, so those prompts
+    // stay byte-identical to what they were before.
+    const buildChineseTonePolicyRule = (scriptRule) => {
+        if (scriptRule?.id === 'latin') {
+            return '- The lyrics are Chinese: write every pronounceable syllable in Hanyu Pinyin with tone marks (nǐ hǎo, máma, xièxie). Leave the neutral tone unmarked, but every toned syllable must carry its tone mark. Never drop tone marks and never replace them with tone numbers.';
+        }
+        if (scriptRule?.id === 'ipa') {
+            return '- The lyrics are Chinese. Mandarin is tonal: mark the tone of every syllable in the IPA transcription.';
+        }
+        return '';
+    };
+
     const getPronunciationScriptRule = (lang) => {
         const normalizedLang = String(lang || 'en').trim().replace(/_/g, '-').toLowerCase();
         const shortLang = normalizedLang.split('-')[0];
@@ -979,6 +1008,43 @@ ${isWordMode ? '- In word mode, return each spoken word as one u item, never as 
 - For 耐え難い, keep four aligned readings. Do not merge the sound of え into 耐 or the sound of い into 難.
 - For のって, represent small っ as a consonant stop or gemination in ${scriptRule.name}; never pronounce it as full-size つ.
 - For 爺ちゃん, combine small ゃ with the preceding ち reading and leave the ゃ slot empty when the target writing system does not need a separate mark.`;
+    };
+
+    // Word-list prefix stripping for `word: value` responses (Image-3 shape).
+    // Keeps the line count intact for provider parsers while removing the
+    // echoed word before display. Lines without a matching prefix pass through.
+    // Strip surrounding punctuation (quotes, brackets) for word-echo
+    // comparison. Quoted lyric words (e.g. a "\u65e5\u3005" unit) are
+    // often echoed back with normalized or dropped punctuation.
+    const stripWordListEdgePunctuation = (value) => String(value ?? '')
+        .replace(/^[^\p{L}\p{N}]+/u, '')
+        .replace(/[^\p{L}\p{N}]+$/u, '');
+    const stripWordListPrefix = (line, word) => {
+        const text = String(line ?? '').trim();
+        const surface = String(word ?? '').trim();
+        if (!surface) return text;
+        const core = stripWordListEdgePunctuation(surface);
+        const candidates = core && core !== surface ? [surface, core] : [surface];
+        for (const candidate of candidates) {
+            for (const separator of [':', '：']) {
+                if (text.startsWith(candidate + separator)
+                    || text.toLowerCase().startsWith(candidate.toLowerCase() + separator)) {
+                    return text.slice(candidate.length + 1).trim();
+                }
+            }
+        }
+        // The model sometimes echoes the word with normalized or dropped
+        // surrounding punctuation (straight vs curly quotes, brackets).
+        // Compare punctuation-stripped cores around the first colon instead.
+        const match = text.match(/^\s*([\s\S]+?)\s*[：:]\s*([\s\S]*?)\s*$/);
+        if (match) {
+            const echoedCore = stripWordListEdgePunctuation(match[1]).toLowerCase();
+            if (echoedCore && candidates.some((candidate) =>
+                stripWordListEdgePunctuation(candidate).toLowerCase() === echoedCore)) {
+                return match[2].trim();
+            }
+        }
+        return text;
     };
 
     const validateLyricsTranslationResult = (result, params, providerId) => {
@@ -1060,6 +1126,14 @@ ${isWordMode ? '- In word mode, return each spoken word as one u item, never as 
         const phoneticDescription = isIpa || PROVIDERS_WITHOUT_PHONETIC_DESCRIPTION.has(providerId)
             ? ''
             : langInfo.phoneticDesc || '';
+        const chineseToneRule = isChinesePronunciationTask(sourceLanguageHint, normalizedText)
+            ? buildChineseTonePolicyRule(scriptRule)
+            : '';
+        const chineseToneUserHint = chineseToneRule
+            ? (isIpa
+                ? ' Mandarin is tonal: mark the tone of every syllable.'
+                : ' Write Chinese syllables as Hanyu Pinyin with tone marks.')
+            : '';
         const audienceLine = isIpa
             ? `Transcribe the original sung lyric sounds into ${scriptRule.name}. The source-language hint is ${sourceLanguageHint}; infer the language from the lyrics when the hint is auto or uncertain.`
             : `Convert lyric sounds for ${langInfo.name} (${langInfo.native}) speakers. The required output writing system is ${scriptRule.name}.`;
@@ -1068,14 +1142,14 @@ ${isWordMode ? '- In word mode, return each spoken word as one u item, never as 
 - Use the source-language hint (${sourceLanguageHint}) and the full lyric context to infer the actual sung pronunciation.
 - ${scriptRule.instruction}
 - Prefer a broad standard-language transcription. Preserve a clearly written dialectal or contracted pronunciation only when the lyric spelling makes it explicit.
-- Fully transcribe every pronounceable lyric token. Never copy source orthography merely because it resembles IPA.`
+- Fully transcribe every pronounceable lyric token. Never copy source orthography merely because it resembles IPA.${chineseToneRule ? `\n${chineseToneRule}` : ''}`
             : `- The target language selected by the user determines the output script. The source lyric language NEVER determines the output script.
 - ${scriptRule.instruction}
 - ${phoneticDescription
     ? `Follow the target convention: ${phoneticDescription}.`
     : `Use natural phonetic spelling that a ${langInfo.name} speaker can read aloud.`}
 - Fully transliterate every pronounceable lyric token into ${scriptRule.name}. Do not leave Japanese, Korean, Thai, or any other source-script text mixed into the pronunciation.
-- Before answering, inspect every output line character by character. If a pronounceable token uses the source script or any script other than ${scriptRule.name}, rewrite that token in ${scriptRule.name}.`;
+- Before answering, inspect every output line character by character. If a pronounceable token uses the source script or any script other than ${scriptRule.name}, rewrite that token in ${scriptRule.name}.${chineseToneRule ? `\n${chineseToneRule}` : ''}`;
         const scriptExamples = isIpa
             ? `- English: night → naɪt
 - Japanese: 夢 → jɯme
@@ -1110,7 +1184,7 @@ ${scriptExamples}`;
         const userPrompt = `${personalStudyPrefix}${isIpa
     ? `Transcribe the following ${lineCount} lyric lines into broad Unicode IPA. Source-language hint: ${sourceLanguageHint}.`
     : `Convert the following ${lineCount} lyric lines into pronunciation for ${langInfo.name} speakers.`}
-Use ${scriptRule.name} for every pronounceable lyric sound. Do not answer in the source lyric's writing system.
+Use ${scriptRule.name} for every pronounceable lyric sound. Do not answer in the source lyric's writing system.${chineseToneUserHint}
 
 <lyrics>
 ${normalizedText}
@@ -1138,10 +1212,11 @@ Return exactly ${lineCount} pronunciation lines in ${scriptRule.name}, and nothi
 - Omit whitespace and punctuation-only tokens from u to save tokens.
 - p must be one natural spoken pronunciation for the whole word/token, written in ${scriptRule.name}.`
             : `- Output compact JSON only: top key l; each line has i and p.
-- p must be an array of exactly n strings, one per input character a[index].
+- p must be an array of exactly n strings, one per input character a[index]. Count every entry of a, including spaces and punctuation; each gets its own p slot (use "" where it has no sound).
 - If n is 12, p must contain exactly 12 strings. An array with 11 or 13 strings is invalid even if the pronunciation sounds correct.
-- Use an empty string for characters with no separate pronunciation. Do not omit array slots.
-- Each p[index] must be short and written in ${scriptRule.name}.`;
+- Use an empty string for characters with no separate pronunciation. Never omit array slots to shorten the array.
+- Each p[index] must be short and written in ${scriptRule.name}.
+- Self-check before responding: for every line, verify p.length === n. If not, recount a positions and fix the array before responding.`;
         const alignmentRules = isWordMode
             ? `- For alphabetic and whitespace-separated languages, convert each whole word to spoken pronunciation once. Do not assign syllables to individual letters.
 - Example: English "hello" should be one unit like {"s":0,"e":4,"p":"??"}, not h=?/e=?/l=?.
@@ -1154,6 +1229,9 @@ Return exactly ${lineCount} pronunciation lines in ${scriptRule.name}, and nothi
             ? '{"l":[{"i":0,"u":[{"s":0,"e":4,"p":"??"}]}]}'
             : '{"l":[{"i":0,"p":["?"]}]}';
         const targetExamples = buildCharacterPronunciationTargetExamples(scriptRule, lang, isWordMode);
+        const chineseToneRule = isChinesePronunciationTask(sourceLang, safeLines.join('\n'))
+            ? buildChineseTonePolicyRule(scriptRule)
+            : '';
 
         return `You are a multilingual lyrics pronunciation aligner for karaoke sync editing.
 
@@ -1171,7 +1249,7 @@ Rules:
 ${outputRules}
 ${alignmentRules}
 - The target language determines the output writing system. The source lyric language never determines it.
-- ${scriptRule.instruction}
+- ${scriptRule.instruction}${chineseToneRule ? `\n${chineseToneRule}` : ''}
 - Before answering, inspect every pronunciation value. Rewrite any pronounceable token that is not written in ${scriptRule.name}.
 - For syllabic scripts, align by natural syllable sound while keeping exactly one p array slot per source character.
 - For logographic scripts such as hanzi/kanji/hanja, infer the common reading from the word and put each source character's reading in that character's p slot. If a character has no separate sound, use an empty string.
@@ -1182,7 +1260,7 @@ ${alignmentRules}
   - For okurigana, put its spoken sound on that kana's own slot.
   - Do not compress several source characters into one p slot.
   - small っ should be a geminated consonant or brief stop, not full-size つ.
-  - small ゃ/ゅ/ょ should combine with the previous kana; leave the small kana itself empty/omitted unless the target writing system truly needs a separate mark.
+  - small ゃ/ゅ/ょ should combine with the previous kana; keep the small kana slot as an empty string "" (never omit the slot) unless the target writing system truly needs a separate mark.
   - ん should use the context-sensitive nasal sound at the ん character itself. Do not put the next character's pronunciation on ん.
   - long vowels and vowel sequences such as ー, おう, えい, ああ should preserve length naturally.
   - particles は, へ, を should use the particle pronunciation when clearly used as particles.
@@ -1846,6 +1924,10 @@ ${normalizedText}
             return buildCharacterPronunciationPrompt(params);
         }
 
+        isChinesePronunciationTask(sourceLang, text) {
+            return isChinesePronunciationTask(sourceLang, text);
+        }
+
         buildMetadataTranslationPrompt(params = {}) {
             return buildMetadataTranslationPrompt(params);
         }
@@ -2003,7 +2085,7 @@ ${normalizedText}
          * - author: string (제작자)
          * - description: string | { en: string, ko: string, ... } (설명)
          * - version: string (버전)
-         * - supports: { translate: boolean, metadata: boolean, research|tmi: boolean, lyricsStudy: boolean, characterPronunciation: boolean, culturalAnnotations: boolean } (지원 기능)
+         * - supports: { translate: boolean, metadata: boolean, research|tmi: boolean, lyricsStudy: boolean, characterPronunciation: boolean, culturalAnnotations: boolean, wordSupplements: boolean } (지원 기능)
          * 
          * 필수 메서드:
          * - getSettingsUI(): React.Component (설정 UI)
@@ -2042,6 +2124,12 @@ ${normalizedText}
                     culturalAnnotations: typeof addon.generateCulturalAnnotations === 'function'
                 };
             }
+            // Word-level gloss/pronunciation reuse translateLyrics, so any
+            // translate-capable provider supports them unless opted out.
+            if (addon.supports.wordSupplements === undefined) {
+                addon.supports.wordSupplements = addon.supports.translate === true
+                    && typeof addon.translateLyrics === 'function';
+            }
 
             // 필수 메서드 검증
             const requiredMethods = ['getSettingsUI'];
@@ -2054,7 +2142,7 @@ ${normalizedText}
 
             this._addons.set(addon.id, addon);
             window.__ivLyricsDebugLog?.(`[AIAddonManager] Registered addon: ${addon.id} (${addon.name})`);
-            window.__ivLyricsDebugLog?.(`[AIAddonManager] Supports: translate=${addon.supports.translate}, metadata=${addon.supports.metadata}, tmi=${addon.supports.tmi}, lyricsStudy=${addon.supports.lyricsStudy}, characterPronunciation=${addon.supports.characterPronunciation}, culturalAnnotations=${addon.supports.culturalAnnotations}`);
+            window.__ivLyricsDebugLog?.(`[AIAddonManager] Supports: translate=${addon.supports.translate}, metadata=${addon.supports.metadata}, tmi=${addon.supports.tmi}, lyricsStudy=${addon.supports.lyricsStudy}, characterPronunciation=${addon.supports.characterPronunciation}, culturalAnnotations=${addon.supports.culturalAnnotations}, wordSupplements=${addon.supports.wordSupplements}`);
 
             // 이미 초기화 완료된 경우, 새 Addon도 초기화
             if (this._initialized && typeof addon.init === 'function') {
@@ -2253,7 +2341,7 @@ ${normalizedText}
 
         /**
          * 특정 기능을 지원하는 활성화된 Provider 목록 (순서대로)
-         * @param {'translate'|'metadata'|'research'|'tmi'|'lyricsStudy'|'characterPronunciation'|'culturalAnnotations'} capability - 기능 유형
+         * @param {'translate'|'metadata'|'research'|'tmi'|'lyricsStudy'|'characterPronunciation'|'culturalAnnotations'|'wordSupplements'} capability - 기능 유형
          * @returns {Object[]}
          */
         getEnabledProvidersFor(capability) {
@@ -2271,12 +2359,16 @@ ${normalizedText}
                     return false;
                 }
                 // 2. 사용자가 해당 기능을 활성화했는지 확인 (기본값 true)
+                // perEndpointCapabilities Addon은 엔드포인트별 선택이 유일한
+                // 기준이므로 저장된 제공자 수준 검사를 건너뛴다.
                 // 메서드가 존재하지 않는 경우(구버전 캐시 등) 안전하게 true 처리
                 if (typeof this.isCapabilityEnabled !== 'function') {
                     return true;
                 }
 
-                const isEnabled = this.isCapabilityEnabled(addon.id, storedCapability);
+                const isEnabled = addon.perEndpointCapabilities === true
+                    ? true
+                    : this.isCapabilityEnabled(addon.id, storedCapability);
                 if (!isEnabled) {
                     // console.log(`[AIAddonManager] Filtered out ${addon.id}: capability ${capability} disabled by user setting`);
                     return false;
@@ -2597,6 +2689,52 @@ ${normalizedText}
             return units;
         }
 
+        _coerceCharacterPronunciationSlot(value) {
+            return typeof value === 'string' ? value.trim() : '';
+        }
+
+        _characterPronunciationSlotError(lineIndex, got, expected, text) {
+            const preview = String(text ?? '').slice(0, 24);
+            const error = new Error(`Character pronunciation response line ${lineIndex} ("${preview}") returned ${got} slots, expected ${expected}.`);
+            error.code = 'character-pronunciation-slot-mismatch';
+            error.details = { lineIndex, got, expected, preview };
+            return error;
+        }
+
+        _repairCharacterPronunciationSlots(text, rawArray) {
+            const sourceChars = Array.from(String(text ?? ''));
+            const expected = sourceChars.length;
+            const coerced = (Array.isArray(rawArray) ? rawArray : [])
+                .map(value => (typeof value === 'string' ? value.trim() : ''));
+            const got = coerced.length;
+            if (got === expected) {
+                return { slots: coerced, repaired: false, strategy: 'exact' };
+            }
+
+            // Common model mistake: whitespace slots omitted entirely.
+            // Reinsert "" at whitespace positions when the counts line up exactly.
+            const whitespaceCount = sourceChars.filter(character => /\s/u.test(character)).length;
+            if (whitespaceCount > 0 && got + whitespaceCount === expected) {
+                const slots = [];
+                let cursor = 0;
+                sourceChars.forEach(character => {
+                    if (/\s/u.test(character)) {
+                        slots.push('');
+                    } else {
+                        slots.push(coerced[cursor++] ?? '');
+                    }
+                });
+                return { slots, repaired: true, strategy: 'reinsert-whitespace' };
+            }
+
+            // Any other count mismatch has no established source positions:
+            // padding or dropping arbitrary slots shifts readings onto the
+            // wrong characters (e.g. きょうは answered with 3 readings keeps
+            // は unassigned). Keep it retryable — the caller runs the
+            // targeted repair prompt, then smaller chunks.
+            return { slots: coerced, repaired: false, strategy: 'unrepairable', needsRetry: true };
+        }
+
         _normalizeCharacterPronunciationResult(result, lines, options = {}) {
             const sourceLines = (Array.isArray(lines) ? lines : [])
                 .map(line => String(line ?? ''));
@@ -2612,8 +2750,8 @@ ${normalizedText}
                 }
             });
 
-            return {
-                lines: sourceLines.map((text, lineIndex) => {
+            const warnings = [];
+            const normalizedLines = sourceLines.map((text, lineIndex) => {
                     const sourceChars = Array.from(text);
                     const resultLine = resultLinesByIndex.get(lineIndex) || resultLines[lineIndex] || {};
                     const resultChars = Array.isArray(resultLine?.c)
@@ -2629,20 +2767,28 @@ ${normalizedText}
                     const byIndex = new Map();
 
                     if (unitMode === 'char' && hasResultPronunciationArray) {
-                        if (resultPronunciations.length !== sourceChars.length) {
-                            throw new Error(`Character pronunciation response line ${lineIndex} returned ${resultPronunciations.length} slots, expected ${sourceChars.length}.`);
+                        const repair = this._repairCharacterPronunciationSlots(text, resultPronunciations);
+                        if (repair.needsRetry) {
+                            throw this._characterPronunciationSlotError(lineIndex, resultPronunciations.length, sourceChars.length, text);
+                        }
+                        if (repair.repaired) {
+                            warnings.push({
+                                lineIndex,
+                                got: resultPronunciations.length,
+                                expected: sourceChars.length,
+                                strategy: repair.strategy
+                            });
                         }
 
-                        resultPronunciations.forEach((value, index) => {
-                            const pronunciation = typeof value === 'string' ? value.trim() : '';
+                        repair.slots.forEach((pronunciation, index) => {
                             if (pronunciation) {
                                 byIndex.set(index, { p: pronunciation });
                             }
                         });
                     } else {
-                        if (unitMode === 'char') {
-                            throw new Error(`Character pronunciation response line ${lineIndex} missing p array.`);
-                        }
+                        if (unitMode === 'char' && !resultChars.length && !resultUnits.length) {
+                            warnings.push({ lineIndex, reason: 'missing-p' });
+                        } else {
                         resultChars.forEach((item, fallbackIndex) => {
                             const index = Number.isInteger(Number(item?.i)) ? Number(item.i) : fallbackIndex;
                             const rawPronunciation = item?.p ?? item?.pronunciation;
@@ -2663,6 +2809,7 @@ ${normalizedText}
                             }
                             byIndex.set(index, item);
                         });
+                        }
                     }
 
                     const sourceUnits = unitMode === 'word'
@@ -2732,7 +2879,22 @@ ${normalizedText}
                             };
                         })
                     };
-                })
+                });
+
+            if (unitMode === 'char' && normalizedLines.length > 0) {
+                const hasAnyInput = resultLines.length > 0;
+                const hasAnyPronunciation = normalizedLines.some(line => (
+                    (Array.isArray(line?.chars) && line.chars.some(item => item?.pronunciation))
+                    || (Array.isArray(line?.units) && line.units.some(item => item?.pronunciation))
+                ));
+                if (!hasAnyInput || (!hasAnyPronunciation && warnings.length >= normalizedLines.length)) {
+                    throw new Error(`Character pronunciation response line 0 missing p array.`);
+                }
+            }
+
+            return {
+                lines: normalizedLines,
+                warnings
             };
         }
 
@@ -2771,6 +2933,7 @@ ${normalizedText}
         }
 
         _isCharacterPronunciationFormatError(error) {
+            if (error?.code === 'character-pronunciation-slot-mismatch') return true;
             return /Character pronunciation response .*returned \d+ slots, expected|Character pronunciation response .*outside line|Character pronunciation response duplicated index|Character pronunciation response .*missing p array|Character pronunciation response used the wrong writing system/i.test(error?.message || '');
         }
 
@@ -2836,32 +2999,48 @@ ${normalizedText}
             return chunks;
         }
 
+        _buildCharacterPronunciationRepairNote(error) {
+            const details = error?.details;
+            if (details && Number.isInteger(details.lineIndex)
+                && Number.isInteger(details.got) && Number.isInteger(details.expected)) {
+                return `Repair instruction: your previous response for chunk line ${details.lineIndex} returned ${details.got} p slots but n=${details.expected}. Recount the a array for that line (including spaces and punctuation, each with its own slot using "" where it has no sound) and return exactly ${details.expected} strings for it. Keep all other lines unchanged.`;
+            }
+            return `Repair instruction: your previous response had a slot-count mismatch. Recount each line's a array (including spaces and punctuation, each with its own slot using "" where it has no sound) and return exactly n strings per line.`;
+        }
+
         async _generateCharacterPronunciationChunk(addon, params, chunk) {
             try {
                 const chunkLines = chunk.segments.map(segment => segment.text);
                 const {
                     onProgress,
                     _characterPronunciationProgress,
+                    _characterPronunciationRepairNote,
                     chunking,
                     characterPronunciationChunking,
                     characterPronunciationUnitMode,
                     unitMode,
                     ...providerParams
                 } = params || {};
+                const basePrompt = this.buildCharacterPronunciationPrompt({
+                    ...providerParams,
+                    lines: chunkLines,
+                    unitMode: unitMode || characterPronunciationUnitMode || 'char',
+                    providerId: addon.id
+                });
                 const result = await this._callProvider(addon, 'generateCharacterPronunciation', {
                     ...providerParams,
                     unitMode: unitMode || characterPronunciationUnitMode || 'char',
                     lines: chunkLines,
-                    characterPronunciationPrompt: this.buildCharacterPronunciationPrompt({
-                        ...providerParams,
-                        lines: chunkLines,
-                        unitMode: unitMode || characterPronunciationUnitMode || 'char',
-                        providerId: addon.id
-                    })
+                    characterPronunciationPrompt: _characterPronunciationRepairNote
+                        ? `${basePrompt}\n\n${_characterPronunciationRepairNote}`
+                        : basePrompt
                 });
                 const normalized = this._normalizeCharacterPronunciationResult(result, chunkLines, {
                     unitMode: unitMode || characterPronunciationUnitMode || 'char'
                 });
+                if (Array.isArray(normalized?.warnings) && normalized.warnings.length > 0) {
+                    window.__ivLyricsDebugLog?.(`[AIAddonManager] Character pronunciation auto-repaired ${normalized.warnings.length} line(s): ${normalized.warnings.map(warning => `line ${warning.lineIndex} (${warning.strategy || warning.reason})`).join(', ')}`);
+                }
                 this._validateCharacterPronunciationWritingSystem(normalized, {
                     lang: providerParams.lang
                 });
@@ -2874,15 +3053,30 @@ ${normalizedText}
                     throw error;
                 }
 
+                const isFormatError = this._isCharacterPronunciationFormatError(error);
+                const details = error?.details && Number.isInteger(error.details.lineIndex)
+                    ? error.details
+                    : null;
                 this._notifyCharacterPronunciationProgress(params, {
                     ...(params?._characterPronunciationProgress || {}),
                     phase: 'retry-split',
                     retry: true,
-                    reason: this._isCharacterPronunciationFormatError(error) ? 'format' : 'truncation',
+                    reason: isFormatError ? 'format' : 'truncation',
                     error: error?.message || String(error),
+                    lineIndex: details?.lineIndex ?? null,
+                    got: details?.got ?? null,
+                    expected: details?.expected ?? null,
+                    preview: details?.preview ?? null,
                     percent: Math.max(1, Number(params?._characterPronunciationProgress?.percent) || 0)
                 });
 
+                if (isFormatError && !chunk._repairTried && chunk.segments.length <= 4) {
+                    chunk._repairTried = true;
+                    return await this._generateCharacterPronunciationChunk(addon, {
+                        ...params,
+                        _characterPronunciationRepairNote: this._buildCharacterPronunciationRepairNote(error)
+                    }, chunk);
+                }
                 if (chunk.segments.length > 1) {
                     const mid = Math.ceil(chunk.segments.length / 2);
                     const left = {
@@ -3210,6 +3404,145 @@ ${normalizedText}
                     window.AddonDebug.error('ai', 'generateLyricsStudy all providers failed');
                 }
             });
+        }
+
+        buildWordGlossPrompt({ words = [], lineText = '', targetLang = 'en', sourceLang = 'auto' } = {}) {
+            const safeWords = Array.isArray(words) ? words.map((word) => String(word ?? '')) : [];
+            const wordCount = safeWords.length;
+            const langInfo = getTranslationLanguageInfo(targetLang);
+            // Line-based transport (provider line parsers require one output
+            // line per input line), kept terse: bare words, short keys style.
+            const systemPrompt = `Gloss lyric words for learners in ${langInfo.name} (${langInfo.native}). Output one line per input word as "word: gloss" — copy the word exactly, then a colon, then the gloss. Exactly ${wordCount} lines, same order. One word per gloss; add a second word only when one word cannot carry the meaning. No periods, commas, or other punctuation — except [role] markers like [topic] for particles/function words. Never merge, split, reorder, or explain.`;
+
+            const userPrompt = `Sense context (do not gloss these lines):
+${String(lineText ?? '')}
+Gloss these ${wordCount} words, one per line as "word: gloss", nothing else:
+${safeWords.join('\n')}`;
+
+            return { systemPrompt, userPrompt, wordCount };
+        }
+
+        async generateWordGloss({ words = [], lineText = '', targetLang = 'en', sourceLang = 'auto' } = {}) {
+            const safeWords = Array.isArray(words) ? words.map((word) => String(word ?? '')) : [];
+            if (safeWords.length === 0) return [];
+            const providers = this.getEnabledProvidersFor('wordSupplements');
+            if (providers.length === 0) {
+                throw new Error(this._t('aiProviders.noEnabledProviders', 'No AI providers enabled. Please enable at least one provider in settings.'));
+            }
+
+            const text = safeWords.join('\n');
+            const glossPrompt = this.buildWordGlossPrompt({ words: safeWords, lineText, targetLang, sourceLang });
+
+            this.emit('ai:request:start', {
+                type: 'wordGloss',
+                providers: providers.map((provider) => provider.id),
+                params: { targetLang, sourceLang, wordCount: safeWords.length }
+            });
+
+            let lastError = null;
+            for (const addon of providers) {
+                if (typeof addon.translateLyrics !== 'function') continue;
+                try {
+                    const raw = await this._callProvider(addon, 'translateLyrics', {
+                        text,
+                        lang: targetLang,
+                        wantSmartPhonetic: false,
+                        translationPrompt: glossPrompt,
+                        phoneticPrompt: null,
+                        sourceLang,
+                        onLine: null,
+                        onStreamReset: null,
+                        endpointCapability: 'wordSupplements',
+                    });
+                    const value = raw?.translation ?? raw?.vi;
+                    const lines = Array.isArray(value)
+                        ? value.map((line) => String(line ?? ''))
+                        : String(value ?? '').replace(/\r\n?/g, '\n').split('\n');
+                    if (lines.length !== safeWords.length) {
+                        throw new Error(`[AIAddonManager] Provider ${addon.id} returned ${lines.length} glosses; expected ${safeWords.length}`);
+                    }
+                    this.emit('ai:request:success', { type: 'wordGloss', provider: addon.id });
+                    return lines.map((line, index) => stripWordListPrefix(line, safeWords[index]).trim());
+                } catch (error) {
+                    console.warn(`[AIAddonManager] Provider ${addon.id} failed for wordGloss:`, error?.message || error);
+                    lastError = error;
+                }
+            }
+            this.emit('ai:request:error', { type: 'wordGloss', error: lastError?.message || 'failed' });
+            throw lastError || new Error(this._t('aiProviders.allProvidersFailed', 'All AI providers failed to process the request.'));
+        }
+
+        buildWordPronunciationPrompt({ words = [], lineText = '', targetLang = 'en', sourceLang = 'auto', notation = 'latin' } = {}) {
+            const safeWords = Array.isArray(words) ? words.map((word) => String(word ?? '')) : [];
+            const wordCount = safeWords.length;
+            const langInfo = getTranslationLanguageInfo(targetLang);
+            const normalizedNotation = String(notation || 'latin').trim().toLowerCase() === 'ipa' ? 'ipa' : 'latin';
+            const scriptName = normalizedNotation === 'ipa' ? 'broad IPA transcription' : `romanization for ${langInfo.name} speakers`;
+            const chineseToneRule = isChinesePronunciationTask(sourceLang, `${lineText} ${safeWords.join(' ')}`)
+                ? (normalizedNotation === 'ipa'
+                    ? ' Mandarin is tonal: mark the tone of every syllable.'
+                    : ' Chinese lyrics: write each reading as Hanyu Pinyin with tone marks (nǐ hǎo); leave the neutral tone unmarked.')
+                : '';
+            const systemPrompt = `Convert each lyric word's sung sound into ${scriptName}. Output one line per input word as "word: pronunciation" — copy the word exactly, then a colon, then the pronunciation. Exactly ${wordCount} lines, same order. PRONUNCIATION only, never meaning. ${scriptName} for every sound. Never merge, split, reorder, or explain.${chineseToneRule}`;
+
+            const userPrompt = `Sense context (do not convert these lines):
+${String(lineText ?? '')}
+Convert these ${wordCount} words into ${scriptName}, one per line as "word: pronunciation", nothing else:
+${safeWords.join('\n')}`;
+
+            return { systemPrompt, userPrompt, wordCount };
+        }
+
+        async generateWordPronunciation({ words = [], lineText = '', targetLang = 'en', sourceLang = 'auto', notation = 'latin' } = {}) {
+            const safeWords = Array.isArray(words) ? words.map((word) => String(word ?? '')) : [];
+            if (safeWords.length === 0) return [];
+            const providers = this.getEnabledProvidersFor('wordSupplements')
+                .filter((addon) => addon.supports?.pronunciation !== false);
+            if (providers.length === 0) {
+                throw new Error(this._t('aiProviders.noEnabledProviders', 'No AI providers enabled. Please enable at least one provider in settings.'));
+            }
+
+            const text = safeWords.join('\n');
+            const pronunciationPrompt = this.buildWordPronunciationPrompt({ words: safeWords, lineText, targetLang, sourceLang, notation });
+
+            this.emit('ai:request:start', {
+                type: 'wordPronunciation',
+                providers: providers.map((provider) => provider.id),
+                params: { targetLang, sourceLang, notation, wordCount: safeWords.length }
+            });
+
+            let lastError = null;
+            for (const addon of providers) {
+                if (typeof addon.translateLyrics !== 'function') continue;
+                try {
+                    const raw = await this._callProvider(addon, 'translateLyrics', {
+                        text,
+                        lang: targetLang,
+                        wantSmartPhonetic: true,
+                        translationPrompt: null,
+                        phoneticPrompt: pronunciationPrompt,
+                        pronunciationNotation: notation,
+                        sourceLang,
+                        onLine: null,
+                        onStreamReset: null,
+                        endpointCapability: 'wordSupplements',
+                    });
+                    const value = raw?.phonetic;
+                    const lines = Array.isArray(value)
+                        ? value.map((line) => String(line ?? ''))
+                        : String(value ?? '').replace(/\r\n?/g, '\n').split('\n');
+                    if (lines.length !== safeWords.length) {
+                        throw new Error(`[AIAddonManager] Provider ${addon.id} returned ${lines.length} pronunciations; expected ${safeWords.length}`);
+                    }
+                    this.emit('ai:request:success', { type: 'wordPronunciation', provider: addon.id });
+                    return lines.map((line, index) => stripWordListPrefix(line, safeWords[index]).trim());
+                } catch (error) {
+                    console.warn(`[AIAddonManager] Provider ${addon.id} failed for wordPronunciation:`, error?.message || error);
+                    lastError = error;
+                }
+            }
+            this.emit('ai:request:error', { type: 'wordPronunciation', error: lastError?.message || 'failed' });
+            throw lastError || new Error(this._t('aiProviders.allProvidersFailed', 'All AI providers failed to process the request.'));
         }
 
         /**

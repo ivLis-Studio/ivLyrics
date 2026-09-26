@@ -3,7 +3,7 @@
  * OpenAI ChatGPT를 사용한 번역, 발음, Research 생성
  * 
  * @author default
- * @version 1.0.1
+ * @version 1.0.2
  */
 
 (() => {
@@ -36,6 +36,10 @@
             characterPronunciation: true,
             culturalAnnotations: true
         },
+        // Capabilities are toggled per endpoint inside this addon's settings
+        // UI, so the provider-level toggle group in Settings stays hidden and
+        // the manager skips its stored provider-level capability check.
+        perEndpointCapabilities: true,
         // 하드코딩된 모델 목록 (fallback용)
         // models: [
         //     { id: 'gpt-5.2-2025-12-11', name: 'GPT-5.2', default: true },
@@ -189,7 +193,9 @@
     }
 
     function setSetting(key, value) {
-        window.AIAddonManager?.setAddonSetting(ADDON_INFO.id, key, value);
+        if (typeof window.AIAddonManager?.setAddonSetting === 'function') {
+            window.AIAddonManager.setAddonSetting(ADDON_INFO.id, key, value);
+        }
     }
 
     function t(key, fallback) {
@@ -216,6 +222,165 @@
     function getSelectedModel(connection = null) {
         if (connection) return String(connection.model || '').trim();
         return getSetting('model', null);
+    }
+
+    function createEndpointId() {
+        return `ep-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    /**
+     * Capabilities that can be toggled per endpoint. These mirror the
+     * AIAddonManager capabilities for this addon plus its researchWebSearch
+     * support flag: endpoints without web search serve Research through
+     * plain chat completions instead of the Responses API.
+     */
+    const ENDPOINT_CAPABILITIES = ['translate', 'metadata', 'tmi', 'researchWebSearch', 'lyricsStudy', 'characterPronunciation', 'culturalAnnotations', 'wordSupplements'];
+    const ENDPOINT_CAPABILITY_FALLBACKS = {
+        translate: 'Translation',
+        metadata: 'Metadata',
+        tmi: 'TMI',
+        researchWebSearch: 'Research web search',
+        lyricsStudy: 'Learning',
+        characterPronunciation: 'Character pronunciation',
+        culturalAnnotations: 'Cultural context',
+        wordSupplements: 'Word details'
+    };
+
+    function isEndpointCapabilityEnabled(capabilities, capability) {
+        if (!capabilities || typeof capabilities !== 'object' || Array.isArray(capabilities)) return true;
+        const value = capabilities[capability];
+        return value === undefined || value === null ? true : value === true || value === 'true';
+    }
+
+    function getPrimaryCapabilities() {
+        const raw = getSetting('primary-capabilities', null);
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
+        // One-time migration: capability choices made under the old
+        // provider-level keys (addon:chatgpt:capability:*) must carry over
+        // to endpoint-level gating, otherwise a previously disabled
+        // capability (e.g. metadata) silently re-enables on upgrade.
+        // Missing keys default to enabled; persist the seed so later edits
+        // happen through this addon's endpoint UI.
+        const seeded = {};
+        for (const capability of ENDPOINT_CAPABILITIES) {
+            let enabled = true;
+            try {
+                enabled = window.AIAddonManager?.isCapabilityEnabled?.(ADDON_INFO.id, capability) ?? true;
+            } catch {
+                enabled = true;
+            }
+            seeded[capability] = enabled === true || enabled === 'true';
+        }
+        setPrimaryCapabilities(seeded);
+        return seeded;
+    }
+
+    function setPrimaryCapabilities(capabilities) {
+        setSetting('primary-capabilities', capabilities && typeof capabilities === 'object' ? capabilities : {});
+    }
+
+    /**
+     * Additional OpenAI-compatible endpoints configured via "Add another".
+     * Each entry: { id, label, baseUrl, apiKey, model, customModel, capabilities }.
+     * Stored under the 'extra-endpoints' setting; empty entries are ignored.
+     * A missing capabilities entry means all capabilities are enabled.
+     */
+    function getExtraEndpoints() {
+        const raw = getSetting('extra-endpoints', []);
+        let list = raw;
+        if (typeof list === 'string') {
+            const trimmed = list.trim();
+            if (!trimmed) return [];
+            try {
+                list = JSON.parse(trimmed);
+            } catch {
+                return [];
+            }
+        }
+        if (!Array.isArray(list)) return [];
+        return list
+            .filter(ep => ep && typeof ep === 'object')
+            .map((ep, index) => ({
+                id: String(ep.id || createEndpointId()),
+                label: String(ep.label || `Endpoint ${index + 2}`).trim() || `Endpoint ${index + 2}`,
+                baseUrl: normalizeBaseUrl(ep.baseUrl) || DEFAULT_OPENAI_BASE_URL,
+                apiKey: String(ep.apiKey || ep.api_key || '').trim(),
+                model: String(ep.model || '').trim(),
+                customModel: String(ep.customModel || ep.custom_model || '').trim(),
+                capabilities: (ep.capabilities && typeof ep.capabilities === 'object' && !Array.isArray(ep.capabilities))
+                    ? ep.capabilities
+                    : {}
+            }))
+            .filter(ep => ep.apiKey || ep.model || (ep.baseUrl && ep.baseUrl !== DEFAULT_OPENAI_BASE_URL));
+    }
+
+    function setExtraEndpoints(endpoints) {
+        setSetting('extra-endpoints', Array.isArray(endpoints) ? endpoints : []);
+    }
+
+    /**
+     * Flatten primary keys + extra endpoints into an ordered failover list.
+     * Each target: { label, baseUrl, apiKey, model, researchWebSearch }.
+     * When a capability is given, only endpoints with that capability enabled
+     * are included (missing capabilities entry means all enabled).
+     */
+    function getRequestTargets(capability = null) {
+        const primaryBaseUrl = getBaseUrl();
+        const primaryModel = getSelectedModel();
+        const primaryCaps = getPrimaryCapabilities();
+        const targets = [];
+        if (!capability || isEndpointCapabilityEnabled(primaryCaps, capability)) {
+            for (const [index, apiKey] of getApiKeys().entries()) {
+                targets.push({
+                    label: index === 0 ? 'Primary' : `Primary key ${index + 1}`,
+                    baseUrl: primaryBaseUrl,
+                    apiKey,
+                    model: primaryModel,
+                    researchWebSearch: isEndpointCapabilityEnabled(primaryCaps, 'researchWebSearch')
+                });
+            }
+        }
+        for (const ep of getExtraEndpoints()) {
+            if (!ep.apiKey) continue;
+            if (capability && !isEndpointCapabilityEnabled(ep.capabilities, capability)) continue;
+            targets.push({
+                label: ep.label,
+                baseUrl: ep.baseUrl || primaryBaseUrl,
+                apiKey: ep.apiKey,
+                model: ep.model || primaryModel,
+                researchWebSearch: isEndpointCapabilityEnabled(ep.capabilities, 'researchWebSearch')
+            });
+        }
+        // Released `fallback-providers` entries (kept editable through the
+        // retained FallbackProvidersSection UI) are bridged here so saved
+        // connections keep working: enabled state, order, models and keys
+        // are preserved. Legacy entries carry no per-capability flags, so
+        // they serve every capability like the primary default.
+        for (const connection of getFallbackProviders()) {
+            if (!connection || connection.enabled === false) continue;
+            const keys = parseConnectionKeys(connection.apiKeys ?? connection.apiKey);
+            if (!keys.length) continue;
+            const baseUrl = normalizeBaseUrl(connection.baseUrl) || primaryBaseUrl;
+            const model = String(connection.model || '').trim();
+            const label = String(connection.name || 'Fallback').trim() || 'Fallback';
+            for (const apiKey of keys) {
+                targets.push({ label, baseUrl, apiKey, model, researchWebSearch: true });
+            }
+        }
+        return targets;
+    }
+
+    function ensureRequestTargets(targets, capability = null) {
+        if (!targets.length) {
+            if (capability) {
+                throw new Error(`[ChatGPT] No endpoint has the '${capability}' capability enabled. Enable it for at least one endpoint in settings.`);
+            }
+            throw new Error('[ChatGPT] API key is required. Please configure your API key in settings.');
+        }
+        if (targets.every(target => !target.model)) {
+            throw new Error('[ChatGPT] Model is not selected. Please select a model in settings.');
+        }
+        return targets;
     }
 
 
@@ -393,6 +558,55 @@
     /**
      * Call ChatGPT API and return raw text response
      */
+    function getHttpStatusHint(status) {
+        if (status === 401) return ' — invalid API key or permission denied';
+        if (status === 403) return ' — check the API key and account credits/quota';
+        if (status === 404) return ' — check the endpoint Base URL and Model ID (refresh the model list with ↻)';
+        if (status === 410) return ' — the model appears retired; pick a current model from the refreshed list';
+        if (status === 429) return ' — rate limited';
+        return '';
+    }
+
+    async function buildHttpErrorDetail(response) {
+        const status = response?.status;
+        const hint = getHttpStatusHint(status);
+        let detail = '';
+        try {
+            const rawText = typeof response?.clone === 'function'
+                ? await response.clone().text()
+                : '';
+            const trimmed = String(rawText || '').trim();
+            if (trimmed) {
+                let parsedMessage = '';
+                try {
+                    const parsed = JSON.parse(trimmed);
+                    parsedMessage = parsed?.error?.message || parsed?.error?.code || parsed?.message || '';
+                } catch {
+                    // Plain-text error body (e.g. "404 page not found").
+                }
+                detail = parsedMessage || trimmed.slice(0, 200);
+            }
+        } catch {
+            // Unreadable body; fall through to the generic status below.
+        }
+        if (!detail) return `HTTP ${status}${hint}`;
+        // A terse server body (e.g. NIM's bare "404 page not found") still
+        // needs the actionable hint; descriptive messages stay untouched
+        // except for statuses where the next step is always the same.
+        if (status === 403 || status === 404 || status === 410) return `${detail}${hint}`;
+        return detail;
+    }
+
+    function recordSkipError(target, status) {
+        return new Error(`[ChatGPT] ${target?.label || 'Endpoint'} failed: HTTP ${status}${getHttpStatusHint(status)}`);
+    }
+
+    function isResponsesApiUnsupported(error) {
+        if (!error) return false;
+        if (error.responsesApiUnsupported === true) return true;
+        const message = String(error.message || '');
+        return /HTTP (404|405)\b/.test(message) || /404 page not found/.test(message);
+    }
     function normalizeFinishReason(reason) {
         return reason === null || reason === undefined
             ? ''
@@ -482,23 +696,20 @@
         maxRetries = window.AIAddonManager?.getProviderRequestAttempts?.() ?? 3,
         transformResult = null,
         requestTimeoutMs = window.ivLyricsFetch?.DEFAULT_TIMEOUT_MS || 90_000,
-        connection = null
+        capability = null
     ) {
-        if (!connection) return withProviderConnections(provider => callChatGPTAPIRaw(prompt, maxRetries, transformResult, requestTimeoutMs, provider));
-        const apiKeys = getApiKeys(connection);
-        if (apiKeys.length === 0) {
-            throw new Error('[ChatGPT] API key is required. Please configure your API key in settings.');
-        }
-
-        const baseUrl = getBaseUrl(connection);
-        const model = getSelectedModel(connection);
-        if (!model) {
-            throw new Error('[ChatGPT] Model is not selected. Please select a model in settings.');
-        }
+        const targets = ensureRequestTargets(getRequestTargets(capability), capability);
         let lastError = null;
 
-        for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
-            const apiKey = apiKeys[keyIndex];
+        for (let targetIndex = 0; targetIndex < targets.length; targetIndex++) {
+            const target = targets[targetIndex];
+            const apiKey = target.apiKey;
+            const baseUrl = target.baseUrl;
+            const model = target.model;
+            if (!model) {
+                window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Skipping ${target.label}: no model configured.`);
+                continue;
+            }
 
             for (let attempt = 0; attempt < maxRetries; attempt++) {
                 try {
@@ -514,30 +725,24 @@
                     }, requestTimeoutMs);
 
                     if (response.status === 429 || response.status === 403) {
-                        window.__ivLyricsDebugLog?.(`[ChatGPT Addon] API key ${keyIndex + 1} failed (${response.status}), trying next...`);
-                        break; // Try next key
+                        window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Target ${target.label} failed (${response.status}), trying next...`);
+                        // Remember the failure so a run with no usable target
+                        // reports the real HTTP error instead of a generic one.
+                        lastError = recordSkipError(target, response.status);
+                        break; // Try next target
                     }
 
                     if (response.status === 401) {
-                        let errorMessage = 'Invalid API key or permission denied.';
-                        try {
-                            const errorData = await response.json();
-                            if (errorData.error?.message) {
-                                errorMessage = errorData.error.message;
-                            }
-                        } catch (parseError) { }
-                        throw new Error(`[ChatGPT] ${errorMessage}`);
+                        // An invalid key on one target must not abort the
+                        // remaining targets: record it and fail over, matching
+                        // the released withProviderConnections behavior. When
+                        // no target succeeds, lastError still surfaces it.
+                        lastError = new Error(`[ChatGPT] ${await buildHttpErrorDetail(response)}`);
+                        break; // Try next target
                     }
 
                     if (!response.ok) {
-                        let errorMessage = `HTTP ${response.status}`;
-                        try {
-                            const errorData = await response.json();
-                            if (errorData.error?.message) {
-                                errorMessage = errorData.error.message;
-                            }
-                        } catch (parseError) { }
-                        throw new Error(`[ChatGPT] ${errorMessage}`);
+                        throw new Error(`[ChatGPT] ${await buildHttpErrorDetail(response)}`);
                     }
 
                     const data = await response.json();
@@ -555,8 +760,10 @@
                     lastError = e;
                     window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Attempt ${attempt + 1} failed:`, e.message);
 
+                    // Credential errors skip retries on this target and fail
+                    // over to the next one instead of aborting the chain.
                     if (e.message.includes('Invalid API key') || e.message.includes('permission denied')) {
-                        throw e;
+                        break; // Try next target
                     }
 
                     if (attempt < maxRetries - 1) {
@@ -626,23 +833,21 @@
         transformResult = null,
         requestTimeoutMs = window.ivLyricsFetch?.DEFAULT_TIMEOUT_MS || 90_000,
         onRawChunk = null,
-        connection = null
+        capability = null,
+        targetsOverride = null
     ) {
-        if (!connection) return withProviderConnections(provider => callResponsesAPIStream(prompt, onLine, onStreamReset, maxRetries, transformResult, requestTimeoutMs, onRawChunk, provider));
-        const apiKeys = getApiKeys(connection);
-        if (apiKeys.length === 0) {
-            throw new Error('[ChatGPT] API key is required. Please configure your API key in settings.');
-        }
-
-        const baseUrl = getBaseUrl(connection);
-        const model = getSelectedModel(connection);
-        if (!model) {
-            throw new Error('[ChatGPT] Model is not selected. Please select a model in settings.');
-        }
+        const targets = ensureRequestTargets(targetsOverride || getRequestTargets(capability), capability);
         let lastError = null;
 
-        for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
-            const apiKey = apiKeys[keyIndex];
+        for (let targetIndex = 0; targetIndex < targets.length; targetIndex++) {
+            const target = targets[targetIndex];
+            const apiKey = target.apiKey;
+            const baseUrl = target.baseUrl;
+            const model = target.model;
+            if (!model) {
+                window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Skipping ${target.label}: no model configured.`);
+                continue;
+            }
 
             for (let attempt = 0; attempt < maxRetries; attempt++) {
                 let emittedLineCount = 0;
@@ -675,11 +880,20 @@
                         body: JSON.stringify(buildResponsesRequestBody(model, prompt))
                     }, requestTimeoutMs);
 
-                    if (response.status === 429 || response.status === 403) break;
+                    if (response.status === 429 || response.status === 403) {
+                        lastError = new Error(`[ChatGPT Web Search] ${target.label} failed: HTTP ${response.status}${getHttpStatusHint(response.status)}`);
+                        break;
+                    }
                     if (!response.ok) {
                         let errorData = null;
                         try { errorData = await response.json(); } catch { }
-                        throw createResponsesAPIError(errorData, `HTTP ${response.status}`);
+                        const unsupported = response.status === 404 || response.status === 405;
+                        const error = createResponsesAPIError(
+                            errorData,
+                            `HTTP ${response.status}${unsupported ? ' — this endpoint does not support the Responses API' : getHttpStatusHint(response.status)}`
+                        );
+                        if (unsupported) error.responsesApiUnsupported = true;
+                        throw error;
                     }
 
                     const contentType = String(response.headers?.get?.('content-type') || '').toLowerCase();
@@ -785,7 +999,9 @@
                     lastError = error;
                     window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Responses API attempt ${attempt + 1} failed:`, error.message);
                     resetProvisionalOutput(attempt < maxRetries - 1 ? 'retry' : 'failed', error);
-                    if (/invalid api key|permission denied/i.test(error.message)) throw error;
+                    // Credential errors skip retries on this target and fail
+                    // over to the next one instead of aborting the chain.
+                    if (/invalid api key|permission denied/i.test(error.message)) break; // Try next target
                     if (attempt < maxRetries - 1) await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
                 }
             }
@@ -802,23 +1018,21 @@
         transformResult = null,
         requestTimeoutMs = window.ivLyricsFetch?.DEFAULT_TIMEOUT_MS || 90_000,
         onRawChunk = null,
-        connection = null
+        capability = null,
+        targetsOverride = null
     ) {
-        if (!connection) return withProviderConnections(provider => callChatGPTAPIStream(prompt, onLine, onStreamReset, maxRetries, transformResult, requestTimeoutMs, onRawChunk, provider));
-        const apiKeys = getApiKeys(connection);
-        if (apiKeys.length === 0) {
-            throw new Error('[ChatGPT] API key is required. Please configure your API key in settings.');
-        }
-
-        const baseUrl = getBaseUrl(connection);
-        const model = getSelectedModel(connection);
-        if (!model) {
-            throw new Error('[ChatGPT] Model is not selected. Please select a model in settings.');
-        }
+        const targets = ensureRequestTargets(targetsOverride || getRequestTargets(capability), capability);
         let lastError = null;
 
-        for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
-            const apiKey = apiKeys[keyIndex];
+        for (let targetIndex = 0; targetIndex < targets.length; targetIndex++) {
+            const target = targets[targetIndex];
+            const apiKey = target.apiKey;
+            const baseUrl = target.baseUrl;
+            const model = target.model;
+            if (!model) {
+                window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Skipping ${target.label}: no model configured.`);
+                continue;
+            }
 
             for (let attempt = 0; attempt < maxRetries; attempt++) {
                 let emittedLineCount = 0;
@@ -857,20 +1071,24 @@
                     }, requestTimeoutMs);
 
                     if (response.status === 429 || response.status === 403) {
-                        window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Stream: API key ${keyIndex + 1} failed (${response.status}), trying next...`);
+                        window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Stream: target ${target.label} failed (${response.status}), trying next...`);
+                        // Remember the failure so a run with no usable target
+                        // reports the real HTTP error instead of a generic one.
+                        lastError = recordSkipError(target, response.status);
                         break;
                     }
 
                     if (response.status === 401) {
-                        let errorMessage = 'Invalid API key or permission denied.';
-                        try { const d = await response.json(); if (d.error?.message) errorMessage = d.error.message; } catch (e) { }
-                        throw new Error(`[ChatGPT] ${errorMessage}`);
+                        // An invalid key on one target must not abort the
+                        // remaining targets: record it and fail over, matching
+                        // the released withProviderConnections behavior. When
+                        // no target succeeds, lastError still surfaces it.
+                        lastError = new Error(`[ChatGPT] ${await buildHttpErrorDetail(response)}`);
+                        break; // Try next target
                     }
 
                     if (!response.ok) {
-                        let errorMessage = `HTTP ${response.status}`;
-                        try { const d = await response.json(); if (d.error?.message) errorMessage = d.error.message; } catch (e) { }
-                        throw new Error(`[ChatGPT] ${errorMessage}`);
+                        throw new Error(`[ChatGPT] ${await buildHttpErrorDetail(response)}`);
                     }
 
                     // Some compatible APIs accept `stream: true` but still
@@ -981,7 +1199,9 @@
                     lastError = e;
                     window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Stream attempt ${attempt + 1} failed:`, e.message);
                     resetProvisionalOutput(attempt < maxRetries - 1 ? 'retry' : 'failed', e);
-                    if (e.message.includes('Invalid API key') || e.message.includes('permission denied')) throw e;
+                    // Credential errors skip retries on this target and fail
+                    // over to the next one instead of aborting the chain.
+                    if (e.message.includes('Invalid API key') || e.message.includes('permission denied')) break; // Try next target
                     if (attempt < maxRetries - 1) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
                 }
             }
@@ -996,9 +1216,46 @@
     async function callChatGPTAPI(
         prompt,
         maxRetries = window.AIAddonManager?.getProviderRequestAttempts?.() ?? 3,
-        requestTimeoutMs = window.ivLyricsFetch?.DEFAULT_TIMEOUT_MS || 90_000
+        requestTimeoutMs = window.ivLyricsFetch?.DEFAULT_TIMEOUT_MS || 90_000,
+        capability = null
     ) {
-        return await callChatGPTAPIRaw(prompt, maxRetries, extractJSON, requestTimeoutMs);
+        return await callChatGPTAPIRaw(prompt, maxRetries, extractJSON, requestTimeoutMs, capability);
+    }
+
+    /**
+     * Test one endpoint target directly (used by per-endpoint Test buttons).
+     */
+    async function testSingleTarget(target) {
+        const baseUrl = normalizeBaseUrl(target.baseUrl) || DEFAULT_OPENAI_BASE_URL;
+        const apiKey = String(target.apiKey || '').trim();
+        const model = String(target.model || '').trim();
+        if (!apiKey) throw new Error('[ChatGPT] API key is required.');
+        if (!model) throw new Error('[ChatGPT] Model is required.');
+        const endpoint = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
+        let patch = null;
+        try {
+            patch = getRequestBodyMergePatch();
+        } catch {
+            patch = null;
+        }
+        const body = patch && typeof patch === 'object'
+            ? mergeRequestBody({ model, messages: [{ role: 'user', content: 'Reply with just "OK" if you receive this.' }] }, patch)
+            : { model, messages: [{ role: 'user', content: 'Reply with just "OK" if you receive this.' }] };
+        const response = await window.ivLyricsFetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify(body)
+        });
+        if (!response.ok) {
+            throw new Error(`[ChatGPT] ${await buildHttpErrorDetail(response)}`);
+        }
+        const data = await response.json();
+        const rawText = readChatGPTResponseText(data);
+        if (!rawText.trim()) throw new Error('[ChatGPT] Empty response from API');
+        return rawText;
     }
 
     /**
@@ -1091,10 +1348,24 @@
         },
 
         /**
-         * 연결 테스트
+         * 연결 테스트 (기본 + 추가 엔드포인트 전체)
          */
         async testConnection() {
-            await callChatGPTAPIRaw('Reply with just "OK" if you receive this.');
+            const targets = ensureRequestTargets(getRequestTargets());
+            let lastError = null;
+            for (const target of targets) {
+                if (!target.model) continue;
+                try {
+                    await testSingleTarget(target);
+                    return;
+                } catch (e) {
+                    // Fail over to the next saved connection like the
+                    // released withProviderConnections path did; the final
+                    // error keeps the failing target's label for diagnosis.
+                    lastError = new Error(`[${target.label}] ${e.message}`);
+                }
+            }
+            if (lastError) throw lastError;
         },
 
         getSettingsUI() {
@@ -1112,6 +1383,10 @@
                 const [testStatus, setTestStatus] = useState('');
                 const [availableModels, setAvailableModels] = useState([]);
                 const [modelsLoading, setModelsLoading] = useState(false);
+                const [extraEndpoints, setExtraEndpointsState] = useState(() => getExtraEndpoints());
+                const [endpointTestStatus, setEndpointTestStatus] = useState({});
+                const [endpointModels, setEndpointModels] = useState({});
+                const [endpointModelsLoading, setEndpointModelsLoading] = useState({});
 
                 // 모델 목록 로드
                 const loadModels = useCallback(async () => {
@@ -1183,6 +1458,156 @@
                     }
                 }, []);
 
+                const handleAddEndpoint = useCallback(() => {
+                    setExtraEndpointsState((prev) => {
+                        const next = [...prev, {
+                            id: createEndpointId(),
+                            label: `Endpoint ${(prev.length || 0) + 2}`,
+                            baseUrl: 'https://api.openai.com/v1',
+                            apiKey: '',
+                            model: '',
+                            customModel: ''
+                        }];
+                        setExtraEndpoints(next);
+                        return next;
+                    });
+                    setTestStatus('');
+                }, []);
+
+                const handleEndpointChange = useCallback((id, field, value) => {
+                    setExtraEndpointsState((prev) => {
+                        const next = prev.map(ep => ep.id === id ? { ...ep, [field]: value } : ep);
+                        setExtraEndpoints(next);
+                        return next;
+                    });
+                }, []);
+
+                const handleRemoveEndpoint = useCallback((id) => {
+                    setExtraEndpointsState((prev) => {
+                        const next = prev.filter(ep => ep.id !== id);
+                        setExtraEndpoints(next);
+                        return next;
+                    });
+                    setEndpointTestStatus((prev) => {
+                        const next = { ...prev };
+                        delete next[id];
+                        return next;
+                    });
+                }, []);
+
+                const handleTestEndpoint = useCallback(async (endpoint) => {
+                    setEndpointTestStatus((prev) => ({ ...prev, [endpoint.id]: 'Testing...' }));
+                    try {
+                        await testSingleTarget({
+                            baseUrl: endpoint.baseUrl,
+                            apiKey: endpoint.apiKey,
+                            model: endpoint.model || getSelectedModel()
+                        });
+                        setEndpointTestStatus((prev) => ({ ...prev, [endpoint.id]: '✓ Connection successful!' }));
+                    } catch (e) {
+                        setEndpointTestStatus((prev) => ({ ...prev, [endpoint.id]: `✗ Error: ${e.message}` }));
+                    }
+                }, []);
+
+                const loadEndpointModels = useCallback(async (endpoint) => {
+                    const key = String(endpoint.apiKey || '').trim();
+                    if (!key) {
+                        setEndpointModels((prev) => ({ ...prev, [endpoint.id]: [] }));
+                        return;
+                    }
+                    setEndpointModelsLoading((prev) => ({ ...prev, [endpoint.id]: true }));
+                    try {
+                        const models = await fetchAvailableModels(key, endpoint.baseUrl || DEFAULT_OPENAI_BASE_URL);
+                        setEndpointModels((prev) => ({ ...prev, [endpoint.id]: models }));
+                    } catch (e) {
+                        window.__ivLyricsDebugLog?.('[ChatGPT Addon] Failed to load endpoint models:', e);
+                        setEndpointModels((prev) => ({ ...prev, [endpoint.id]: [] }));
+                    } finally {
+                        setEndpointModelsLoading((prev) => ({ ...prev, [endpoint.id]: false }));
+                    }
+                }, []);
+
+                // Load model lists for saved endpoints on mount (same as primary).
+                useEffect(() => {
+                    getExtraEndpoints().forEach((endpoint) => {
+                        if (String(endpoint.apiKey || '').trim()) {
+                            loadEndpointModels(endpoint);
+                        }
+                    });
+                }, [loadEndpointModels]);
+
+                const handleEndpointModelChange = useCallback((id, value) => {
+                    setExtraEndpointsState((prev) => {
+                        const next = prev.map(ep => ep.id === id ? { ...ep, model: value } : ep);
+                        setExtraEndpoints(next);
+                        return next;
+                    });
+                }, []);
+
+                const handleEndpointCustomModelChange = useCallback((id, value) => {
+                    setExtraEndpointsState((prev) => {
+                        const next = prev.map(ep => {
+                            if (ep.id !== id) return ep;
+                            const updated = { ...ep, customModel: value };
+                            if (value) updated.model = value;
+                            return updated;
+                        });
+                        setExtraEndpoints(next);
+                        return next;
+                    });
+                }, []);
+
+                const handleRefreshEndpointModels = useCallback((endpoint) => {
+                    loadEndpointModels(endpoint);
+                }, [loadEndpointModels]);
+
+                const [primaryCapabilities, setPrimaryCapabilitiesState] = useState(() => getPrimaryCapabilities());
+
+                const togglePrimaryCapability = useCallback((cap) => {
+                    setPrimaryCapabilitiesState((prev) => {
+                        const next = { ...(prev || {}) };
+                        next[cap] = !isEndpointCapabilityEnabled(next, cap);
+                        setPrimaryCapabilities(next);
+                        return next;
+                    });
+                }, []);
+
+                const handleEndpointCapabilityToggle = useCallback((id, cap) => {
+                    setExtraEndpointsState((prev) => {
+                        const next = prev.map(ep => {
+                            if (ep.id !== id) return ep;
+                            const capabilities = { ...(ep.capabilities || {}) };
+                            capabilities[cap] = !isEndpointCapabilityEnabled(capabilities, cap);
+                            return { ...ep, capabilities };
+                        });
+                        setExtraEndpoints(next);
+                        return next;
+                    });
+                }, []);
+
+                // Capability chips shared by the primary endpoint and extra
+                // endpoint cards. Same look as the provider-level
+                // "Enabled Capabilities" chips in Settings.
+                const renderCapabilityChips = (capabilities, onToggle, description) => {
+                    return React.createElement('div', { className: 'ai-addon-setting' },
+                        React.createElement('label', null, t('settings.aiProviders.enabledCapabilities', 'Enabled Capabilities')),
+                        React.createElement('div', { className: 'ai-addon-caps-container' },
+                            ENDPOINT_CAPABILITIES.map(cap => {
+                                const enabled = isEndpointCapabilityEnabled(capabilities, cap);
+                                return React.createElement('div', {
+                                    key: cap,
+                                    className: `ai-addon-cap-chip ${enabled ? 'active' : ''} cap-${cap}`,
+                                    onClick: () => onToggle(cap)
+                                },
+                                    enabled && React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round', strokeLinejoin: 'round' }, React.createElement('polyline', { points: '20 6 9 17 4 12' })),
+                                    t(`settings.aiProviders.supports.${cap}`, ENDPOINT_CAPABILITY_FALLBACKS[cap] || cap)
+                                );
+                            })
+                        ),
+                        description && React.createElement('small', null, description)
+                    );
+                };
+
 
 
                 // ... (existing code for models)
@@ -1191,6 +1616,109 @@
 
                 const isModelInList = availableModels.find(m => m.id === model);
                 const hasApiKey = getApiKeys().length > 0;
+
+                // Extra endpoint card mirrors the primary (first) endpoint layout:
+                // API Key(s) + Get API Key, Base URL, Model dropdown + refresh,
+                // Custom Model ID, and its own Test Connection button.
+                const renderEndpointCard = (endpoint, index) => {
+                    const status = endpointTestStatus[endpoint.id] || '';
+                    const models = endpointModels[endpoint.id] || [];
+                    const modelsLoadingForEndpoint = !!endpointModelsLoading[endpoint.id];
+                    const endpointModel = endpoint.model || '';
+                    const endpointCustomModel = endpoint.customModel || '';
+                    const isEndpointModelInList = models.find(m => m.id === endpointModel);
+                    const hasEndpointApiKey = String(endpoint.apiKey || '').trim().length > 0;
+                    return React.createElement('div', {
+                        key: endpoint.id,
+                        style: { display: 'flex', flexDirection: 'column', gap: '6px', padding: '10px', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', marginTop: '6px' }
+                    },
+                        React.createElement('div', { className: 'ai-addon-input-group' },
+                            React.createElement('input', {
+                                type: 'text',
+                                value: endpoint.label,
+                                onChange: (e) => handleEndpointChange(endpoint.id, 'label', e.target.value),
+                                placeholder: `Endpoint ${index + 2} (e.g., Local Ollama)`
+                            }),
+                            React.createElement('button', {
+                                onClick: () => handleRemoveEndpoint(endpoint.id),
+                                className: 'ai-addon-btn-secondary'
+                            }, 'Remove')
+                        ),
+                        React.createElement('div', { className: 'ai-addon-setting' },
+                            React.createElement('label', null, 'API Key(s)'),
+                            React.createElement('div', { className: 'ai-addon-input-group' },
+                                React.createElement('input', {
+                                    type: 'text',
+                                    value: endpoint.apiKey,
+                                    onChange: (e) => handleEndpointChange(endpoint.id, 'apiKey', e.target.value),
+                                    placeholder: 'sk-...'
+                                }),
+                                React.createElement('button', { onClick: () => window.open(ADDON_INFO.apiKeyUrl, '_blank'), className: 'ai-addon-btn-secondary' }, 'Get API Key')
+                            )
+                        ),
+                        React.createElement('div', { className: 'ai-addon-setting' },
+                            React.createElement('label', null, 'Base URL'),
+                            React.createElement('input', {
+                                type: 'text',
+                                value: endpoint.baseUrl,
+                                onChange: (e) => handleEndpointChange(endpoint.id, 'baseUrl', e.target.value),
+                                placeholder: 'https://api.openai.com/v1'
+                            }),
+                            React.createElement('small', null, 'Change this to use OpenAI-compatible APIs')
+                        ),
+                        React.createElement('div', { className: 'ai-addon-setting' },
+                            React.createElement('label', null, 'Model'),
+                            React.createElement('div', { className: 'ai-addon-input-group' },
+                                React.createElement('select', {
+                                    value: isEndpointModelInList ? endpointModel : '',
+                                    onChange: (e) => handleEndpointModelChange(endpoint.id, e.target.value),
+                                    disabled: modelsLoadingForEndpoint
+                                },
+                                    modelsLoadingForEndpoint
+                                        ? React.createElement('option', { value: '' }, 'Loading models...')
+                                        : models.length > 0
+                                            ? [
+                                                !endpointModel && React.createElement('option', { key: '__placeholder__', value: '' }, '-- Select a model --'),
+                                                ...models.map(m => React.createElement('option', { key: m.id, value: m.id }, m.name)),
+                                                React.createElement('option', { key: 'custom', value: '' }, 'Custom...')
+                                            ].filter(Boolean)
+                                            : [
+                                                React.createElement('option', { key: 'empty', value: '' }, hasEndpointApiKey ? 'No models found' : 'Enter API key first'),
+                                                React.createElement('option', { key: 'custom', value: '' }, 'Custom...')
+                                            ]
+                                ),
+                                React.createElement('button', {
+                                    onClick: () => handleRefreshEndpointModels(endpoint),
+                                    className: 'ai-addon-btn-secondary',
+                                    disabled: modelsLoadingForEndpoint || !hasEndpointApiKey,
+                                    title: 'Refresh model list'
+                                }, modelsLoadingForEndpoint ? '...' : '↻')
+                            ),
+                            models.length > 0 && React.createElement('small', null, `${models.length} models available`)
+                        ),
+                        (!isEndpointModelInList || endpointCustomModel) &&
+                        React.createElement('div', { className: 'ai-addon-setting' },
+                            React.createElement('label', null, 'Custom Model ID'),
+                            React.createElement('input', {
+                                type: 'text',
+                                value: endpointCustomModel,
+                                onChange: (e) => handleEndpointCustomModelChange(endpoint.id, e.target.value),
+                                placeholder: 'e.g., gpt-4-turbo'
+                            })
+                        ),
+                        renderCapabilityChips(
+                            endpoint.capabilities,
+                            (cap) => handleEndpointCapabilityToggle(endpoint.id, cap),
+                            'Which request types this endpoint serves. Disabled types skip it and fall through to the next endpoint.'
+                        ),
+                        React.createElement('div', { className: 'ai-addon-setting' },
+                            React.createElement('button', { onClick: () => handleTestEndpoint(endpoint), className: 'ai-addon-btn-primary' }, 'Test Connection'),
+                            status && React.createElement('span', {
+                                className: `ai-addon-test-status ${status.startsWith('✓') ? 'success' : status.startsWith('✗') ? 'error' : ''}`
+                            }, status)
+                        )
+                    );
+                };
 
                 return React.createElement('div', { className: 'ai-addon-settings chatgpt-settings' },
                     React.createElement('div', { className: 'ai-addon-setting' },
@@ -1241,12 +1769,24 @@
                         React.createElement('label', null, aiText('modelId', 'Custom Model ID')),
                         React.createElement('input', { type: 'text', value: customModel, onChange: handleCustomModelChange, placeholder: 'e.g., gpt-4-turbo' })
                     ),
-                    React.createElement(FallbackProvidersSection),
+                    renderCapabilityChips(
+                        primaryCapabilities,
+                        togglePrimaryCapability,
+                        'Which request types the primary endpoint serves. Disabled types fall through to the additional endpoints below.'
+                    ),
+                    React.createElement('div', { className: 'ai-addon-setting' },
+                        React.createElement('label', null, `Additional OpenAI-compatible endpoints${extraEndpoints.length ? ` (${extraEndpoints.length})` : ''}`),
+                        React.createElement('small', null, 'Each endpoint needs its own Base URL, API key and model. Requests fall back through them in order when the primary fails.'),
+                        ...extraEndpoints.map((endpoint, index) => renderEndpointCard(endpoint, index))
+                    ),
                     // Advanced API Parameters
                     React.createElement(AdvancedParamsSection)
                     ,
                     React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('button', { onClick: handleTest, className: 'ai-addon-btn-primary' }, aiText('testConnection', 'Test Connection')),
+                        React.createElement('div', { className: 'ai-addon-input-group' },
+                            React.createElement('button', { onClick: handleTest, className: 'ai-addon-btn-primary' }, 'Test Connection'),
+                            React.createElement('button', { onClick: handleAddEndpoint, className: 'ai-addon-btn-secondary', title: 'Add another OpenAI-compatible endpoint' }, 'Add another')
+                        ),
                         testStatus && React.createElement('span', {
                             className: `ai-addon-test-status ${testStatus.startsWith('✓') ? 'success' : testStatus.startsWith('✗') ? 'error' : ''}`
                         }, testStatus)
@@ -1320,7 +1860,18 @@
                     field(aiText('modelId', 'Model ID'), 'model'),
                     React.createElement('button', { className: 'ai-addon-btn-secondary', onClick: async () => {
                         setStatus(aiText('testingConnection', 'Testing...'));
-                        try { await callChatGPTAPIRaw('Reply with just "OK".', 1, null, undefined, { ...connection }); setStatus('✓ ' + aiText('connectionSuccess', 'Connection successful.')); }
+                        // The trailing callChatGPTAPIRaw argument is now a
+                        // capability filter, so legacy connections are tested
+                        // directly against their own URL/key/model instead.
+                        try {
+                            const keys = parseConnectionKeys(connection.apiKeys ?? connection.apiKey);
+                            await testSingleTarget({
+                                baseUrl: getBaseUrl(connection),
+                                apiKey: keys[0] || '',
+                                model: getSelectedModel(connection)
+                            });
+                            setStatus('✓ ' + aiText('connectionSuccess', 'Connection successful.'));
+                        }
                         catch (error) { setStatus(`✗ ${error.message}`); }
                     } }, aiText('testThisConnection', 'Test this provider')),
                     status && React.createElement('small', null, status)
@@ -1379,7 +1930,7 @@
             }
         },
 
-        async translateLyrics({ text, lang, wantSmartPhonetic, translationPrompt, phoneticPrompt, onLine, onStreamReset }) {
+        async translateLyrics({ text, lang, wantSmartPhonetic, translationPrompt, phoneticPrompt, onLine, onStreamReset, endpointCapability }) {
             if (!text?.trim()) {
                 throw new Error('No text provided');
             }
@@ -1390,11 +1941,14 @@
                 throw new Error('[OpenAI ChatGPT] Central lyrics prompt is unavailable.');
             }
             const parseLines = rawResponse => parseTextLines(rawResponse, sourceLines);
+            // Word-level gloss/pronunciation reuse this entry point with an
+            // endpointCapability override so per-endpoint chips can gate them.
+            const targetCapability = endpointCapability || 'translate';
 
             // Validate inside the provider retry loop so partial/blocked output can retry safely.
             const lines = onLine
-                ? await callChatGPTAPIStream(prompt, onLine, onStreamReset, undefined, parseLines)
-                : await callChatGPTAPIRaw(prompt, undefined, parseLines);
+                ? await callChatGPTAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, targetCapability)
+                : await callChatGPTAPIRaw(prompt, undefined, parseLines, undefined, targetCapability);
 
             // Return in the format expected by LyricsService
             if (wantSmartPhonetic) {
@@ -1413,7 +1967,7 @@
             if (!prompt) {
                 throw new Error('[OpenAI ChatGPT] Central character pronunciation prompt is unavailable.');
             }
-            const result = await callChatGPTAPI(prompt);
+            const result = await callChatGPTAPI(prompt, undefined, undefined, 'characterPronunciation');
             if (!result || !(Array.isArray(result.l) || Array.isArray(result.lines))) {
                 throw new Error('Invalid character pronunciation response');
             }
@@ -1429,7 +1983,7 @@
             if (!prompt) {
                 throw new Error('[OpenAI ChatGPT] Central metadata translation prompt is unavailable.');
             }
-            const result = await callChatGPTAPI(prompt);
+            const result = await callChatGPTAPI(prompt, undefined, undefined, 'metadata');
 
             // Normalize result to match expected format in FullscreenOverlay.js
             return {
@@ -1467,14 +2021,77 @@
             const request = ADDON_INFO.supports.researchWebSearch && webSearch !== false
                 ? callResponsesAPIStream
                 : callChatGPTAPIStream;
-            return await request(
+            const onRawChunk = progressParser ? chunk => progressParser.push(chunk) : null;
+            if (webSearch === false) {
+                return await request(
+                    prompt,
+                    null,
+                    resetProgress,
+                    1,
+                    extractJSON,
+                    requestTimeoutMs,
+                    onRawChunk,
+                    'tmi'
+                );
+            }
+            // Split TMI targets by web search support: Responses API targets
+            // first, then plain chat completion targets. Endpoints without
+            // researchWebSearch (e.g. local OpenAI-compatible servers) cannot
+            // serve /responses, so they are served without live search instead
+            // of failing the whole request.
+            const tmiTargets = ensureRequestTargets(getRequestTargets('tmi'), 'tmi');
+            const searchTargets = tmiTargets.filter(target => target.researchWebSearch !== false);
+            const plainTargets = tmiTargets.filter(target => target.researchWebSearch === false);
+            let responsesAttempted = false;
+            if (searchTargets.length > 0 && plainTargets.length === 0) {
+                try {
+                    responsesAttempted = true;
+                    return await callResponsesAPIStream(
+                        prompt,
+                        null,
+                        resetProgress,
+                        1,
+                        extractJSON,
+                        requestTimeoutMs,
+                        onRawChunk,
+                        'tmi',
+                        searchTargets
+                    );
+                } catch (searchError) {
+                    // Hosts without a Responses API (e.g. NVIDIA NIM answers
+                    // /responses with 404) fall back to plain chat instead of
+                    // failing the whole request. Other errors still throw.
+                    if (!isResponsesApiUnsupported(searchError)) throw searchError;
+                    window.__ivLyricsDebugLog?.('[ChatGPT Addon] Responses API unsupported, falling back to plain chat:', searchError?.message);
+                }
+            }
+            if (!responsesAttempted && searchTargets.length > 0) {
+                try {
+                    return await callResponsesAPIStream(
+                        prompt,
+                        null,
+                        resetProgress,
+                        1,
+                        extractJSON,
+                        requestTimeoutMs,
+                        onRawChunk,
+                        'tmi',
+                        searchTargets
+                    );
+                } catch (searchError) {
+                    window.__ivLyricsDebugLog?.('[ChatGPT Addon] Web search targets failed, falling back to plain targets:', searchError?.message);
+                }
+            }
+            return await callChatGPTAPIStream(
                 prompt,
                 null,
                 resetProgress,
                 1,
                 extractJSON,
                 requestTimeoutMs,
-                progressParser ? chunk => progressParser.push(chunk) : null
+                onRawChunk,
+                'tmi',
+                plainTargets.length > 0 ? plainTargets : tmiTargets
             );
         },
 
@@ -1487,7 +2104,7 @@
             if (!prompt) {
                 throw new Error('[OpenAI ChatGPT] Central lyrics study prompt is unavailable.');
             }
-            return await callChatGPTAPI(prompt);
+            return await callChatGPTAPI(prompt, undefined, undefined, 'lyricsStudy');
         },
 
         async generateCulturalAnnotations(params) {
@@ -1498,7 +2115,7 @@
             if (!prompt) {
                 throw new Error('[OpenAI ChatGPT] Central cultural annotations prompt is unavailable.');
             }
-            return await callChatGPTAPI(prompt);
+            return await callChatGPTAPI(prompt, undefined, undefined, 'culturalAnnotations');
         }
     };
 

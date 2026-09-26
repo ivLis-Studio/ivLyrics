@@ -466,7 +466,8 @@ window.LANG_VI = {
         "tmi": "TMI",
         "lyricsStudy": "Học tập",
         "characterPronunciation": "Phát âm từng ký tự",
-        "culturalAnnotations": "Bối cảnh văn hóa"
+        "culturalAnnotations": "Bối cảnh văn hóa",
+        "wordSupplements": "Chi tiết từ"
       },
       "noEnabledProviders": "Không có nhà cung cấp AI nào được bật. Vui lòng bật ít nhất một nhà cung cấp trong cài đặt.",
       "allProvidersFailed": "Tất cả các nhà cung cấp AI đã thất bại khi xử lý yêu cầu.",
@@ -636,6 +637,7 @@ window.LANG_VI = {
     "regeneratePronunciationOnly": "Chỉ phát âm",
     "regenerateTranslationOnly": "Chỉ bản dịch",
     "regenerateBoth": "Phát âm và bản dịch",
+    "regenerateWordDetails": "Chi tiết từ",
     "regenerateAction": "Tạo lại",
     "fullscreen": "Toàn màn hình",
     "exitFullscreen": "Thoát toàn màn hình"
@@ -852,6 +854,9 @@ window.LANG_VI = {
     "culturalAnnotationsRegenerated": "Đã tạo lại phần giải thích bối cảnh văn hóa.",
     "translationRegenerateFailed": "Tạo lại bản dịch thất bại",
     "culturalAnnotationsRegenerateFailed": "Không thể tạo lại phần giải thích bối cảnh văn hóa.",
+    "regeneratingWordDetails": "Đang tạo lại chi tiết từ...",
+    "wordDetailsRegenerated": "Đã tạo lại chi tiết từ.",
+    "wordDetailsRegenerateFailed": "Tạo lại thất bại",
     "lyricsProviderSaved": "Đã lưu nhà cung cấp lời cho bài hát này.",
     "lyricsProviderSaveFailed": "Không thể lưu nhà cung cấp lời.",
     "translationCacheRemoved": "Đã xóa cache dịch và tải lại!",
@@ -1378,6 +1383,10 @@ window.LANG_VI = {
       "videoEnabled": {
         "label": "Tải trước nền video",
         "desc": "Lấy trước thông tin nền video cho bài tiếp theo"
+      },
+      "wordDetailsEnabled": {
+        "label": "Preload Word Details",
+        "desc": "Preload per-word readings and translations for word-level karaoke"
       }
     },
     "communitySync": {
@@ -1948,7 +1957,9 @@ window.LANG_VI = {
   "generationStatus": {
     "complete": "Hoàn tất!",
     "culturalAnnotations": "Giải thích bối cảnh văn hóa",
-    "culturalAnnotationsLoading": "Đang phân tích bối cảnh văn hóa..."
+    "culturalAnnotationsLoading": "Đang phân tích bối cảnh văn hóa...",
+    "wordSupplements": "Chi tiết từ",
+    "wordSupplementsLoading": "Đang tải cách đọc & nghĩa..."
   },
   "videoBackground": {
     "loading": "Đang tải thông tin video...",

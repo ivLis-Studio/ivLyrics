@@ -3570,6 +3570,7 @@ function openRegenerateTranslationChoiceModal({
   onSelect,
   targets = {},
   includeCulturalAnnotations = false,
+  includeWordSupplements = false,
 }) {
   let closeModal = null;
   const makeTargetButton = (key, text, target) => ({
@@ -3620,6 +3621,15 @@ function openRegenerateTranslationChoiceModal({
         "regenerate-cultural-annotations",
         I18n.t("settings.culturalAnnotations.label"),
         "cultural-annotations"
+      )
+    );
+  }
+  if (includeWordSupplements) {
+    targetItems.push(
+      makeTargetButton(
+        "regenerate-word-supplements",
+        I18n.t("menu.regenerateWordDetails") || "Word details",
+        "word-supplements"
       )
     );
   }
@@ -4066,6 +4076,35 @@ const TrackSyncAdjustPill = react.memo(({ trackUri }) => {
   );
 });
 
+const SYNC_ADJUST_PANEL_GAP = 10;
+const SYNC_ADJUST_VIEWPORT_PADDING = 12;
+const SYNC_ADJUST_PANEL_POSITION_ATTEMPTS = 8;
+
+// Pure helper (kept outside the component so it can be unit-tested):
+// positions the sync panel to the left of the toolbar trigger, clamped
+// into the viewport. Returns null when the rects are not measurable yet.
+const computeSyncAdjustPanelPosition = (triggerRect, panelRect, viewportWidth, viewportHeight) => {
+  if (!triggerRect || !panelRect?.width || !panelRect?.height) return null;
+
+  const viewportPadding = SYNC_ADJUST_VIEWPORT_PADDING;
+  const gap = SYNC_ADJUST_PANEL_GAP;
+  const left = Math.max(
+    viewportPadding,
+    Math.min(
+      triggerRect.left - panelRect.width - gap,
+      viewportWidth - panelRect.width - viewportPadding
+    )
+  );
+  const top = Math.max(
+    viewportPadding,
+    Math.min(
+      triggerRect.top + (triggerRect.height - panelRect.height) / 2,
+      viewportHeight - panelRect.height - viewportPadding
+    )
+  );
+  return { left, top };
+};
+
 const SyncAdjustButtonFluent = react.memo(({
   trackUri = null,
   includeTrackOffset = false,
@@ -4086,30 +4125,20 @@ const SyncAdjustButtonFluent = react.memo(({
   const updatePanelPosition = react.useCallback(() => {
     if (window.innerWidth <= 840) {
       setPanelPosition(null);
-      return;
+      return true;
     }
 
     const triggerRect = triggerRef.current?.getBoundingClientRect?.();
     const panelRect = panelRef.current?.getBoundingClientRect?.();
-    if (!triggerRect || !panelRect?.width || !panelRect?.height) return;
-
-    const viewportPadding = 12;
-    const gap = 10;
-    const left = Math.max(
-      viewportPadding,
-      Math.min(
-        triggerRect.left - panelRect.width - gap,
-        window.innerWidth - panelRect.width - viewportPadding
-      )
+    const nextPosition = computeSyncAdjustPanelPosition(
+      triggerRect,
+      panelRect,
+      window.innerWidth,
+      window.innerHeight
     );
-    const top = Math.max(
-      viewportPadding,
-      Math.min(
-        triggerRect.top + (triggerRect.height - panelRect.height) / 2,
-        window.innerHeight - panelRect.height - viewportPadding
-      )
-    );
-    setPanelPosition({ left, top });
+    if (!nextPosition) return false;
+    setPanelPosition(nextPosition);
+    return true;
   }, []);
 
   useEffect(() => {
@@ -4191,8 +4220,18 @@ const SyncAdjustButtonFluent = react.memo(({
     if (!isOpen) return undefined;
 
     let focusFrame = null;
-    const layoutFrame = requestAnimationFrame(() => {
-      updatePanelPosition();
+    let layoutFrame = null;
+    let attempts = 0;
+    const measure = () => {
+      // Refs/rects may not be ready on the first frame after the portal
+      // mounts (or the portal fallback renders inline). Retry across a few
+      // frames instead of giving up and leaving the panel unpositioned.
+      const positioned = updatePanelPosition();
+      if (!positioned && attempts < SYNC_ADJUST_PANEL_POSITION_ATTEMPTS) {
+        attempts += 1;
+        layoutFrame = requestAnimationFrame(measure);
+        return;
+      }
       focusFrame = requestAnimationFrame(() => {
         const panel = panelRef.current;
         if (!panel || panel.contains(document.activeElement)) return;
@@ -4204,7 +4243,8 @@ const SyncAdjustButtonFluent = react.memo(({
           : globalSliderRef.current;
         initialControl?.focus();
       });
-    });
+    };
+    layoutFrame = requestAnimationFrame(measure);
 
     return () => {
       cancelAnimationFrame(layoutFrame);
@@ -4297,6 +4337,9 @@ const SyncAdjustButtonFluent = react.memo(({
         "div",
         {
           className: "lyrics-sync-adjust-floating",
+          // Never render hidden: the panel stays visible at its default
+          // fixed position until measured, so a missed measurement can
+          // never leave it stuck invisible after clicking the button.
           style: panelPosition
             ? { left: `${panelPosition.left}px`, top: `${panelPosition.top}px`, right: "auto", bottom: "auto" }
             : undefined,

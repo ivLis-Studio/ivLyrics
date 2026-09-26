@@ -470,7 +470,8 @@ window.LANG_KO = {
         "tmi": "TMI",
         "lyricsStudy": "학습",
         "characterPronunciation": "글자 발음",
-        "culturalAnnotations": "문화적 배경"
+        "culturalAnnotations": "문화적 배경",
+        "wordSupplements": "단어 상세"
       },
       "noEnabledProviders": "활성화된 AI 제공자가 없습니다. 설정에서 최소 하나 이상의 제공자를 활성화해주세요.",
       "allProvidersFailed": "모든 AI 제공자가 요청에 실패했습니다.",
@@ -636,6 +637,7 @@ window.LANG_KO = {
     "regeneratePronunciationOnly": "발음만",
     "regenerateTranslationOnly": "번역만",
     "regenerateBoth": "발음과 번역 모두",
+    "regenerateWordDetails": "단어 상세",
     "regenerateAction": "재생성",
     "fullscreen": "전체화면",
     "exitFullscreen": "전체화면 종료"
@@ -850,6 +852,9 @@ window.LANG_KO = {
     "regeneratingTranslation": "번역을 재생성하는 중...",
     "translationRegenerated": "번역이 재생성되었습니다",
     "culturalAnnotationsRegenerated": "문화적 배경 설명이 재생성되었습니다.",
+    "regeneratingWordDetails": "단어 상세 정보를 재생성하는 중...",
+    "wordDetailsRegenerated": "단어 상세 정보를 재생성했습니다.",
+    "wordDetailsRegenerateFailed": "단어 상세 정보 재생성에 실패했습니다.",
     "translationRegenerateFailed": "번역 재생성 실패",
     "culturalAnnotationsRegenerateFailed": "문화적 배경 설명 재생성에 실패했습니다.",
     "lyricsProviderSaved": "이 곡의 가사 제공자 설정을 저장했습니다.",
@@ -1378,6 +1383,10 @@ window.LANG_KO = {
       "videoEnabled": {
         "label": "영상 배경 미리 로드",
         "desc": "다음 곡의 영상 배경 정보를 미리 가져옵니다"
+      },
+      "wordDetailsEnabled": {
+        "label": "단어 상세 미리 로드",
+        "desc": "단어 수준 가라오케의 단어별 읽기와 번역을 미리 가져옵니다"
       }
     },
     "communitySync": {
@@ -1948,7 +1957,9 @@ window.LANG_KO = {
   "generationStatus": {
     "complete": "완료!",
     "culturalAnnotations": "문화적 설명",
-    "culturalAnnotationsLoading": "문화적 설명을 생성하는 중..."
+    "culturalAnnotationsLoading": "문화적 설명을 생성하는 중...",
+    "wordSupplements": "단어 상세",
+    "wordSupplementsLoading": "단어 읽기와 뜻을 불러오는 중..."
   },
   "videoBackground": {
     "loading": "동영상 정보를 불러오는 중...",

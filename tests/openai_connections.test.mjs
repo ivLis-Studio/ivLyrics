@@ -10,13 +10,23 @@ const success = text => json(200, { choices: [{ message: { content: text }, fini
 
 test('connection credentials stay outside cloud settings', () => {
     const index = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
-    const helpers = index.slice(index.indexOf('const CLOUD_SYNC_EXCLUDED_STORAGE_KEYS ='), index.indexOf('try {\n  const savedStorageKeys'));
+    const endAnchor = index.indexOf('const StorageKeys =') !== -1
+        ? index.indexOf('const StorageKeys =')
+        : index.indexOf('try {', index.indexOf('const CLOUD_SYNC_EXCLUDED_STORAGE_KEYS ='));
+    const helpers = index.slice(index.indexOf('const CLOUD_SYNC_EXCLUDED_STORAGE_KEYS ='), endAnchor);
     const context = { APP_NAME: 'ivLyrics', TRACK_SYNC_OFFSETS_STORAGE_KEY: 'ivLyrics:track-sync-offsets',
-        CURRENT_STORAGE_PREFIX: 'ivLyrics:', PRIVATE_OR_TRANSIENT_STORAGE_KEYS: new Set() };
+        CURRENT_STORAGE_PREFIX: 'ivLyrics:', PRIVATE_OR_TRANSIENT_STORAGE_KEYS: new Set(),
+        OBSOLETE_LEGACY_STORAGE_KEYS: new Set(), __storageKeys: [] };
     vm.runInNewContext(`${helpers}\nglobalThis.allowed = isCloudSyncSettingKey;`, context);
     assert.equal(context.allowed('ivLyrics:ai:addon:chatgpt:fallback-providers'), false);
     assert.equal(context.allowed('ivLyrics:ai:addon:chatgpt:api-keys'), false);
     assert.equal(context.allowed('ivLyrics:ai:addon:chatgpt:model'), true);
+    // Regression: serialized extra-endpoint arrays carry per-endpoint apiKey
+    // values, so the container key itself must be excluded (all factory IDs).
+    const fabricated = JSON.stringify([{ id: 'ep-1', label: 'Endpoint 2', baseUrl: 'https://extra.test/v1', apiKey: 'sk-extra-secret', model: 'extra-model' }]);
+    assert.ok(fabricated.includes('sk-extra-secret'));
+    assert.equal(context.allowed('ivLyrics:ai:addon:chatgpt:extra-endpoints'), false);
+    assert.equal(context.allowed('ivLyrics:ai:addon:nvidia-nim:extra-endpoints'), false);
 });
 
 function harness(connections, responder, extra = {}) {

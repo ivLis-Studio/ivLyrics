@@ -466,7 +466,8 @@ window.LANG_ZH_CN = {
         "tmi": "TMI",
         "lyricsStudy": "学习",
         "characterPronunciation": "逐字发音",
-        "culturalAnnotations": "文化背景"
+        "culturalAnnotations": "文化背景",
+        "wordSupplements": "单词详情"
       },
       "noEnabledProviders": "未启用 AI 提供商。请在设置中至少启用一个提供商。",
       "allProvidersFailed": "所有 AI 提供商都无法处理该请求。",
@@ -636,6 +637,7 @@ window.LANG_ZH_CN = {
     "regeneratePronunciationOnly": "仅发音",
     "regenerateTranslationOnly": "仅翻译",
     "regenerateBoth": "发音和翻译",
+    "regenerateWordDetails": "单词详情",
     "regenerateAction": "重新生成",
     "fullscreen": "全屏",
     "exitFullscreen": "退出全屏"
@@ -852,6 +854,9 @@ window.LANG_ZH_CN = {
     "culturalAnnotationsRegenerated": "已重新生成文化背景说明。",
     "translationRegenerateFailed": "翻译重新生成失败",
     "culturalAnnotationsRegenerateFailed": "无法重新生成文化背景说明。",
+    "regeneratingWordDetails": "正在重新生成单词详情...",
+    "wordDetailsRegenerated": "单词详情已重新生成。",
+    "wordDetailsRegenerateFailed": "单词详情重新生成失败",
     "lyricsProviderSaved": "已保存此歌曲的歌词提供方设置。",
     "lyricsProviderSaveFailed": "无法保存歌词提供方设置。",
     "translationCacheRemoved": "翻译缓存已移除并重新加载！",
@@ -1378,6 +1383,10 @@ window.LANG_ZH_CN = {
       "videoEnabled": {
         "label": "预加载视频背景",
         "desc": "预先获取下一首歌曲的视频背景信息"
+      },
+      "wordDetailsEnabled": {
+        "label": "Preload Word Details",
+        "desc": "Preload per-word readings and translations for word-level karaoke"
       }
     },
     "communitySync": {
@@ -1948,7 +1957,9 @@ window.LANG_ZH_CN = {
   "generationStatus": {
     "complete": "完成！",
     "culturalAnnotations": "文化背景说明",
-    "culturalAnnotationsLoading": "正在分析文化背景..."
+    "culturalAnnotationsLoading": "正在分析文化背景...",
+    "wordSupplements": "单词详情",
+    "wordSupplementsLoading": "正在加载单词发音和释义..."
   },
   "videoBackground": {
     "loading": "正在加载视频信息...",

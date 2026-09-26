@@ -132,6 +132,7 @@ const SETTINGS_OUTLINE_ICONS = Object.freeze({
   tmi: "M21 12a9 9 0 0 1-9 9H5l1.8-3.2A9 9 0 1 1 21 12Zm-9-1v5M12 7h.01",
   lyricsStudy: "M4 5.5A3.5 3.5 0 0 1 7.5 2H12v17H7.5A3.5 3.5 0 0 0 4 22V5.5ZM20 5.5A3.5 3.5 0 0 0 16.5 2H12v17h4.5A3.5 3.5 0 0 1 20 22V5.5Z",
   characterPronunciation: "M5 9v6M9 6v12M13 9v6M17 4v16M21 8v8",
+  wordSupplements: "M3 6h4l2 12h2l3-12h4l3 12M4.5 13h3M14.5 13h5M4 20h16",
   culturalAnnotations: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-20c3 3 4.5 6.3 4.5 10S15 19 12 22M12 2C9 5 7.5 8.3 7.5 12S9 19 12 22M2 12h20",
 });
 
@@ -401,7 +402,7 @@ const OverlaySettings = () => {
 };
 
 function getAboutAccountThemeTokens() {
-  const isLightTheme = getSettingsUiTheme() === "light";
+  const isLightTheme = resolveEffectiveSettingsUiTheme() === "light";
 
   return {
     textPrimary: "var(--text-primary, #f6f8fb)",
@@ -1342,10 +1343,13 @@ const AddonSettingsCard = ({ addon, isEnabled, onToggle, isExpanded, onExpandTog
     if (addon.supports?.culturalAnnotations) {
       badges.push(react.createElement(ProviderSupportIconChip, { key: "culturalAnnotations", type: "culturalAnnotations", label: I18n.t("settings.aiProviders.supports.culturalAnnotations") || "Cultural context" }));
     }
+    if (addon.supports?.wordSupplements) {
+      badges.push(react.createElement(ProviderSupportIconChip, { key: "wordSupplements", type: "wordSupplements", label: I18n.t("settings.aiProviders.supports.wordSupplements") || "Word details" }));
+    }
     return badges;
   };
 
-  const hasCapabilities = addon.supports && Object.keys(addon.supports).some(k => addon.supports[k]);
+  const hasCapabilities = addon.supports && Object.keys(addon.supports).some(k => addon.supports[k]) && !addon.perEndpointCapabilities;
 
   return react.createElement("div", {
     className: `lyrics-provider-card ${isExpanded ? 'expanded' : ''} ${isEnabled ? '' : 'disabled'}`,
@@ -6464,11 +6468,131 @@ const getSettingsUiTheme = () => {
   return "auto";
 };
 
-const getSystemSettingsUiTheme = () => {
+const querySystemThemeMatchMedia = (query) => {
   try {
-    return window.matchMedia?.("(prefers-color-scheme: light)")?.matches
-      ? "light"
-      : "dark";
+    return window.matchMedia?.(query) ?? null;
+  } catch (error) {
+    return null;
+  }
+};
+
+const parseThemeCssColorToLuminance = (value) => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const text = value.trim().toLowerCase();
+  if (!text || text === "transparent" || text === "inherit" || text === "initial") {
+    return null;
+  }
+
+  let red = null;
+  let green = null;
+  let blue = null;
+
+  const hexMatch = text.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/);
+  if (hexMatch) {
+    const hex = hexMatch[1];
+    if (hex.length === 3) {
+      red = parseInt(hex[0] + hex[0], 16);
+      green = parseInt(hex[1] + hex[1], 16);
+      blue = parseInt(hex[2] + hex[2], 16);
+    } else {
+      red = parseInt(hex.slice(0, 2), 16);
+      green = parseInt(hex.slice(2, 4), 16);
+      blue = parseInt(hex.slice(4, 6), 16);
+    }
+  } else {
+    const rgbMatch = text.match(/^rgba?\(\s*([0-9.]+%?)\s*,\s*([0-9.]+%?)\s*,\s*([0-9.]+%?)/);
+    if (!rgbMatch) {
+      return null;
+    }
+    const channel = (part) => part.endsWith("%")
+      ? (parseFloat(part) / 100) * 255
+      : parseFloat(part);
+    red = channel(rgbMatch[1]);
+    green = channel(rgbMatch[2]);
+    blue = channel(rgbMatch[3]);
+  }
+
+  if (![red, green, blue].every((channel) => Number.isFinite(channel))) {
+    return null;
+  }
+
+  const toLinear = (channel) => {
+    const normalized = Math.min(255, Math.max(0, channel)) / 255;
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : Math.pow((normalized + 0.055) / 1.055, 2.4);
+  };
+
+  return 0.2126 * toLinear(red) + 0.7152 * toLinear(green) + 0.0722 * toLinear(blue);
+};
+
+// Spotify's Chromium build can report prefers-color-scheme: dark even when the
+// OS uses a light theme (forced dark mode / dark app-mode). When the media
+// queries are inconclusive, fall back to the brightness of the actually
+// applied Spotify theme so Auto still responds to theming instead of sticking
+// to dark.
+const getSpicetifyAppliedUiTheme = () => {
+  try {
+    const candidates = [];
+    const colorScheme = window.Spicetify?.Config?.color_scheme;
+    if (colorScheme && typeof colorScheme === "object") {
+      for (const key of ["main", "sidebar", "player", "card", "background"]) {
+        if (typeof colorScheme[key] === "string") {
+          candidates.push(colorScheme[key]);
+        }
+      }
+    }
+
+    let computed = null;
+    try {
+      computed = window.getComputedStyle?.(document.documentElement);
+    } catch (error) {
+      computed = null;
+    }
+    if (computed) {
+      for (const variable of ["--spice-main", "--spice-sidebar", "--spice-player", "--spice-card"]) {
+        try {
+          const cssValue = computed.getPropertyValue(variable);
+          if (cssValue && cssValue.trim()) {
+            candidates.push(cssValue);
+          }
+        } catch (error) {
+          // Ignore unreadable variables and keep trying the next candidate.
+        }
+      }
+    }
+
+    for (const candidate of candidates) {
+      const luminance = parseThemeCssColorToLuminance(candidate);
+      if (luminance !== null) {
+        return luminance > 0.5 ? "light" : "dark";
+      }
+    }
+  } catch (error) {
+    // Fall through to null below.
+  }
+  return null;
+};
+
+const getSystemSettingsUiTheme = () => {
+  const lightQuery = querySystemThemeMatchMedia("(prefers-color-scheme: light)");
+  if (lightQuery?.matches === true) {
+    return "light";
+  }
+
+  const darkQuery = querySystemThemeMatchMedia("(prefers-color-scheme: dark)");
+  if (darkQuery?.matches === true) {
+    return "dark";
+  }
+
+  // Neither query matched: the OS reports no preference, or this Chromium
+  // build does not expose it. Prefer the applied Spotify theme over a
+  // hard-coded dark fallback.
+  try {
+    return getSpicetifyAppliedUiTheme() ?? "dark";
   } catch (error) {
     return "dark";
   }
@@ -6476,6 +6600,136 @@ const getSystemSettingsUiTheme = () => {
 
 const getEffectiveSettingsUiTheme = (themePreference, systemTheme) =>
   themePreference === "auto" ? systemTheme : themePreference;
+
+const resolveEffectiveSettingsUiTheme = (themePreference) => {
+  const preference = themePreference ?? getSettingsUiTheme();
+  if (preference === "light" || preference === "dark") {
+    return preference;
+  }
+  return getSystemSettingsUiTheme();
+};
+
+const subscribeSystemSettingsUiTheme = (callback) => {
+  if (typeof callback !== "function" || typeof window === "undefined") {
+    return () => {};
+  }
+
+  const emit = () => {
+    try {
+      callback(getSystemSettingsUiTheme());
+    } catch (error) {
+      // Ignore subscriber failures so one listener never breaks the rest.
+    }
+  };
+
+  const cleanups = [];
+  for (const query of ["(prefers-color-scheme: light)", "(prefers-color-scheme: dark)"]) {
+    const media = querySystemThemeMatchMedia(query);
+    if (!media) {
+      continue;
+    }
+
+    const handleChange = () => emit();
+    try {
+      if (typeof media.addEventListener === "function") {
+        media.addEventListener("change", handleChange);
+        cleanups.push(() => {
+          try {
+            media.removeEventListener("change", handleChange);
+          } catch (error) {
+            // Ignore cleanup failures in hardened runtimes.
+          }
+        });
+      } else if (typeof media.addListener === "function") {
+        media.addListener(handleChange);
+        cleanups.push(() => {
+          try {
+            media.removeListener?.(handleChange);
+          } catch (error) {
+            // Ignore cleanup failures in hardened runtimes.
+          }
+        });
+      }
+    } catch (error) {
+      // Ignore unsubscribable queries and keep the remaining listeners.
+    }
+  }
+
+  return () => {
+    cleanups.forEach((cleanup) => {
+      try {
+        cleanup();
+      } catch (error) {
+        // Ignore cleanup failures in hardened runtimes.
+      }
+    });
+  };
+};
+
+const getSettingsUiThemeDebugInfo = () => {
+  let preference = null;
+  let systemTheme = null;
+  let effectiveTheme = null;
+  let matchMediaLight = null;
+  let matchMediaDark = null;
+  let spicetifyTheme = null;
+  try {
+    preference = getSettingsUiTheme();
+  } catch (error) {
+    preference = `error: ${error?.message || error}`;
+  }
+  try {
+    matchMediaLight = querySystemThemeMatchMedia("(prefers-color-scheme: light)")?.matches ?? null;
+  } catch (error) {
+    matchMediaLight = `error: ${error?.message || error}`;
+  }
+  try {
+    matchMediaDark = querySystemThemeMatchMedia("(prefers-color-scheme: dark)")?.matches ?? null;
+  } catch (error) {
+    matchMediaDark = `error: ${error?.message || error}`;
+  }
+  try {
+    spicetifyTheme = getSpicetifyAppliedUiTheme();
+  } catch (error) {
+    spicetifyTheme = `error: ${error?.message || error}`;
+  }
+  try {
+    systemTheme = getSystemSettingsUiTheme();
+  } catch (error) {
+    systemTheme = `error: ${error?.message || error}`;
+  }
+  try {
+    effectiveTheme = resolveEffectiveSettingsUiTheme(preference);
+  } catch (error) {
+    effectiveTheme = `error: ${error?.message || error}`;
+  }
+  return {
+    preference,
+    systemTheme,
+    effectiveTheme,
+    matchMediaLight,
+    matchMediaDark,
+    spicetifyTheme,
+  };
+};
+
+try {
+  window.ivLyricsGetSystemSettingsUiTheme = getSystemSettingsUiTheme;
+  window.ivLyricsGetEffectiveSettingsUiTheme = getEffectiveSettingsUiTheme;
+  window.ivLyricsResolveSettingsUiTheme = resolveEffectiveSettingsUiTheme;
+  window.ivLyricsSubscribeSystemSettingsUiTheme = subscribeSystemSettingsUiTheme;
+  window.ivLyricsThemeDebug = () => {
+    const info = getSettingsUiThemeDebugInfo();
+    try {
+      console.info("[ivLyrics] theme debug:", info);
+    } catch (error) {
+      // Console may be unavailable in hardened runtimes.
+    }
+    return info;
+  };
+} catch (error) {
+  // Ignore failures when window is not extensible (hardened runtimes).
+}
 
 const persistSettingsUiTheme = (theme) => {
   if (window.ivLyricsStoragePersistence) {
@@ -6936,29 +7190,14 @@ const ConfigModal = ({
   }, [uiTheme, uiThemePreference]);
 
   react.useEffect(() => {
-    if (uiThemePreference !== "auto" || !window.matchMedia) {
+    if (uiThemePreference !== "auto") {
       return undefined;
     }
 
-    let systemThemeQuery;
-    try {
-      systemThemeQuery = window.matchMedia("(prefers-color-scheme: light)");
-    } catch (error) {
-      return undefined;
-    }
-
-    const handleSystemThemeChange = (event) => {
-      setSystemUiTheme(event.matches ? "light" : "dark");
-    };
-    handleSystemThemeChange(systemThemeQuery);
-
-    if (systemThemeQuery.addEventListener) {
-      systemThemeQuery.addEventListener("change", handleSystemThemeChange);
-      return () => systemThemeQuery.removeEventListener("change", handleSystemThemeChange);
-    }
-
-    systemThemeQuery.addListener?.(handleSystemThemeChange);
-    return () => systemThemeQuery.removeListener?.(handleSystemThemeChange);
+    setSystemUiTheme(getSystemSettingsUiTheme());
+    return subscribeSystemSettingsUiTheme((nextSystemTheme) => {
+      setSystemUiTheme(nextSystemTheme);
+    });
   }, [uiThemePreference]);
 
   const settingsContentRef = react.useRef(null);
@@ -10380,6 +10619,12 @@ const ConfigModal = ({
               key: "prefetch-video-enabled",
               type: ConfigSlider,
             },
+            {
+              desc: I18n.t("settingsAdvanced.prefetch.wordDetailsEnabled.label") || "Word details",
+              info: I18n.t("settingsAdvanced.prefetch.wordDetailsEnabled.desc") || "Preload per-word readings and translations for word-level karaoke",
+              key: "prefetch-word-details-enabled",
+              type: ConfigSlider,
+            },
           ],
           onChange: handlePerformanceSettingChange,
         })
@@ -10605,6 +10850,12 @@ const ConfigModal = ({
               desc: I18n.t("settingsAdvanced.prefetch.videoEnabled.label"),
               info: I18n.t("settingsAdvanced.prefetch.videoEnabled.desc"),
               key: "prefetch-video-enabled",
+              type: ConfigSlider,
+            },
+            {
+              desc: I18n.t("settingsAdvanced.prefetch.wordDetailsEnabled.label") || "Word details",
+              info: I18n.t("settingsAdvanced.prefetch.wordDetailsEnabled.desc") || "Preload per-word readings and translations for word-level karaoke",
+              key: "prefetch-word-details-enabled",
               type: ConfigSlider,
             },
           ],

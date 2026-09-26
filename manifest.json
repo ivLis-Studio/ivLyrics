@@ -43,6 +43,7 @@
 		"LyricsPresentationPublisher.js",
 		"TinySegmenter.js",
 		"LyricsWordSegmenter.js",
+		"WordLevelSupplements.js",
 		"Pages.js",
 		"VinylActiveLyricRenderer.js",
 		"VinylPlayerMode.js",

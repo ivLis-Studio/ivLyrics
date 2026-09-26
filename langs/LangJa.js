@@ -466,7 +466,8 @@ window.LANG_JA = {
         "tmi": "TMI",
         "lyricsStudy": "学習",
         "characterPronunciation": "文字発音",
-        "culturalAnnotations": "文化的背景"
+        "culturalAnnotations": "文化的背景",
+        "wordSupplements": "単語詳細"
       },
       "noEnabledProviders": "有効なAIプロバイダーがありません。設定で少なくとも1つのプロバイダーを有効にしてください。",
       "allProvidersFailed": "すべてのAIプロバイダーの要求に失败しました。",
@@ -636,6 +637,7 @@ window.LANG_JA = {
     "regeneratePronunciationOnly": "発音のみ",
     "regenerateTranslationOnly": "翻訳のみ",
     "regenerateBoth": "発音と翻訳",
+    "regenerateWordDetails": "単語詳細",
     "regenerateAction": "再生成",
     "fullscreen": "フルスクリーン",
     "exitFullscreen": "フルスクリーンを終了"
@@ -852,6 +854,9 @@ window.LANG_JA = {
     "culturalAnnotationsRegenerated": "文化的背景の解説を再生成しました。",
     "translationRegenerateFailed": "翻訳の再生成に失敗しました",
     "culturalAnnotationsRegenerateFailed": "文化的背景の解説を再生成できませんでした。",
+    "regeneratingWordDetails": "単語詳細を再生成中...",
+    "wordDetailsRegenerated": "単語詳細を再生成しました。",
+    "wordDetailsRegenerateFailed": "単語詳細の再生成に失敗",
     "lyricsProviderSaved": "この曲の歌詞プロバイダー設定を保存しました。",
     "lyricsProviderSaveFailed": "歌詞プロバイダー設定を保存できませんでした。",
     "translationCacheRemoved": "翻訳キャッシュを削除して再読み込みしました！",
@@ -1378,6 +1383,10 @@ window.LANG_JA = {
       "videoEnabled": {
         "label": "動画背景の先読み",
         "desc": "次の曲の動画背景情報を事前に取得します"
+      },
+      "wordDetailsEnabled": {
+        "label": "Preload Word Details",
+        "desc": "Preload per-word readings and translations for word-level karaoke"
       }
     },
     "communitySync": {
@@ -1948,7 +1957,9 @@ window.LANG_JA = {
   "generationStatus": {
     "complete": "完了！",
     "culturalAnnotations": "文化的背景の解説",
-    "culturalAnnotationsLoading": "文化的背景を分析中..."
+    "culturalAnnotationsLoading": "文化的背景を分析中...",
+    "wordSupplements": "単語詳細",
+    "wordSupplementsLoading": "単語の読みと意味を読み込み中..."
   },
   "videoBackground": {
     "loading": "動画情報を読み込み中...",

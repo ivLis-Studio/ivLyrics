@@ -466,7 +466,8 @@ window.LANG_PT = {
         "tmi": "TMI",
         "lyricsStudy": "Aprendizagem",
         "characterPronunciation": "Pronúncia por caractere",
-        "culturalAnnotations": "Contexto cultural"
+        "culturalAnnotations": "Contexto cultural",
+        "wordSupplements": "Detalhes das palavras"
       },
       "noEnabledProviders": "Nenhum provedor de IA habilitado. Por favor, habilite pelo menos um nas configurações.",
       "allProvidersFailed": "Todos os provedores de IA falharam ao processar a solicitação.",
@@ -636,6 +637,7 @@ window.LANG_PT = {
     "regeneratePronunciationOnly": "Somente pronúncia",
     "regenerateTranslationOnly": "Somente tradução",
     "regenerateBoth": "Pronúncia e tradução",
+    "regenerateWordDetails": "Detalhes das palavras",
     "regenerateAction": "Regenerar",
     "fullscreen": "Tela Cheia",
     "exitFullscreen": "Sair da tela cheia"
@@ -852,6 +854,9 @@ window.LANG_PT = {
     "culturalAnnotationsRegenerated": "As explicações do contexto cultural foram regeneradas.",
     "translationRegenerateFailed": "Falha na regeneração da tradução",
     "culturalAnnotationsRegenerateFailed": "Não foi possível regenerar as explicações do contexto cultural.",
+    "regeneratingWordDetails": "Regenerando detalhes...",
+    "wordDetailsRegenerated": "Detalhes regenerados.",
+    "wordDetailsRegenerateFailed": "Falha ao regenerar",
     "lyricsProviderSaved": "Configuração do provedor de letras salva para esta faixa.",
     "lyricsProviderSaveFailed": "Falha ao salvar o provedor de letras.",
     "translationCacheRemoved": "Cache de tradução removido e recarregado!",
@@ -1378,6 +1383,10 @@ window.LANG_PT = {
       "videoEnabled": {
         "label": "Pré-carregar Fundo de Vídeo",
         "desc": "Busca informações de fundo de vídeo da próxima música antecipadamente"
+      },
+      "wordDetailsEnabled": {
+        "label": "Preload Word Details",
+        "desc": "Preload per-word readings and translations for word-level karaoke"
       }
     },
     "communitySync": {
@@ -1948,7 +1957,9 @@ window.LANG_PT = {
   "generationStatus": {
     "complete": "Concluído!",
     "culturalAnnotations": "Explicações de contexto cultural",
-    "culturalAnnotationsLoading": "Analisando o contexto cultural..."
+    "culturalAnnotationsLoading": "Analisando o contexto cultural...",
+    "wordSupplements": "Detalhes das palavras",
+    "wordSupplementsLoading": "Carregando leituras e glosas..."
   },
   "videoBackground": {
     "loading": "Carregando informações do vídeo...",

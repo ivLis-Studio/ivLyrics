@@ -56,7 +56,7 @@ const SYNC_CREATOR_POSITION_COMMIT_THRESHOLD_MS = 80;
 const SYNC_CREATOR_RECORD_POSITION_COMMIT_THRESHOLD_MS = 35;
 const SYNC_CREATOR_HISTORY_HEIGHT_STORAGE_KEY = 'ivLyrics:syncCreator:history-panel-height';
 const SYNC_CREATOR_AUTOSAVE_ENABLED_STORAGE_KEY = 'ivLyrics:syncCreator:autosave-enabled';
-const SYNC_CREATOR_AUTOSAVE_INTERVAL_MS = 30_000;
+const SYNC_CREATOR_AUTOSAVE_INTERVAL_MS = 3_000;
 const SYNC_CREATOR_HISTORY_MIN_HEIGHT = 130;
 const SYNC_CREATOR_PROGRESS_COLOR = 'rgb(var(--spice-rgb-accent, 30, 215, 96))';
 const SYNC_CREATOR_PROGRESS_BACKGROUND = 'rgba(var(--spice-rgb-accent, 30, 215, 96), 0.18)';
@@ -555,6 +555,48 @@ const assertValidSyncCreatorSyncData = (data) => {
 	const validationError = getSyncCreatorSyncDataValidationError(data);
 	if (validationError) throw new Error(`Invalid sync data: ${validationError}`);
 	return data;
+};
+const canonicalSyncCreatorSyncLineForUnsubmittedCompare = (line) => {
+	const finiteTime = (value) => {
+		const numeric = Number(value);
+		return Number.isFinite(numeric) ? roundSyncCreatorTime(numeric) : null;
+	};
+	const canonicalRanges = (ranges) => (Array.isArray(ranges) ? ranges : []).map(range => [
+		Number(range?.start),
+		Number(range?.end)
+	]);
+	return {
+		start: Number(line?.start),
+		end: Number(line?.end),
+		chars: (Array.isArray(line?.chars) ? line.chars : []).map(finiteTime),
+		kind: normalizeSyncCreatorKind(line?.kind) || SYNC_CREATOR_DEFAULT_KIND,
+		speaker: normalizeSyncCreatorSpeaker(line?.speaker) || SYNC_CREATOR_DEFAULT_SPEAKER,
+		hiddenRanges: canonicalRanges(line?.hiddenRanges),
+		styleRanges: (Array.isArray(line?.styleRanges) ? line.styleRanges : []).map(range => ([
+			Number(range?.start),
+			Number(range?.end),
+			normalizeSyncCreatorKind(range?.kind) || '',
+			normalizeSyncCreatorSpeaker(range?.speaker) || ''
+		])),
+		parts: (Array.isArray(line?.parallel?.parts) ? line.parallel.parts : []).map(part => ({
+			id: String(part?.id || ''),
+			ranges: canonicalRanges(part?.ranges),
+			chars: (Array.isArray(part?.chars) ? part.chars : []).map(finiteTime),
+			kind: normalizeSyncCreatorKind(part?.kind) || SYNC_CREATOR_DEFAULT_KIND,
+			speaker: normalizeSyncCreatorSpeaker(part?.speaker) || SYNC_CREATOR_DEFAULT_SPEAKER
+		}))
+	};
+};
+const areSyncCreatorSyncBodiesEqual = (left, right) => {
+	const leftLines = Array.isArray(left?.lines) ? left.lines : [];
+	const rightLines = Array.isArray(right?.lines) ? right.lines : [];
+	if (leftLines.length !== rightLines.length) return false;
+	try {
+		return JSON.stringify(leftLines.map(canonicalSyncCreatorSyncLineForUnsubmittedCompare))
+			=== JSON.stringify(rightLines.map(canonicalSyncCreatorSyncLineForUnsubmittedCompare));
+	} catch (error) {
+		return false;
+	}
 };
 const areSyncCreatorParallelRangesEqual = (leftRanges, rightRanges) => (
 	Array.isArray(leftRanges)
@@ -1556,12 +1598,15 @@ const getSyncCreatorCharacterPronunciationProgressInfo = (progress) => {
 		: 0;
 
 	if (progress.phase === 'retry-split') {
+		const detail = Number.isInteger(progress.lineIndex) && Number.isInteger(progress.got) && Number.isInteger(progress.expected)
+			? ` (line ${progress.lineIndex}: got ${progress.got}, need ${progress.expected})`
+			: '';
 		return {
 			percent,
 			buttonLabel: total > 0 ? `${current}/${total} (${percent}%)` : (I18n.t('syncCreator.characterPronunciationGenerating') || 'Generating AI pronunciation...'),
 			label: progress.reason === 'format'
-				? (I18n.t('syncCreator.characterPronunciationProgressRetryFormat') || 'Invalid AI alignment. Retrying with smaller chunks...')
-				: (I18n.t('syncCreator.characterPronunciationProgressRetry') || 'Response was truncated. Splitting this chunk smaller...')
+				? (I18n.t('syncCreator.characterPronunciationProgressRetryFormat') || 'Invalid AI alignment. Retrying with smaller chunks...') + detail
+				: (I18n.t('syncCreator.characterPronunciationProgressRetry') || 'Response was truncated. Splitting this chunk smaller...') + detail
 		};
 	}
 
@@ -2846,6 +2891,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const [syncGranularity, setSyncGranularity] = useState(SYNC_CREATOR_DEFAULT_GRANULARITY);
 	const [position, setPosition] = useState(0);
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [hasUnsubmittedSync, setHasUnsubmittedSync] = useState(false);
+	const [hasPublishedSync, setHasPublishedSync] = useState(false);
+	const [isReverting, setIsReverting] = useState(false);
 	const [recordingCharIndex, setRecordingCharIndex] = useState(-1);
 	const [recordingLockIndex, setRecordingLockIndex] = useState(-1);
 	const [dragStartTime, setDragStartTime] = useState(null);
@@ -2913,6 +2961,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const lastPaintedPlaybackIndexRef = useRef(-1);
 	const preventNextTrackRef = useRef(false);
 	const hasAutoLoadedLyricsRef = useRef(false);
+	const lrclibSearchAutoPrefillRef = useRef({ trackKey: '', appliedQuery: '' });
+	const lrclibSearchUserTouchedRef = useRef('');
+	const lrclibSearchLastTrackKeyRef = useRef('');
 	const pendingPlaybackNavigationRef = useRef(true);
 	const providerRef = useRef(provider);
 	const selectedLrclibSourceRef = useRef(selectedLrclibSource);
@@ -2932,6 +2983,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const sessionSkipRecoveryDraftKeyRef = useRef('');
 	const sessionSkipNextSourceRecoveryRef = useRef(false);
 	const latestSessionRecordRef = useRef(null);
+	const serverBaselineSyncDataRef = useRef(null);
 	const sessionLastRecoveryAnnouncementRef = useRef('');
 	const historyListRef = useRef(null);
 	const historyPanelRef = useRef(null);
@@ -3368,6 +3420,70 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		return sourceChangeRequestId;
 	}, [syncCreatorDraftStore]);
 
+	const tryRestoreUnsubmittedSyncDraft = async ({ text, provider: draftProvider, addonId: draftAddonId, lrclibSource, sourceChangeRequestId }) => {
+		if (!syncCreatorDraftStore || !sessionTrackKey || !text || (!draftProvider && !draftAddonId)) return null;
+		// The caller passes its source-change token so a newer LRCLIB source
+		// load that starts while the draft reads below are pending cannot be
+		// overwritten by this stale completion. Bail out as soon as the token
+		// goes stale, and re-check immediately before mutating session state.
+		const isStaleSource = () => (
+			sourceChangeRequestId !== undefined &&
+			!isCurrentSyncCreatorSourceChange(sourceChangeRequestId)
+		);
+		const fingerprint = syncCreatorDraftStore.createLyricsFingerprint?.(text)
+			|| getSyncCreatorLyricsFingerprintFromText(text);
+		const exactDraftKey = syncCreatorDraftStore.createDraftKey({
+			trackKey: sessionTrackKey,
+			provider: draftProvider,
+			addonId: draftAddonId,
+			lyricsFingerprint: fingerprint,
+			lrclibId: lrclibSource?.lrclibId ?? ''
+		});
+		const candidates = [];
+		if (exactDraftKey) {
+			try {
+				const exact = await syncCreatorDraftStore.getDraft(exactDraftKey);
+				if (exact) candidates.push(exact);
+			} catch (error) {
+				console.warn('[SyncDataCreator] Failed to check the unsubmitted draft:', error);
+			}
+			if (isStaleSource()) return null;
+		}
+		try {
+			const trackDrafts = await syncCreatorDraftStore.getDraftsForTrack(sessionTrackKey);
+			for (const trackDraft of Array.isArray(trackDrafts) ? trackDrafts : []) {
+				if (
+					trackDraft
+					&& trackDraft.draftKey !== exactDraftKey
+					&& trackDraft.lyricsFingerprint === fingerprint
+					&& Array.isArray(trackDraft.draft?.syncData?.lines)
+					&& trackDraft.draft.syncData.lines.length > 0
+				) {
+					candidates.push(trackDraft);
+				}
+			}
+		} catch (error) {
+			console.warn('[SyncDataCreator] Failed to list unsubmitted drafts:', error);
+		}
+		if (isStaleSource()) return null;
+		for (const candidate of candidates) {
+			let validated = null;
+			try {
+				validated = applySyncCreatorSessionRecord(candidate, { validateOnly: true });
+			} catch (error) {
+				continue;
+			}
+			if (!validated?.draft?.syncData?.lines?.length) continue;
+			if (isStaleSource()) return null;
+			const applied = applySyncCreatorSessionRecord(validated, { announce: false });
+			if (applied) {
+				announceRecoveredSession(applied);
+				return applied;
+			}
+		}
+		return null;
+	};
+
 	const applyLoadedLyricsResult = useCallback(async (result, usedProvider, sourceChangeRequestId) => {
 		if (!isCurrentSyncCreatorSourceChange(sourceChangeRequestId)) return false;
 		let finalProvider = result.provider || usedProvider;
@@ -3405,6 +3521,24 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		if (!isCurrentSyncCreatorSourceChange(sourceChangeRequestId)) return false;
 
 		const text = extractLyricsText(result.synced || result.unsynced);
+		// An unsubmitted local draft survives closing the editor. Prefer it over
+		// the server state so earlier taps stay in place until they are submitted.
+		let restoredUnsubmittedDraft = null;
+		if (text.trim().length > 0 && syncCreatorDraftStore) {
+			try {
+				restoredUnsubmittedDraft = await tryRestoreUnsubmittedSyncDraft({
+					text,
+					provider: finalProvider,
+					addonId: usedProvider,
+					lrclibSource: finalProvider === 'lrclib' ? (result?.lrclibSource || null) : null,
+					sourceChangeRequestId
+				});
+			} catch (error) {
+				console.warn('[SyncDataCreator] Failed to restore the unsubmitted draft:', error);
+				restoredUnsubmittedDraft = null;
+			}
+			if (!isCurrentSyncCreatorSourceChange(sourceChangeRequestId)) return false;
+		}
 		if (loadedSyncBody) {
 			const normalizedLoadedSyncBody = normalizeLoadedSyncCreatorBodyForLyrics(loadedSyncBody, text);
 			if (normalizedLoadedSyncBody !== loadedSyncBody) {
@@ -3414,14 +3548,22 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				normalizedLoadedSyncBody,
 				getSyncCreatorFlatLyricsCharsFromText(text)
 			);
-			if (loadedSyncBody) {
+			serverBaselineSyncDataRef.current = loadedSyncBody
+				? (syncCreatorDraftStore?.cloneValue?.(loadedSyncBody) || loadedSyncBody)
+				: null;
+			setHasPublishedSync(!!loadedSyncBody && Array.isArray(loadedSyncBody.lines) && loadedSyncBody.lines.length > 0);
+			if (loadedSyncBody && !restoredUnsubmittedDraft) {
 				setSyncData(loadedSyncBody);
 				Toast.success(I18n.t('syncCreator.loadedExistingSyncData') || 'Loaded existing sync data');
 			}
+		} else {
+			serverBaselineSyncDataRef.current = null;
+			setHasPublishedSync(false);
 		}
 		if (text.trim().length > 0) {
-			const existingHasParallel = Array.isArray(loadedSyncBody?.lines)
-				&& loadedSyncBody.lines.some(line => Array.isArray(line?.parallel?.parts) && line.parallel.parts.length > 1);
+			const effectiveSyncBody = restoredUnsubmittedDraft?.draft?.syncData || loadedSyncBody;
+			const existingHasParallel = Array.isArray(effectiveSyncBody?.lines)
+				&& effectiveSyncBody.lines.some(line => Array.isArray(line?.parallel?.parts) && line.parallel.parts.length > 1);
 			const detectedParallel = detectSyncCreatorParallelVocalHints(text);
 			if (!existingHasParallel && detectedParallel) {
 				setPendingMultiVocalDecision({
@@ -3449,9 +3591,11 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		isCurrentSyncCreatorSourceChange,
 		setProviderValue,
 		setSelectedLrclibSourceValue,
+		syncCreatorDraftStore,
 		trackId,
 		trackIsrc,
-		trackName
+		trackName,
+		tryRestoreUnsubmittedSyncDraft
 	]);
 
 	const resolveMultiVocalDecision = useCallback((useMultiVocalMode) => {
@@ -4427,6 +4571,39 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			|| characterPronunciations.lines[currentLineIndex]
 			|| null;
 	}, [showCharacterPronunciations, characterPronunciations, currentLineIndex]);
+	// Shared merged-aware pronunciation lookup by local char index within
+	// currentFullLineChars. The active line and the inactive parallel previews
+	// use the same method so selecting a part never drops its readings.
+	const currentFullLinePronunciationByLocal = useMemo(() => {
+		const map = new Map();
+		if (!showCharacterPronunciations || !characterPronunciations || !Array.isArray(characterPronunciations.lines)) {
+			return map;
+		}
+		const mergedIndexes = Array.isArray(currentMergedLineIndexes) && currentMergedLineIndexes.length > 0
+			? currentMergedLineIndexes
+			: [currentLineIndex];
+		const linesByIndex = new Map();
+		characterPronunciations.lines.forEach((line) => {
+			const idx = Number(line?.index);
+			if (Number.isInteger(idx) && !linesByIndex.has(idx)) linesByIndex.set(idx, line);
+		});
+		let offset = 0;
+		mergedIndexes.forEach((lyricsIndex) => {
+			const lineChars = Array.from(lyricsLines[lyricsIndex] || '');
+			const lineData = linesByIndex.get(lyricsIndex) || characterPronunciations.lines[lyricsIndex] || null;
+			if (lineData && Array.isArray(lineData.chars)) {
+				lineData.chars.forEach((item, fallbackIndex) => {
+					const sourceIndex = Number.isInteger(Number(item?.i)) ? Number(item.i) : fallbackIndex;
+					const pronunciation = typeof item?.pronunciation === 'string' ? item.pronunciation.trim() : '';
+					if (pronunciation && Number.isInteger(sourceIndex) && sourceIndex >= 0 && sourceIndex < lineChars.length) {
+						map.set(offset + sourceIndex, pronunciation);
+					}
+				});
+			}
+			offset += lineChars.length;
+		});
+		return map;
+	}, [showCharacterPronunciations, characterPronunciations, currentMergedLineIndexes, currentLineIndex, lyricsLines]);
 	const currentLinePronunciationUnits = useMemo(
 		() => activeParallelPart ? [] : normalizeSyncCreatorPronunciationUnits(currentLineCharacterPronunciationData, currentLineChars),
 		[activeParallelPart, currentLineCharacterPronunciationData, currentLineChars]
@@ -4441,25 +4618,24 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		return currentLineSyllableSegments;
 	}, [currentLinePronunciationUnits, currentLineSyllableSegments]);
 	const currentLineCharacterPronunciationMap = useMemo(() => {
-		const lineData = currentLineCharacterPronunciationData;
-		if (!Array.isArray(lineData?.chars)) {
+		if (currentFullLinePronunciationByLocal.size === 0) {
 			return new Map();
 		}
 
-		const partIndexMap = activeParallelPart
-			? new Map(currentLineCharRefs.map((ref, displayIndex) => [ref.localIndex, displayIndex]))
-			: null;
+		if (!activeParallelPart) {
+			return new Map(currentFullLinePronunciationByLocal);
+		}
+
+		const partIndexMap = new Map(currentLineCharRefs.map((ref, displayIndex) => [ref.localIndex, displayIndex]));
 		const map = new Map();
-		lineData.chars.forEach((item, fallbackIndex) => {
-			const sourceIndex = Number.isInteger(Number(item?.i)) ? Number(item.i) : fallbackIndex;
-			const index = partIndexMap ? partIndexMap.get(sourceIndex) : sourceIndex;
-			const pronunciation = typeof item?.pronunciation === 'string' ? item.pronunciation.trim() : '';
+		currentFullLinePronunciationByLocal.forEach((pronunciation, localIndex) => {
+			const index = partIndexMap.get(localIndex);
 			if (pronunciation && Number.isInteger(index)) {
 				map.set(index, pronunciation);
 			}
 		});
 		return map;
-	}, [activeParallelPart, currentLineCharacterPronunciationData, currentLineCharRefs]);
+	}, [activeParallelPart, currentFullLinePronunciationByLocal, currentLineCharRefs]);
 	const hasCurrentLineCharacterPronunciation = currentLineCharacterPronunciationMap.size > 0 || currentLinePronunciationUnits.length > 0;
 	const usePrimaryCharacterPronunciation = isCharacterPronunciationPrimary && hasCurrentLineCharacterPronunciation;
 	const currentLineRenderedPronunciationUnits = useMemo(() => {
@@ -4486,6 +4662,56 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		});
 		return set;
 	}, [currentLineRenderedPronunciationUnits]);
+	// Per-part readings for inactive parallel previews. The active part already
+	// renders furigana + AI pronunciation via currentLine* maps; inactive parts
+	// previously rendered plain text only, so their readings were missing.
+	// This memo slices the same sources per part (read-only, no timestamps).
+	const currentParallelPartReadingMaps = useMemo(() => {
+		const maps = new Map();
+		if (!hasCurrentParallelParts || !Array.isArray(currentFullLineChars) || currentFullLineChars.length === 0) {
+			return maps;
+		}
+		const fullPronByLocal = currentFullLinePronunciationByLocal;
+		const hasAnyPron = fullPronByLocal.size > 0;
+		for (const part of currentParallelParts) {
+			if (!part || typeof part.id !== 'string') continue;
+			const refs = rangesToCharRefs(part.ranges, currentFullLineChars, currentLineStart);
+			if (refs.length === 0) continue;
+			const partChars = refs.map((ref) => ref.char);
+			let furiganaMap = new Map();
+			try {
+				if (typeof getSyncCreatorFuriganaMap === 'function' && partChars.join('')) {
+					furiganaMap = getSyncCreatorFuriganaMap(partChars.join('')) || new Map();
+				}
+			} catch { furiganaMap = new Map(); }
+			const pronMap = new Map();
+			if (hasAnyPron) {
+				refs.forEach((ref, displayIndex) => {
+					const pronunciation = fullPronByLocal.get(ref.localIndex);
+					if (pronunciation) pronMap.set(displayIndex, pronunciation);
+				});
+			}
+			if (furiganaMap.size === 0 && pronMap.size === 0) continue;
+			let units = [];
+			try {
+				if (typeof buildSyncCreatorVisualPronunciationUnits === 'function') {
+					units = buildSyncCreatorVisualPronunciationUnits(partChars, pronMap) || [];
+				}
+			} catch { units = []; }
+			const unitByStart = new Map();
+			const covered = new Set();
+			units.forEach((unit) => {
+				unitByStart.set(unit.start, unit);
+				for (let i = unit.start + 1; i <= unit.end; i++) covered.add(i);
+			});
+			maps.set(part.id, {
+				partChars, furiganaMap, pronMap, units, unitByStart, covered,
+				hasFurigana: furiganaMap.size > 0,
+				hasPron: pronMap.size > 0 || units.length > 0
+			});
+		}
+		return maps;
+	}, [hasCurrentParallelParts, currentParallelParts, currentFullLineChars, currentLineStart, currentFullLinePronunciationByLocal, getSyncCreatorFuriganaMap]);
 	const useFixedPrimaryCharacterCells = usePrimaryCharacterPronunciation
 		&& currentLineRenderedPronunciationUnits.length === 0
 		&& /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]/u.test(currentLineText);
@@ -4844,6 +5070,50 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		hasAutoLoadedLyricsRef.current = true;
 		void loadLyrics();
 	}, [loadLyrics]);
+
+	// Prefill the manual LRCLIB search box with "title artist" (Format A) only
+	// when the track has no sync to work with. Never triggers a search; the
+	// initial loadLyrics() result is always used first. The text is just an
+	// editable backup for Spotify/LRCLIB title mismatches.
+	useEffect(() => {
+		if (isLoading || isSearchingLrclib) return;
+		const trackKey = trackId || trackUri || trackIsrc || `${trackName}::${artistName}`;
+		if (!trackKey) return;
+		// Track switched: never leak the previous track's query. Clear stale
+		// text (auto-prefilled or user-typed) when the new track is untouched.
+		if (lrclibSearchLastTrackKeyRef.current && lrclibSearchLastTrackKeyRef.current !== trackKey) {
+			lrclibSearchAutoPrefillRef.current = { trackKey: '', appliedQuery: '' };
+			if (lrclibSearchUserTouchedRef.current !== trackKey && String(lrclibSearchQuery || '').trim()) {
+				setLrclibSearchQuery('');
+				lrclibSearchLastTrackKeyRef.current = trackKey;
+				return;
+			}
+		}
+		lrclibSearchLastTrackKeyRef.current = trackKey;
+		if (lrclibSearchUserTouchedRef.current === trackKey) return;
+		if (lrclibSearchAutoPrefillRef.current.trackKey === trackKey) {
+			// If our prefill is showing but sync/lyrics have since arrived,
+			// withdraw it so tracks with sync keep an empty box.
+			const hasSyncLines = Array.isArray(syncData?.lines) && syncData.lines.length > 0;
+			const hasLyrics = String(lyricsText || '').trim().length > 0;
+			const hasCandidates = Array.isArray(lrclibCandidates) && lrclibCandidates.length > 0;
+			if ((hasSyncLines || hasLyrics || hasCandidates)
+				&& String(lrclibSearchQuery || '') === String(lrclibSearchAutoPrefillRef.current.appliedQuery || '')) {
+				lrclibSearchAutoPrefillRef.current = { trackKey, appliedQuery: '' };
+				setLrclibSearchQuery('');
+			}
+			return;
+		}
+		if (String(lrclibSearchQuery || '').trim()) return;
+		const hasSyncLines = Array.isArray(syncData?.lines) && syncData.lines.length > 0;
+		const hasLyrics = String(lyricsText || '').trim().length > 0;
+		const hasCandidates = Array.isArray(lrclibCandidates) && lrclibCandidates.length > 0;
+		if (hasSyncLines || hasLyrics || hasCandidates) return;
+		const fallbackQuery = `${trackName} ${artistName}`.trim();
+		if (!fallbackQuery) return;
+		lrclibSearchAutoPrefillRef.current = { trackKey, appliedQuery: fallbackQuery };
+		setLrclibSearchQuery(fallbackQuery);
+	}, [artistName, isLoading, isSearchingLrclib, lrclibCandidates, lrclibSearchQuery, lyricsText, syncData, trackId, trackIsrc, trackName, trackUri]);
 
 	const playbackTimeline = useMemo(() => {
 		const linesByStart = new Map((syncData?.lines || []).map(line => [line.start, line]));
@@ -8576,6 +8846,19 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	}, [syncCreatorDraftStore]);
 
 	useEffect(() => {
+		const baseline = serverBaselineSyncDataRef.current;
+		if (!syncData || !Array.isArray(syncData.lines) || syncData.lines.length === 0) {
+			setHasUnsubmittedSync(false);
+			return;
+		}
+		if (!baseline || !Array.isArray(baseline.lines) || baseline.lines.length === 0) {
+			setHasUnsubmittedSync(true);
+			return;
+		}
+		setHasUnsubmittedSync(!areSyncCreatorSyncBodiesEqual(syncData, baseline));
+	}, [syncData]);
+
+	useEffect(() => {
 		const activeEntry = historyListRef.current?.querySelector?.('[aria-current="step"]');
 		activeEntry?.scrollIntoView?.({ block: 'nearest' });
 	}, [sessionHistory.length, sessionHistoryCursorId]);
@@ -8702,6 +8985,78 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			lines
 		};
 	}, [getMergedLineIndexesForStart, getParallelTemplateForLineData, lineIndexByStart, lyricsLines, manualParallelSplitDrafts]);
+
+	const handleRevertToPublished = useCallback(async () => {
+		if (isSubmitting || isReverting) return;
+		if (mode === 'record' || isDragging || isKeyboardSyncingRef.current) {
+			Toast.error(I18n.t('syncCreator.historyStopRecording') || '기록을 멈춘 뒤 작업 내역을 복원하세요.');
+			return;
+		}
+		if (!lyricsText || !lyricsText.trim()) {
+			Toast.error(I18n.t('syncCreator.noLyrics') || 'No lyrics loaded');
+			return;
+		}
+		const hasLocalWork = hasUnsubmittedSync || (Array.isArray(syncData?.lines) && syncData.lines.length > 0);
+		if (hasLocalWork && !confirm(I18n.t('syncCreator.revertConfirm') || 'Discard local sync edits and reload the published sync?')) return;
+		setIsReverting(true);
+		try {
+			const revertProvider = providerRef.current || provider || null;
+			let publishedBody = null;
+			if (window.SyncDataService && trackId) {
+				try {
+					const existing = await window.SyncDataService.getSyncData(trackId, revertProvider, {
+						isrc: trackIsrc || undefined,
+						title: trackName,
+						artist: artistName,
+						album: albumName
+					});
+					if (existing?.syncData?.lines) publishedBody = existing.syncData;
+				} catch (error) {
+					console.warn('[SyncDataCreator] Failed to reload the published sync data:', error);
+				}
+			}
+			if (!publishedBody) publishedBody = serverBaselineSyncDataRef.current;
+			if (!publishedBody || !Array.isArray(publishedBody.lines) || publishedBody.lines.length === 0) {
+				Toast.error(I18n.t('syncCreator.noPublishedSync') || 'No published sync found for this song.');
+				return;
+			}
+			const restored = sanitizeSyncCreatorSyncData(
+				normalizeLoadedSyncCreatorBodyForLyrics(publishedBody, lyricsText),
+				getSyncCreatorFlatLyricsCharsFromText(lyricsText)
+			);
+			if (!restored) throw new Error('Published sync does not match the current lyrics.');
+			await deleteActiveSyncCreatorDraft({ resumeAutosave: true });
+			serverBaselineSyncDataRef.current = syncCreatorDraftStore?.cloneValue?.(restored) || restored;
+			setParallelPartMetaDrafts({});
+			setManualParallelSplitDrafts({});
+			setParentheticalLayoutDrafts({});
+			setMergedLineDrafts({});
+			setLineMetaDrafts({});
+			setLineStyleDrafts({});
+			setPendingParentheticalLayoutDecision(null);
+			setPendingMultiVocalDecision(null);
+			const hasParallel = restored.lines.some(line => Array.isArray(line?.parallel?.parts) && line.parallel.parts.length > 1);
+			setMultiVocalMode(hasParallel);
+			setActiveParallelPartId(hasParallel ? '' : 'full');
+			setGlobalOffset(0);
+			setCurrentLineIndex(0);
+			setSyncData(restored);
+			setMode('idle');
+			setDragStartTime(null);
+			setDragStartCharIndex(-1);
+			setIsDragging(false);
+			setRecordingProgressIndex(-1);
+			clearRecordingLock();
+			setHasUnsubmittedSync(false);
+			setHasPublishedSync(true);
+			Toast.success(I18n.t('syncCreator.reverted') || 'Reloaded the published sync.');
+		} catch (error) {
+			console.error('[SyncDataCreator] Failed to revert to the published sync:', error);
+			Toast.error(error?.message || I18n.t('syncCreator.submitError'));
+		} finally {
+			setIsReverting(false);
+		}
+	}, [albumName, artistName, trackName, clearRecordingLock, deleteActiveSyncCreatorDraft, hasUnsubmittedSync, isDragging, isReverting, isSubmitting, lyricsText, mode, provider, setRecordingProgressIndex, syncCreatorDraftStore, syncData, trackId, trackIsrc]);
 
 	const handleSubmit = useCallback(async () => {
 		if (!syncData || !syncData.lines || syncData.lines.length === 0) {
@@ -8899,6 +9254,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					// 캐시 무효화
 					await clearLyricsCachesAfterSyncSubmit(resolvedTrackIsrc);
 					await deleteActiveSyncCreatorDraft();
+					serverBaselineSyncDataRef.current = syncCreatorDraftStore?.cloneValue?.(syncDataToSubmit) || syncDataToSubmit;
+					setHasUnsubmittedSync(false);
+					setHasPublishedSync(true);
 					// 가사 페이지 새로고침
 					setTimeout(() => {
 						if (typeof window.reloadLyrics === 'function') {
@@ -8931,6 +9289,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					// 캐시 무효화
 					await clearLyricsCachesAfterSyncSubmit(resolvedTrackIsrc);
 					await deleteActiveSyncCreatorDraft();
+					serverBaselineSyncDataRef.current = syncCreatorDraftStore?.cloneValue?.(syncDataToSubmit) || syncDataToSubmit;
+					setHasUnsubmittedSync(false);
+					setHasPublishedSync(true);
 					// 가사 페이지 새로고침
 					setTimeout(() => {
 						if (typeof window.reloadLyrics === 'function') {
@@ -8950,7 +9311,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		}
 
 		setIsSubmitting(false);
-	}, [syncData, lyricsLines, lyricsFullTextChars, lyricsLanguage, lineCharOffsets, multiVocalMode, trackId, trackIsrc, provider, trackName, artistName, albumName, trackInfo, onClose, attachSelectedLrclibSource, clearLyricsCachesAfterSyncSubmit, deleteActiveSyncCreatorDraft, getParallelTemplateForLineData, getMergedLineIndexesForStart, isLineCoveredByMergedPrevious, materializeSyncCreatorParallelDrafts, ensureScoreTracker]);
+	}, [syncData, lyricsLines, lyricsFullTextChars, lyricsLanguage, lineCharOffsets, multiVocalMode, trackId, trackIsrc, provider, trackName, artistName, albumName, trackInfo, onClose, attachSelectedLrclibSource, clearLyricsCachesAfterSyncSubmit, deleteActiveSyncCreatorDraft, getParallelTemplateForLineData, getMergedLineIndexesForStart, isLineCoveredByMergedPrevious, materializeSyncCreatorParallelDrafts, ensureScoreTracker, syncCreatorDraftStore]);
 
 	// 싱크 데이터 내보내기 (JSON 파일로 저장)
 	const exportSyncData = useCallback(async () => {
@@ -9329,6 +9690,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const TOSS_BLUE_SOFT = 'rgba(var(--spice-rgb-accent, 30, 215, 96), 0.13)';
 	const TOSS_BLUE_BORDER = 'rgba(var(--spice-rgb-accent, 30, 215, 96), 0.36)';
 	const TOSS_BLUE_RING = 'rgba(var(--spice-rgb-accent, 30, 215, 96), 0.15)';
+	const TOSS_RED = '#e5484d';
 	const TOSS_BORDER = 'rgba(255,255,255,0.08)';
 
 
@@ -9940,10 +10302,13 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		},
 		lyricsBoxParallelScrollable: {
 			alignItems: 'stretch',
-			maxHeight: 'min(430px, 44vh)',
+			// Grow to fit 3 vocal lines before inner scrolling kicks in.
+			// overscrollBehavior auto lets wheel scroll chain to the outer
+			// stage (text effect / partial effects) at the top/bottom edge.
+			maxHeight: 'min(500px, 54vh)',
 			overflowY: 'auto',
 			overflowX: 'hidden',
-			overscrollBehavior: 'contain',
+			overscrollBehavior: 'auto',
 			scrollbarWidth: 'thin',
 			paddingRight: '14px',
 			paddingLeft: '14px',
@@ -9952,17 +10317,29 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		lyricsLine: { display: 'inline-flex', flexWrap: 'nowrap', gap: '0px', paddingLeft: '32px', paddingRight: '32px', justifyContent: 'center', alignItems: usePrimaryCharacterPronunciation ? 'flex-start' : 'stretch', color: currentSpeakerTextColor },
 		rtlLyricsLine: { display: 'block', width: '100%', paddingLeft: '32px', paddingRight: '32px', textAlign: 'center', direction: 'rtl', unicodeBidi: 'plaintext', color: currentSpeakerTextColor },
 		rtlTextRun: { display: 'inline-block', maxWidth: '100%', padding: '10px 1px', fontSize: '32px', fontWeight: '600', lineHeight: 1.45, letterSpacing: 0, whiteSpace: 'pre', cursor: mode === 'record' ? 'pointer' : 'default', color: 'transparent', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' },
-		charSpan: { padding: usePrimaryCharacterPronunciation ? '4px 4px 6px' : `${hasCurrentLineFurigana ? 18 : 10}px 1px ${(hasCurrentLineCharacterPronunciation && currentLineRenderedPronunciationUnits.length === 0) ? 26 : 10}px`, marginInline: 0, borderRadius: 0, cursor: mode === 'record' ? 'pointer' : 'default', position: 'relative', fontSize: usePrimaryCharacterPronunciation ? '15px' : '32px', fontWeight: '600', minWidth: usePrimaryCharacterPronunciation ? '18px' : '6px', minHeight: usePrimaryCharacterPronunciation ? '68px' : undefined, boxSizing: 'border-box', textAlign: 'center', flexShrink: 0, color: currentSpeakerTextColor, letterSpacing: 0, lineHeight: usePrimaryCharacterPronunciation ? 1.05 : 1.15 },
+		charSpan: { padding: usePrimaryCharacterPronunciation ? '4px 4px 6px' : `${hasCurrentLineFurigana ? 18 : 10}px 1px ${(hasCurrentLineCharacterPronunciation && currentLineRenderedPronunciationUnits.length === 0) ? 26 : (currentLineRenderedPronunciationUnits.length > 0 ? (activeParallelPart ? 28 : 27) : 10)}px`, marginInline: 0, borderRadius: 0, cursor: mode === 'record' ? 'pointer' : 'default', position: 'relative', fontSize: usePrimaryCharacterPronunciation ? '15px' : '32px', fontWeight: '600', minWidth: usePrimaryCharacterPronunciation ? '18px' : '6px', minHeight: usePrimaryCharacterPronunciation ? '68px' : undefined, boxSizing: 'border-box', textAlign: 'center', flexShrink: 0, color: currentSpeakerTextColor, letterSpacing: 0, lineHeight: usePrimaryCharacterPronunciation ? 1.05 : 1.15 },
 		charJoinSeparator: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: usePrimaryCharacterPronunciation ? '12px' : '16px', minWidth: usePrimaryCharacterPronunciation ? '12px' : '16px', padding: 0, flexShrink: 0, color: 'transparent', pointerEvents: 'none' },
 		charSpanPronunciationPrimary: { display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: '2px' },
 		charWordGroup: { display: 'inline-flex', position: 'relative', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', flexShrink: 0, borderRadius: 0, padding: '0 0 3px', boxSizing: 'border-box', color: currentSpeakerTextColor },
-		charWordGroupPrimary: { flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', minHeight: '68px', padding: '2px 3px 6px', boxSizing: 'border-box' },
+		// No horizontal padding: it would sit between adjacent unit bubbles as a
+		// transparent slit (the group's box is not painted, only the chars are).
+		charWordGroupPrimary: { flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', minHeight: '68px', padding: '2px 0 6px', boxSizing: 'border-box' },
 		charWordOriginalRow: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', height: usePrimaryCharacterPronunciation ? '30px' : 'auto', whiteSpace: 'nowrap' },
 		charWordSpace: { display: 'inline-flex', width: usePrimaryCharacterPronunciation ? '10px' : '12px', minWidth: usePrimaryCharacterPronunciation ? '10px' : '12px', padding: 0, margin: 0, flexShrink: 0, color: 'transparent', background: 'transparent', pointerEvents: mode === 'record' ? 'auto' : 'none', boxSizing: 'border-box' },
-		charSpanInWord: { padding: `${hasCurrentLineFurigana ? 18 : 10}px 1px 8px`, minWidth: '6px', minHeight: undefined },
+		charSpanInWord: { padding: `${hasCurrentLineFurigana ? 18 : 10}px 1px ${activeParallelPart ? 28 : 27}px`, minWidth: '6px', minHeight: undefined },
 		charSpanInWordPrimary: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 'auto', width: 'auto', minHeight: '24px', padding: '4px 0 0', fontSize: '14px', lineHeight: 1, letterSpacing: 0 },
-		charWordPronunciation: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '13px', marginTop: '1px', fontSize: '10px', fontWeight: '700', color: currentSpeakerTextColor, opacity: 0.76, lineHeight: 1, whiteSpace: 'nowrap', letterSpacing: 0, pointerEvents: 'none' },
-		charWordPronunciationPrimary: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '28px', fontSize: '24px', fontWeight: '700', color: currentSpeakerTextColor, lineHeight: 1.05, whiteSpace: 'nowrap', letterSpacing: 0, pointerEvents: 'none' },
+		// The reading row is pulled up (-18px) into the cell's extended bottom
+		// padding (13px row + 5px bubble trailing), so it renders inside the
+		// character bubble; the per-mode cell padding carries the visual offset
+		// (27px normal, 28px selected box and preview), so text-to-reading
+		// matches reading-to-time spacing (~11px) everywhere.
+		// width: 0 keeps the reading out of the group's cross-axis sizing: the
+		// group box must stay exactly as wide as the character row, otherwise a
+		// reading wider than its row (e.g. "aim" over a single "I") widens the
+		// group and leaves transparent slivers between adjacent bubbles. The
+		// nowrap text still renders centered, overflowing evenly on both sides.
+		charWordPronunciation: { display: 'flex', width: '0', alignItems: 'center', justifyContent: 'center', minHeight: '13px', marginTop: '-18px', fontSize: '10px', fontWeight: '700', color: currentSpeakerTextColor, opacity: 0.76, lineHeight: 1, whiteSpace: 'nowrap', letterSpacing: 0, pointerEvents: 'none' },
+		charWordPronunciationPrimary: { display: 'flex', width: '0', alignItems: 'center', justifyContent: 'center', minHeight: '28px', fontSize: '24px', fontWeight: '700', color: currentSpeakerTextColor, lineHeight: 1.05, whiteSpace: 'nowrap', letterSpacing: 0, pointerEvents: 'none' },
 		charFixedPrimaryCell: { width: '28px', minWidth: '28px', maxWidth: '28px', padding: '4px 0 6px', overflow: 'visible' },
 		charFuriganaWrap: { position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '1em', lineHeight: 'inherit' },
 		charFuriganaText: { position: 'absolute', left: '50%', bottom: '100%', transform: 'translateX(-50%)', marginBottom: '1px', fontSize: `${Number(window.CONFIG?.visual?.["furigana-font-size"]) || 11}px`, fontWeight: window.CONFIG?.visual?.["furigana-font-weight"] || '500', color: 'inherit', opacity: (Number(window.CONFIG?.visual?.["furigana-opacity"]) || 80) / 100, lineHeight: 1, letterSpacing: 0, whiteSpace: 'nowrap', pointerEvents: 'none' },
@@ -10393,7 +10770,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		const characterPronunciation = options.hidePronunciation ? '' : currentLineCharacterPronunciationMap.get(i);
 		const usePrimaryLayout = usePrimaryCharacterPronunciation && !options.suppressPrimaryPronunciation;
 		const useFixedPrimaryLayout = usePrimaryLayout && useFixedPrimaryCharacterCells;
-		const shouldShowCharTime = !options.hideTime && currentLineRenderedPronunciationUnits.length === 0;
+		const shouldShowCharTime = !options.hideTime;
 		const baseBackground = !options.wordSpacer && isSynced
 			? (isPlayed ? SYNC_CREATOR_PROGRESS_BACKGROUND : SYNC_CREATOR_SYNCED_BACKGROUND)
 			: '';
@@ -10463,7 +10840,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			usePrimaryLayout
 				? react.createElement('span', { style: pronunciationStyle }, characterPronunciation || '\u00A0')
 				: (characterPronunciation && react.createElement('span', { style: pronunciationStyle }, characterPronunciation)),
-			shouldShowCharTime && isSynced && charTime !== null && react.createElement('span', { style: s.charTime }, formatSeconds(charTime))
+			shouldShowCharTime && isSynced && charTime !== null && react.createElement('span', { style: options.timeBottom ? { ...s.charTime, bottom: options.timeBottom } : s.charTime }, formatSeconds(charTime))
 		);
 		return charNode;
 	};
@@ -10475,7 +10852,12 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				hidePronunciation: true,
 				suppressPrimaryPronunciation: true,
 				inWordUnit: true,
-				inWordPrimary: usePrimaryCharacterPronunciation
+				inWordPrimary: usePrimaryCharacterPronunciation,
+				// Times hang just below the character bubble: the reading row now
+				// lives inside the cell's extended padding, so the bubble edge
+				// is the span edge and one small offset fits every mode
+				// (40px in primary, whose cells keep their own layout).
+				timeBottom: usePrimaryCharacterPronunciation ? '-40px' : '-16px'
 			}));
 		}
 
@@ -10603,7 +10985,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			isActive
 				? react.createElement('div', {
 					className: 'lyrics-karaoke-line is-active is-effect-live is-effect-focused',
-					style: useCurrentLineTextRun ? { ...s.rtlLyricsLine, direction: currentLineDirection, paddingLeft: 0, paddingRight: 0 } : s.parallelStackText
+					style: useCurrentLineTextRun ? { ...s.rtlLyricsLine, direction: currentLineDirection, paddingLeft: 0, paddingRight: 0 } : (((typeof hasCurrentLineCharacterPronunciation !== 'undefined' && hasCurrentLineCharacterPronunciation) ? { ...s.parallelStackText, paddingBottom: '16px' } : s.parallelStackText))
 				},
 					renderCurrentLineCharacters()
 				)
@@ -10626,23 +11008,107 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 							partMutedColor
 						)
 					}
-				}, partDisplayItems.map(item => item.text || item.char || '').join('')) : partDisplayItems.map((item) => {
-						if (item.type === 'separator') {
-							return react.createElement('span', {
-								key: `${part.id}-${item.key}`,
-								style: s.parallelStackJoinSeparator
-							}, item.text === ' ' ? '\u00A0' : item.text);
+				}, partDisplayItems.map(item => item.text || item.char || '').join('')) : (() => {
+						const previewReadings = (typeof currentParallelPartReadingMaps !== 'undefined' && currentParallelPartReadingMaps && typeof currentParallelPartReadingMaps.get === 'function')
+							? currentParallelPartReadingMaps.get(part.id)
+							: undefined;
+						const hasPreviewReadings = !!(previewReadings && (previewReadings.hasFurigana || previewReadings.hasPron));
+						if (!hasPreviewReadings) {
+							return partDisplayItems.map((item) => {
+								if (item.type === 'separator') {
+									return react.createElement('span', {
+										key: `${part.id}-${item.key}`,
+										style: s.parallelStackJoinSeparator
+									}, item.text === ' ' ? '\u00A0' : item.text);
+								}
+								return react.createElement('span', {
+									key: `${part.id}-${item.charIndex}`,
+									'data-iv-sync-creator-preview-index': item.charIndex,
+									style: {
+										...s.parallelStackChar,
+										...(item.charIndex < syncedCount ? s.parallelStackCharSynced : null),
+										color: partSpeakerTextColor
+									}
+								}, item.char === ' ' ? '\u00A0' : item.char);
+							});
 						}
-						return react.createElement('span', {
-							key: `${part.id}-${item.charIndex}`,
-							'data-iv-sync-creator-preview-index': item.charIndex,
-							style: {
-								...s.parallelStackChar,
-								...(item.charIndex < syncedCount ? s.parallelStackCharSynced : null),
-								color: partSpeakerTextColor
+						const isPreviewPrimary = (typeof usePrimaryCharacterPronunciation !== 'undefined') && !!usePrimaryCharacterPronunciation;
+						const previewHasFurigana = !!previewReadings.hasFurigana;
+						const previewHasSinglePron = !!previewReadings.hasPron && previewReadings.units.length === 0;
+						const previewCharBase = {
+							...s.parallelStackChar,
+							position: 'relative',
+							...(isPreviewPrimary
+								? { display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: '2px 3px 6px', minHeight: '68px' }
+								: { paddingTop: previewHasFurigana ? '18px' : '6px', paddingBottom: previewReadings.units.length > 0 ? '28px' : (previewHasSinglePron ? '26px' : '10px') })
+						};
+						const previewPronStyle = isPreviewPrimary
+							? { ...s.charPronunciationPrimary, color: partSpeakerTextColor }
+							: { ...s.charPronunciation, color: partSpeakerTextColor };
+						const renderPreviewSingle = (char, displayIndex, key, options = {}) => {
+							const furigana = previewReadings.furiganaMap.get(displayIndex);
+							const pronunciation = options.hidePron ? '' : (previewReadings.pronMap.get(displayIndex) || '');
+							const originalContent = furigana
+								? react.createElement('span', { style: s.charFuriganaWrap }, char === ' ' ? '\u00A0' : char,
+									react.createElement('span', { style: s.charFuriganaText }, furigana))
+								: (char === ' ' ? '\u00A0' : char);
+							if (isPreviewPrimary) {
+								return react.createElement('span', {
+									key,
+									'data-iv-sync-creator-preview-index': displayIndex,
+									style: { ...previewCharBase, ...(displayIndex < syncedCount ? s.parallelStackCharSynced : null), color: partSpeakerTextColor }
+								},
+									react.createElement('span', { style: s.charOriginalSmall }, originalContent),
+									react.createElement('span', { style: { ...previewPronStyle, visibility: pronunciation ? 'visible' : 'hidden' } }, pronunciation || '\u00A0')
+								);
 							}
-						}, item.char === ' ' ? '\u00A0' : item.char);
-					})
+							return react.createElement('span', {
+								key,
+								'data-iv-sync-creator-preview-index': displayIndex,
+								style: {
+									...previewCharBase,
+									...(options.inUnit ? { paddingBottom: '28px' } : null),
+									...(displayIndex < syncedCount ? s.parallelStackCharSynced : null),
+									color: partSpeakerTextColor
+								}
+							},
+								originalContent,
+								(!!pronunciation && react.createElement('span', { style: previewPronStyle }, pronunciation))
+							);
+						};
+						const renderPreviewUnit = (unit) => {
+							const wordChars = [];
+							for (let i = unit.start; i <= unit.end; i++) {
+								wordChars.push(renderPreviewSingle(previewReadings.partChars[i] ?? '', i, `${part.id}-unit-${unit.start}-${i}`, { hidePron: true, inUnit: !isPreviewPrimary }));
+							}
+							const groupStyle = isPreviewPrimary
+								? { ...s.charWordGroup, ...s.charWordGroupPrimary, color: partSpeakerTextColor }
+								: { ...s.charWordGroup, color: partSpeakerTextColor };
+							const unitPronStyle = isPreviewPrimary
+								? { ...s.charWordPronunciationPrimary, marginTop: '4px', color: partSpeakerTextColor }
+								: { ...s.charWordPronunciation, marginTop: '-18px', color: partSpeakerTextColor };
+							return react.createElement('span', {
+								key: `${part.id}-unit-${unit.start}-${unit.end}`,
+								style: groupStyle
+							},
+								react.createElement('span', { style: s.charWordOriginalRow }, wordChars),
+								react.createElement('span', { style: unitPronStyle }, unit.pronunciation)
+							);
+						};
+						return partDisplayItems.flatMap((item) => {
+							if (item.type === 'separator') {
+								return [react.createElement('span', {
+									key: `${part.id}-${item.key}`,
+									style: s.parallelStackJoinSeparator
+								}, item.text === ' ' ? '\u00A0' : item.text)];
+							}
+							const displayIndex = item.charIndex;
+							if (previewReadings.covered.has(displayIndex)) return [];
+							const unit = previewReadings.unitByStart.get(displayIndex);
+							if (unit) return [renderPreviewUnit(unit)];
+							return [renderPreviewSingle(item.char, displayIndex, `${part.id}-${displayIndex}`)];
+						});
+					})()
 				)
 		);
 	};
@@ -10966,8 +11432,23 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		react.createElement('button', {
 			className: 'sync-creator-header-back',
 			style: s.backBtn,
-			onClick: () => {
+			onClick: async () => {
 				preventNextTrackRef.current = false;
+				try {
+					const record = latestSessionRecordRef.current;
+					if (
+						record
+						&& syncCreatorDraftStore
+						&& sessionAutosaveEnabledRef.current
+						&& !sessionAutosaveSuppressedRef.current
+						&& record.draftKey === activeSessionDraftKeyRef.current
+					) {
+						await syncCreatorDraftStore.saveDraft(record);
+						await syncCreatorDraftStore.flush();
+					}
+				} catch (error) {
+					console.warn('[SyncDataCreator] Failed to save the draft before closing:', error);
+				}
 				if (onClose) onClose();
 			}
 		},
@@ -10977,11 +11458,33 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			I18n.t('syncCreator.back') || '닫기'
 		),
 		renderGranularitySelector(),
+		(hasUnsubmittedSync || hasPublishedSync) && react.createElement('button', {
+			className: 'sync-creator-revert',
+			style: {
+				...s.loadBtn,
+				opacity: isSubmitting || isReverting || !lyricsText ? 0.5 : 1,
+				cursor: isSubmitting || isReverting || !lyricsText ? 'not-allowed' : 'pointer',
+				...(hasUnsubmittedSync && !isSubmitting && !isReverting
+					? { borderColor: TOSS_RED, color: TOSS_RED }
+					: {})
+			},
+			title: I18n.t('syncCreator.revertDesc') || 'Discard local edits and reload the published sync',
+			onClick: handleRevertToPublished,
+			disabled: isSubmitting || isReverting || !lyricsText
+		}, isReverting ? (I18n.t('syncCreator.reverting') || 'Reverting...') : (I18n.t('syncCreator.revert') || 'Revert')),
 		react.createElement('button', {
 			className: 'sync-creator-submit',
-			style: { ...s.submitBtn, opacity: isSubmitting || !syncData ? 0.5 : 1, cursor: isSubmitting || !syncData ? 'not-allowed' : 'pointer' },
+			style: {
+				...s.submitBtn,
+				background: hasUnsubmittedSync && !isSubmitting && !isReverting && syncData ? TOSS_RED : s.submitBtn.background,
+				opacity: isSubmitting || isReverting || !syncData ? 0.5 : 1,
+				cursor: isSubmitting || isReverting || !syncData ? 'not-allowed' : 'pointer'
+			},
+			title: hasUnsubmittedSync && !isSubmitting && !isReverting && syncData
+				? (I18n.t('syncCreator.unsubmittedChanges') || 'Unsubmitted sync changes — submit to publish them')
+				: undefined,
 			onClick: handleSubmit,
-			disabled: isSubmitting || !syncData
+			disabled: isSubmitting || isReverting || !syncData
 		}, isSubmitting ? I18n.t('syncCreator.submitting') : I18n.t('syncCreator.submit'))
 	);
 
@@ -11191,8 +11694,11 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				type: 'text',
 				style: s.lrclibIdInput,
 				value: lrclibSearchQuery,
-				placeholder: I18n.t('syncCreator.lrclibSearchQueryPlaceholder') || `${trackName} ${artistName}`.trim(),
-				onChange: (e) => setLrclibSearchQuery(e.target.value),
+				placeholder: I18n.t('syncCreator.lrclibSearchQueryPlaceholder') || 'Song title or artist',
+				onChange: (e) => {
+					lrclibSearchUserTouchedRef.current = trackId || trackUri || trackIsrc || `${trackName}::${artistName}`;
+					setLrclibSearchQuery(e.target.value);
+				},
 				onKeyDown: (e) => {
 					if (e.key === 'Enter') searchLrclibByQuery();
 				},
@@ -11208,6 +11714,22 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				: (I18n.t('syncCreator.lrclibSearchButton') || 'Search'))
 		)
 	);
+
+	// Minimize the LRCLIB selector once sync data exists. Collapses a single
+	// time per empty -> synced transition so a manual re-expand is respected
+	// until the sync is cleared (reset, source change) and rebuilt.
+	const lrclibAutoCollapseRef = useRef(false);
+	useEffect(() => {
+		const syncedLineCount = Array.isArray(syncData?.lines) ? syncData.lines.length : 0;
+		if (syncedLineCount === 0) {
+			lrclibAutoCollapseRef.current = false;
+			return;
+		}
+		if (!lrclibAutoCollapseRef.current) {
+			lrclibAutoCollapseRef.current = true;
+			setShowLrclibCandidates(false);
+		}
+	}, [syncData]);
 
 	const renderLrclibCandidatesPanel = () => addonId === SYNC_CREATOR_SOURCE_ADDON_ID && react.createElement('div', {
 		className: 'sync-creator-candidate-section',
@@ -11618,6 +12140,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				),
 				react.createElement('button', { style: { ...s.navBtn, opacity: nextNavigableLineIndex < 0 ? 0.3 : 1 }, onClick: goToNextLine, disabled: nextNavigableLineIndex < 0 }, '›')
 			),
+			showLivePreview && renderLivePreviewOverlay(),
 			multiVocalMode && react.createElement('div', { style: s.multiVocalBanner },
 				hasCurrentParallelParts
 					? (I18n.t('syncCreator.multiVocalBannerParts') || 'Multiple vocal mode: sync each vocal part separately.')
@@ -11627,7 +12150,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			react.createElement('div', {
 				className: `sync-creator-stage-lyrics${hasCurrentParallelParts ? ' is-parallel' : ''}`,
 				style: hasCurrentParallelParts
-					? { ...s.lyricsBox, ...s.lyricsBoxParallelScrollable, ...s.stageLyricsBox }
+					? { ...s.lyricsBox, ...s.stageLyricsBox, ...s.lyricsBoxParallelScrollable }
 					: { ...s.lyricsBox, ...s.stageLyricsBox },
 				onMouseDown: hasCurrentParallelParts ? undefined : handleContainerMouseDown,
 				onTouchStart: hasCurrentParallelParts ? undefined : handleContainerMouseDown,
@@ -12121,6 +12644,576 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				)
 			)
 		),
+		);
+	};
+
+	// Karaoke preview below the line counter. Linked to the existing preview
+	// transport mode: visible exactly while mode === 'preview'.
+	const showLivePreview = mode === 'preview';
+	const livePreviewSyncBody = useMemo(() => {
+		if (!showLivePreview) return null;
+		try {
+			const source = syncData && Array.isArray(syncData.lines) ? syncData : null;
+			if (!source) return null;
+			return typeof materializeSyncCreatorParallelDrafts === 'function'
+				? materializeSyncCreatorParallelDrafts(source)
+				: source;
+		} catch (error) {
+			return syncData;
+		}
+	}, [showLivePreview, syncData, materializeSyncCreatorParallelDrafts]);
+	const livePreviewKaraokeLines = useMemo(() => {
+		if (!showLivePreview || !Array.isArray(lyricsLines) || lyricsLines.length === 0) return [];
+		const linesByStart = new Map();
+		try {
+			for (const line of Array.isArray(livePreviewSyncBody?.lines) ? livePreviewSyncBody.lines : []) {
+				const start = Number(line?.start);
+				if (Number.isInteger(start)) linesByStart.set(start, line);
+			}
+		} catch (error) {
+			return [];
+		}
+		const toMs = (value) => {
+			if (value === null || value === undefined) return null;
+			if (typeof value === 'string' && value.trim() === '') return null;
+			const numeric = Number(value);
+			return Number.isFinite(numeric) && numeric >= 0 ? Math.round(numeric * 1000) : null;
+		};
+		const lineStartMsList = lyricsLines.map((_, index) => {
+			const start = lineCharOffsets[index];
+			const syncLine = Number.isInteger(start) ? linesByStart.get(start) : null;
+			const firstMs = Array.isArray(syncLine?.chars) ? toMs(syncLine.chars[0]) : null;
+			return firstMs;
+		});
+		const findNextStartMs = (index, fallback) => {
+			for (let next = index + 1; next < lineStartMsList.length; next++) {
+				const candidate = lineStartMsList[next];
+				if (Number.isFinite(candidate) && candidate > fallback) return candidate;
+			}
+			return null;
+		};
+		const applyInlineStyleToSyllable = (syllable, absoluteIndex, normalizedRanges) => {
+			if (!Array.isArray(normalizedRanges) || normalizedRanges.length === 0) return syllable;
+			const covering = normalizedRanges.find(range => range.start <= absoluteIndex && range.end >= absoluteIndex);
+			if (!covering) return syllable;
+			const next = { ...syllable, inlineStyle: true };
+			if (covering.kind) next.styleKind = covering.kind;
+			if (covering.speaker) next.styleSpeaker = covering.speaker;
+			if (covering['speaker-color']) next.styleSpeakerColor = covering['speaker-color'];
+			if (covering['speaker-fallback']) next.styleSpeakerFallback = covering['speaker-fallback'];
+			return next;
+		};
+		return lyricsLines.map((lineText, index) => {
+			const absoluteStart = lineCharOffsets[index];
+			let text = String(lineText || '');
+			// Merged lines ("merge with next") are one sync unit outside too:
+			// preview the full merged text so every vocal row shows.
+			try {
+				const mergedIndexes = typeof getMergedLineIndexesForStart === 'function'
+					? getMergedLineIndexesForStart(index, linesByStart)
+					: [index];
+				if (Array.isArray(mergedIndexes) && mergedIndexes.length > 1) {
+					text = mergedIndexes.map(mergedIndex => String(lyricsLines[mergedIndex] || '')).join('');
+				}
+			} catch (error) {
+				text = String(lineText || '');
+			}
+			const syncLine = Number.isInteger(absoluteStart) ? linesByStart.get(absoluteStart) : null;
+			const chars = Array.from(text);
+			const speaker = normalizeSyncCreatorSpeaker(syncLine?.speaker) || SYNC_CREATOR_DEFAULT_SPEAKER;
+			const kind = normalizeSyncCreatorKind(syncLine?.kind) || SYNC_CREATOR_DEFAULT_KIND;
+			if (!syncLine || !Array.isArray(syncLine.chars) || syncLine.chars.length === 0) {
+				return {
+					text,
+					startTime: Infinity,
+					endTime: Infinity,
+					speaker,
+					kind,
+					syllables: []
+				};
+			}
+			const charTimesMs = syncLine.chars.map(toMs);
+			const firstMs = charTimesMs.find(value => Number.isFinite(value));
+			if (!Number.isFinite(firstMs)) {
+				return {
+					text,
+					startTime: Infinity,
+					endTime: Infinity,
+					speaker,
+					kind,
+					syllables: []
+				};
+			}
+			const lastStartMs = [...charTimesMs].reverse().find(value => Number.isFinite(value)) ?? firstMs;
+			const nextStartMs = findNextStartMs(index, firstMs);
+			const tentativeEndMs = Number.isFinite(nextStartMs) && nextStartMs > lastStartMs
+				? nextStartMs
+				: lastStartMs + 2000;
+			// Same natural line ending as the outside converter: the last glyph
+			// holds for a bounded duration instead of stretching into the next
+			// line, so real gaps stay visible to the interlude system.
+			const avgCharDurationMs = Math.max(200, Math.max(0, tentativeEndMs - firstMs) / Math.max(1, charTimesMs.length));
+			const lastCharMaxDurationMs = Math.max(500, Math.min(1500, avgCharDurationMs * 2.5));
+			const stretchesFullLine = typeof normalizeSyncCreatorGranularity === 'function'
+				&& normalizeSyncCreatorGranularity(syncLine?.granularity) === 'line';
+			const lineEndMs = stretchesFullLine
+				? tentativeEndMs
+				: Math.min(tentativeEndMs, lastStartMs + Math.round(lastCharMaxDurationMs));
+			const normalizedRanges = normalizeSyncCreatorStyleRanges(
+				syncLine?.styleRanges,
+				Number.isInteger(absoluteStart) ? absoluteStart : 0,
+				(Number.isInteger(absoluteStart) ? absoluteStart : 0) + Math.max(0, chars.length - 1)
+			);
+			const buildCharSyllables = (targetChars, targetTimesMs, targetAbsoluteStart) => {
+				const syllables = [];
+				for (let charIndex = 0; charIndex < targetChars.length; charIndex++) {
+					const charStart = targetTimesMs[charIndex];
+					if (!Number.isFinite(charStart)) continue;
+					const nextStart = targetTimesMs.slice(charIndex + 1).find(value => Number.isFinite(value));
+					const charEnd = Number.isFinite(nextStart) && nextStart >= charStart
+						? nextStart
+						: Math.max(charStart, lineEndMs);
+					syllables.push(applyInlineStyleToSyllable({
+						text: targetChars[charIndex],
+						startTime: charStart,
+						endTime: charEnd
+					}, targetAbsoluteStart + charIndex, normalizedRanges));
+				}
+				return syllables;
+			};
+			const parallelParts = Array.isArray(syncLine?.parallel?.parts) ? syncLine.parallel.parts : [];
+			if (parallelParts.length > 1) {
+				const builtParts = [];
+				for (const part of parallelParts) {
+					if (!part || !Array.isArray(part.ranges) || !Array.isArray(part.chars)) continue;
+					const expectedLength = countSyncCreatorRangeChars(part.ranges);
+					if (expectedLength <= 0 || part.chars.length !== expectedLength) continue;
+					const partTimesMs = part.chars.map(toMs);
+					const partSyllables = [];
+					let partCharPointer = 0;
+					let partText = '';
+					let validPart = true;
+					part.ranges.forEach((range, rangeIndex) => {
+						if (!validPart) return;
+						if (rangeIndex > 0) {
+							const joinMode = Array.isArray(part.join) ? Number(part.join[rangeIndex - 1]) : 1;
+							if (joinMode === 1 || joinMode === 2) {
+								const gapStart = partSyllables.length > 0
+									? partSyllables[partSyllables.length - 1].endTime
+									: firstMs;
+								const gapEnd = Number.isFinite(partTimesMs[partCharPointer])
+									? Math.max(gapStart, partTimesMs[partCharPointer])
+									: gapStart;
+								partSyllables.push({ text: ' ', startTime: gapStart, endTime: gapEnd });
+								partText += ' ';
+							}
+						}
+						const rangeStart = Number(range?.start);
+						const rangeEnd = Number(range?.end);
+						if (!Number.isInteger(rangeStart) || !Number.isInteger(rangeEnd) || rangeEnd < rangeStart) {
+							validPart = false;
+							return;
+						}
+						for (let absoluteIndex = rangeStart; absoluteIndex <= rangeEnd; absoluteIndex++) {
+							const localIndex = absoluteIndex - absoluteStart;
+							const char = chars[localIndex] || '';
+							const charStart = partTimesMs[partCharPointer];
+							if (!Number.isFinite(charStart)) {
+								validPart = false;
+								return;
+							}
+							const nextStart = partTimesMs.slice(partCharPointer + 1).find(value => Number.isFinite(value));
+							const partStretchesFullLine = typeof normalizeSyncCreatorGranularity === 'function'
+								&& normalizeSyncCreatorGranularity(part.granularity || syncLine?.granularity) === 'line';
+							const naturalPartEnd = partStretchesFullLine
+								? lineEndMs
+								: Math.min(lineEndMs, charStart + Math.round(lastCharMaxDurationMs));
+							const charEnd = Number.isFinite(nextStart) && nextStart >= charStart
+								? nextStart
+								: Math.max(charStart, naturalPartEnd);
+							partText += char;
+							partSyllables.push(applyInlineStyleToSyllable({
+								text: char,
+								startTime: charStart,
+								endTime: charEnd
+							}, absoluteIndex, normalizedRanges));
+							partCharPointer++;
+						}
+					});
+					if (!validPart || partSyllables.length === 0) continue;
+					builtParts.push({
+						id: part.id || '',
+						role: part.role || '',
+						speaker: normalizeSyncCreatorSpeaker(part.speaker) || speaker,
+						'speaker-color': part['speaker-color'] || '',
+						'speaker-fallback': part['speaker-fallback'] || '',
+						kind: normalizeSyncCreatorKind(part.kind) || kind,
+						text: partText,
+						syllables: partSyllables,
+						startTime: partSyllables[0].startTime,
+						endTime: partSyllables[partSyllables.length - 1].endTime
+					});
+				}
+				if (builtParts.length > 1) {
+					const leadPart = builtParts.find(part => part.role === 'lead') || builtParts[0];
+					const backgroundParts = builtParts.filter(part => part !== leadPart);
+					const allTimes = builtParts.flatMap(part => [part.startTime, part.endTime]).filter(Number.isFinite);
+					return {
+						text,
+						startTime: Math.min(...allTimes, firstMs),
+						endTime: Math.max(...allTimes, lineEndMs),
+						speaker: syncLine.speaker || leadPart.speaker || speaker,
+						'speaker-color': syncLine['speaker-color'] || leadPart['speaker-color'] || '',
+						'speaker-fallback': syncLine['speaker-fallback'] || leadPart['speaker-fallback'] || '',
+						kind: syncLine.kind || leadPart.kind || kind,
+						vocals: {
+							lead: {
+								id: leadPart.id,
+								role: leadPart.role,
+								speaker: leadPart.speaker,
+								'speaker-color': leadPart['speaker-color'] || '',
+								'speaker-fallback': leadPart['speaker-fallback'] || '',
+								kind: leadPart.kind,
+								text: leadPart.text,
+								syllables: leadPart.syllables
+							},
+							background: backgroundParts.map(part => ({
+								id: part.id,
+								role: part.role,
+								speaker: part.speaker,
+								'speaker-color': part['speaker-color'] || '',
+								'speaker-fallback': part['speaker-fallback'] || '',
+								kind: part.kind,
+								text: part.text,
+								syllables: part.syllables
+							}))
+						}
+					};
+				}
+			}
+			const syllables = buildCharSyllables(chars, charTimesMs, absoluteStart);
+			if (syllables.length === 0) {
+				return {
+					text,
+					startTime: Infinity,
+					endTime: Infinity,
+					speaker,
+					kind,
+					syllables: []
+				};
+			}
+			return {
+				text,
+				startTime: firstMs,
+				endTime: lineEndMs,
+				speaker,
+				'speaker-color': syncLine['speaker-color'] || '',
+				'speaker-fallback': syncLine['speaker-fallback'] || '',
+				kind,
+				syllables
+			};
+		});
+	}, [showLivePreview, lyricsLines, lineCharOffsets, livePreviewSyncBody, getMergedLineIndexesForStart]);
+	useEffect(() => {
+		if (!showLivePreview) return undefined;
+		const handlePreviewEscape = (event) => {
+			if (event?.key === 'Escape' || event?.key === 'Esc') setMode('idle');
+		};
+		document.addEventListener('keydown', handlePreviewEscape, true);
+		return () => document.removeEventListener('keydown', handlePreviewEscape, true);
+	}, [showLivePreview]);
+	const livePreviewLyricVars = useMemo(() => {
+		const visualConfig = window.CONFIG?.visual || {};
+		const editorGlyphSize = Number.parseInt(s.charSpan?.fontSize, 10) || 32;
+		const vars = {
+			'--lyrics-color-active': visualConfig['active-color'] || 'var(--spice-text, #ffffff)',
+			'--lyrics-color-inactive': visualConfig['inactive-color'] || 'var(--spice-subtext, rgba(255, 255, 255, 0.58))',
+			'--lyrics-font-family': visualConfig['font-family'] || 'var(--font-family)',
+			'--lyrics-original-font-family': visualConfig['original-font-family'] || visualConfig['font-family'] || 'var(--font-family)'
+		};
+		try {
+			const container = document.querySelector('.lyrics-lyricsContainer-LyricsContainer');
+			if (container) {
+				const computed = window.getComputedStyle(container);
+				for (const key of Object.keys(vars)) {
+					const liveValue = computed.getPropertyValue(key)?.trim();
+					if (liveValue) vars[key] = liveValue;
+				}
+			}
+		} catch (error) {
+			void error;
+		}
+		// Rendered size matches the sync editor's own glyphs.
+		vars['--lyrics-font-size'] = `${editorGlyphSize}px`;
+		vars['--lyrics-original-font-size'] = `${editorGlyphSize}px`;
+		return vars;
+	}, [showLivePreview]);
+	// Error boundary so a failing karaoke preview can never crash the editor.
+	// Remounted via key whenever the previewed line or its timing changes.
+	const SyncCreatorPreviewBoundary = useMemo(() => (
+		class extends react.Component {
+			constructor(props) {
+				super(props);
+				this.state = { error: null };
+			}
+			static getDerivedStateFromError(error) {
+				return { error };
+			}
+			componentDidCatch(error) {
+				try {
+					console.warn('[SyncDataCreator] Karaoke preview render failed:', error);
+				} catch (loggingError) {
+					void loggingError;
+				}
+			}
+			render() {
+				if (this.state.error) {
+					return react.createElement('div', {
+						style: { fontSize: '12px', color: 'var(--spice-subtext)', padding: '8px 4px' }
+					}, I18n.t('syncCreator.previewUnavailable') || 'Karaoke preview unavailable for this line.');
+				}
+				return this.props.children;
+			}
+		}
+	), []);
+	const renderLivePreviewOverlay = () => {
+		if (!showLivePreview) return null;
+		const PageRenderer = null;
+		const ActiveRenderer = null;
+		const primitives = window.ivLyricsLyricRendererPrimitives || null;
+		let previewBody = null;
+		const renderPreviewLine = (rowLine, isRowActive, rowKey) => {
+			if (!rowLine || !primitives?.LyricsLineBlock) return null;
+			try {
+				let mainText = rowLine?.text || '';
+				let subText = null;
+				let subText2 = null;
+				let originalText = null;
+				try {
+					const aux = primitives.getEmbeddedAuxiliaryDisplayValues
+						? primitives.getEmbeddedAuxiliaryDisplayValues(rowLine)
+						: { text: rowLine?.text };
+					const display = primitives.buildLyricDisplayState
+						? primitives.buildLyricDisplayState(true, rowLine, aux?.text, aux?.originalText, aux?.text2)
+						: null;
+					if (display) {
+						mainText = display.mainText ?? mainText;
+						subText = display.subText ?? null;
+						subText2 = display.subText2 ?? null;
+						originalText = display.originalText ?? null;
+					}
+				} catch (error) {
+					mainText = rowLine?.text || '';
+				}
+				let lineClassName = `lyrics-lyricsContainer-LyricsLine${isRowActive ? ' lyrics-lyricsContainer-LyricsLine-active' : ''}`;
+				try {
+					const metaClass = primitives.getKaraokeLineMetaClass
+						? primitives.getKaraokeLineMetaClass(rowLine)
+						: '';
+					if (metaClass) lineClassName += ` ${metaClass}`;
+				} catch (error) {
+					void error;
+				}
+				let speakerStyle = null;
+				try {
+					speakerStyle = primitives.getKaraokeSpeakerStyle
+						? primitives.getKaraokeSpeakerStyle(rowLine?.speaker, rowLine?.['speaker-color'], rowLine?.['speaker-fallback'])
+						: null;
+				} catch (error) {
+					speakerStyle = null;
+				}
+				const rowStartTime = Number(rowLine?.startTime);
+				return react.createElement(primitives.LyricsLineBlock, {
+					key: rowKey,
+					className: lineClassName,
+					style: speakerStyle || undefined,
+					dir: 'auto',
+					seekTime: Number.isFinite(rowStartTime) && !rowLine?.isVirtualTrailingInterlude ? rowStartTime : null,
+					mainText,
+					subText,
+					subText2,
+					originalText,
+					isKara: true,
+					line: rowLine,
+					position,
+					isActive: isRowActive,
+					isCurrentLine: isRowActive,
+					isEffectFocused: isRowActive,
+					isEffectLive: isRowActive,
+					settingsRevision: 0,
+					globalCharOffset: 0,
+					activeGlobalCharIndex: -1,
+					singleLineScroll: false
+				});
+			} catch (error) {
+				return null;
+			}
+		};
+		// Current line only (never the whole song): fully rendered with all of
+		// its vocal rows via the exact outside KaraokeLine vocal stack.
+		// Marker rows become break indicators, long trailing gaps become
+		// virtual break rows, playback before the first line shows the
+		// leading prelude (interlude system, same source as outside).
+		const previewLineIndex = Math.max(0, Math.min(currentLineIndex, livePreviewKaraokeLines.length - 1));
+		const previewLine = livePreviewKaraokeLines[previewLineIndex] || null;
+		let interludeDisplayLine = null;
+		let isLeadingPrelude = false;
+		let leadingPreludeDurationMs = 0;
+		try {
+			if (previewLine && primitives?.getInterludeInfo) {
+				const nextPreviewLine = livePreviewKaraokeLines[previewLineIndex + 1] || null;
+				const sourceInterludeInfo = primitives.getInterludeInfo(
+					previewLine,
+					nextPreviewLine,
+					previewLineIndex,
+					livePreviewKaraokeLines.length
+				);
+				if (sourceInterludeInfo?.isInterlude) {
+					interludeDisplayLine = { ...previewLine, interludeInfo: sourceInterludeInfo };
+				} else if (primitives.createActiveTrailingKaraokeInterludeLine) {
+					interludeDisplayLine = primitives.createActiveTrailingKaraokeInterludeLine({
+						line: previewLine,
+						nextLine: nextPreviewLine,
+						lineIndex: previewLineIndex,
+						lineCount: livePreviewKaraokeLines.length,
+						position,
+						isActiveLine: true,
+						isKara: true
+					});
+				}
+			}
+		} catch (error) {
+			interludeDisplayLine = null;
+		}
+		try {
+			if (!interludeDisplayLine && primitives?.IdlingIndicator) {
+				let firstStartMs = null;
+				for (const candidateLine of livePreviewKaraokeLines) {
+					const candidateStart = Number(candidateLine?.startTime);
+					if (Number.isFinite(candidateStart)) {
+						firstStartMs = candidateStart;
+						break;
+					}
+				}
+				if (firstStartMs !== null && Number(position) < firstStartMs) {
+					isLeadingPrelude = true;
+					leadingPreludeDurationMs = firstStartMs;
+				}
+			}
+		} catch (error) {
+			isLeadingPrelude = false;
+		}
+		const displaySourceLine = interludeDisplayLine || previewLine;
+		// Multi-vocal lines: render one exact row per vocal part (lead +
+		// backgrounds) so every synced voice is visible, using the same
+		// single-row renderer as above.
+		const vocalLeadPart = displaySourceLine?.vocals?.lead;
+		const vocalBackgroundParts = Array.isArray(displaySourceLine?.vocals?.background)
+			? displaySourceLine.vocals.background
+			: [];
+		const hasVocalStack = vocalLeadPart?.syllables?.length > 0
+			&& vocalBackgroundParts.some((part) => Array.isArray(part?.syllables) && part.syllables.length > 0);
+		const previewVocalRowCount = hasVocalStack
+			? 1 + vocalBackgroundParts.filter((part) => Array.isArray(part?.syllables) && part.syllables.length > 0 && String(part.text || '').trim()).length
+			: 0;
+		if (!previewBody && hasVocalStack && !displaySourceLine?.interludeInfo?.isInterlude) {
+			try {
+				const buildVocalRowLine = (part) => ({
+					...displaySourceLine,
+					interludeInfo: undefined,
+					text: part.text,
+					originalText: part.text,
+					syllables: part.syllables,
+					vocals: undefined,
+					speaker: part.speaker,
+					'speaker-color': part['speaker-color'] || '',
+					'speaker-fallback': part['speaker-fallback'] || '',
+					kind: part.kind || displaySourceLine.kind
+				});
+				const stackRows = [];
+				const pushPartRow = (part, suffix) => {
+					if (!part || !Array.isArray(part.syllables) || part.syllables.length === 0) return;
+					if (!String(part.text || '').trim()) return;
+					const rowElement = renderPreviewLine(buildVocalRowLine(part), true, `vocal-${suffix}`);
+					if (rowElement) stackRows.push(rowElement);
+				};
+				pushPartRow(vocalLeadPart, 'lead');
+				vocalBackgroundParts.forEach((part, partIndex) => pushPartRow(part, `bg-${partIndex}`));
+				if (stackRows.length > 0) {
+					previewBody = react.createElement('div', { className: 'lyrics-karaoke-stack sync-creator-live-preview-stack' }, stackRows);
+				}
+			} catch (error) {
+				previewBody = null;
+			}
+		}
+		if (isLeadingPrelude && primitives?.IdlingIndicator) {
+			try {
+				previewBody = react.createElement(primitives.IdlingIndicator, {
+					isActive: true,
+					delay: leadingPreludeDurationMs / 3,
+					durationMs: leadingPreludeDurationMs,
+					settingsRevision: 0
+				});
+			} catch (error) {
+				previewBody = null;
+			}
+		}
+		if (!previewBody && displaySourceLine) {
+			const lineElement = renderPreviewLine(displaySourceLine, true, 'main');
+			if (lineElement) {
+				previewBody = react.createElement('div', { className: 'sync-creator-live-preview-line' }, lineElement);
+			}
+		}
+		if (!previewBody && previewLine) {
+			previewBody = react.createElement('div', {
+				className: 'lyrics-lyricsContainer-LyricsLine lyrics-lyricsContainer-LyricsLine-active',
+				dir: 'auto',
+				style: { fontSize: '24px', fontWeight: '700', color: 'var(--spice-text)', textAlign: 'center', lineHeight: 1.5 }
+			}, String(previewLine?.text || ''));
+		}
+		if (!previewBody) {
+			previewBody = react.createElement('div', { style: { fontSize: '13px', color: 'var(--spice-subtext)' } },
+				I18n.t('syncCreator.noSyncData') || 'No sync data to preview yet.'
+			);
+		}
+		const vocalPartSignature = (part) => `${part?.startTime ?? 'u'}:${Array.isArray(part?.syllables) ? part.syllables.length : 0}`;
+		const previewContentKey = `${previewLineIndex}:${(displaySourceLine?.text || '').length}:${interludeDisplayLine ? 'interlude' : (displaySourceLine?.vocals ? `v:${vocalPartSignature(displaySourceLine.vocals.lead)}:${(displaySourceLine.vocals.background || []).map(vocalPartSignature).join('+')}` : (Array.isArray(displaySourceLine?.syllables) ? displaySourceLine.syllables.length : 0))}`;
+		const safePreviewBody = react.createElement(SyncCreatorPreviewBoundary, { key: previewContentKey }, previewBody);
+		return react.createElement('div', {
+			className: 'sync-creator-live-preview-overlay',
+			style: {
+				position: 'static',
+				margin: '0 0 12px',
+				minHeight: '150px',
+				display: 'flex', flexDirection: 'column', overflow: 'hidden',
+				background: '#0a0e12',
+				border: `1px solid ${TOSS_BORDER}`,
+				borderRadius: '12px'
+			},
+			onMouseDown: (event) => event.stopPropagation(),
+			onTouchStart: (event) => event.stopPropagation()
+		},
+			react.createElement('div', {
+				style: {
+					display: 'flex', alignItems: 'center', gap: '8px',
+					padding: '8px 12px',
+					borderBottom: `1px solid ${TOSS_BORDER}`,
+					flexShrink: 0
+				}
+			},
+				react.createElement('div', {
+					style: { fontSize: '11px', fontWeight: '800', color: 'var(--spice-text)', letterSpacing: '0.04em', textTransform: 'uppercase' }
+				}, I18n.t('syncCreator.preview') || 'Preview'),
+				react.createElement('div', {
+					style: { fontSize: '11px', color: 'var(--spice-subtext)', fontVariantNumeric: 'tabular-nums' }
+				}, livePreviewKaraokeLines.length > 0 ? `${previewLineIndex + 1} / ${livePreviewKaraokeLines.length}${previewVocalRowCount > 1 ? ` · ${previewVocalRowCount} vocals` : ''}` : '')
+			),
+			react.createElement('div', {
+				className: 'sync-creator-live-preview-exact',
+				style: { position: 'relative', zIndex: 1, display: 'block', width: '100%', boxSizing: 'border-box', minHeight: '110px', maxHeight: '320px', overflowY: 'auto', overflowX: 'hidden', textAlign: 'center', padding: '24px 20px', flex: '1 0 auto' }
+			},
+				react.createElement('div', { style: { position: 'relative', zIndex: 1, width: '100%', ...livePreviewLyricVars } }, safePreviewBody)
+			)
 		);
 	};
 

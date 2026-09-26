@@ -134,3 +134,37 @@ test("video karaoke uses the configured filter shadow", () => {
 		assert.doesNotMatch(value, /drop-shadow\(/, "video karaoke must not append a hard-coded filter shadow");
 	}
 });
+
+test("TV metadata lines keep room for their text-shadow halo", () => {
+	// -webkit-line-clamp stops clamping when overflow is clip (verified in
+	// Chromium), so the TV title must keep overflow:hidden. Its soft halo
+	// therefore lives on the unclipped container as a drop-shadow filter
+	// instead of text-shadow, which the clamp box would cut into a rectangle.
+	const titleOverflow = declarationsFor(".fullscreen-tv-title", "overflow");
+	assert.ok(titleOverflow.length, ".fullscreen-tv-title has an overflow declaration");
+	for (const value of titleOverflow) {
+		assert.doesNotMatch(value, /clip/, `.fullscreen-tv-title must not use overflow:clip (breaks -webkit-line-clamp): ${value}`);
+	}
+	for (const value of declarationsFor(".fullscreen-tv-title", "text-shadow")) {
+		assert.doesNotMatch(value, /rgba?\(/, `.fullscreen-tv-title must not paint a hard-coded blur shadow inside its clamp box: ${value}`);
+	}
+	const containerFilter = declarationsFor(".fullscreen-tv-title-container", "filter");
+	assert.ok(containerFilter.length, ".fullscreen-tv-title-container has a filter declaration");
+	for (const value of containerFilter) {
+		assert.ok(value.includes("drop-shadow("), `.fullscreen-tv-title-container must paint the halo with drop-shadow: ${value}`);
+	}
+
+	// The single-line secondary artist keeps overflow:hidden as a fallback and
+	// upgrades to overflow:clip + clip-margin where supported (ellipsis still
+	// truncates there, unlike -webkit-line-clamp).
+	const artistSecondaryOverflow = declarationsFor(".fullscreen-tv-artist-secondary", "overflow");
+	assert.ok(artistSecondaryOverflow.includes("hidden"), ".fullscreen-tv-artist-secondary keeps an overflow:hidden fallback");
+	assert.ok(declarationsFor(".fullscreen-tv-artist-secondary", "overflow-clip-margin").length, ".fullscreen-tv-artist-secondary declares overflow-clip-margin");
+
+	// Primary artist and album lines paint with visible overflow; adding any
+	// clipping declaration there would box their shadows the same way.
+	for (const selector of [".fullscreen-tv-artist", ".fullscreen-tv-album-name"]) {
+		assert.equal(declarationsFor(selector, "overflow").length, 0, `${selector} must not clip its shadow`);
+		assert.equal(declarationsFor(selector, "overflow-clip-margin").length, 0, `${selector} must not clip its shadow`);
+	}
+});
