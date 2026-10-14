@@ -19,7 +19,12 @@ $TARGET_DIR = $LEGACY_TARGET_DIRS[0]
 $FINAL_APP_NAME = "ivLyrics"
 $PROXY_URL = "https://ivlis.kr/ivLyrics/proxy.php"
 $MAX_RETRIES = 3
-$SCRIPT_VERSION = "2.1.3"
+$SCRIPT_VERSION = "2.1.4"
+
+# Pin an official stable DXC release and its GitHub asset digest. Update these together.
+$DXC_VERSION = "v1.9.2609"
+$DXC_DOWNLOAD_URL = "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2609/dxc_2026_09_29.zip"
+$DXC_SHA256 = "ad31b1fc8443175d204f77a611fdb3ef2ec42759bdc2f1167368de24a4a7e7f1"
 
 # --- Colors ---
 $script:Colors = @{
@@ -35,6 +40,8 @@ $script:Colors = @{
 # --- State ---
 $script:IsUpdate = $false
 $script:CurrentVersion = $null
+$script:SpicetifyInstallerConfigPath = $null
+$script:DxcRuntimeInstalled = $false
 
 # --- Helper Functions ---
 function Write-Colored {
@@ -386,6 +393,7 @@ function Get-SpicetifyInstallerCustomAppsDir {
     }
 
     $configPath = Resolve-SpicetifyInstallerConfigPath -Output $configOutput
+    $script:SpicetifyInstallerConfigPath = $configPath
     $configDir = Split-Path -Parent $configPath
     if ([string]::IsNullOrWhiteSpace($configDir)) {
         throw "Could not determine the active Spicetify config directory from: $configPath"
@@ -443,6 +451,198 @@ function Remove-IvLyricsInstallerPath {
         return
     }
     Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+}
+
+function Get-IvLyricsPortableExecutableArchitecture {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+    $reader = [IO.BinaryReader]::new($stream)
+    try {
+        if ($stream.Length -lt 64 -or $reader.ReadUInt16() -ne 0x5A4D) {
+            throw "Not a Windows executable: $Path"
+        }
+        $stream.Position = 0x3C
+        $peOffset = $reader.ReadUInt32()
+        if ($peOffset -lt 64 -or $peOffset -gt ($stream.Length - 24)) {
+            throw "Invalid Windows executable header: $Path"
+        }
+        $stream.Position = $peOffset
+        if ($reader.ReadUInt32() -ne 0x00004550) {
+            throw "Invalid Windows executable signature: $Path"
+        }
+        switch ($reader.ReadUInt16()) {
+            0x8664 { return "x64" }
+            0x014C { return "x86" }
+            0xAA64 { return "arm64" }
+            default { throw "Unsupported Windows executable architecture: $Path" }
+        }
+    }
+    finally {
+        $reader.Dispose()
+    }
+}
+
+function Get-IvLyricsInstallerSpotifyDirectory {
+    $configPath = $script:SpicetifyInstallerConfigPath
+    if ([string]::IsNullOrWhiteSpace($configPath)) {
+        $result = Invoke-IvLyricsSpicetifyCommand -Arguments @("-c")
+        if ($result.ExitCode -ne 0) {
+            throw "Could not resolve the Spotify installation from Spicetify."
+        }
+        $configPath = Resolve-SpicetifyInstallerConfigPath -Output @($result.Output)
+    }
+
+    $inSettings = $false
+    $spotifyPath = $null
+    foreach ($line in @(Get-Content -LiteralPath $configPath -Encoding UTF8 -ErrorAction Stop)) {
+        if ($line -match '^\s*\[([^\]]+)\]\s*$') {
+            $inSettings = $Matches[1] -ieq "Setting"
+        }
+        elseif ($inSettings -and $line -match '^\s*spotify_path\s*=\s*(.*?)\s*$') {
+            $spotifyPath = $Matches[1].Trim().Trim('"')
+            break
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($spotifyPath)) {
+        throw "The active Spicetify config has no spotify_path."
+    }
+    $spotifyPath = [Environment]::ExpandEnvironmentVariables($spotifyPath)
+    if (-not [IO.Path]::IsPathRooted($spotifyPath)) {
+        $spotifyPath = Join-Path (Split-Path -Parent $configPath) $spotifyPath
+    }
+    $spotifyPath = [IO.Path]::GetFullPath($spotifyPath)
+    if (-not (Test-Path -LiteralPath (Join-Path $spotifyPath "Spotify.exe") -PathType Leaf)) {
+        throw "Spotify.exe was not found in the configured spotify_path: $spotifyPath"
+    }
+    return $spotifyPath
+}
+
+function Install-IvLyricsWebGpuRuntime {
+    param([Parameter(Mandatory = $true)][string]$SpotifyDirectory)
+
+    $spotifyDirectory = [IO.Path]::GetFullPath($SpotifyDirectory)
+    # Use the app's PE header, not the OS/installer architecture (ARM PCs can run x64 Spotify).
+    $architecture = Get-IvLyricsPortableExecutableArchitecture -Path (Join-Path $spotifyDirectory "Spotify.exe")
+    $dllNames = @("dxil.dll", "dxcompiler.dll")
+    $missingDlls = @()
+    foreach ($name in $dllNames) {
+        $destination = Join-Path $spotifyDirectory $name
+        $entry = Get-IvLyricsInstallerPathEntry -Path $destination
+        if ($null -eq $entry) {
+            $missingDlls += $name
+            continue
+        }
+        if ($entry.PSIsContainer -or ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw "Refusing to replace the existing WebGPU runtime entry: $destination"
+        }
+        if ((Get-IvLyricsPortableExecutableArchitecture -Path $destination) -ne $architecture) {
+            throw "Existing WebGPU DLL does not match Spotify's architecture: $destination"
+        }
+    }
+    if ($missingDlls.Count -eq 0) {
+        return $false
+    }
+
+    $temporaryBase = [IO.Path]::GetFullPath((Get-IvLyricsInstallerTempDirectory))
+    $temporaryRoot = Join-Path $temporaryBase ("ivLyrics_dxc_" + [Guid]::NewGuid().ToString("N"))
+    $copiedDlls = @()
+    try {
+        [IO.Directory]::CreateDirectory($temporaryRoot) | Out-Null
+        $archivePath = Join-Path $temporaryRoot "dxc.zip"
+        Write-SubStep "Downloading Microsoft DXC $DXC_VERSION ($architecture)..." "info"
+        Invoke-WithRetry -MaxRetries $MAX_RETRIES -ScriptBlock {
+            $ProgressPreference = "SilentlyContinue"
+            Invoke-WebRequest -Uri $DXC_DOWNLOAD_URL -OutFile $archivePath -UseBasicParsing -TimeoutSec 90 -ErrorAction Stop
+            $actualHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256 -ErrorAction Stop).Hash
+            if ($actualHash -ine $DXC_SHA256) {
+                throw "Microsoft DXC archive checksum verification failed."
+            }
+        }
+
+        $extractPath = Join-Path $temporaryRoot "extracted"
+        Expand-Archive -LiteralPath $archivePath -DestinationPath $extractPath -ErrorAction Stop
+        $binaryDirectory = Join-Path (Join-Path $extractPath "bin") $architecture
+        foreach ($name in $dllNames) {
+            $source = Join-Path $binaryDirectory $name
+            if ((Get-IvLyricsPortableExecutableArchitecture -Path $source) -ne $architecture) {
+                throw "Downloaded DXC DLL does not match Spotify's architecture: $name"
+            }
+        }
+
+        # Retain all notices shipped with the verified Microsoft archive alongside the DLLs.
+        $licenseNames = @("LICENCE-MIT.txt", "LICENSE-LLVM.txt", "LICENSE-MS.txt")
+        foreach ($name in $licenseNames) {
+            if (-not (Test-Path -LiteralPath (Join-Path $extractPath $name) -PathType Leaf)) {
+                throw "Microsoft DXC archive is missing its license notice: $name"
+            }
+        }
+        $licenseRoot = Join-Path $spotifyDirectory "ivLyrics-DXC-Licenses"
+        $licenseDirectory = Join-Path $licenseRoot $DXC_VERSION
+        foreach ($directory in @($licenseRoot, $licenseDirectory)) {
+            $entry = Get-IvLyricsInstallerPathEntry -Path $directory
+            if ($null -ne $entry -and
+                (-not $entry.PSIsContainer -or ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint))) {
+                throw "Cannot write DXC license notices to: $directory"
+            }
+        }
+        [IO.Directory]::CreateDirectory($licenseDirectory) | Out-Null
+        foreach ($name in $licenseNames) {
+            $licensePath = Join-Path $licenseDirectory $name
+            # Never overwrite an existing file or write through a directory link.
+            if ($null -eq (Get-IvLyricsInstallerPathEntry -Path $licensePath)) {
+                [IO.File]::Copy((Join-Path $extractPath $name), $licensePath, $false)
+            }
+        }
+
+        foreach ($name in $missingDlls) {
+            $destination = Join-Path $spotifyDirectory $name
+            # Stage in the destination directory so a failed copy cannot leave a partial DLL.
+            $stagedPath = Join-Path $spotifyDirectory (".ivLyrics_dxc_" + [Guid]::NewGuid().ToString("N") + ".tmp")
+            try {
+                [IO.File]::Copy((Join-Path $binaryDirectory $name), $stagedPath, $false)
+                # The same-volume move is atomic and fails if the destination now exists.
+                [IO.File]::Move($stagedPath, $destination)
+                $copiedDlls += $destination
+            }
+            finally {
+                try { [IO.File]::Delete($stagedPath) } catch {}
+            }
+        }
+        Write-SubStep "Installed local AI WebGPU runtime next to Spotify.exe" "success"
+        return $true
+    }
+    catch {
+        # Roll back only files created by this invocation; preserve Spotify's existing DLLs.
+        foreach ($destination in $copiedDlls) {
+            try { [IO.File]::Delete($destination) } catch {}
+        }
+        throw
+    }
+    finally {
+        # The recursive cleanup target must remain the unique child of our validated temp directory.
+        $cleanupPath = [IO.Path]::GetFullPath($temporaryRoot)
+        if ((Split-Path -Parent $cleanupPath) -ieq $temporaryBase -and
+            (Split-Path -Leaf $cleanupPath) -match '^ivLyrics_dxc_[a-f0-9]{32}$') {
+            Remove-IvLyricsInstallerTemporaryPath -Path $cleanupPath
+        }
+    }
+}
+
+function Ensure-IvLyricsWebGpuRuntime {
+    Write-SubStep "Checking local AI WebGPU runtime..." "info"
+    try {
+        $spotifyDirectory = Get-IvLyricsInstallerSpotifyDirectory
+        $script:DxcRuntimeInstalled = Install-IvLyricsWebGpuRuntime -SpotifyDirectory $spotifyDirectory
+        if (-not $script:DxcRuntimeInstalled) {
+            Write-SubStep "Local AI WebGPU runtime is already present" "success"
+        }
+    }
+    catch {
+        # GPU acceleration is optional; do not block installation or other translation providers.
+        Write-SubStep "Could not install the local AI WebGPU runtime: $($_.Exception.Message)" "warning"
+        Write-SubStep "Local AI may fall back to the slower CPU. Run the installer again to retry." "warning"
+    }
 }
 
 function Register-IvLyricsUpdaterProtocol {
@@ -645,6 +845,9 @@ else {
     Write-SubStep "Spotify is not running" "success"
 }
 
+# Repair missing GPU dependencies even when the ivLyrics version is already current.
+Ensure-IvLyricsWebGpuRuntime
+
 # Step 4: Check target directory
 Write-Step 4 7 "Checking target directory..." "running"
 
@@ -731,6 +934,9 @@ if ($IsUpdate -and $currentVersionNormalized -eq $latestVersionNormalized -and -
     if (-not (Register-IvLyricsUpdaterProtocol)) {
         Write-Colored "  The active Spicetify app directory could not be updated." $Colors.Error
         exit 1
+    }
+    if ($spotifyProcesses -or $script:DxcRuntimeInstalled) {
+        Start-Process "spotify://ivLyrics/"
     }
     Write-Host ""
     exit 0
