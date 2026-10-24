@@ -68,14 +68,23 @@ const metadataParams = { title: "Song", artist: "Artist", lang: "en" };
 test("legacy disabled metadata capability seeds primary-capabilities and blocks the AI fetch", async () => {
 	const { manager, storage, fetchCalls } = await ready({ legacyMetadataCapability: false });
 
-	// The manager bypass keeps chatgpt in the metadata provider list...
+	// The provider-level (master) switch keeps chatgpt out of the metadata
+	// provider list...
 	const providers = Array.from(manager.getEnabledProvidersFor("metadata"), (provider) => String(provider.id));
-	assert.deepEqual(providers, ["chatgpt"]);
+	assert.deepEqual(providers, []);
 
-	// ...but the seeded endpoint capabilities must refuse the request
-	// before any network call (reviewer's repro).
+	// ...so the manager refuses the request before any network call.
 	await assert.rejects(
 		() => manager.translateMetadata(metadataParams),
+		/capability enabled|No AI providers enabled|All AI providers failed/
+	);
+	assert.equal(fetchCalls.length, 0);
+
+	// Even a direct addon call (the connection-card test path) is refused at
+	// the endpoint level, after seeding endpoint-own flags from the legacy
+	// keys (reviewer's repro).
+	await assert.rejects(
+		() => manager.getAddon("chatgpt").translateMetadata({ ...metadataParams, metadataPrompt: "fixture" }),
 		/capability enabled|All AI providers failed/
 	);
 	assert.equal(fetchCalls.length, 0);

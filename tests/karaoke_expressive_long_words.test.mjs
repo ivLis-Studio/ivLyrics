@@ -28,9 +28,24 @@ assert.ok(harnessSource.includes('paintKaraokeLiveEntry };'));
 assert.ok(harnessSource.includes('counts.glyphElements'));
 const { createHarness, currentSource } = new Function('assert', 'execFileSync', 'readFileSync', 'vm',
   `${harnessSource}\nreturn { createHarness, currentSource };`)(assert, execFileSync, readFileSync, vm);
-const releasedSource = execFileSync('git', ['show', 'v7.0.10:Pages.js'], {
+const hasReleaseTag = (() => {
+  try {
+    execFileSync('git', ['rev-parse', '--verify', '--quiet', 'v7.0.10^{commit}'], {
+      cwd: new URL('..', import.meta.url), stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+const releasedSource = hasReleaseTag ? execFileSync('git', ['show', 'v7.0.10:Pages.js'], {
   cwd: new URL('..', import.meta.url), encoding: 'utf8',
-});
+}) : null;
+// Skip (not fail) comparisons against the released build when the tag is not fetched.
+const skipWithoutReleaseTag = t => {
+  if (releasedSource === null) t.skip('tag v7.0.10 not fetched');
+  return releasedSource === null;
+};
 
 const harness = ({ visual = {}, locale = 'ru', reduced = false } = {}, source = currentSource) => {
   const marker = 'const classifyKaraokeExpressiveUnits = (timedChars, allowWordMotion = true) => {';
@@ -144,7 +159,8 @@ const glyphStates = tree => nodes(tree, 'lyrics-karaoke-char').map(node => ({
   softEnd: node.props.style?.['--karaoke-char-fill-soft-end'],
 }));
 
-test('spaced Russian seven/eight-letter words swell successively before either reaches one second', () => {
+test('spaced Russian seven/eight-letter words swell successively before either reaches one second', t => {
+  if (skipWithoutReleaseTag(t)) return;
   const h = harness(), line = russianLine();
   const previous = harness({}, releasedSource);
   assert.deepEqual(movingWords(previous.render(line, 900)).map(fillText), ['длинный', 'красивый']);
@@ -268,7 +284,8 @@ test('the live painter animates separate Russian and 13-to-24-cell words on thei
   }
 });
 
-test('expanded motion retains source fill, ruby, readings and selection/live indices across seeks', () => {
+test('expanded motion retains source fill, ruby, readings and selection/live indices across seeks', t => {
+  if (skipWithoutReleaseTag(t)) return;
   const line = lineFromParts([['A😀', 220], [' ', 110], ['длинный', 770], [' ', 110],
     ['abcdefghijklmnopqrstuvwx', 1200]]);
   // Selection indices are emitted for styled runs. An unstyled fixture would
@@ -309,7 +326,8 @@ test('expanded motion retains source fill, ruby, readings and selection/live ind
   }
 });
 
-test('shaped scripts and combining/ZWJ clusters retain the released React trees', () => {
+test('shaped scripts and combining/ZWJ clusters retain the released React trees', t => {
+  if (skipWithoutReleaseTag(t)) return;
   for (const [word, locale] of [['длинныи\u0306', 'ru'], ['مرحبابالعالم', 'ar'],
     ['अच्छागाना', 'hi'], ['abcdefg👩‍👩‍👧‍👦', 'en']]) for (const live of [false, true]) {
     const line = wordLine(word, 1400), current = harness({ locale }), released = harness({ locale }, releasedSource);
@@ -323,7 +341,8 @@ test('shaped scripts and combining/ZWJ clusters retain the released React trees'
   }
 });
 
-test('word display and Classic/motion-off settings keep their released behavior on longer words', () => {
+test('word display and Classic/motion-off settings keep their released behavior on longer words', t => {
+  if (skipWithoutReleaseTag(t)) return;
   const cases = [
     ['word display', {}, 'word'], ['Classic', { visual: { 'karaoke-motion-style': 'classic' } }, 'character'],
     ['unset style', { visual: { 'karaoke-motion-style': undefined } }, 'character'],

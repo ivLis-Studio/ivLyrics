@@ -1323,7 +1323,6 @@ const AddonSettingsCard = ({
   const columns = Array.isArray(capabilityColumns)
     ? capabilityColumns
     : getSettingsAiProviderColumns([addon]);
-  const perEndpoint = addon.perEndpointCapabilities === true;
   const capabilityLabel = getSettingsAiCapabilityLabel;
   const connectionLabel = getSettingsText("settingsUi.sections.aiConnections.title", "Connection");
   const firstTriedLabel = getSettingsText("settingsUi.providers.firstTried", "Tried first");
@@ -1343,7 +1342,9 @@ const AddonSettingsCard = ({
       return chip ? null : react.createElement("span", { key: cap, className: "settings-cap-cell" },
         react.createElement("span", { className: "settings-cap-none", "aria-hidden": "true" }));
     }
-    const enabled = perEndpoint || capabilities[cap] === true;
+    // Endpoint-own selections live in the connection card; the row toggle is
+    // the provider-level master switch for every provider, per-endpoint or not.
+    const enabled = capabilities[cap] === true;
     const isOwner = owners?.[cap] === addon.id;
     const label = `${displayName} · ${capabilityLabel(cap)}`;
     const title = isOwner ? `${label} · ${firstTriedLabel}` : label;
@@ -1351,23 +1352,19 @@ const AddonSettingsCard = ({
       chip ? "settings-cap-chip" : "settings-cap-toggle",
       enabled ? "is-on" : "",
       isOwner ? "is-owner" : "",
-      perEndpoint ? "is-static" : "",
     ].filter(Boolean).join(" ");
     const content = chip
       ? capabilityLabel(cap)
       : react.createElement(SettingsUiIcon, { name: "check", size: 13 });
-    // 엔드포인트별로 기능을 고르는 제공자는 연결 카드에서만 바꾼다.
-    const control = perEndpoint
-      ? react.createElement("span", { key: cap, className, title, role: "img", "aria-label": title }, content)
-      : react.createElement("button", {
-        key: cap,
-        type: "button",
-        className,
-        "aria-pressed": enabled,
-        "aria-label": title,
-        title,
-        onClick: () => toggleCapability(cap),
-      }, content);
+    const control = react.createElement("button", {
+      key: cap,
+      type: "button",
+      className,
+      "aria-pressed": enabled,
+      "aria-label": title,
+      title,
+      onClick: () => toggleCapability(cap),
+    }, content);
     return chip ? control : react.createElement("span", { key: cap, className: "settings-cap-cell" }, control);
   };
 
@@ -2193,11 +2190,11 @@ const AIProvidersTab = ({ children } = {}) => {
   // 정렬된 provider 목록
   const sortedProviders = buildOrderedProviderList(providers, providerOrder);
   const capabilityColumns = getSettingsAiProviderColumns(sortedProviders);
-  // Mirrors AIAddonManager.getEnabledProvidersFor: per-endpoint add-ons
-  // decide inside their connection, everything else defaults to on.
+  // Mirrors AIAddonManager.getEnabledProvidersFor: the provider-level flag
+  // is the master switch (ceiling) for every provider, including per-endpoint
+  // add-ons, whose endpoints decide their own choices underneath it.
   const isCapabilityOn = (provider, capability) => {
     if (!provider?.supports?.[capability]) return false;
-    if (provider.perEndpointCapabilities === true) return true;
     return window.AIAddonManager?.isCapabilityEnabled?.(provider.id, capability) ?? true;
   };
   const owners = {};

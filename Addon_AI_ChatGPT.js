@@ -55,9 +55,9 @@
             characterPronunciation: true,
             culturalAnnotations: true
         },
-        // Capabilities are toggled per endpoint inside this addon's settings
-        // UI, so the provider-level toggle group in Settings stays hidden and
-        // the manager skips its stored provider-level capability check.
+        // Capabilities are toggled per endpoint inside this addon's settings UI;
+        // the provider-level toggle in the Settings row stays clickable and acts
+        // as the master switch (ceiling) over those endpoint choices.
         perEndpointCapabilities: true,
         // 하드코딩된 모델 목록 (fallback용)
         // models: [
@@ -298,6 +298,21 @@
         return next;
     }
 
+    // The provider-level switch is the ceiling: an endpoint can only serve a
+    // capability while the master switch allows it, but its own choice stays
+    // saved so re-enabling the master restores it.
+    function isEffectiveCapability(masterEnabled, endpointCapabilities, capability) {
+        return masterEnabled === true && isEndpointCapabilityEnabled(endpointCapabilities, capability);
+    }
+
+    function isMasterCapabilityEnabled(capability) {
+        try {
+            return window.AIAddonManager?.isCapabilityEnabled?.(ADDON_INFO.id, capability) ?? true;
+        } catch {
+            return true;
+        }
+    }
+
     function getPrimaryCapabilities() {
         const raw = getSetting('primary-capabilities', null);
         if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
@@ -335,7 +350,7 @@
         const targets = [];
         const seen = new Set();
         for (const connection of getProviderConnections()) {
-            if (capability && !isEndpointCapabilityEnabled(connection.capabilities, capability)) continue;
+            if (capability && !isEffectiveCapability(isMasterCapabilityEnabled(capability), connection.capabilities, capability)) continue;
             const baseUrl = normalizeBaseUrl(connection.baseUrl) || DEFAULT_OPENAI_BASE_URL;
             const researchWebSearch = isEndpointCapabilityEnabled(connection.capabilities, 'researchWebSearch');
             for (const apiKey of parseConnectionKeys(connection.apiKeys)) {
@@ -592,110 +607,6 @@
         }, patch);
     }
 
-    // Reasoning models (o-series, GPT-5 and later) answer HTTP 400 when a
-    // request carries sampling parameters such as temperature or top_p. The
-    // default patch sends temperature and the settings screen saves that
-    // patch, so the keys are dropped per request for these models rather than
-    // only from the default. Chat-tuned variants (gpt-5-chat-latest) keep them.
-    const REASONING_UNSUPPORTED_SAMPLING_KEYS = ['temperature', 'top_p'];
-
-    function isOpenAIReasoningModel(model) {
-        const name = String(model || '').trim().toLowerCase().replace(/^.*\//, '');
-        if (!name || name.includes('-chat')) return false;
-        if (/^o\d/.test(name)) return true;
-        const generation = /^gpt-(\d+)/.exec(name);
-        // Azure names its GPT-3.5 deployments "gpt-35-turbo".
-        return !!generation && generation[1] !== '35' && Number(generation[1]) >= 5;
-    }
-
-    // Fields an endpoint rejected with HTTP 400, remembered in memory per
-    // endpoint and model so later requests leave them out from the start.
-    const rejectedRequestFields = new Map();
-
-    function getRejectedRequestFieldsKey(baseUrl, model) {
-        return JSON.stringify([normalizeBaseUrl(baseUrl), String(model || '').trim()]);
-    }
-
-    function adaptRequestBodyForModel(body, baseUrl, model) {
-        const rejected = rejectedRequestFields.get(getRejectedRequestFieldsKey(baseUrl, model));
-        const result = { ...body };
-        if (rejected?.sampling || isOpenAIReasoningModel(model)) {
-            for (const key of REASONING_UNSUPPORTED_SAMPLING_KEYS) delete result[key];
-        }
-        if (rejected?.maxTokens && result.max_tokens !== undefined) {
-            if (result.max_completion_tokens === undefined) result.max_completion_tokens = result.max_tokens;
-            delete result.max_tokens;
-        }
-        return result;
-    }
-
-    async function readRejectedRequestError(response) {
-        if (response?.status !== 400 || typeof response?.clone !== 'function') return null;
-        try {
-            const rawText = String(await response.clone().text() || '').trim();
-            let error = null;
-            try {
-                const parsed = JSON.parse(rawText);
-                error = parsed?.error && typeof parsed.error === 'object' ? parsed.error : parsed;
-            } catch {
-                // Plain-text error body.
-            }
-            return {
-                param: String(error?.param || '').trim().toLowerCase(),
-                code: String(error?.code || '').toLowerCase(),
-                message: String(error?.message || (error ? '' : rawText))
-            };
-        } catch {
-            return null;
-        }
-    }
-
-    // Learns which optional field caused an "unsupported" HTTP 400. Returns
-    // true only for a newly learned field the request actually carried, so a
-    // request is re-sent at most once per field group.
-    async function learnRejectedRequestFields(response, baseUrl, model, body) {
-        const error = await readRejectedRequestError(response);
-        if (!error) return false;
-        const unsupported = error.code.includes('unsupported')
-            || /unsupported|not supported|does not support|only the default/i.test(error.message);
-        if (!unsupported) return false;
-        const names = field => error.param === field || new RegExp(`\\b${field}\\b`, 'i').test(error.message);
-        const key = getRejectedRequestFieldsKey(baseUrl, model);
-        const rejected = { ...(rejectedRequestFields.get(key) || {}) };
-        let learned = false;
-        if (!rejected.sampling && REASONING_UNSUPPORTED_SAMPLING_KEYS.some(field => body?.[field] !== undefined && names(field))) {
-            rejected.sampling = true;
-            learned = true;
-        }
-        if (!rejected.maxTokens && body?.max_tokens !== undefined && names('max_tokens')) {
-            rejected.maxTokens = true;
-            learned = true;
-        }
-        if (learned) rejectedRequestFields.set(key, rejected);
-        return learned;
-    }
-
-    // POSTs a JSON body built for this endpoint and model. When the endpoint
-    // rejects a field the addon can omit (sampling parameters on reasoning
-    // models, max_tokens where max_completion_tokens is required), the body is
-    // rebuilt and re-sent before any response text reaches the caller.
-    async function postOpenAIRequest(endpoint, apiKey, baseUrl, model, buildBody, requestTimeoutMs) {
-        for (let pass = 0; ; pass++) {
-            const body = adaptRequestBodyForModel(buildBody(), baseUrl, model);
-            const response = await window.ivLyricsFetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`
-                },
-                body: JSON.stringify(body)
-            }, requestTimeoutMs);
-            if (pass >= 2 || !(await learnRejectedRequestFields(response, baseUrl, model, body))) {
-                return response;
-            }
-        }
-    }
-
     // ============================================
     // API Call Functions
     // ============================================
@@ -881,11 +792,14 @@
                 try {
                     const endpoint = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
 
-                    const response = await postOpenAIRequest(
-                        endpoint, apiKey, baseUrl, model,
-                        () => buildChatGPTRequestBody(model, prompt),
-                        requestTimeoutMs
-                    );
+                    const response = await window.ivLyricsFetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${apiKey}`
+                        },
+                        body: JSON.stringify(buildChatGPTRequestBody(model, prompt))
+                    }, requestTimeoutMs);
 
                     if (response.status === 429 || response.status === 403) {
                         window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Target ${target.label} failed (${response.status}), trying next...`);
@@ -1041,11 +955,14 @@
 
                 try {
                     const endpoint = `${normalizeBaseUrl(baseUrl)}/responses`;
-                    const response = await postOpenAIRequest(
-                        endpoint, apiKey, baseUrl, model,
-                        () => buildResponsesRequestBody(model, prompt),
-                        requestTimeoutMs
-                    );
+                    const response = await window.ivLyricsFetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${apiKey}`
+                        },
+                        body: JSON.stringify(buildResponsesRequestBody(model, prompt))
+                    }, requestTimeoutMs);
 
                     if (response.status === 429 || response.status === 403) {
                         lastError = new Error(`[ChatGPT Web Search] ${target.label} failed: HTTP ${response.status}${getHttpStatusHint(response.status)}`);
@@ -1229,11 +1146,14 @@
                 try {
                     const endpoint = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
 
-                    const response = await postOpenAIRequest(
-                        endpoint, apiKey, baseUrl, model,
-                        () => buildChatGPTRequestBody(model, prompt, { stream: true }),
-                        requestTimeoutMs
-                    );
+                    const response = await window.ivLyricsFetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${apiKey}`
+                        },
+                        body: JSON.stringify(buildChatGPTRequestBody(model, prompt, { stream: true }))
+                    }, requestTimeoutMs);
 
                     if (response.status === 429 || response.status === 403) {
                         window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Stream: target ${target.label} failed (${response.status}), trying next...`);
@@ -1401,10 +1321,17 @@
         } catch {
             patch = null;
         }
-        const buildBody = () => patch && typeof patch === 'object'
+        const body = patch && typeof patch === 'object'
             ? mergeRequestBody({ model, messages: [{ role: 'user', content: 'Reply with just "OK" if you receive this.' }] }, patch)
             : { model, messages: [{ role: 'user', content: 'Reply with just "OK" if you receive this.' }] };
-        const response = await postOpenAIRequest(endpoint, apiKey, baseUrl, model, buildBody);
+        const response = await window.ivLyricsFetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify(body)
+        });
         if (!response.ok) {
             throw new Error(`[ChatGPT] ${await buildHttpErrorDetail(response)}`);
         }
@@ -1687,6 +1614,7 @@
                             ],
                             capabilities: primaryCapabilities,
                             onToggle: togglePrimaryCapability,
+                            blockedByMaster: capability => !isMasterCapabilityEnabled(capability),
                             testButton: React.createElement('button', {
                                 type: 'button', onClick: handleTest, className: 'ai-addon-btn ai-addon-btn-secondary'
                             }, aiText('testConnection', 'Test Connection')),
@@ -1703,25 +1631,31 @@
             };
 
             // Share presentation only: the primary keeps its original settings and handlers.
-            function renderConnectionCard({ heading, actions, fields, capabilities, onToggle, testButton, status }) {
+            function renderConnectionCard({ heading, actions, fields, capabilities, onToggle, blockedByMaster, testButton, status }) {
                 return React.createElement('div', { className: 'ai-addon-connection-card' },
                     React.createElement('div', { className: 'ai-addon-connection-header' }, heading, actions),
                     React.createElement('div', { className: 'ai-addon-connection-fields' }, ...fields),
-                    React.createElement(CapabilityControls, { capabilities, onToggle }),
+                    React.createElement(CapabilityControls, { capabilities, onToggle, blockedByMaster }),
                     React.createElement('div', { className: 'ai-addon-connection-footer' }, testButton, status)
                 );
             }
 
-            function CapabilityControls({ capabilities, onToggle }) {
+            // A chip blocked by the provider master switch stays clickable so the
+            // endpoint choice is kept for when the master switch is re-enabled.
+            function CapabilityControls({ capabilities, onToggle, blockedByMaster }) {
                 return React.createElement('div', { className: 'ai-addon-setting ai-addon-connection-capabilities' },
                     React.createElement('label', null, aiText('enabledCapabilities', 'Enabled Capabilities')),
                     React.createElement('div', { className: 'ai-addon-caps-container' },
                         ENDPOINT_CAPABILITIES.map(capability => {
                             const enabled = isEndpointCapabilityEnabled(capabilities, capability);
+                            // Blocked-but-saved: the endpoint still wants the
+                            // capability but the provider master switch is off.
+                            const blocked = enabled && blockedByMaster?.(capability) === true;
                             return React.createElement('button', {
                                 key: capability, type: 'button',
-                                className: `ai-addon-cap-chip ${enabled ? 'active' : ''} cap-${capability}`,
-                                'aria-pressed': enabled, onClick: () => onToggle(capability)
+                                className: `ai-addon-cap-chip ${enabled ? 'active' : ''} ${blocked ? 'is-blocked ' : ''}cap-${capability}`,
+                                'aria-pressed': enabled, onClick: () => onToggle(capability),
+                                title: blocked ? aiText('capabilityBlockedByProvider', 'Blocked by provider master') : undefined
                             }, aiText(`supports.${capability}`, ENDPOINT_CAPABILITY_FALLBACKS[capability]));
                         })
                     )
@@ -1838,6 +1772,7 @@
                     onToggle: capability => onChange({
                         capabilities: toggleEndpointCapability(connection.capabilities, capability)
                     }),
+                    blockedByMaster: capability => !isMasterCapabilityEnabled(capability),
                     testButton: React.createElement('button', {
                         type: 'button', className: 'ai-addon-btn ai-addon-btn-secondary',
                         disabled: testing || loading || !keys.length || !selectedModel,
