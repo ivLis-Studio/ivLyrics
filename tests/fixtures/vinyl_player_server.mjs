@@ -77,7 +77,7 @@ const server = createServer((request, response) => {
     } else if (files.has(path)) body = readFileSync(files.get(path));
     else if (path === "/metadata.js") body = metadataSource(baseline);
     else if (path === "/settings.js") body = settingsSource(baseline);
-    else if (["/style.css", "/CdVisualizer.js", "/FullscreenOverlay.js", "/VinylPlayerMode.js", "/VinylActiveLyricRenderer.js", "/Pages.js", "/LyricsWordSegmenter.js", "/langs/LangEn.js"].includes(path)) {
+    else if (["/style.css", "/CdVisualizer.js", "/PlaylistPicker.js", "/FullscreenOverlay.js", "/VinylPlayerMode.js", "/VinylActiveLyricRenderer.js", "/Pages.js", "/LyricsWordSegmenter.js", "/langs/LangEn.js"].includes(path)) {
       body = readSource(path.slice(1), baseline);
       if (path.endsWith(".css")) { type = "text/css"; body = body.replace(/^@import\s+[^;]+;/gm, ""); }
     } else if (path === "/favicon.ico") { response.writeHead(204); response.end(); return; }

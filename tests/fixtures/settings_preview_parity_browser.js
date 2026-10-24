@@ -9,6 +9,7 @@ async page => {
   await page.goto(`${origin}/?language=en&theme=dark&tab=fullscreen`);
   await page.waitForFunction(() => settingsFixture.state.ready);
   await page.addScriptTag({ url: origin + '/VinylPlayerMode.js' });
+  await page.addScriptTag({ url: origin + '/PlaylistPicker.js' });
   await page.addScriptTag({ url: origin + '/FullscreenOverlay.js' });
   await page.evaluate(() => {
     const host = document.createElement('div');

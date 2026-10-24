@@ -6671,6 +6671,8 @@ ruby rt {
   padding: 10px;
   overflow: auto;
   z-index: 1000;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.24) transparent;
   background: rgba(18, 18, 18, 0.96);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 12px;
@@ -6685,8 +6687,29 @@ ruby rt {
   overflow: visible;
 }
 
+.fullscreen-playlist-popover::-webkit-scrollbar {
+  width: 8px;
+}
+
+.fullscreen-playlist-popover::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.fullscreen-playlist-popover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.fullscreen-playlist-popover::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.36);
+  background-clip: padding-box;
+}
+
 .fullscreen-playlist-popover-title {
-  padding: 6px 8px 10px;
+  padding: 4px 8px 0;
+  margin-bottom: 8px;
   color: var(--spice-text);
   font-size: 13px;
   font-weight: 700;
@@ -16491,7 +16514,6 @@ html.is-lp-view-switch::view-transition-new(root) {
 }
 
 .lyrics-creator-profile-load-more {
-  min-height: 24px;
   color: rgba(248, 250, 252, 0.54);
   font-size: 12px;
   font-weight: 600;
@@ -16555,10 +16577,9 @@ html.is-lp-view-switch::view-transition-new(root) {
 
 .lyrics-creator-profile-track-side {
   display: inline-flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  text-align: right;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   flex: 0 0 auto;
 }
 
@@ -16572,7 +16593,6 @@ html.is-lp-view-switch::view-transition-new(root) {
 }
 
 .lyrics-creator-profile-track-artist {
-  margin-top: 4px;
   font-size: 13px;
   color: rgba(255, 255, 255, 0.66);
   white-space: nowrap;
@@ -16582,20 +16602,6 @@ html.is-lp-view-switch::view-transition-new(root) {
 
 .lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-track-artist {
   color: rgba(15, 23, 42, 0.64);
-}
-
-.lyrics-creator-profile-track-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 14px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-track-meta {
-  color: rgba(15, 23, 42, 0.5);
 }
 
 .lyrics-creator-profile-track-provider {
@@ -16652,9 +16658,12 @@ html.is-lp-view-switch::view-transition-new(root) {
     gap: 8px;
   }
 
+  .lyrics-creator-profile-track-actions {
+    justify-content: flex-start;
+  }
+
   .lyrics-creator-profile-track-side {
-    align-items: flex-start;
-    text-align: left;
+    align-items: center;
   }
 
   .lyrics-creator-profile-toolbar {
@@ -17577,19 +17586,194 @@ html.is-lp-view-switch::view-transition-new(root) {
 .lyrics-creator-profile-track,
 .lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-track {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
   width: 100%;
-  min-height: 84px;
-  padding: 14px 16px;
+  min-height: 76px;
+  padding: 13px 16px;
   color: var(--creator-ink);
   background: transparent;
   border: 0;
   border-radius: 0;
   box-shadow: none;
   text-align: left;
+  cursor: default;
   transition: background 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* The row only navigates through its own button: the playlist menu sits beside
+   it, so the cover and title keep their own clickable element. */
+.lyrics-creator-profile-track-open,
+.lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-track-open {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lyrics-creator-profile-track-actions,
+.lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-track-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex: 0 0 auto;
+  max-width: 240px;
+}
+
+.lyrics-creator-profile-track-playlist,
+.lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-track-playlist {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--creator-line);
+  border-radius: 10px;
+  background: var(--creator-surface-2);
+  color: var(--creator-muted);
+  cursor: pointer;
+  transition: background 0.2s cubic-bezier(0.22, 0.61, 0.36, 1), color 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.lyrics-creator-profile-track-playlist:hover,
+.lyrics-creator-profile-track-playlist.active,
+.lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-track-playlist:hover,
+.lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-track-playlist.active {
+  background: var(--creator-surface-3);
+  color: var(--creator-ink);
+}
+
+/* The playlist menu is portalled to <body> so the scrolling contribution grid
+   cannot clip it. That also drops it out of the modal's theming scope, so it
+   carries its own data-ui-theme and repaints itself from the same palette. */
+.fullscreen-playlist-popover[data-ui-theme="light"] {
+  background: #FFFFFF;
+  border-color: #ECEEF1;
+  box-shadow: 0 24px 64px rgba(14, 17, 22, 0.18), 0 8px 24px rgba(14, 17, 22, 0.10);
+}
+
+.fullscreen-playlist-popover[data-ui-theme="dark"] {
+  background: #171A22;
+  border-color: #282E39;
+  box-shadow: 0 24px 68px rgba(0, 0, 0, 0.55), 0 8px 24px rgba(0, 0, 0, 0.34);
+}
+
+.fullscreen-playlist-popover[data-ui-theme="light"] .fullscreen-playlist-popover-title {
+  color: #0E1116;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="dark"] .fullscreen-playlist-popover-title {
+  color: #F5F7FB;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="light"] .fullscreen-playlist-state {
+  color: #6B7280;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="dark"] .fullscreen-playlist-state {
+  color: #9CA6B8;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="light"] .fullscreen-playlist-state.error {
+  color: #B42318;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="dark"] .fullscreen-playlist-state.error {
+  color: #FF8A80;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="light"] .fullscreen-playlist-item:hover {
+  background: #F4F5F7;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="dark"] .fullscreen-playlist-item:hover {
+  background: #20242E;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="light"] .fullscreen-playlist-item.contains-current-track {
+  background: rgba(30, 142, 74, 0.08);
+}
+
+.fullscreen-playlist-popover[data-ui-theme="light"] .fullscreen-playlist-item.contains-current-track:hover {
+  background: rgba(184, 35, 24, 0.10);
+}
+
+.fullscreen-playlist-popover[data-ui-theme="dark"] .fullscreen-playlist-item.contains-current-track {
+  background: rgba(30, 142, 74, 0.12);
+}
+
+.fullscreen-playlist-popover[data-ui-theme="dark"] .fullscreen-playlist-item.contains-current-track:hover {
+  background: rgba(184, 35, 24, 0.14);
+}
+
+.fullscreen-playlist-popover[data-ui-theme="light"] .fullscreen-playlist-item-fallback {
+  background: #ECEDF0;
+  color: #6B7280;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="dark"] .fullscreen-playlist-item-fallback {
+  background: #2A303B;
+  color: #9CA6B8;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="light"] .fullscreen-playlist-item-name {
+  color: #0E1116;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="dark"] .fullscreen-playlist-item-name {
+  color: #F5F7FB;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="light"] .fullscreen-playlist-item-count,
+.fullscreen-playlist-popover[data-ui-theme="light"] .fullscreen-playlist-item-loading {
+  color: #6B7280;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="dark"] .fullscreen-playlist-item-count,
+.fullscreen-playlist-popover[data-ui-theme="dark"] .fullscreen-playlist-item-loading {
+  color: #9CA6B8;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="light"] .fullscreen-playlist-item-status.checking {
+  background: #F4F5F7;
+  color: #6B7280;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="dark"] .fullscreen-playlist-item-status.checking {
+  background: #20242E;
+  color: #9CA6B8;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="light"] .fullscreen-playlist-item-status.contains {
+  background: rgba(30, 142, 74, 0.18);
+  color: #1E8E4A;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="dark"] .fullscreen-playlist-item-status.contains {
+  background: rgba(30, 142, 74, 0.22);
+  color: #4ADE80;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="light"] .fullscreen-playlist-item.contains-current-track:hover .fullscreen-playlist-item-status.contains {
+  background: rgba(184, 35, 24, 0.18);
+  color: #B42318;
+}
+
+.fullscreen-playlist-popover[data-ui-theme="dark"] .fullscreen-playlist-item.contains-current-track:hover .fullscreen-playlist-item-status.contains {
+  background: rgba(184, 35, 24, 0.22);
+  color: #FF8A80;
 }
 
 .lyrics-creator-profile-track + .lyrics-creator-profile-track,
@@ -17661,22 +17845,64 @@ html.is-lp-view-switch::view-transition-new(root) {
   text-overflow: ellipsis;
 }
 
+/* Artist and update date share one truncated line; the row owns the rhythm.
+   Deliberately not `-track-meta`: that class is a two-column bar elsewhere. */
+.lyrics-creator-profile-track-subline,
+.lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-track-subline {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 4px;
+  color: var(--creator-muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
 .lyrics-creator-profile-track-artist,
 .lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-track-artist {
-  margin-top: 3px;
+  /* The update keeps the room; the artist gives way and truncates. */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--creator-muted);
   font-size: 13px;
   font-weight: 500;
-  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lyrics-creator-profile-track-updated,
+.lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-track-updated {
+  /* The update has priority: it keeps its width and the artist truncates.
+     The cap stops it eating the whole line, which would collapse the artist
+     to nothing again. */
+  flex: 0 0 auto;
+  max-width: 80%;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--creator-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.lyrics-creator-profile-track-updated::before {
+  content: "·";
+  margin-right: 6px;
+  color: var(--creator-muted-2);
 }
 
 .lyrics-creator-profile-track-side,
 .lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-track-side {
+  /* Points and source stack in one column beside the playlist button. */
+  display: flex;
+  flex-direction: column;
   align-items: flex-end;
+  gap: 4px;
   color: var(--creator-muted);
-  text-align: right;
 }
 
 .lyrics-creator-profile-track-provider,
@@ -17688,6 +17914,10 @@ html.is-lp-view-switch::view-transition-new(root) {
   padding: 5px 10px;
   font-size: 11px;
   font-weight: 700;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lyrics-creator-profile-track-updated,
@@ -17695,6 +17925,21 @@ html.is-lp-view-switch::view-transition-new(root) {
   color: var(--creator-muted);
   font-size: 12px;
   font-weight: 500;
+}
+
+/* The shared panel rule above gives these two a border and a 22px radius.
+   Without an inset the label's line box met the border edge, so the pill
+   clipped its own text. The block-level states keep their own layout. */
+.lyrics-creator-profile-list-status,
+.lyrics-creator-profile-load-more,
+.lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-list-status,
+.lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-load-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 14px;
+  line-height: 1.4;
+  overflow: visible;
 }
 
 .lyrics-creator-profile-state,
@@ -17763,14 +18008,17 @@ html.is-lp-view-switch::view-transition-new(root) {
 
   .lyrics-creator-profile-track,
   .lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-track {
-    grid-template-columns: 56px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lyrics-creator-profile-track-actions,
+  .lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-track-actions {
+    justify-content: flex-start;
   }
 
   .lyrics-creator-profile-track-side,
   .lyrics-creator-profile-modal[data-ui-theme="light"] .lyrics-creator-profile-track-side {
-    grid-column: 2;
     align-items: flex-start;
-    text-align: left;
   }
 
   .lyrics-creator-decoration-fields {

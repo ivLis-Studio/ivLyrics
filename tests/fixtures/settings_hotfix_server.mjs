@@ -11,7 +11,7 @@ const modules = resolve(process.argv[2] || "/tmp/ivlyrics-welcome-deps.YxOkwc/no
 const files = new Map([
   ["/react.js", resolve(modules, "react/umd/react.development.js")],
   ["/react-dom.js", resolve(modules, "react-dom/umd/react-dom.development.js")],
-  ...["Settings.js", "SettingsStyles.js", "I18n.js", "FullscreenOverlay.js", "VinylPlayerMode.js", "Addon_AI_DeepL.js", "LrclibLocalDatabaseRuntime.js", "LrclibLocalDatabase.js", "Addon_Lyrics_Lrclib.js", "style.css"]
+  ...["Settings.js", "SettingsStyles.js", "I18n.js", "PlaylistPicker.js", "FullscreenOverlay.js", "VinylPlayerMode.js", "Addon_AI_DeepL.js", "LrclibLocalDatabaseRuntime.js", "LrclibLocalDatabase.js", "Addon_Lyrics_Lrclib.js", "style.css"]
     .map(name => ["/" + name, resolve(root, name)]),
 ]);
 const languages = readdirSync(resolve(root, "langs")).filter(name => /^Lang[A-Za-z]+\.js$/.test(name)).sort();
