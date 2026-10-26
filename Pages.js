@@ -7011,7 +7011,7 @@ const useSyncedLyricsEngine = ({
 				&& position >= playbackWindows[lineNumber].contentEndTime) {
 				className += " lyrics-lyricsContainer-LyricsLine-complete";
 			}
-			const isOutsideVisibleRange = !isHighlightedLine
+			const isOutsideVisibleRange = (!isHighlightedLine
 				&& lineNumber !== visualAnchorLineNumber
 				&& (shouldHideSyncedLine({
 					compact,
@@ -7019,12 +7019,14 @@ const useSyncedLyricsEngine = ({
 					animationIndex: visibilityAnimationIndex,
 				}) || (
 					visibilityAnimationIndex < 0
-					&& !(compact && isScrolling)
 					&& (
 						!!paddedLyrics[layoutActiveLineIndex]?.interludeInfo?.isInterlude
+						// The visual anchor can sit on the dots while layout still holds the lyric.
+						|| !!paddedLyrics[visualAnchorLineNumber]?.interludeInfo?.isInterlude
 						|| isTrailingInterludeActive
 					)
-				));
+				))
+				|| (isTrailingInterludeActive && isAnchorLine));
 			if (isOutsideVisibleRange) {
 				className += " lyrics-lyricsContainer-LyricsLine-paddingLine";
 				className += visibilityAnimationIndex < 0

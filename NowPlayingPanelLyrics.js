@@ -5101,7 +5101,10 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
                 const relativeIndex = displayIndex - visualDisplayIndex;
                 const isSinging = !isVirtualTrailingInterlude && singingLineIndices.includes(i);
                 const activeIsInterlude = isVirtualTrailingInterludeActive
-                    || !!displayableLyrics.find((candidate) => candidate.index === currentIndex)?.interludeInfo?.isInterlude;
+                    || (!!activeTrailingInterludeKey && activeTrailingInterludeKey === visualTrailingInterludeKey)
+                    || !!displayableLyrics.find((candidate) => candidate.index === currentIndex)?.interludeInfo?.isInterlude
+                    // The visual anchor can sit on the dots while the current index still holds the lyric.
+                    || !!displayableLyrics.find((candidate) => candidate.index === visualIndex)?.interludeInfo?.isInterlude;
 
                 return {
                     index: entry.index,
