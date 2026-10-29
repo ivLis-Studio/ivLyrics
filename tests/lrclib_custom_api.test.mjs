@@ -181,6 +181,88 @@ function setup({ endpoint, custom = () => Response.json(record), official = offi
     };
 }
 
+for (const status of [408, 429, 500, 503]) {
+    test(`official pinned lookup HTTP ${status} stops the whole playback search stage`, async () => {
+        const h = setup({ savedSyncData: syncData, englishMetadata: { title: 'English title', artist: 'English artist' },
+            official: () => new Response('Busy', { status }) });
+        const result = await h.addon.getLyrics(track);
+        assert.match(result.error, new RegExp(String(status)));
+        assertRequests(h, [apiUrl(OFFICIAL, `get/${officialRecord.id}`)]);
+        assert.equal(h.metadataReads.length, 0, 'an outage must not trigger alternate metadata searches');
+        assert.equal(h.timers.size, 0);
+    });
+}
+
+test('official overload after a custom miss stops at metadata lookup without extra searches', async () => {
+    const h = setup({ endpoint: CUSTOM, custom: noMatch, official: () => new Response('Busy', { status: 503 }) });
+    const result = await h.addon.getLyrics(track);
+    assert.match(result.error, /503/);
+    assertRequests(h, [...customSequence(), metadataGet(OFFICIAL)]);
+});
+
+test('a genuine official pinned-record miss still searches for usable lyrics', async () => {
+    const h = setup({ savedSyncData: syncData,
+        official: url => new URL(url).pathname.includes('/get/') ? notFound() : officialResponse(url) });
+    assertOfficial(await h.addon.getLyrics(track));
+    assertRequests(h, [apiUrl(OFFICIAL, `get/${officialRecord.id}`), searchSequence(OFFICIAL)[0]]);
+});
+
+for (const [retryAfter, delay] of [['12', 12000], ['Thu, 01 Jan 1970 00:00:12 GMT', 12000], ['invalid', 5000]]) {
+    test(`playback shares Retry-After backoff across tracks (${retryAfter}) without caching a missing lyric`, async () => {
+        let busy = true;
+        const h = setup({ savedSyncData: syncData, official: url => busy
+            ? new Response('Busy', { status: 429, headers: { 'Retry-After': retryAfter } }) : officialResponse(url) });
+        assert.match((await h.addon.getLyrics(track)).error, /429/);
+        busy = false;
+        await h.advance(delay - 1);
+        assert.match((await h.addon.getLyrics({ ...track, uri: 'spotify:track:next' })).error, /429/);
+        assert.equal(h.requests.length, 1, 'do not send more requests during the host cooldown');
+        await h.advance(1);
+        assertOfficial(await h.addon.getLyrics(track));
+        assert.equal(h.requests.length, 2, 'recover automatically once the cooldown expires');
+        assert.equal(h.timers.size, 0);
+    });
+}
+
+test('a custom overload immediately falls back to official and only cools down the custom host', async () => {
+    const h = setup({ endpoint: CUSTOM, custom: () => new Response('Busy', { status: 503 }) });
+    assertOfficial(await h.addon.getLyrics(track));
+    assertRequests(h, [metadataGet(CUSTOM), metadataGet(OFFICIAL)]);
+    assertOfficial(await h.addon.getLyrics(track));
+    assertRequests(h, [metadataGet(CUSTOM), metadataGet(OFFICIAL), metadataGet(OFFICIAL)]);
+});
+
+test('an official direct network failure tries its CORS relay once and never starts the search ladder', async () => {
+    const h = setup({ savedSyncData: syncData, official: () => { throw new TypeError('Failed to fetch'); } });
+    assert.match((await h.addon.getLyrics(track)).error, /network request failed/);
+    assertRequests(h, [apiUrl(OFFICIAL, `get/${officialRecord.id}`), `${PROXY}${apiUrl(OFFICIAL, `get/${officialRecord.id}`)}`]);
+    assert.equal(h.timers.size, 0);
+});
+
+test('playback cooldown leaves explicit editor searches independent', async () => {
+    let busy = true;
+    const h = setup({ savedSyncData: syncData, official: url => busy
+        ? new Response('Busy', { status: 503 }) : officialResponse(url) });
+    assert.match((await h.addon.getLyrics(track)).error, /503/);
+    busy = false;
+    const result = await h.addon.searchCandidatesByQuery('Fixture Artist', track);
+    assert.equal(result.error, null);
+    assert.equal(h.requests.length, 2);
+    assert.equal(new URL(h.requests[1].url).pathname, '/api/search');
+});
+
+test('the creator official-only fallback also stays independent of playback cooldown', async () => {
+    let busy = true;
+    const h = setup({ savedSyncData: syncData, official: url => busy
+        ? new Response('Busy', { status: 503 }) : officialResponse(url) });
+    assert.match((await h.addon.getLyrics(track)).error, /503/);
+    busy = false;
+    assertOfficial(await h.addon.getLyrics({ ...track, lrclibOfficialOnly: true }));
+    assert.equal(h.requests.length, 2);
+    assert.match((await h.addon.getLyrics(track)).error, /503/, 'the editor does not clear the playback cooldown');
+    assert.equal(h.requests.length, 2);
+});
+
 // Dispatch the production component's handlers and rerender its actual hook state.
 function mountSettings(h) {
     const hooks = [];

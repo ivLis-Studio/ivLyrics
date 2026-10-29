@@ -24,6 +24,7 @@
     ]);
     const API_PATH = '/v2/lyrics/get';
     const REQUEST_TIMEOUT_MS = 10000;
+    const MIRROR_FALLBACK_DELAY_MS = 750;
     const SYLLABLE_TIMING_TOLERANCE_MS = 1500;
     const SOLO_LINE_SPLIT_TRIGGER_WIDTH = 22;
     const SOLO_LINE_SPLIT_HARD_WIDTH = 26;
@@ -48,7 +49,7 @@
         return params ? String(fallback).replace(/\{(\w+)\}/g, (match, name) => params[name] ?? match) : fallback;
     }
 
-    let nextApiBaseIndex = 0;
+    let preferredApiBaseIndex = 0;
 
     const SPEAKER_PALETTE = [
         { color: '#a8ccff', fallback: 'MALE 1' },
@@ -113,8 +114,7 @@
 
     function reserveApiAttemptOrder(apiBases = getApiBases()) {
         if (!Array.isArray(apiBases) || apiBases.length === 0) return [];
-        const startIndex = nextApiBaseIndex % apiBases.length;
-        nextApiBaseIndex = (startIndex + 1) % apiBases.length;
+        const startIndex = preferredApiBaseIndex % apiBases.length;
 
         return apiBases.map((_apiBase, offset) => {
             const mirrorIndex = (startIndex + offset) % apiBases.length;
@@ -235,36 +235,31 @@
                 || (Array.isArray(line?.syllabus) && line.syllabus.some(item => normalizeDisplayText(item?.text))));
     }
 
-    async function fetchJson(url, mirrorIndex) {
-        const controller = typeof AbortController === 'function' ? new AbortController() : null;
-        const timer = controller ? setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS) : null;
-
-        try {
-            const response = await fetch(url.toString(), {
-                headers: { Accept: 'application/json' },
-                signal: controller?.signal
-            });
-            const body = await response.json().catch(() => null);
-
-            if (!response.ok || !isUsablePayload(body)) {
-                const message = body?.error?.message
-                    || body?.error?.details?.message
-                    || (typeof body?.error === 'string' ? body.error : '')
-                    || `request failed (${response.status})`;
-                const error = new Error(`LyricsPlus mirror ${mirrorIndex + 1}: ${message}`);
-                error.status = response.status;
-                error.notFound = response.status === 404
-                    || (response.ok
-                        && body
-                        && !body.error
-                        && Array.isArray(body.lyrics));
-                throw error;
-            }
-
-            return body;
-        } finally {
-            if (timer) clearTimeout(timer);
+    async function fetchJson(url, mirrorIndex, signal) {
+        const response = await fetch(url.toString(), {
+            headers: { Accept: 'application/json' },
+            signal
+        });
+        if (!response.ok) {
+            const error = new Error(`LyricsPlus mirror ${mirrorIndex + 1}: request failed (${response.status})`);
+            error.status = response.status;
+            error.notFound = response.status === 404;
+            throw error;
         }
+        const body = await response.json().catch(() => null);
+
+        if (!isUsablePayload(body)) {
+            const message = body?.error?.message
+                || body?.error?.details?.message
+                || (typeof body?.error === 'string' ? body.error : '')
+                || `request failed (${response.status})`;
+            const error = new Error(`LyricsPlus mirror ${mirrorIndex + 1}: ${message}`);
+            error.status = response.status;
+            error.notFound = !!(body && !body.error && Array.isArray(body.lyrics));
+            throw error;
+        }
+
+        return body;
     }
 
     async function fetchLyricsData(info) {
@@ -275,25 +270,74 @@
             throw new Error('Missing ISRC or track metadata');
         }
 
-        const errors = [];
         const apiAttempts = reserveApiAttemptOrder();
-        for (const { apiBase, mirrorIndex } of apiAttempts) {
-            try {
-                const data = await fetchJson(buildLyricsUrl(apiBase, info, isrc), mirrorIndex);
-                return { data, isrc, mirror: mirrorIndex + 1 };
-            } catch (error) {
-                errors.push(error);
-                window.__ivLyricsDebugLog?.(`[LyricsPlus Lyrics Addon] Mirror ${mirrorIndex + 1} failed`, {
-                    status: error?.status || null,
-                    error: error?.name || 'Error'
-                });
-            }
-        }
+        return new Promise((resolve, reject) => {
+            const errors = [];
+            const activeRequests = new Map();
+            let nextAttempt = 0;
+            let settled = false;
+            let fallbackTimer = null;
 
-        if (errors.length > 0 && errors.every(error => error?.notFound === true)) return null;
-        throw [...errors].reverse().find(error => error?.notFound !== true)
-            || errors[errors.length - 1]
-            || new Error('LyricsPlus request failed');
+            const finish = (value, error, winnerIndex = null) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(deadlineTimer);
+                clearTimeout(fallbackTimer);
+                for (const [mirrorIndex, controller] of activeRequests) {
+                    if (mirrorIndex !== winnerIndex) controller?.abort();
+                }
+                activeRequests.clear();
+                if (error) reject(error);
+                else resolve(value);
+            };
+
+            // One budget covers both mirrors, including response bodies. Settle
+            // explicitly even if a fetch implementation does not honor abort.
+            const deadlineTimer = setTimeout(() => {
+                const error = new Error('LyricsPlus request timed out');
+                error.name = 'TimeoutError';
+                finish(null, error);
+            }, REQUEST_TIMEOUT_MS);
+
+            const startNext = () => {
+                if (settled || nextAttempt >= apiAttempts.length) return;
+                clearTimeout(fallbackTimer);
+                fallbackTimer = null;
+                const { apiBase, mirrorIndex } = apiAttempts[nextAttempt++];
+                const controller = typeof AbortController === 'function' ? new AbortController() : null;
+                activeRequests.set(mirrorIndex, controller);
+                fetchJson(buildLyricsUrl(apiBase, info, isrc), mirrorIndex, controller?.signal)
+                    .then(data => {
+                        if (settled) return;
+                        preferredApiBaseIndex = mirrorIndex;
+                        finish({ data, isrc, mirror: mirrorIndex + 1 }, null, mirrorIndex);
+                    })
+                    .catch(error => {
+                        if (settled) return;
+                        controller?.abort();
+                        activeRequests.delete(mirrorIndex);
+                        errors.push(error);
+                        window.__ivLyricsDebugLog?.(`[LyricsPlus Lyrics Addon] Mirror ${mirrorIndex + 1} failed`, {
+                            status: error?.status || null,
+                            error: error?.name || 'Error'
+                        });
+                        if (nextAttempt < apiAttempts.length) {
+                            startNext();
+                        } else if (activeRequests.size === 0) {
+                            const failure = [...errors].reverse().find(item => item?.notFound !== true);
+                            finish(null, failure);
+                        }
+                    });
+
+                // Fast successful responses use one mirror. A slow response
+                // allows the alternate to provide lyrics without a full timeout.
+                if (nextAttempt < apiAttempts.length) {
+                    fallbackTimer = setTimeout(startNext, MIRROR_FALLBACK_DELAY_MS);
+                }
+            };
+
+            startNext();
+        });
     }
 
     function getAgentMetadata(singer, agents = {}) {
@@ -1013,7 +1057,7 @@
                 });
                 return result;
             } catch (error) {
-                result.error = error?.name === 'AbortError'
+                result.error = error?.name === 'AbortError' || error?.name === 'TimeoutError'
                     ? 'Request timed out'
                     : (error?.message || 'Request error');
                 console.warn('[LyricsPlus Lyrics Addon] Failed to load lyrics:', error);
