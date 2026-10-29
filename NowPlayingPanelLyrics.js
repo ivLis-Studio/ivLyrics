@@ -11,17 +11,32 @@
         initialized: false,
         runtimeStarted: false,
         waitTimer: null,
+        runtimeRetryTimer: null,
         panelObserver: null,
         pageObserver: null,
         pageObserverTimeout: null,
         historyUnlisten: null,
         lyricsListener: null,
         settingsListener: null,
-        insertTimer: null
+        insertTimer: null,
+        insertDueAt: null
     });
 
+    if (moduleState.initialized) {
+        return;
+    }
+
+    // React 객체가 먼저 노출되어도 Player와 렌더링 API는 아직 준비되지 않을 수 있다.
+    const isRuntimeReady = () => !!document.body
+        && typeof window.Spicetify?.React?.createElement === 'function'
+        && typeof window.Spicetify?.React?.Component === 'function'
+        && typeof window.Spicetify?.React?.memo === 'function'
+        && typeof window.Spicetify?.Player?.addEventListener === 'function'
+        && (typeof window.Spicetify?.ReactDOM?.createRoot === 'function'
+            || typeof window.Spicetify?.ReactDOM?.render === 'function');
+
     // Spicetify가 준비될 때까지 대기
-    if (!window.Spicetify || !Spicetify.React || !Spicetify.ReactDOM) {
+    if (!isRuntimeReady()) {
         if (!moduleState.waitTimer) {
             moduleState.waitTimer = setTimeout(() => {
                 moduleState.waitTimer = null;
@@ -31,9 +46,9 @@
         return;
     }
 
-    moduleState.waitTimer = null;
-    if (moduleState.initialized) {
-        return;
+    if (moduleState.waitTimer) {
+        clearTimeout(moduleState.waitTimer);
+        moduleState.waitTimer = null;
     }
     moduleState.initialized = true;
 
@@ -1820,13 +1835,14 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
     const clearInsertTimer = () => {
         if (insertTimer) {
             clearTimeout(insertTimer);
-            insertTimer = null;
-            moduleState.insertTimer = null;
         }
+        insertTimer = null;
+        moduleState.insertTimer = null;
+        moduleState.insertDueAt = null;
     };
 
     const setPanelActiveState = (isActive) => {
-        document.body.classList.toggle(PANEL_ACTIVE_BODY_CLASS, isActive);
+        document.body?.classList.toggle(PANEL_ACTIVE_BODY_CLASS, isActive);
     };
 
     const getPlaybackPaused = () => {
@@ -1853,10 +1869,17 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
     };
 
     const scheduleInsertPanelLyrics = (delay = 100) => {
+        const dueAt = Date.now() + delay;
+        // 미리보기의 잦은 DOM 변경이 이미 예약한 삽입을 계속 뒤로 밀지 않게 한다.
+        if (insertTimer && moduleState.insertDueAt <= dueAt) {
+            return;
+        }
         clearInsertTimer();
+        moduleState.insertDueAt = dueAt;
         insertTimer = setTimeout(() => {
             insertTimer = null;
             moduleState.insertTimer = null;
+            moduleState.insertDueAt = null;
             insertPanelLyrics();
         }, delay);
         moduleState.insertTimer = insertTimer;
@@ -5549,7 +5572,7 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
         // React 렌더링
         try {
             const ReactDOM = Spicetify.ReactDOM;
-            if (ReactDOM.createRoot) {
+            if (typeof ReactDOM.createRoot === 'function') {
                 starryNightBarRoot = ReactDOM.createRoot(container);
                 starryNightBarRoot.render(createPanelLyricsElement());
             } else {
@@ -5597,7 +5620,7 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
     const renderPanelLyricsIntoContainer = (container) => {
         try {
             const ReactDOM = Spicetify.ReactDOM;
-            if (ReactDOM.createRoot) {
+            if (typeof ReactDOM.createRoot === 'function') {
                 container.__ivLyricsPanelRoot = container.__ivLyricsPanelRoot || ReactDOM.createRoot(container);
                 lyricsRoot = container.__ivLyricsPanelRoot;
                 lyricsRoot.render(createPanelLyricsElement());
@@ -5813,6 +5836,7 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
     };
 
     const refreshPageStateAndPanel = () => {
+        if (!moduleState.runtimeStarted) return;
         const isOnIvLyricsPage = updateIvLyricsPageState();
         if (isOnIvLyricsPage) {
             removePanelLyrics();
@@ -5860,7 +5884,7 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
         updateIvLyricsPageState();
 
         // Spicetify History 변경 감지 (URL 변경)
-        if (Spicetify.Platform?.History) {
+        if (typeof Spicetify.Platform?.History?.listen === 'function') {
             const unlisten = Spicetify.Platform.History.listen(() => {
                 // 약간의 지연 후 확인 (DOM이 업데이트될 시간 확보)
                 setTimeout(refreshPageStateAndPanel, 100);
@@ -5922,28 +5946,53 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
             return;
         }
 
-        moduleState.runtimeStarted = true;
-        setPanelActiveState(true);
+        if (moduleState.runtimeRetryTimer) {
+            clearTimeout(moduleState.runtimeRetryTimer);
+            moduleState.runtimeRetryTimer = null;
+        }
 
-        setupPageDetection();
-        setupObserver();
-        setupLyricsListener();
-        updateCSSVariables();
-        insertPanelLyrics();
+        const retry = () => {
+            moduleState.runtimeRetryTimer = setTimeout(() => {
+                moduleState.runtimeRetryTimer = null;
+                startRuntime();
+            }, 1000);
+        };
 
-        scheduleInsertPanelLyrics(1000);
+        if (!isRuntimeReady()) {
+            retry();
+            return;
+        }
+
+        try {
+            setPanelActiveState(true);
+            setupPageDetection();
+            setupObserver();
+            setupLyricsListener();
+            updateCSSVariables();
+            insertPanelLyrics();
+            scheduleInsertPanelLyrics(1000);
+            moduleState.runtimeStarted = true;
+        } catch (error) {
+            console.error('[NowPlayingPanelLyrics] Failed to start, retrying:', error);
+            stopRuntime();
+            retry();
+        }
     };
 
     const stopRuntime = () => {
         moduleState.runtimeStarted = false;
+        if (moduleState.runtimeRetryTimer) {
+            clearTimeout(moduleState.runtimeRetryTimer);
+            moduleState.runtimeRetryTimer = null;
+        }
         clearInsertTimer();
         teardownObserver();
         teardownLyricsListener();
         teardownPageDetection();
         removePanelLyrics();
         setPanelActiveState(false);
-        document.body.classList.remove('ivlyrics-page-active');
-        document.body.classList.remove('ivlyrics-starrynight-theme');
+        document.body?.classList.remove('ivlyrics-page-active');
+        document.body?.classList.remove('ivlyrics-starrynight-theme');
     };
 
     const handleSettingsEvent = (event) => {
