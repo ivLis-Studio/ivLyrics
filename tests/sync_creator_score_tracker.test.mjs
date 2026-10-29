@@ -169,6 +169,7 @@ test('the actual work transport preserves HTTP 400 when its error body is not JS
       trackUri: 'spotify:track:abc', initialSyncData: snapshot(0) } },
     scoreTrackerRef: { current: null }, scorePendingEventsRef: { current: [] },
     Utils: { getUserHash: () => 'account', getApiHeaders: value => value },
+    I18n: { t: (key, { status }) => `Server returned HTTP ${status}` },
     window: { SyncCreatorScoreTracker: { create(options) {
       request = options.request;
       return { scope: 'account:USAAA2600001:lrclib' };
@@ -181,7 +182,7 @@ test('the actual work transport preserves HTTP 400 when its error body is not JS
   });
   vm.runInContext(`${source.slice(start, end)}\nensureScoreTracker();`, context);
   const payload = { action: 'start', eventId: 'transport-test', syncData: snapshot(0) };
-  await assert.rejects(request(payload), error => error.status === 400 && /could not be saved/.test(error.message));
+  await assert.rejects(request(payload), error => error.status === 400 && /HTTP 400/.test(error.message));
   assert.equal(sent.length, 1);
   assert.equal(sent[0].url, 'https://lyrics.api.ivl.is/lyrics/sync-data/work');
   assert.deepEqual(sent[0].payload, payload);

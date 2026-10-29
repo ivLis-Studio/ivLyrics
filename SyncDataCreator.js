@@ -12,6 +12,20 @@ const fetchSyncCreatorLrclib = async (url) => {
 	return response;
 };
 
+const getSyncCreatorSubmitErrorMessage = (error) => {
+	// HTTP failures carry the server's explanation. Do not relabel them as
+	// connection errors just because that explanation mentions a timeout.
+	if (Number.isInteger(error?.status)) return error.message || I18n.t('syncCreator.submitError');
+	if (error?.name === 'AbortError' || error?.name === 'TimeoutError') {
+		return I18n.t('syncCreator.submitTimeoutError');
+	}
+	if (error?.name === 'NetworkError'
+		|| /failed to fetch|fetch failed|network request failed|networkerror|load failed/i.test(error?.message || '')) {
+		return I18n.t('syncCreator.submitNetworkError');
+	}
+	return error?.message || I18n.t('syncCreator.submitError');
+};
+
 const SYNC_CREATOR_RTL_STRONG_CHAR_REGEX = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFC]/u;
 const SYNC_CREATOR_LTR_STRONG_CHAR_REGEX = /[A-Za-z\u00C0-\u02AF\u0370-\u052F\u1E00-\u1EFF]/u;
 const SYNC_CREATOR_JAPANESE_KANA_REGEX = /[\u3040-\u30ff\uff66-\uff9f]/u;
@@ -3746,7 +3760,8 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					&& Spicetify.Player?.data?.item?.uri === context.trackUri,
 				request: async payload => {
 					const controller = new AbortController();
-					const timeout = setTimeout(() => controller.abort(), 15000);
+					// Allow the server's bounded LRCLIB verification retries to finish.
+					const timeout = setTimeout(() => controller.abort(), 30000);
 					try {
 						const response = await fetch('https://lyrics.api.ivl.is/lyrics/sync-data/work', {
 							method: 'POST', signal: controller.signal,
@@ -3756,7 +3771,8 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 						// Keep HTTP status even when a proxy returns a plain-text error.
 						const result = await response.json().catch(() => null);
 						if (!response.ok) {
-							const failure = new Error(result?.error || 'Sync work could not be saved.');
+							const failure = new Error(result?.error || result?.message
+								|| I18n.t('syncCreator.submitServerError', { status: response.status }));
 							failure.status = response.status;
 							throw failure;
 						}
@@ -10798,12 +10814,14 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					setHasUnsubmittedSync(false);
 					setHasPublishedSync(true);
 				} else {
-					Toast.error((await response.json()).error || I18n.t('syncCreator.submitError'));
+					const result = await response.json().catch(() => null);
+					Toast.error(result?.error || result?.message
+						|| I18n.t('syncCreator.submitServerError', { status: response.status }));
 				}
 			}
 		} catch (e) {
 			console.error('[SyncDataCreator] Submit error:', e);
-			Toast.error(e?.message || I18n.t('syncCreator.submitError'));
+			Toast.error(getSyncCreatorSubmitErrorMessage(e));
 		}
 
 		setIsSubmitting(false);

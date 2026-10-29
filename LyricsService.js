@@ -4746,11 +4746,15 @@
                 })
             });
 
-            const result = await response.json();
+            const result = await response.json().catch(() => null);
 
             if (!response.ok) {
-                throw new Error(result.error || result.message || 'Failed to submit sync data');
+                const failure = new Error(result?.error || result?.message
+                    || I18n.t('syncCreator.submitServerError', { status: response.status }));
+                failure.status = response.status;
+                throw failure;
             }
+            if (!result) throw new Error(I18n.t('syncCreator.submitError'));
 
             const resolvedResultIsrc = normalizeSyncDataIsrc(result?.isrc || result?.data?.isrc);
             if (resolvedResultIsrc && identity.trackId) {
