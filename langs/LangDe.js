@@ -3092,6 +3092,7 @@ window.LANG_DE = {
     "import": "Importieren",
     "importSuccess": "Sync-Daten importiert",
     "importError": "Import fehlgeschlagen",
+    "importLyricsMismatch": "Diese Datei passt weder zu den aktuellen Lyrics noch zu den Lyrics von LRCLIB {id}.",
     "importDifferentTrack": "Dies sind Sync-Daten eines anderen Titels. Trotzdem importieren?",
     "kindVocal": "Kein Effekt",
     "kindEffect": "Zittern",

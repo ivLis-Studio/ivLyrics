@@ -3092,6 +3092,7 @@ window.LANG_AR = {
     "import": "استيراد",
     "importSuccess": "تم استيراد بيانات المزامنة",
     "importError": "فشل الاستيراد",
+    "importLyricsMismatch": "هذا الملف لا يطابق الكلمات الحالية ولا كلمات LRCLIB {id}.",
     "importDifferentTrack": "هذه بيانات مزامنة لمسار آخر. هل تريد الاستيراد على أي حال؟",
     "kindVocal": "بدون تأثير",
     "kindEffect": "اهتزاز",

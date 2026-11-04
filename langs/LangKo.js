@@ -3092,6 +3092,7 @@ window.LANG_KO = {
     "import": "불러오기",
     "importSuccess": "싱크 데이터를 불러왔습니다",
     "importError": "불러오기 실패",
+    "importLyricsMismatch": "이 파일은 현재 가사와도, LRCLIB {id} 가사와도 맞지 않습니다.",
     "importDifferentTrack": "다른 트랙의 싱크 데이터입니다. 그래도 불러오시겠습니까?",
     "kindVocal": "효과없음",
     "kindEffect": "떨림",

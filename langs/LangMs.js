@@ -3092,6 +3092,7 @@ window.LANG_MS = {
     "import": "Import",
     "importSuccess": "Data senada telah diimport",
     "importError": "Import gagal",
+    "importLyricsMismatch": "Fail ini tidak sepadan dengan lirik semasa mahupun lirik LRCLIB {id}.",
     "importDifferentTrack": "Ini adalah data senada untuk trek yang berbeza. Adakah anda tetap mahu mengimportnya?",
     "kindVocal": "Tiada kesan",
     "kindEffect": "Gegaran",

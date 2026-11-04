@@ -3092,6 +3092,7 @@ window.LANG_ZH_CN = {
     "import": "导入",
     "importSuccess": "同步数据已导入",
     "importError": "导入失败",
+    "importLyricsMismatch": "此文件与当前歌词和 LRCLIB {id} 的歌词都不匹配。",
     "importDifferentTrack": "这是另一首曲目的同步数据。是否仍要导入？",
     "kindVocal": "无效果",
     "kindEffect": "抖动",

@@ -3092,6 +3092,7 @@ window.LANG_FA = {
     "import": "وارد کردن",
     "importSuccess": "داده‌های همگام‌سازی وارد شد",
     "importError": "خطا در وارد کردن",
+    "importLyricsMismatch": "این فایل نه با متن ترانه فعلی مطابقت دارد و نه با متن ترانه LRCLIB {id}.",
     "importDifferentTrack": "این داده‌های همگام‌سازی آهنگ دیگری است. آیا می‌خواهید وارد کنید؟",
     "kindVocal": "بدون افکت",
     "kindEffect": "لرزش",

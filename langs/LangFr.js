@@ -3092,6 +3092,7 @@ window.LANG_FR = {
     "import": "Importer",
     "importSuccess": "Données de sync importées",
     "importError": "Échec de l'importation",
+    "importLyricsMismatch": "Ce fichier ne correspond ni aux paroles actuelles ni aux paroles de LRCLIB {id}.",
     "importDifferentTrack": "Ces données de sync proviennent d'une autre piste. Voulez-vous importer quand même?",
     "kindVocal": "Aucun effet",
     "kindEffect": "Tremblement",

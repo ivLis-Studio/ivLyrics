@@ -3092,6 +3092,7 @@ window.LANG_ES = {
     "import": "Importar",
     "importSuccess": "Datos de sincronización importados",
     "importError": "Error al importar",
+    "importLyricsMismatch": "Este archivo no coincide con la letra actual ni con la letra de LRCLIB {id}.",
     "importDifferentTrack": "Estos son datos de sincronización de otra pista. ¿Desea importar de todos modos?",
     "kindVocal": "Sin efecto",
     "kindEffect": "Temblor",

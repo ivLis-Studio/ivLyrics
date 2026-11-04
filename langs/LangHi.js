@@ -3092,6 +3092,7 @@ window.LANG_HI = {
     "import": "आयात",
     "importSuccess": "सिंक डेटा आयात किया गया",
     "importError": "आयात विफल",
+    "importLyricsMismatch": "यह फ़ाइल न तो मौजूदा बोल से मेल खाती है और न ही LRCLIB {id} के बोल से।",
     "importDifferentTrack": "यह दूसरे ट्रैक का सिंक डेटा है। क्या फिर भी आयात करना चाहते हैं?",
     "kindVocal": "कोई प्रभाव नहीं",
     "kindEffect": "कंपन",

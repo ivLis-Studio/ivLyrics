@@ -3092,6 +3092,7 @@ window.LANG_RU = {
     "import": "Импорт",
     "importSuccess": "Данные синхронизации импортированы",
     "importError": "Ошибка импорта",
+    "importLyricsMismatch": "Этот файл не соответствует ни текущему тексту, ни тексту LRCLIB {id}.",
     "importDifferentTrack": "Это данные синхронизации другого трека. Всё равно импортировать?",
     "kindVocal": "Без эффекта",
     "kindEffect": "Дрожание",

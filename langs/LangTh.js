@@ -3092,6 +3092,7 @@ window.LANG_TH = {
     "import": "นำเข้า",
     "importSuccess": "นำเข้าข้อมูลซิงค์แล้ว",
     "importError": "นำเข้าล้มเหลว",
+    "importLyricsMismatch": "ไฟล์นี้ไม่ตรงกับเนื้อเพลงปัจจุบันหรือเนื้อเพลงของ LRCLIB {id}",
     "importDifferentTrack": "นี่คือข้อมูลซิงค์จากเพลงอื่น ต้องการนำเข้าหรือไม่?",
     "kindVocal": "ไม่มีเอฟเฟกต์",
     "kindEffect": "สั่น",

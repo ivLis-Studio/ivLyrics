@@ -3092,6 +3092,7 @@ window.LANG_JA = {
     "import": "インポート",
     "importSuccess": "シンクデータをインポートしました",
     "importError": "インポート失敗",
+    "importLyricsMismatch": "このファイルは現在の歌詞ともLRCLIB {id}の歌詞とも一致しません。",
     "importDifferentTrack": "別のトラックのシンクデータです。それでもインポートしますか？",
     "kindVocal": "効果なし",
     "kindEffect": "震え",

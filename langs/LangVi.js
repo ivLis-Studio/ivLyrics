@@ -3092,6 +3092,7 @@ window.LANG_VI = {
     "import": "Nhập",
     "importSuccess": "Đã nhập dữ liệu đồng bộ",
     "importError": "Nhập thất bại",
+    "importLyricsMismatch": "Tệp này không khớp với lời bài hát hiện tại hoặc lời bài hát của LRCLIB {id}.",
     "importDifferentTrack": "Đây là dữ liệu đồng bộ của bài hát khác. Vẫn muốn nhập?",
     "kindVocal": "Không hiệu ứng",
     "kindEffect": "Rung",

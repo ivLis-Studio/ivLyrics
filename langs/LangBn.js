@@ -3092,6 +3092,7 @@ window.LANG_BN = {
     "import": "আমদানি",
     "importSuccess": "সিঙ্ক ডেটা আমদানি হয়েছে",
     "importError": "আমদানি ব্যর্থ",
+    "importLyricsMismatch": "এই ফাইলটি বর্তমান লিরিক্স বা LRCLIB {id}-এর লিরিক্সের সঙ্গে মেলে না।",
     "importDifferentTrack": "এটি অন্য ট্র্যাকের সিঙ্ক ডেটা। তাও কি আমদানি করতে চান?",
     "kindVocal": "কোনো প্রভাব নেই",
     "kindEffect": "কাঁপন",

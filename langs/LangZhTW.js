@@ -3092,6 +3092,7 @@ window.LANG_ZH_TW = {
     "import": "匯入",
     "importSuccess": "同步資料已匯入",
     "importError": "匯入失敗",
+    "importLyricsMismatch": "此檔案與目前歌詞及 LRCLIB {id} 的歌詞都不相符。",
     "importDifferentTrack": "這是另一首曲目的同步資料。是否仍要匯入？",
     "kindVocal": "無效果",
     "kindEffect": "抖動",

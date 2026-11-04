@@ -3092,6 +3092,7 @@ window.LANG_ID = {
     "import": "Impor",
     "importSuccess": "Data sinkronisasi diimpor",
     "importError": "Gagal mengimpor",
+    "importLyricsMismatch": "File ini tidak cocok dengan lirik saat ini maupun lirik LRCLIB {id}.",
     "importDifferentTrack": "Ini adalah data sinkronisasi dari lagu lain. Tetap impor?",
     "kindVocal": "Tanpa efek",
     "kindEffect": "Goyang",

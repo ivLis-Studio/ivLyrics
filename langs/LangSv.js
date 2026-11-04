@@ -3092,6 +3092,7 @@ window.LANG_SV = {
     "import": "Importera",
     "importSuccess": "Synkroniseringsdata importerades",
     "importError": "Importen misslyckades",
+    "importLyricsMismatch": "Den här filen matchar varken den aktuella texten eller texten från LRCLIB {id}.",
     "importDifferentTrack": "Denna synkroniseringsdata kommer från ett annat spår. Vill du importera ändå?",
     "kindVocal": "Ingen effekt",
     "kindEffect": "Skakning",

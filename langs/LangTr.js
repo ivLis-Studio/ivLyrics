@@ -3092,6 +3092,7 @@ window.LANG_TR = {
     "import": "İçe Aktar",
     "importSuccess": "Senkronizasyon verisi içe aktarıldı",
     "importError": "İçe aktarma başarısız",
+    "importLyricsMismatch": "Bu dosya ne mevcut sözlerle ne de LRCLIB {id} sözleriyle eşleşiyor.",
     "importDifferentTrack": "Bu senkronizasyon verisi farklı bir parçaya ait. Yine de içe aktarmak istiyor musunuz?",
     "kindVocal": "Efekt yok",
     "kindEffect": "Sarsılma",
