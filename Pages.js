@@ -7088,7 +7088,7 @@ const useSyncedLyricsEngine = ({
 				&& position >= playbackWindows[lineNumber].contentEndTime) {
 				className += " lyrics-lyricsContainer-LyricsLine-complete";
 			}
-			const isOutsideVisibleRange = !isHighlightedLine
+			const isOutsideVisibleRange = (!isHighlightedLine
 				&& lineNumber !== visualAnchorLineNumber
 				&& (shouldHideSyncedLine({
 					compact,
@@ -7099,9 +7099,13 @@ const useSyncedLyricsEngine = ({
 					&& !(compact && isScrolling)
 					&& (
 						!!paddedLyrics[layoutActiveLineIndex]?.interludeInfo?.isInterlude
+						// The visual anchor can sit on the dots while layout still holds the lyric.
+						|| !!paddedLyrics[visualAnchorLineNumber]?.interludeInfo?.isInterlude
 						|| isTrailingInterludeActive
 					)
-				));
+				))
+				// Manual browsing in compact mode keeps every row, as shouldHideSyncedLine does.
+				|| (isTrailingInterludeActive && isAnchorLine && !(compact && isScrolling)));
 			if (isOutsideVisibleRange) {
 				className += " lyrics-lyricsContainer-LyricsLine-paddingLine";
 				className += visibilityAnimationIndex < 0

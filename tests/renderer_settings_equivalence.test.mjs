@@ -9,7 +9,7 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const currentSource = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
 const baselineRevision = "6bb234835b0f5762876bbe521ddf665c8f952dfa";
 // While an instrumental or trailing interlude owns the layout, already sung
-// rows now take the padding classes and leave the accessibility tree. The
+// rows and the trailing anchor lyric now take the padding classes and leave the accessibility tree. The
 // frozen baselines predate that rule, so give them the same edit before every
 // comparison: the equivalence checks stay focused on unrelated regressions and
 // the rule itself is asserted in interlude_padding_collapse.test.mjs.
@@ -39,7 +39,7 @@ const applyInterludeCollapse = (source) => {
 		'						!!paddedLyrics[activeLineIndex]?.interludeInfo?.isInterlude',
 		'						|| isTrailingInterludeActive',
 		'					)',
-		'				));',
+		'				)) || (isTrailingInterludeActive && isAnchorLine && !(compact && isScrolling));',
 	].join('\n');
 	const collapsed = source.replace(search, replacement);
 	assert.notEqual(collapsed, source, "frozen baseline no longer contains the interlude collapse anchor");
