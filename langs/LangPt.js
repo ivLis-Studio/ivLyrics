@@ -221,6 +221,10 @@ window.LANG_PT = {
         "right": "Direita"
       }
     },
+    "sideMargin": {
+      "label": "Margem lateral da letra",
+      "desc": "Adiciona espaço dos dois lados da letra para aproximá-la do centro. Com alinhamento à esquerda, a letra fica perto do centro da tela, como na tela cheia do Spotify. 0% desativa."
+    },
     "noise": {
       "label": "Overlay de Ruído",
       "desc": "Adiciona um efeito de granulação de filme ao fundo"

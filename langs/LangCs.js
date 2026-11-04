@@ -221,6 +221,10 @@ window.LANG_CS = {
         "right": "Vpravo"
       }
     },
+    "sideMargin": {
+      "label": "Boční okraj textu",
+      "desc": "Přidá místo po obou stranách textu, aby byl blíže středu. Se zarovnáním vlevo bude text jako v režimu celé obrazovky Spotify poblíž středu obrazovky. 0 % je vypnuto."
+    },
     "noise": {
       "label": "Překrytí šumem",
       "desc": "Přidejte na pozadí efekt filmového zrna"

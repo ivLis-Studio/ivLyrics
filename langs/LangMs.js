@@ -221,6 +221,10 @@ window.LANG_MS = {
         "right": "Kanan"
       }
     },
+    "sideMargin": {
+      "label": "Margin sisi lirik",
+      "desc": "Menambah ruang di kedua-dua belah lirik supaya lebih ke tengah. Dengan jajaran kiri, lirik berada berhampiran tengah skrin seperti skrin penuh Spotify. 0% bermaksud mati."
+    },
     "noise": {
       "label": "Tindihan Hingar (Noise)",
       "desc": "Tambah kesan 'film grain' pada latar belakang"

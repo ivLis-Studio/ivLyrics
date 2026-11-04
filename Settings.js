@@ -7358,6 +7358,7 @@ const SETTINGS_DEFAULT_VALUES = Object.freeze({
   "lyrics-helper-enabled": false, "video-blur": "5", "video-cover": false, "video-scale": 105,
   "video-fallback-background": "album-cover", "solid-background-color": "#1e3a8a", "noise": true,
   "alignment": "center", "lines-before": 0, "lines-after": 2, "lyrics-anchor-position": "50",
+  "lyrics-side-margin": "0",
   "original-font-family": "Pretendard Variable", "phonetic-font-family": "Pretendard Variable",
   "translation-font-family": "Pretendard Variable",
   "cultural-annotations-font-family": "Pretendard Variable",
@@ -9758,6 +9759,14 @@ const ConfigModal = ({
       {
         section: I18n.t("tabs.appearance"),
         sectionKey: "appearance",
+        settingKey: "lyrics-side-margin",
+        name: I18n.t("settings.sideMargin.label"),
+        desc: I18n.t("settings.sideMargin.desc"),
+        i18nKeys: ["tabs.appearance", "sections.visualEffects", "settings.sideMargin.label", "settings.sideMargin.desc"]
+      },
+      {
+        section: I18n.t("tabs.appearance"),
+        sectionKey: "appearance",
         settingKey: "noise",
         name: I18n.t("settings.noise.label"),
         desc: I18n.t("settings.noise.desc"),
@@ -11990,6 +11999,17 @@ const ConfigModal = ({
         center: I18n.t("settings.alignment.options.center"),
         right: I18n.t("settings.alignment.options.right"),
       },
+    },
+    {
+      desc: I18n.t("settings.sideMargin.label"),
+      key: "lyrics-side-margin",
+      info: I18n.t("settings.sideMargin.desc"),
+      type: ConfigSliderRange,
+      disabled: isFadActive,
+      min: 0,
+      max: 30,
+      step: 1,
+      unit: "%",
     },
     {
       desc: I18n.t("settings.noise.label"),

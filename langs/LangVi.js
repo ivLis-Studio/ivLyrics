@@ -221,6 +221,10 @@ window.LANG_VI = {
         "right": "Phải"
       }
     },
+    "sideMargin": {
+      "label": "Lề hai bên lời bài hát",
+      "desc": "Thêm khoảng trống ở hai bên để lời bài hát dồn vào giữa. Khi căn trái, lời bài hát nằm gần giữa màn hình giống chế độ toàn màn hình của Spotify. 0% là tắt."
+    },
     "noise": {
       "label": "Lớp phủ nhiễu hạt",
       "desc": "Thêm hiệu ứng nhiễu hạt (film grain) vào nền"

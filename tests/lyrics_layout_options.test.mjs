@@ -56,3 +56,14 @@ globalThis.fit = fitFullscreenAlbumSize;`, sandbox);
 	assert.equal(fit(760, 1200, 1400, false), 760, "single column can use the full width");
 	assert.equal(fit(700, NaN, NaN), 700);
 });
+
+test("the side margin is opt-in and limited to 30% of the lyric column", () => {
+	assert.equal("--lyrics-side-margin" in typography({}), false);
+	assert.equal("--lyrics-side-margin" in typography({ "lyrics-side-margin": "0" }), false);
+	assert.equal(typography({ "lyrics-side-margin": "18" })["--lyrics-side-margin"], "18%");
+	assert.equal(typography({ "lyrics-side-margin": 90 })["--lyrics-side-margin"], "30%");
+	const styles = readFileSync(new URL("../style.css", import.meta.url), "utf8");
+	assert.match(styles, /\.lyrics-side-margin-enabled\s+:is\(\.lyrics-lyricsContainer-SyncedLyrics, \.lyrics-lyricsContainer-UnsyncedLyricsPage\)\s+> \.lyrics-lyricsContainer-LyricsLine \{\s+padding-inline: var\(--lyrics-side-margin, 0px\);/);
+	const index = readFileSync(new URL("../index.js", import.meta.url), "utf8");
+	assert.match(index, /Number\(CONFIG\.visual\["lyrics-side-margin"\]\) > 0 \? " lyrics-side-margin-enabled" : ""/);
+});

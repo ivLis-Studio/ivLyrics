@@ -221,6 +221,10 @@ window.LANG_EN = {
         "right": "Right"
       }
     },
+    "sideMargin": {
+      "label": "Lyrics side margin",
+      "desc": "Adds space on both sides of the lyrics to pull them inward. With left alignment, lyrics sit near the middle of the screen like Spotify's fullscreen view. 0% turns it off."
+    },
     "noise": {
       "label": "Noise Overlay",
       "desc": "Add a film grain effect to the background"

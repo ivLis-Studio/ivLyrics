@@ -221,6 +221,10 @@ window.LANG_SV = {
         "right": "Höger"
       }
     },
+    "sideMargin": {
+      "label": "Sidomarginal för texten",
+      "desc": "Lägger till utrymme på båda sidor så att texten hamnar närmare mitten. Med vänsterjustering hamnar texten nära skärmens mitt, som i Spotifys helskärmsläge. 0 % stänger av."
+    },
     "noise": {
       "label": "Brusöverlägg",
       "desc": "Lägg till en filmkorneffekt i bakgrunden"

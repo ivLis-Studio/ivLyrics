@@ -221,6 +221,10 @@ window.LANG_ID = {
         "right": "Kanan"
       }
     },
+    "sideMargin": {
+      "label": "Margin samping lirik",
+      "desc": "Menambahkan ruang di kedua sisi lirik agar lebih ke tengah. Dengan rata kiri, lirik berada dekat tengah layar seperti layar penuh Spotify. 0% berarti mati."
+    },
     "noise": {
       "label": "Overlay Noise",
       "desc": "Tambahkan efek film grain pada latar belakang"

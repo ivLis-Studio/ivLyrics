@@ -221,6 +221,10 @@ window.LANG_IT = {
         "right": "Destra"
       }
     },
+    "sideMargin": {
+      "label": "Margine laterale del testo",
+      "desc": "Aggiunge spazio su entrambi i lati del testo per avvicinarlo al centro. Con l'allineamento a sinistra, il testo resta vicino al centro dello schermo come nello schermo intero di Spotify. 0% lo disattiva."
+    },
     "noise": {
       "label": "Overlay rumore",
       "desc": "Aggiunge un effetto grana pellicola allo sfondo"

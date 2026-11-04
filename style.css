@@ -2218,6 +2218,14 @@ body.ivlyrics-page-active .main-topBar-container {
     margin-right: 120px;
   }
 }
+/* Optional lyrics side margin (Settings > Appearance). It narrows the lyric
+   column symmetrically so left- or right-aligned lyrics can rest nearer the
+   middle of the screen. Only rendered when the option is above 0%. */
+.lyrics-lyricsContainer-LyricsContainer.lyrics-side-margin-enabled
+  :is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-UnsyncedLyricsPage)
+  > .lyrics-lyricsContainer-LyricsLine {
+  padding-inline: var(--lyrics-side-margin, 0px);
+}
 
 .lyrics-lyricsContainer-UnsyncedLyricsPage .lyrics-lyricsContainer-LyricsLine {
   font-size: var(--lyrics-original-font-size, var(--lyrics-font-size));

@@ -221,6 +221,10 @@ window.LANG_FR = {
         "right": "Droite"
       }
     },
+    "sideMargin": {
+      "label": "Marge latérale des paroles",
+      "desc": "Ajoute de l'espace des deux côtés des paroles pour les rapprocher du centre. Avec l'alignement à gauche, les paroles se placent près du centre de l'écran, comme en plein écran sur Spotify. 0 % le désactive."
+    },
     "noise": {
       "label": "Effet de bruit",
       "desc": "Ajoute un effet de grain de film à l'arrière-plan"

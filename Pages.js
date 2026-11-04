@@ -3207,9 +3207,13 @@ const getLyricsTypographyStyleVariables = (visual = CONFIG?.visual || {}) => {
 	const anchorPosition = rawAnchorPosition === undefined || rawAnchorPosition === null || rawAnchorPosition === ""
 		? 50
 		: Math.min(80, Math.max(20, getFiniteLyricsStyleNumber(rawAnchorPosition, 50)));
+	// Symmetric side margin as a percentage of the lyric column (0 = off). The
+	// container only applies it with the lyrics-side-margin-enabled class.
+	const sideMargin = Math.min(30, Math.max(0, getFiniteLyricsStyleNumber(visual["lyrics-side-margin"], 0)));
 
 	return {
 		...(anchorPosition !== 50 ? { "--ivfs-lyrics-anchor-ratio": anchorPosition / 100 } : {}),
+		...(sideMargin > 0 ? { "--lyrics-side-margin": `${sideMargin}%` } : {}),
 		"--lyrics-align-text": alignment,
 		"--lyrics-font-size": `${getFiniteLyricsStyleNumber(visual["font-size"], 32)}px`,
 		"--lyrics-font-family": baseFontFamily,

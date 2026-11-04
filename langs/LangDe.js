@@ -221,6 +221,10 @@ window.LANG_DE = {
         "right": "Rechts"
       }
     },
+    "sideMargin": {
+      "label": "Seitlicher Rand des Songtexts",
+      "desc": "Fügt links und rechts Abstand hinzu, damit der Songtext weiter innen steht. Mit linksbündiger Ausrichtung liegt der Text wie in Spotifys Vollbild nahe der Bildschirmmitte. 0 % schaltet es aus."
+    },
     "noise": {
       "label": "Noise-Overlay",
       "desc": "Fügt dem Hintergrund einen Filmkörnungseffekt hinzu"

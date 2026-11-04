@@ -221,6 +221,10 @@ window.LANG_TR = {
         "right": "Sağ"
       }
     },
+    "sideMargin": {
+      "label": "Şarkı sözü yan boşluğu",
+      "desc": "Şarkı sözlerinin iki yanına boşluk ekleyerek onları ortaya yaklaştırır. Sola hizalamayla birlikte sözler, Spotify'ın tam ekranındaki gibi ekranın ortasına yakın durur. %0 kapalıdır."
+    },
     "noise": {
       "label": "Kumlanma Efekti",
       "desc": "Arka plana film greni efekti ekle"
