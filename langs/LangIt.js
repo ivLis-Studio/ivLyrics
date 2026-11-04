@@ -819,6 +819,10 @@ window.LANG_IT = {
     "regenerateAction": "Rigenera",
     "fullscreen": "Schermo intero",
     "exitFullscreen": "Esci da schermo intero",
+    "fullscreenInPage": "Schermo intero nella pagina",
+    "fullscreenScreen": "Schermo intero sul monitor",
+    "fullscreenInPageHint": "Apre il layout a schermo intero nella pagina del testo senza coprire Spotify",
+    "fullscreenScreenHint": "Porta Spotify a occupare tutto il monitor e apre lo schermo intero",
     "localLyricsApplying": "Applicazione…",
     "currentTrack": "Traccia corrente",
     "more": "Altro"
@@ -1826,6 +1830,10 @@ window.LANG_IT = {
       "pageUiOnly": {
         "desc": "Usa l'interfaccia a schermo intero solo nella pagina dei testi",
         "info": "Mostra il layout a schermo intero dentro la pagina dei testi senza coprire tutta la finestra di Spotify."
+      },
+      "separateButtons": {
+        "desc": "Mostra pulsanti a schermo intero separati",
+        "info": "Aggiunge un secondo pulsante a schermo intero alla barra degli strumenti. Il pulsante attuale segue le tue impostazioni, quello nuovo apre l'altra modalità (nella pagina del testo o su tutto il monitor)."
       },
       "hideOverlay": {
         "desc": "Nascondi overlay nello schermo intero ivLyrics",

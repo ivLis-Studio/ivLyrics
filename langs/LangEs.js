@@ -819,6 +819,10 @@ window.LANG_ES = {
     "regenerateAction": "Regenerar",
     "fullscreen": "Pantalla completa",
     "exitFullscreen": "Salir de pantalla completa",
+    "fullscreenInPage": "Pantalla completa en la página",
+    "fullscreenScreen": "Pantalla completa en el monitor",
+    "fullscreenInPageHint": "Abre el diseño de pantalla completa dentro de la página de letras sin cubrir Spotify",
+    "fullscreenScreenHint": "Hace que Spotify ocupe todo el monitor y abre la pantalla completa",
     "localLyricsApplying": "Aplicando…",
     "currentTrack": "Pista actual",
     "more": "Más"
@@ -1826,6 +1830,10 @@ window.LANG_ES = {
       "pageUiOnly": {
         "desc": "Usar la UI de pantalla completa solo en la página de letras",
         "info": "Muestra el diseño de pantalla completa dentro de la página de letras sin cubrir toda la ventana de Spotify."
+      },
+      "separateButtons": {
+        "desc": "Mostrar botones de pantalla completa separados",
+        "info": "Añade un segundo botón de pantalla completa a la barra de herramientas. El botón actual usa tu configuración y el nuevo abre el otro modo (dentro de la página de letras o en todo el monitor)."
       },
       "hideOverlay": {
         "desc": "Ocultar overlay en pantalla completa de ivLyrics",

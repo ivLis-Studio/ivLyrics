@@ -116,3 +116,27 @@ test("the backdrop layer follows manual scrolling so it stays behind the visible
 	cleanup();
 	assert.equal(listeners.has("scroll"), false);
 });
+
+test("a requested fullscreen presentation overrides the page and monitor settings only for that entry", () => {
+	const index = readFileSync(new URL("../index.js", import.meta.url), "utf8");
+	const body = extract(index, "    this.toggleFullscreen = (options = null) => {", "      if (isEnabled) {");
+	const sandbox = vm.createContext({
+		CONFIG: { visual: {} },
+		getRememberedIvLyricsFullscreenPresentation: () => "standard",
+		rememberIvLyricsFullscreenPresentation: (value) => value,
+	});
+	vm.runInContext(`globalThis.decide = function (options) {
+${body.replace("    this.toggleFullscreen = (options = null) => {", "")}
+return { requestedPresentation, usePageFullscreenUi, useBrowserFullscreen };
+};`, sandbox);
+	const decide = (visual, options, state = { isFullscreen: false }, extra = {}) => {
+		sandbox.CONFIG.visual = visual;
+		return { ...sandbox.decide.call({ state, fullscreenUsesPageUi: false, ...extra }, options) };
+	};
+	assert.deepEqual(decide({}, undefined), { requestedPresentation: null, usePageFullscreenUi: false, useBrowserFullscreen: false });
+	assert.deepEqual(decide({ "fullscreen-browser-fullscreen": true }, { type: "click" }), { requestedPresentation: null, usePageFullscreenUi: false, useBrowserFullscreen: true });
+	assert.deepEqual(decide({ "fullscreen-page-ui-only": true, "fullscreen-browser-fullscreen": true }, undefined), { requestedPresentation: null, usePageFullscreenUi: true, useBrowserFullscreen: false });
+	assert.deepEqual(decide({ "fullscreen-page-ui-only": true }, { presentation: "screen" }), { requestedPresentation: "screen", usePageFullscreenUi: false, useBrowserFullscreen: true });
+	assert.deepEqual(decide({ "fullscreen-browser-fullscreen": true }, { presentation: "page" }), { requestedPresentation: "page", usePageFullscreenUi: true, useBrowserFullscreen: false });
+	assert.equal(decide({}, { presentation: "screen" }, { isFullscreen: true }).requestedPresentation, null, "leaving fullscreen ignores the request");
+});

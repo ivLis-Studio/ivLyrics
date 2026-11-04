@@ -819,6 +819,10 @@ window.LANG_KO = {
     "regenerateAction": "재생성",
     "fullscreen": "전체화면",
     "exitFullscreen": "전체화면 종료",
+    "fullscreenInPage": "페이지 전체화면",
+    "fullscreenScreen": "모니터 전체화면",
+    "fullscreenInPageHint": "Spotify를 덮지 않고 가사 페이지 안에서 전체화면 레이아웃을 엽니다",
+    "fullscreenScreenHint": "Spotify를 모니터 전체로 전환해 전체화면을 엽니다",
     "localLyricsApplying": "적용 중…",
     "currentTrack": "현재 곡",
     "more": "더보기"
@@ -1826,6 +1830,10 @@ window.LANG_KO = {
       "pageUiOnly": {
         "desc": "가사페이지에서 전체화면 UI만 사용",
         "info": "Spotify 전체를 덮지 않고 가사 페이지 안에서 전체화면 레이아웃을 표시합니다."
+      },
+      "separateButtons": {
+        "desc": "전체화면 버튼 따로 표시",
+        "info": "툴바에 전체화면 버튼을 하나 더 둡니다. 기존 버튼은 지금 설정대로 열고, 추가 버튼은 다른 방식(가사 페이지 안 또는 모니터 전체)으로 엽니다."
       },
       "hideOverlay": {
         "desc": "ivLyrics 전체화면에서 오버레이 숨김",

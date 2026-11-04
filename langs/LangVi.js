@@ -819,6 +819,10 @@ window.LANG_VI = {
     "regenerateAction": "Tạo lại",
     "fullscreen": "Toàn màn hình",
     "exitFullscreen": "Thoát toàn màn hình",
+    "fullscreenInPage": "Toàn màn hình trong trang",
+    "fullscreenScreen": "Phủ kín màn hình",
+    "fullscreenInPageHint": "Mở bố cục toàn màn hình bên trong trang lời bài hát mà không che Spotify",
+    "fullscreenScreenHint": "Cho Spotify phủ kín toàn bộ màn hình rồi mở chế độ toàn màn hình",
     "localLyricsApplying": "Đang áp dụng…",
     "currentTrack": "Bài hát hiện tại",
     "more": "Thêm"
@@ -1826,6 +1830,10 @@ window.LANG_VI = {
       "pageUiOnly": {
         "desc": "Chỉ dùng UI toàn màn hình trong trang lời bài hát",
         "info": "Hiển thị bố cục toàn màn hình bên trong trang lời bài hát mà không phủ toàn bộ cửa sổ Spotify."
+      },
+      "separateButtons": {
+        "desc": "Hiển thị nút toàn màn hình riêng",
+        "info": "Thêm một nút toàn màn hình thứ hai vào thanh công cụ. Nút hiện có mở theo cài đặt hiện tại của bạn, còn nút mới mở theo cách còn lại (bên trong trang lời bài hát hoặc trên toàn bộ màn hình)."
       },
       "hideOverlay": {
         "desc": "Ẩn overlay khi ivLyrics toàn màn hình",

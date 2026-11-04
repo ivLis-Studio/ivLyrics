@@ -7436,7 +7436,8 @@ const SETTINGS_DEFAULT_VALUES = Object.freeze({
   "fullscreen-show-lyrics-progress": false, "fullscreen-control-button-size": 36,
   "fullscreen-controls-background": false, "fullscreen-auto-hide-ui": true,
   "fullscreen-auto-hide-delay": 3, "fullscreen-browser-fullscreen": false,
-  "fullscreen-page-ui-only": false, "fullscreen-hide-overlay": true, "fullscreen-tmi-font-size": 100,
+  "fullscreen-page-ui-only": false, "fullscreen-separate-buttons": false,
+  "fullscreen-hide-overlay": true, "fullscreen-tmi-font-size": 100,
   "fullscreen-tmi-outline-width": "0", "fullscreen-tmi-outline-color": "#000000",
   "fullscreen-tv-mode": false, "fullscreen-tv-album-size": 140, "fullscreen-tv-show-album-name": true,
   "fullscreen-tv-show-controls": false, "fullscreen-tv-show-progress": false,
@@ -14234,6 +14235,13 @@ react.createElement(OptionList, {
                 key: "fullscreen-page-ui-only",
                 type: ConfigSlider,
                 defaultValue: CONFIG.visual["fullscreen-page-ui-only"] ?? false,
+              },
+              {
+                desc: I18n.t("settingsAdvanced.fullscreenMode.separateButtons.desc"),
+                info: I18n.t("settingsAdvanced.fullscreenMode.separateButtons.info"),
+                key: "fullscreen-separate-buttons",
+                type: ConfigSlider,
+                defaultValue: CONFIG.visual["fullscreen-separate-buttons"] ?? false,
               },
               {
                 desc: I18n.t("settingsAdvanced.fullscreenMode.hideOverlay.desc"),

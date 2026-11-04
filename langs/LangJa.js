@@ -819,6 +819,10 @@ window.LANG_JA = {
     "regenerateAction": "再生成",
     "fullscreen": "フルスクリーン",
     "exitFullscreen": "フルスクリーンを終了",
+    "fullscreenInPage": "ページ内全画面",
+    "fullscreenScreen": "モニター全画面",
+    "fullscreenInPageHint": "Spotifyを覆わずに歌詞ページ内で全画面レイアウトを開きます",
+    "fullscreenScreenHint": "Spotifyをモニター全体に切り替えて全画面を開きます",
     "localLyricsApplying": "適用中…",
     "currentTrack": "現在の曲",
     "more": "その他"
@@ -1826,6 +1830,10 @@ window.LANG_JA = {
       "pageUiOnly": {
         "desc": "歌詞ページ内でのみ全画面UIを使用",
         "info": "Spotify全体を覆わず、歌詞ページ内に全画面レイアウトを表示します。"
+      },
+      "separateButtons": {
+        "desc": "全画面ボタンを分けて表示",
+        "info": "ツールバーに全画面ボタンをもう1つ追加します。既存のボタンは現在の設定どおりに開き、追加のボタンはもう一方の方式（歌詞ページ内またはモニター全体）で開きます。"
       },
       "hideOverlay": {
         "desc": "ivLyricsフルスクリーンでオーバーレイを非表示",

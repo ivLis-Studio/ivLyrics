@@ -819,6 +819,10 @@ window.LANG_ID = {
     "regenerateAction": "Buat ulang",
     "fullscreen": "Layar Penuh",
     "exitFullscreen": "Keluar dari layar penuh",
+    "fullscreenInPage": "Layar penuh di halaman",
+    "fullscreenScreen": "Layar penuh di monitor",
+    "fullscreenInPageHint": "Membuka tata letak layar penuh di dalam halaman lirik tanpa menutupi Spotify",
+    "fullscreenScreenHint": "Membuat Spotify memenuhi seluruh monitor lalu membuka layar penuh",
     "localLyricsApplying": "Menerapkan…",
     "currentTrack": "Trek Saat Ini",
     "more": "Lainnya"
@@ -1826,6 +1830,10 @@ window.LANG_ID = {
       "pageUiOnly": {
         "desc": "Gunakan UI layar penuh hanya di halaman lirik",
         "info": "Menampilkan tata letak layar penuh di dalam halaman lirik tanpa menutupi seluruh jendela Spotify."
+      },
+      "separateButtons": {
+        "desc": "Tampilkan tombol layar penuh terpisah",
+        "info": "Menambahkan tombol layar penuh kedua ke bilah alat. Tombol lama mengikuti pengaturan Anda saat ini, dan tombol baru membuka cara lainnya (di dalam halaman lirik atau di seluruh monitor)."
       },
       "hideOverlay": {
         "desc": "Sembunyikan Overlay saat ivLyrics Layar Penuh",

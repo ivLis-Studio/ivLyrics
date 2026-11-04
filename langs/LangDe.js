@@ -819,6 +819,10 @@ window.LANG_DE = {
     "regenerateAction": "Neu erzeugen",
     "fullscreen": "Vollbild",
     "exitFullscreen": "Vollbild verlassen",
+    "fullscreenInPage": "Vollbild in der Seite",
+    "fullscreenScreen": "Vollbild auf dem Monitor",
+    "fullscreenInPageHint": "Öffnet das Vollbild-Layout innerhalb der Songtextseite, ohne Spotify zu verdecken",
+    "fullscreenScreenHint": "Lässt Spotify den ganzen Monitor ausfüllen und öffnet das Vollbild",
     "localLyricsApplying": "Wird angewendet…",
     "currentTrack": "Aktueller Track",
     "more": "Mehr"
@@ -1826,6 +1830,10 @@ window.LANG_DE = {
       "pageUiOnly": {
         "desc": "Vollbild-UI nur auf der Liedtextseite verwenden",
         "info": "Zeigt das Vollbildlayout innerhalb der Liedtextseite an, ohne das gesamte Spotify-Fenster zu überdecken."
+      },
+      "separateButtons": {
+        "desc": "Getrennte Vollbild-Schaltflächen anzeigen",
+        "info": "Fügt der Symbolleiste eine zweite Vollbild-Schaltfläche hinzu. Die bisherige Schaltfläche folgt deinen Einstellungen, die neue öffnet die andere Variante (innerhalb der Songtextseite oder über den ganzen Monitor)."
       },
       "hideOverlay": {
         "desc": "Overlay im ivLyrics-Vollbild ausblenden",

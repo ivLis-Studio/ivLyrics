@@ -819,6 +819,10 @@ window.LANG_TR = {
     "regenerateAction": "Yeniden Oluştur",
     "fullscreen": "Tam Ekran",
     "exitFullscreen": "Tam Ekrandan Çık",
+    "fullscreenInPage": "Sayfa içinde tam ekran",
+    "fullscreenScreen": "Monitörde tam ekran",
+    "fullscreenInPageHint": "Spotify'ı kapatmadan tam ekran düzenini şarkı sözü sayfasının içinde açar",
+    "fullscreenScreenHint": "Spotify'ı tüm monitörü kaplayacak şekilde açar ve tam ekrana geçer",
     "localLyricsApplying": "Uygulanıyor…",
     "currentTrack": "Mevcut Parça",
     "more": "Daha Fazla"
@@ -1826,6 +1830,10 @@ window.LANG_TR = {
     "pageUiOnly": {
       "desc": "Tam ekran arayüzünü yalnızca sözler sayfasında kullan",
       "info": "Tüm Spotify penceresini kaplamadan tam ekran düzenini sözler sayfasının içinde gösterir."
+    },
+    "separateButtons": {
+      "desc": "Ayrı tam ekran düğmeleri göster",
+      "info": "Araç çubuğuna ikinci bir tam ekran düğmesi ekler. Mevcut düğme geçerli ayarlarınıza göre açılır, yeni düğme ise diğer yolu açar (şarkı sözü sayfasının içinde veya tüm monitörde)."
     },
     "hideOverlay": {
       "desc": "ivLyrics Tam Ekranında Katmanı Gizle",

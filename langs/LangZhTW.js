@@ -819,6 +819,10 @@ window.LANG_ZH_TW = {
     "regenerateAction": "重新生成",
     "fullscreen": "全螢幕",
     "exitFullscreen": "退出全螢幕",
+    "fullscreenInPage": "頁面內全螢幕",
+    "fullscreenScreen": "顯示器全螢幕",
+    "fullscreenInPageHint": "在歌詞頁面內開啟全螢幕版面，不會蓋住 Spotify",
+    "fullscreenScreenHint": "將 Spotify 切換為佔滿整個顯示器並開啟全螢幕",
     "localLyricsApplying": "正在套用…",
     "currentTrack": "目前曲目",
     "more": "更多"
@@ -1826,6 +1830,10 @@ window.LANG_ZH_TW = {
       "pageUiOnly": {
         "desc": "僅在歌詞頁面使用全螢幕 UI",
         "info": "不覆蓋整個 Spotify 視窗，而是在歌詞頁面內顯示全螢幕版面。"
+      },
+      "separateButtons": {
+        "desc": "分開顯示全螢幕按鈕",
+        "info": "在工具列中再加入一個全螢幕按鈕。原本的按鈕依目前設定開啟，新按鈕則以另一種方式（歌詞頁面內或整個顯示器）開啟。"
       },
       "hideOverlay": {
         "desc": "在 ivLyrics 全螢幕時隱藏覆蓋層",

@@ -819,6 +819,10 @@ window.LANG_EN = {
     "regenerateAction": "Regenerate",
     "fullscreen": "Fullscreen",
     "exitFullscreen": "Exit Fullscreen",
+    "fullscreenInPage": "Page fullscreen",
+    "fullscreenScreen": "Monitor fullscreen",
+    "fullscreenInPageHint": "Opens the fullscreen layout inside the lyrics page without covering Spotify",
+    "fullscreenScreenHint": "Switches Spotify to fill the whole monitor and opens fullscreen",
     "localLyricsApplying": "Applying…",
     "currentTrack": "Current Track",
     "more": "More"
@@ -1826,6 +1830,10 @@ window.LANG_EN = {
       "pageUiOnly": {
         "desc": "Use Fullscreen UI in Lyrics Page Only",
         "info": "Show the fullscreen layout inside the lyrics page instead of covering the whole Spotify window."
+      },
+      "separateButtons": {
+        "desc": "Show separate fullscreen buttons",
+        "info": "Adds a second fullscreen button to the toolbar. The existing button keeps your current settings, and the new one opens the other way (inside the lyrics page or across the whole monitor)."
       },
       "hideOverlay": {
         "desc": "Hide Overlay in ivLyrics Fullscreen",

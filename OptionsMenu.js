@@ -2040,6 +2040,8 @@ const IVLYRICS_TOOLBAR_ICON_PATHS = Object.freeze({
   settings: '<path d="M4 6h10m4 0h2"/><circle cx="16" cy="6" r="2"/><path d="M4 12h2m4 0h10"/><circle cx="8" cy="12" r="2"/><path d="M4 18h8m4 0h4"/><circle cx="14" cy="18" r="2"/>',
   fullscreenEnter: '<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>',
   fullscreenExit: '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>',
+  fullscreenPage: '<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8"/><path d="M7 8h10v6H7Z"/>',
+  fullscreenScreen: '<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8"/><path d="M8 11V8h3m5 3v3h-3"/>',
   karaoke: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11v1a7 7 0 0 0 14 0v-1M12 19v3M8 22h8"/>',
   character: '<path d="m5 18 4.5-12h2L16 18M7 13h7"/><path d="M18 7h3M19.5 5.5v3"/>',
   word: '<path d="m3 18 4-12h2l4 12M5 13h6"/><path d="M16 8h5M16 12h5M16 16h5"/>',
@@ -6161,7 +6163,7 @@ const SyncDataCreatorButton = react.memo(({ trackUri, getTrackInfo, hasKaraokeSy
 const TOOLBAR_ENTRY_GROUPS = Object.freeze([
   Object.freeze(["mode", "convert", "sync"]),
   Object.freeze(["track", "more"]),
-  Object.freeze(["settings", "fullscreen"]),
+  Object.freeze(["settings", "fullscreen", "fullscreenAlt"]),
 ]);
 const TOOLBAR_MODE_KEYS = Object.freeze(["character", "word", "synced", "unsynced"]);
 const TOOLBAR_MODE_LABEL_KEYS = Object.freeze({
@@ -6803,6 +6805,26 @@ const IvLyricsFloatingToolbar = react.memo((toolbar) => {
       }),
       onActivate: () => actions?.onToggleFullscreen?.(),
     },
+    // Optional second button for the other presentation: the lyrics-page layout
+    // when the main button fills the monitor, otherwise monitor fullscreen.
+    fullscreenAlt: (() => {
+      const mainFillsScreen = CONFIG.visual?.["fullscreen-page-ui-only"] !== true
+        && CONFIG.visual?.["fullscreen-browser-fullscreen"] === true;
+      const presentation = mainFillsScreen ? "page" : "screen";
+      const label = presentation === "page" ? I18n.t("menu.fullscreenInPage") : I18n.t("menu.fullscreenScreen");
+      return {
+        hidden: !toolbar.canToggleFullscreen || !!toolbar.isFullscreen
+          || CONFIG.visual?.["fullscreen-separate-buttons"] !== true,
+        icon: presentation === "page" ? "fullscreenPage" : "fullscreenScreen",
+        label,
+        ariaLabel: label,
+        tip: () => ({
+          title: label,
+          lines: [presentation === "page" ? I18n.t("menu.fullscreenInPageHint") : I18n.t("menu.fullscreenScreenHint")],
+        }),
+        onActivate: () => actions?.onToggleFullscreen?.({ presentation }),
+      };
+    })(),
     menu: {
       icon: toolbar.isMenuOpen ? "close" : "menu",
       label: toolbar.isMenuOpen ? I18n.t("buttons.close") || "Close" : getOptionsText("fullscreen.menuToggleShort", "메뉴"),

@@ -819,6 +819,10 @@ window.LANG_MS = {
     "regenerateAction": "Jana semula",
     "fullscreen": "Skrin Penuh",
     "exitFullscreen": "Keluar Skrin Penuh",
+    "fullscreenInPage": "Skrin penuh dalam halaman",
+    "fullscreenScreen": "Skrin penuh pada monitor",
+    "fullscreenInPageHint": "Membuka susun atur skrin penuh di dalam halaman lirik tanpa menutup Spotify",
+    "fullscreenScreenHint": "Menjadikan Spotify memenuhi seluruh monitor dan membuka skrin penuh",
     "localLyricsApplying": "Sedang digunakan…",
     "currentTrack": "Trek Semasa",
     "more": "Lagi"
@@ -1826,6 +1830,10 @@ window.LANG_MS = {
       "pageUiOnly": {
         "desc": "Guna UI skrin penuh hanya dalam halaman lirik",
         "info": "Memaparkan reka letak skrin penuh di dalam halaman lirik tanpa menutup seluruh tetingkap Spotify."
+      },
+      "separateButtons": {
+        "desc": "Tunjukkan butang skrin penuh berasingan",
+        "info": "Menambah butang skrin penuh kedua pada bar alat. Butang sedia ada mengikut tetapan semasa anda, dan butang baharu membuka cara yang satu lagi (di dalam halaman lirik atau pada seluruh monitor)."
       },
       "hideOverlay": {
         "desc": "Sembunyikan Tindihan dalam Skrin Penuh ivLyrics",

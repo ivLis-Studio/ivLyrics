@@ -819,6 +819,10 @@ window.LANG_PT = {
     "regenerateAction": "Regenerar",
     "fullscreen": "Tela Cheia",
     "exitFullscreen": "Sair da tela cheia",
+    "fullscreenInPage": "Tela cheia na página",
+    "fullscreenScreen": "Tela cheia no monitor",
+    "fullscreenInPageHint": "Abre o layout de tela cheia dentro da página de letras sem cobrir o Spotify",
+    "fullscreenScreenHint": "Faz o Spotify ocupar o monitor inteiro e abre a tela cheia",
     "localLyricsApplying": "Aplicando…",
     "currentTrack": "Faixa Atual",
     "more": "Mais"
@@ -1826,6 +1830,10 @@ window.LANG_PT = {
       "pageUiOnly": {
         "desc": "Usar UI de tela cheia apenas na página de letras",
         "info": "Mostra o layout de tela cheia dentro da página de letras sem cobrir toda a janela do Spotify."
+      },
+      "separateButtons": {
+        "desc": "Mostrar botões de tela cheia separados",
+        "info": "Adiciona um segundo botão de tela cheia à barra de ferramentas. O botão atual segue suas configurações e o novo abre o outro modo (dentro da página de letras ou no monitor inteiro)."
       },
       "hideOverlay": {
         "desc": "Ocultar overlay na tela cheia do ivLyrics",

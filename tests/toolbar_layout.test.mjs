@@ -701,3 +701,30 @@ test("panels open beside the toolbar, level with their entry and inside the lyri
 });
 
 
+
+test("an optional second fullscreen button opens the other presentation", () => {
+  const toolbar = createToolbar();
+  assert.equal(entryButton(toolbar, "fullscreenAlt"), undefined, "hidden unless the setting is on");
+  toolbar.CONFIG.visual["fullscreen-separate-buttons"] = true;
+  toolbar.render();
+  const lastToggle = () => plain(toolbar.calls.filter(([name]) => name === "onToggleFullscreen").at(-1));
+  const screen = entryButton(toolbar, "fullscreenAlt");
+  assert.equal(textOf(screen), t("menu.fullscreenScreen"), "the main button stays in Spotify, so the extra one fills the monitor");
+  click(toolbar, screen);
+  assert.deepEqual(lastToggle(), ["onToggleFullscreen", { presentation: "screen" }]);
+  toolbar.CONFIG.visual["fullscreen-browser-fullscreen"] = true;
+  toolbar.render();
+  const page = entryButton(toolbar, "fullscreenAlt");
+  assert.equal(textOf(page), t("menu.fullscreenInPage"), "the main button fills the monitor, so the extra one stays in the page");
+  click(toolbar, page);
+  assert.deepEqual(lastToggle(), ["onToggleFullscreen", { presentation: "page" }]);
+  toolbar.CONFIG.visual["fullscreen-page-ui-only"] = true;
+  toolbar.render();
+  assert.equal(textOf(entryButton(toolbar, "fullscreenAlt")), t("menu.fullscreenScreen"));
+  click(toolbar, entryButton(toolbar, "fullscreen"));
+  assert.deepEqual(lastToggle(), ["onToggleFullscreen"], "the main button keeps following the settings");
+  toolbar.setProps({ isFullscreen: true });
+  assert.equal(entryButton(toolbar, "fullscreenAlt"), undefined);
+  toolbar.setProps({ isFullscreen: false, canToggleFullscreen: false });
+  assert.equal(entryButton(toolbar, "fullscreenAlt"), undefined);
+});

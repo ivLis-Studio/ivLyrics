@@ -3254,6 +3254,11 @@ const CONFIG = {
       "ivLyrics:visual:fullscreen-page-ui-only",
       false
     ),
+    // Show a second toolbar button for the other fullscreen presentation.
+    "fullscreen-separate-buttons": StorageManager.get(
+      "ivLyrics:visual:fullscreen-separate-buttons",
+      false
+    ),
     "fullscreen-hide-overlay": StorageManager.get(
       "ivLyrics:visual:fullscreen-hide-overlay",
       true
@@ -5250,11 +5255,11 @@ class LyricsContainer extends react.Component {
       getSyncCreatorTrackInfo: () => this.getSyncCreatorTrackInfo(),
       getShareTrackInfo: () => this.getShareImageTrackInfo(),
       onToggleMarketplace: () => this.toggleMarketplaceFromToolbar(),
-      onToggleFullscreen: () => {
+      onToggleFullscreen: (options) => {
         if (this.state.isFullscreen) {
           this.closeFloatingMenu();
         }
-        this.toggleFullscreen();
+        this.toggleFullscreen(options);
       },
       onToggleMenu: () => this.toggleFloatingMenu(),
       onCloseMenu: () => this.closeFloatingMenu(),
@@ -5505,8 +5510,12 @@ class LyricsContainer extends react.Component {
       return 0;
     }
 
+    // A presentation chosen with the second fullscreen button overrides the
+    // setting; otherwise the setting decides, exactly as before.
     const isBrowserFullscreen =
-      CONFIG.visual["fullscreen-browser-fullscreen"] === true ||
+      (this.fullscreenRequestedPresentation
+        ? this.fullscreenUsesBrowser === true
+        : CONFIG.visual["fullscreen-browser-fullscreen"] === true) ||
       !!document.fullscreenElement;
     return isBrowserFullscreen ? 0 : 130;
   }
@@ -10054,20 +10063,31 @@ class LyricsContainer extends react.Component {
       return true;
     };
 
-    this.toggleFullscreen = () => {
+    this.toggleFullscreen = (options = null) => {
       const isEnabled = !this.state.isFullscreen;
+      // The toolbar's second fullscreen button asks for a specific presentation
+      // ("page": inside the lyrics page, "screen": cover Spotify and fill the
+      // monitor). Shortcuts, Esc and every other caller follow the settings.
+      const requestedPresentation = isEnabled
+        && (options?.presentation === "page" || options?.presentation === "screen")
+        ? options.presentation
+        : null;
       const rememberedPresentation = isEnabled
         ? getRememberedIvLyricsFullscreenPresentation()
         : rememberIvLyricsFullscreenPresentation(
           this.state.fullscreenPresentation
         );
       const usePageFullscreenUi = isEnabled
-        ? CONFIG.visual["fullscreen-page-ui-only"] === true
+        ? (requestedPresentation
+          ? requestedPresentation === "page"
+          : CONFIG.visual["fullscreen-page-ui-only"] === true)
         : this.fullscreenUsesPageUi === true;
-      const useBrowserFullscreen =
-        !usePageFullscreenUi && CONFIG.visual["fullscreen-browser-fullscreen"] === true;
+      const useBrowserFullscreen = requestedPresentation === "screen" ||
+        (!usePageFullscreenUi && CONFIG.visual["fullscreen-browser-fullscreen"] === true);
       if (isEnabled) {
         this.fullscreenUsesPageUi = usePageFullscreenUi;
+        this.fullscreenRequestedPresentation = requestedPresentation;
+        this.fullscreenUsesBrowser = useBrowserFullscreen;
         // 기존 컨테이너가 DOM에 남아있으면 제거
         const existingContainer = document.getElementById("lyrics-fullscreen-container");
         if (existingContainer) {
@@ -10140,6 +10160,8 @@ class LyricsContainer extends react.Component {
         }
       } else {
         this.fullscreenUsesPageUi = false;
+        this.fullscreenRequestedPresentation = null;
+        this.fullscreenUsesBrowser = false;
         // 먼저 setState를 호출하여 React가 Portal 렌더링을 중단하도록 함
         // (이렇게 하면 React가 자연스럽게 컴포넌트를 언마운트함)
 

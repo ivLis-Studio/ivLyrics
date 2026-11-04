@@ -819,6 +819,10 @@ window.LANG_SV = {
     "regenerateAction": "Återskapa",
     "fullscreen": "Helskärm",
     "exitFullscreen": "Avsluta helskärm",
+    "fullscreenInPage": "Helskärm på sidan",
+    "fullscreenScreen": "Helskärm på skärmen",
+    "fullscreenInPageHint": "Öppnar helskärmslayouten inne på textsidan utan att täcka Spotify",
+    "fullscreenScreenHint": "Låter Spotify fylla hela skärmen och öppnar helskärm",
     "localLyricsApplying": "Tillämpar…",
     "currentTrack": "Aktuellt spår",
     "more": "Mer"
@@ -1826,6 +1830,10 @@ window.LANG_SV = {
       "pageUiOnly": {
         "desc": "Använd helskärmsgränssnitt endast på textsidan",
         "info": "Visar helskärmslayouten inuti textsidan utan att täcka hela Spotify-fönstret."
+      },
+      "separateButtons": {
+        "desc": "Visa separata helskärmsknappar",
+        "info": "Lägger till en andra helskärmsknapp i verktygsfältet. Den befintliga knappen följer dina inställningar och den nya öppnar det andra sättet (inne på textsidan eller över hela skärmen)."
       },
       "hideOverlay": {
         "desc": "Dölj overlay i ivLyrics helskärm",

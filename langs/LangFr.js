@@ -819,6 +819,10 @@ window.LANG_FR = {
     "regenerateAction": "Régénérer",
     "fullscreen": "Plein écran",
     "exitFullscreen": "Quitter le plein écran",
+    "fullscreenInPage": "Plein écran dans la page",
+    "fullscreenScreen": "Plein écran sur le moniteur",
+    "fullscreenInPageHint": "Ouvre la mise en page plein écran dans la page des paroles sans couvrir Spotify",
+    "fullscreenScreenHint": "Fait occuper tout le moniteur à Spotify et ouvre le plein écran",
     "localLyricsApplying": "Application…",
     "currentTrack": "Titre actuel",
     "more": "Plus"
@@ -1826,6 +1830,10 @@ window.LANG_FR = {
       "pageUiOnly": {
         "desc": "Utiliser l’interface plein écran uniquement dans la page paroles",
         "info": "Affiche la mise en page plein écran dans la page paroles sans couvrir toute la fenêtre Spotify."
+      },
+      "separateButtons": {
+        "desc": "Afficher des boutons plein écran séparés",
+        "info": "Ajoute un second bouton plein écran à la barre d'outils. Le bouton existant suit vos réglages actuels et le nouveau ouvre l'autre mode (dans la page des paroles ou sur tout l'écran)."
       },
       "hideOverlay": {
         "desc": "Masquer l'overlay en plein écran ivLyrics",

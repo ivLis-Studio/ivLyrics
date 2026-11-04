@@ -819,6 +819,10 @@ window.LANG_CS = {
     "regenerateAction": "Regenerovat",
     "fullscreen": "Celá obrazovka",
     "exitFullscreen": "Ukončete celou obrazovku",
+    "fullscreenInPage": "Celá obrazovka ve stránce",
+    "fullscreenScreen": "Celá obrazovka na monitoru",
+    "fullscreenInPageHint": "Otevře rozvržení celé obrazovky uvnitř stránky s textem bez zakrytí Spotify",
+    "fullscreenScreenHint": "Roztáhne Spotify přes celý monitor a otevře celou obrazovku",
     "localLyricsApplying": "Používá se…",
     "currentTrack": "Aktuální skladba",
     "more": "Více"
@@ -1826,6 +1830,10 @@ window.LANG_CS = {
       "pageUiOnly": {
         "desc": "Používejte uživatelské rozhraní celé obrazovky pouze na stránce s texty",
         "info": "Zobrazte rozvržení na celou obrazovku uvnitř stránky s textem namísto pokrytí celého okna Spotify."
+      },
+      "separateButtons": {
+        "desc": "Zobrazit samostatná tlačítka celé obrazovky",
+        "info": "Přidá na panel nástrojů druhé tlačítko celé obrazovky. Původní tlačítko se řídí vaším nastavením, nové otevře druhý způsob (uvnitř stránky s textem nebo přes celý monitor)."
       },
       "hideOverlay": {
         "desc": "Skrýt překryvnou vrstvu v ivLyrics celé obrazovce",
