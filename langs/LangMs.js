@@ -1201,6 +1201,10 @@ window.LANG_MS = {
         "label": "Bilangan Baris Dipaparkan (Selepas)",
         "desc": "Bilangan baris lirik yang dipaparkan selepas lirik semasa"
       },
+      "anchorPosition": {
+        "label": "Kedudukan baris semasa",
+        "desc": "Menetapkan pada berapa peratus dari atas kawasan lirik baris yang sedang dimainkan berada. 50% ialah tengah."
+      },
       "fadeoutBlur": {
         "label": "Kesan Kabur Pudar (Fadeout)",
         "desc": "Terapkan kesan kabur pada lirik yang tidak aktif"

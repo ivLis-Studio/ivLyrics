@@ -3201,8 +3201,15 @@ const getLyricsTypographyStyleVariables = (visual = CONFIG?.visual || {}) => {
 	const textShadow = visual["text-shadow-enabled"]
 		? `0 0 ${shadowBlur}px ${resolvedShadowColor}`
 		: "0 0 0 transparent";
+	// Where the current line rests, as a percentage of the lyrics height. The
+	// default (50) leaves the stylesheet's centred anchor untouched.
+	const rawAnchorPosition = visual["lyrics-anchor-position"];
+	const anchorPosition = rawAnchorPosition === undefined || rawAnchorPosition === null || rawAnchorPosition === ""
+		? 50
+		: Math.min(80, Math.max(20, getFiniteLyricsStyleNumber(rawAnchorPosition, 50)));
 
 	return {
+		...(anchorPosition !== 50 ? { "--ivfs-lyrics-anchor-ratio": anchorPosition / 100 } : {}),
 		"--lyrics-align-text": alignment,
 		"--lyrics-font-size": `${getFiniteLyricsStyleNumber(visual["font-size"], 32)}px`,
 		"--lyrics-font-family": baseFontFamily,

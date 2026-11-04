@@ -1201,6 +1201,10 @@ window.LANG_CS = {
         "label": "Zobrazené řádky (po)",
         "desc": "Počet řádků, které se mají zobrazit po aktuálním aktivním řádku"
       },
+      "anchorPosition": {
+        "label": "Pozice aktuálního řádku",
+        "desc": "Určuje, v kolika procentech od horního okraje oblasti textu bude přehrávaný řádek. 50 % je střed."
+      },
       "fadeoutBlur": {
         "label": "Efekt zatmívání",
         "desc": "Použijte efekt rozostření na neaktivní texty"

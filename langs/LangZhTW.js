@@ -1201,6 +1201,10 @@ window.LANG_ZH_TW = {
         "label": "顯示行數 (之後)",
         "desc": "目前播放歌詞之後要顯示的行數"
       },
+      "anchorPosition": {
+        "label": "目前歌詞位置",
+        "desc": "設定正在播放的歌詞距歌詞區域頂端的百分比位置。50% 為置中。"
+      },
       "fadeoutBlur": {
         "label": "淡出模糊效果",
         "desc": "對非使用中的歌詞套用模糊效果"

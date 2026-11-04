@@ -1201,6 +1201,10 @@ window.LANG_TR = {
       "label": "Görüntülenen Satırlar (Sonra)",
       "desc": "Geçerli aktif satırdan sonra gösterilecek satır sayısı"
     },
+    "anchorPosition": {
+      "label": "Geçerli satırın konumu",
+      "desc": "Çalan satırın şarkı sözü alanının üstünden yüzde kaçta duracağını belirler. %50 ortadır."
+    },
     "fadeoutBlur": {
       "label": "Solma ve Bulanıklaştırma Efekti",
       "desc": "Pasif sözlere bulanıklık efekti uygula"

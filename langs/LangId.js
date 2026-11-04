@@ -1201,6 +1201,10 @@ window.LANG_ID = {
         "label": "Baris Ditampilkan (Sesudah)",
         "desc": "Jumlah baris yang ditampilkan sesudah lirik yang sedang diputar"
       },
+      "anchorPosition": {
+        "label": "Posisi baris saat ini",
+        "desc": "Menentukan di berapa persen dari atas area lirik baris yang sedang diputar berada. 50% adalah tengah."
+      },
       "fadeoutBlur": {
         "label": "Efek Fadeout Blur",
         "desc": "Terapkan efek blur pada lirik yang tidak aktif"

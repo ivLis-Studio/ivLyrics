@@ -1201,6 +1201,10 @@ window.LANG_VI = {
         "label": "Số dòng hiển thị (Sau)",
         "desc": "Số dòng hiển thị sau lời đang phát"
       },
+      "anchorPosition": {
+        "label": "Vị trí dòng hiện tại",
+        "desc": "Đặt dòng đang phát ở vị trí bao nhiêu phần trăm tính từ đỉnh vùng lời bài hát. 50% là chính giữa."
+      },
       "fadeoutBlur": {
         "label": "Hiệu ứng mờ dần (Fadeout Blur)",
         "desc": "Áp dụng hiệu ứng làm mờ cho các lời không hoạt động"

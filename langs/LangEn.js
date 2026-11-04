@@ -1201,6 +1201,10 @@ window.LANG_EN = {
         "label": "Lines Displayed (After)",
         "desc": "Number of lines to show after the current active line"
       },
+      "anchorPosition": {
+        "label": "Current line position",
+        "desc": "Where the playing line sits, measured from the top of the lyrics area. 50% is the center."
+      },
       "fadeoutBlur": {
         "label": "Fadeout Blur Effect",
         "desc": "Apply blur effect to inactive lyrics"

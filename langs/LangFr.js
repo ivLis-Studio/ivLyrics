@@ -1201,6 +1201,10 @@ window.LANG_FR = {
         "label": "Lignes après",
         "desc": "Nombre de lignes à afficher après la ligne actuelle"
       },
+      "anchorPosition": {
+        "label": "Position de la ligne actuelle",
+        "desc": "Définit à quel pourcentage depuis le haut de la zone des paroles se place la ligne en cours. 50 % correspond au centre."
+      },
       "fadeoutBlur": {
         "label": "Flou de fondu",
         "desc": "Applique un flou aux paroles inactives"

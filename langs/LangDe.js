@@ -1201,6 +1201,10 @@ window.LANG_DE = {
         "label": "Angezeigte Zeilen (Danach)",
         "desc": "Anzahl der Zeilen nach dem aktuellen Text"
       },
+      "anchorPosition": {
+        "label": "Position der aktuellen Zeile",
+        "desc": "Legt fest, bei wie viel Prozent vom oberen Rand des Songtextbereichs die aktuelle Zeile steht. 50 % ist die Mitte."
+      },
       "fadeoutBlur": {
         "label": "Fadeout-Blur-Effekt",
         "desc": "Wendet Unschärfe auf inaktive Zeilen an"

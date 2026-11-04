@@ -1201,6 +1201,10 @@ window.LANG_ES = {
         "label": "Líneas a mostrar (después)",
         "desc": "Número de líneas a mostrar después de la letra actual"
       },
+      "anchorPosition": {
+        "label": "Posición de la línea actual",
+        "desc": "Define a qué porcentaje desde la parte superior del área de letras se coloca la línea en reproducción. 50% es el centro."
+      },
       "fadeoutBlur": {
         "label": "Efecto de desenfoque de salida",
         "desc": "Aplica efecto de desenfoque a las letras inactivas"

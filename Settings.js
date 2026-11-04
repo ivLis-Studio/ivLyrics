@@ -7357,7 +7357,7 @@ const SETTINGS_DEFAULT_VALUES = Object.freeze({
   "instrumental-break-animation-speed": 100, "background-brightness": 30, "video-helper-enabled": false,
   "lyrics-helper-enabled": false, "video-blur": "5", "video-cover": false, "video-scale": 105,
   "video-fallback-background": "album-cover", "solid-background-color": "#1e3a8a", "noise": true,
-  "alignment": "center", "lines-before": 0, "lines-after": 2,
+  "alignment": "center", "lines-before": 0, "lines-after": 2, "lyrics-anchor-position": "50",
   "original-font-family": "Pretendard Variable", "phonetic-font-family": "Pretendard Variable",
   "translation-font-family": "Pretendard Variable",
   "cultural-annotations-font-family": "Pretendard Variable",
@@ -13217,6 +13217,16 @@ react.createElement(OptionList, {
           ),
           react.createElement(OptionList, {
             items: [
+              {
+                desc: I18n.t("settingsAdvanced.syncMode.anchorPosition.label"),
+                key: "lyrics-anchor-position",
+                info: I18n.t("settingsAdvanced.syncMode.anchorPosition.desc"),
+                type: ConfigSliderRange,
+                min: 20,
+                max: 80,
+                step: 5,
+                unit: "%",
+              },
               {
                 desc: I18n.t("settingsAdvanced.syncMode.highlightIntensity.label"),
                 key: "highlight-intensity",

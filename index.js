@@ -2567,6 +2567,8 @@ const CONFIG = {
       StorageManager.getItem("ivLyrics:visual:lines-before") || "0",
     "lines-after":
       StorageManager.getItem("ivLyrics:visual:lines-after") || "2",
+    "lyrics-anchor-position":
+      StorageManager.getItem("ivLyrics:visual:lyrics-anchor-position") || "50",
     "font-size": StorageManager.getItem("ivLyrics:visual:font-size") || "32",
     "font-family":
       StorageManager.getItem("ivLyrics:visual:font-family") ||

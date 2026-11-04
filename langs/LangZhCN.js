@@ -1201,6 +1201,10 @@ window.LANG_ZH_CN = {
         "label": "显示行数 (之后)",
         "desc": "在当前播放歌词之后显示的行数"
       },
+      "anchorPosition": {
+        "label": "当前歌词位置",
+        "desc": "设置正在播放的歌词距歌词区域顶部的百分比位置。50% 为居中。"
+      },
       "fadeoutBlur": {
         "label": "淡出模糊效果",
         "desc": "对非活动歌词应用模糊效果"

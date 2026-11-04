@@ -1201,6 +1201,10 @@ window.LANG_SV = {
         "label": "Rader som visas (efter)",
         "desc": "Antal rader som ska visas efter den aktuella aktiva raden"
       },
+      "anchorPosition": {
+        "label": "Position för aktuell rad",
+        "desc": "Anger hur många procent från toppen av textområdet den spelande raden placeras. 50 % är mitten."
+      },
       "fadeoutBlur": {
         "label": "Oskärpeeffekt vid uttoning",
         "desc": "Tillämpa oskärpa effekt på inaktiva texter"

@@ -1201,6 +1201,10 @@ window.LANG_IT = {
         "label": "Righe mostrate (dopo)",
         "desc": "Numero di righe da mostrare dopo della riga attuale"
       },
+      "anchorPosition": {
+        "label": "Posizione della riga attuale",
+        "desc": "Imposta a quale percentuale dall'alto dell'area del testo si trova la riga in riproduzione. 50% è il centro."
+      },
       "fadeoutBlur": {
         "label": "Effetto sfocatura fadeout",
         "desc": "Applica sfocatura ai testi inattivi"
