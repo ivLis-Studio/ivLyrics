@@ -225,6 +225,10 @@ window.LANG_EN = {
       "label": "Lyrics side margin",
       "desc": "Adds space on both sides of the lyrics to pull them inward. With left alignment, lyrics sit near the middle of the screen like Spotify's fullscreen view. 0% turns it off."
     },
+    "lyricsBackdropBlur": {
+      "label": "Blur behind lyrics",
+      "desc": "Adds a Gaussian blur only behind the lyrics area so lyrics stay readable over busy backgrounds such as videos. The blurred area follows the lyrics alignment. 0px turns it off."
+    },
     "noise": {
       "label": "Noise Overlay",
       "desc": "Add a film grain effect to the background"

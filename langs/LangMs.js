@@ -225,6 +225,10 @@ window.LANG_MS = {
       "label": "Margin sisi lirik",
       "desc": "Menambah ruang di kedua-dua belah lirik supaya lebih ke tengah. Dengan jajaran kiri, lirik berada berhampiran tengah skrin seperti skrin penuh Spotify. 0% bermaksud mati."
     },
+    "lyricsBackdropBlur": {
+      "label": "Kabur di belakang lirik",
+      "desc": "Menambah kabur Gaussian hanya di belakang kawasan lirik supaya lirik mudah dibaca di atas latar yang sibuk seperti video. Kawasan kabur mengikut jajaran lirik. 0px bermaksud mati."
+    },
     "noise": {
       "label": "Tindihan Hingar (Noise)",
       "desc": "Tambah kesan 'film grain' pada latar belakang"

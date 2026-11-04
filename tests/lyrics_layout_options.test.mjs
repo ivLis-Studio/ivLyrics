@@ -67,3 +67,52 @@ test("the side margin is opt-in and limited to 30% of the lyric column", () => {
 	const index = readFileSync(new URL("../index.js", import.meta.url), "utf8");
 	assert.match(index, /Number\(CONFIG\.visual\["lyrics-side-margin"\]\) > 0 \? " lyrics-side-margin-enabled" : ""/);
 });
+
+test("blur behind lyrics is off by default and follows the lyric alignment", () => {
+	const off = typography({});
+	assert.equal("--lyrics-backdrop-blur" in off, false);
+	assert.equal("--lyrics-backdrop-mask" in off, false);
+	const right = typography({ "lyrics-backdrop-blur": "16", alignment: "right" });
+	assert.equal(right["--lyrics-backdrop-blur"], "16px");
+	assert.match(right["--lyrics-backdrop-mask"], /^linear-gradient\(to right, transparent 10%, #000 45%, #000 100%, transparent 100%\)/);
+	const left = typography({ "lyrics-backdrop-blur": 60, alignment: "left", "lyrics-side-margin": 20 });
+	assert.equal(left["--lyrics-backdrop-blur"], "40px");
+	assert.match(left["--lyrics-backdrop-mask"], /^linear-gradient\(to right, transparent 14%, #000 20%, #000 53%, transparent 74%\)/);
+	const center = typography({ "lyrics-backdrop-blur": 8 });
+	assert.match(center["--lyrics-backdrop-mask"], /^linear-gradient\(to right, transparent 0%, #000 20%, #000 80%, transparent 100%\)/);
+	assert.match(center["--lyrics-backdrop-mask"], /linear-gradient\(to bottom, transparent 0%, #000 12%, #000 88%, transparent 100%\)$/);
+});
+
+test("every lyrics page mounts one hidden backdrop layer that only the enabled class draws", () => {
+	assert.equal(pages.match(/react\.createElement\(LyricsBackdropLayer, null\)/g)?.length, 3);
+	const styles = readFileSync(new URL("../style.css", import.meta.url), "utf8");
+	assert.match(styles, /\.lyrics-lyricsContainer-LyricsBackdrop \{\s+display: none;\s+\}/);
+	assert.match(styles, /\.lyrics-backdrop-blur-enabled \.lyrics-lyricsContainer-LyricsBackdrop \{[^}]*backdrop-filter: blur\(var\(--lyrics-backdrop-blur, 0px\)\);/);
+	const index = readFileSync(new URL("../index.js", import.meta.url), "utf8");
+	assert.match(index, /Number\(CONFIG\.visual\["lyrics-backdrop-blur"\]\) > 0 \? " lyrics-backdrop-blur-enabled" : ""/);
+});
+
+test("the backdrop layer follows manual scrolling so it stays behind the visible rows", () => {
+	const layerSource = extract(pages, "const LyricsBackdropLayer =", "// Global SearchBar manager");
+	const effects = [];
+	const listeners = new Map();
+	const page = { scrollTop: 0, addEventListener: (name, handler) => listeners.set(name, handler), removeEventListener: (name) => listeners.delete(name) };
+	const layer = { parentElement: page, style: { translate: "" } };
+	const sandbox = vm.createContext({
+		react: { memo: (component) => component, createElement: (type, props) => ({ type, props }) },
+		useRef: () => ({ current: layer }),
+		useEffect: (effect) => effects.push(effect),
+	});
+	vm.runInContext(`${layerSource}\nglobalThis.Layer = LyricsBackdropLayer;`, sandbox);
+	const element = sandbox.Layer();
+	assert.equal(element.props.className, "lyrics-lyricsContainer-LyricsBackdrop");
+	const cleanup = effects[0]();
+	page.scrollTop = 240;
+	listeners.get("scroll")();
+	assert.equal(layer.style.translate, "0 240px");
+	page.scrollTop = 0;
+	listeners.get("scroll")();
+	assert.equal(layer.style.translate, "");
+	cleanup();
+	assert.equal(listeners.has("scroll"), false);
+});

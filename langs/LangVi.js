@@ -225,6 +225,10 @@ window.LANG_VI = {
       "label": "Lề hai bên lời bài hát",
       "desc": "Thêm khoảng trống ở hai bên để lời bài hát dồn vào giữa. Khi căn trái, lời bài hát nằm gần giữa màn hình giống chế độ toàn màn hình của Spotify. 0% là tắt."
     },
+    "lyricsBackdropBlur": {
+      "label": "Làm mờ phía sau lời bài hát",
+      "desc": "Chỉ thêm hiệu ứng làm mờ Gaussian phía sau vùng lời bài hát để dễ đọc trên nền rối mắt như video. Vùng làm mờ thay đổi theo cách căn lời bài hát. 0px là tắt."
+    },
     "noise": {
       "label": "Lớp phủ nhiễu hạt",
       "desc": "Thêm hiệu ứng nhiễu hạt (film grain) vào nền"

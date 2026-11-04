@@ -225,6 +225,10 @@ window.LANG_TR = {
       "label": "Şarkı sözü yan boşluğu",
       "desc": "Şarkı sözlerinin iki yanına boşluk ekleyerek onları ortaya yaklaştırır. Sola hizalamayla birlikte sözler, Spotify'ın tam ekranındaki gibi ekranın ortasına yakın durur. %0 kapalıdır."
     },
+    "lyricsBackdropBlur": {
+      "label": "Şarkı sözlerinin arkasında bulanıklık",
+      "desc": "Yalnızca şarkı sözü alanının arkasına Gauss bulanıklığı ekler; böylece video gibi karmaşık arka planlarda da sözler kolayca okunur. Bulanık alan sözlerin hizalamasını izler. 0px kapalıdır."
+    },
     "noise": {
       "label": "Kumlanma Efekti",
       "desc": "Arka plana film greni efekti ekle"

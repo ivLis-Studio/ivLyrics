@@ -225,6 +225,10 @@ window.LANG_PT = {
       "label": "Margem lateral da letra",
       "desc": "Adiciona espaço dos dois lados da letra para aproximá-la do centro. Com alinhamento à esquerda, a letra fica perto do centro da tela, como na tela cheia do Spotify. 0% desativa."
     },
+    "lyricsBackdropBlur": {
+      "label": "Desfoque atrás da letra",
+      "desc": "Aplica um desfoque gaussiano apenas atrás da área da letra para mantê-la legível em fundos carregados, como vídeos. A área desfocada acompanha o alinhamento da letra. 0px desativa."
+    },
     "noise": {
       "label": "Overlay de Ruído",
       "desc": "Adiciona um efeito de granulação de filme ao fundo"

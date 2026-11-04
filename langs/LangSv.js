@@ -225,6 +225,10 @@ window.LANG_SV = {
       "label": "Sidomarginal för texten",
       "desc": "Lägger till utrymme på båda sidor så att texten hamnar närmare mitten. Med vänsterjustering hamnar texten nära skärmens mitt, som i Spotifys helskärmsläge. 0 % stänger av."
     },
+    "lyricsBackdropBlur": {
+      "label": "Oskärpa bakom texten",
+      "desc": "Lägger till gaussisk oskärpa bara bakom textområdet så att texten går att läsa även mot röriga bakgrunder som videor. Det suddiga området följer textens justering. 0px stänger av."
+    },
     "noise": {
       "label": "Brusöverlägg",
       "desc": "Lägg till en filmkorneffekt i bakgrunden"

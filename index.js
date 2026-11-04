@@ -2571,6 +2571,8 @@ const CONFIG = {
       StorageManager.getItem("ivLyrics:visual:lyrics-anchor-position") || "50",
     "lyrics-side-margin":
       StorageManager.getItem("ivLyrics:visual:lyrics-side-margin") || "0",
+    "lyrics-backdrop-blur":
+      StorageManager.getItem("ivLyrics:visual:lyrics-backdrop-blur") || "0",
     "font-size": StorageManager.getItem("ivLyrics:visual:font-size") || "32",
     "font-family":
       StorageManager.getItem("ivLyrics:visual:font-family") ||
@@ -11249,6 +11251,7 @@ class LyricsContainer extends react.Component {
       {
         className: `lyrics-lyricsContainer-LyricsContainer${CONFIG.visual["fade-blur"] ? " blur-enabled" : ""
           }${Number(CONFIG.visual["lyrics-side-margin"]) > 0 ? " lyrics-side-margin-enabled" : ""
+          }${Number(CONFIG.visual["lyrics-backdrop-blur"]) > 0 ? " lyrics-backdrop-blur-enabled" : ""
           }${CONFIG.visual["highlight-mode"] ? " highlight-mode-enabled" : ""}${fadLyricsContainer ? " fad-enabled" : ""}${fullscreenClasses}${shouldReduceMotion ? " motion-reduced" : ""}${this.state.isPlaybackPaused ? " playback-paused" : ""}${isSyncCreatorActive ? " sync-creator-minimal" : ""}`,
         style: this.styleVariables,
         // Spotify's OverlayScrollbars wrapper skips mutations inside elements

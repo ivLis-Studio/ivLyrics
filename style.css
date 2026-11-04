@@ -2226,6 +2226,31 @@ body.ivlyrics-page-active .main-topBar-container {
   > .lyrics-lyricsContainer-LyricsLine {
   padding-inline: var(--lyrics-side-margin, 0px);
 }
++
+/* Optional blur behind the lyric column (Settings > Appearance). The layer is
+   mounted in every lyrics page but only drawn with the enabled class. Its mask
+   follows the lyric alignment and side margin, so only the area around the
+   lyrics is blurred and the rest of the background stays sharp. */
+.lyrics-lyricsContainer-LyricsBackdrop {
+  display: none;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.lyrics-backdrop-blur-enabled .lyrics-lyricsContainer-LyricsBackdrop {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(var(--lyrics-backdrop-blur, 0px));
+  backdrop-filter: blur(var(--lyrics-backdrop-blur, 0px));
+  -webkit-mask-image: var(--lyrics-backdrop-mask, none);
+  mask-image: var(--lyrics-backdrop-mask, none);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
 
 .lyrics-lyricsContainer-UnsyncedLyricsPage .lyrics-lyricsContainer-LyricsLine {
   font-size: var(--lyrics-original-font-size, var(--lyrics-font-size));

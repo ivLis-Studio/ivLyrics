@@ -3181,6 +3181,20 @@ const createBlurredLineOutlineShadow = (widthValue, colorValue = "#000000") => {
 // Keep the settings preview and the playback renderer on one typography contract.
 // Container geometry and playback transforms stay local to each surface, but every
 // glyph, ruby and auxiliary-line metric comes from this shared variable set.
+const getLyricsBackdropMask = (alignment, sideMargin = 0) => {
+	const lo = sideMargin;
+	const hi = 100 - sideMargin;
+	const width = hi - lo;
+	const percent = (value) => `${Math.round(Math.min(100, Math.max(0, value)) * 10) / 10}%`;
+	const stops = alignment === "left"
+		? [["transparent", lo - 6], ["#000", lo], ["#000", lo + width * 0.55], ["transparent", lo + width * 0.9]]
+		: alignment === "right"
+			? [["transparent", hi - width * 0.9], ["#000", hi - width * 0.55], ["#000", hi], ["transparent", hi + 6]]
+			: [["transparent", lo], ["#000", lo + width * 0.2], ["#000", hi - width * 0.2], ["transparent", hi]];
+	return `linear-gradient(to right, ${stops.map(([color, stop]) => `${color} ${percent(stop)}`).join(", ")}), `
+		+ "linear-gradient(to bottom, transparent 0%, #000 12%, #000 88%, transparent 100%)";
+};
+
 const getLyricsTypographyStyleVariables = (visual = CONFIG?.visual || {}) => {
 	const alignment = ["left", "center", "right"].includes(visual.alignment)
 		? visual.alignment
@@ -3210,10 +3224,17 @@ const getLyricsTypographyStyleVariables = (visual = CONFIG?.visual || {}) => {
 	// Symmetric side margin as a percentage of the lyric column (0 = off). The
 	// container only applies it with the lyrics-side-margin-enabled class.
 	const sideMargin = Math.min(30, Math.max(0, getFiniteLyricsStyleNumber(visual["lyrics-side-margin"], 0)));
+	// Blur behind the lyric column (0 = off). The mask keeps the blur around the
+	// lyrics: it follows the alignment inside the column left by the side margin.
+	const backdropBlur = Math.min(40, Math.max(0, getFiniteLyricsStyleNumber(visual["lyrics-backdrop-blur"], 0)));
 
 	return {
 		...(anchorPosition !== 50 ? { "--ivfs-lyrics-anchor-ratio": anchorPosition / 100 } : {}),
 		...(sideMargin > 0 ? { "--lyrics-side-margin": `${sideMargin}%` } : {}),
+		...(backdropBlur > 0 ? {
+			"--lyrics-backdrop-blur": `${backdropBlur}px`,
+			"--lyrics-backdrop-mask": getLyricsBackdropMask(alignment, sideMargin),
+		} : {}),
 		"--lyrics-align-text": alignment,
 		"--lyrics-font-size": `${getFiniteLyricsStyleNumber(visual["font-size"], 32)}px`,
 		"--lyrics-font-family": baseFontFamily,
@@ -9636,7 +9657,8 @@ const SyncedLyricsPage = react.memo(({ lyrics = [], trackUri = "", provider, con
 				key: lyricsId,
 			},
 			...renderedItems
-          )
+          ),
+		react.createElement(LyricsBackdropLayer, null)
 	);
 });
 
@@ -9651,6 +9673,34 @@ const useKaraokeLiveClock = (isKara, renderAdvance) => {
 		getPosition: (frameTime) => getFrameAlignedLyricsPlaybackPosition(frameTime) + advanceRef.current,
 	} : null, [enabled]);
 };
+
+// Optional blur behind the lyric column (Settings > Appearance). The layer is
+// always mounted but hidden unless the container has lyrics-backdrop-blur-enabled.
+// It is out of flow, so grid placement and the row order are unchanged; while a
+// page is scrolled by hand it follows scrollTop to stay behind the visible rows.
+const LyricsBackdropLayer = react.memo(() => {
+	const layerRef = useRef(null);
+	useEffect(() => {
+		const layer = layerRef.current;
+		const page = layer?.parentElement;
+		if (!layer || !page) return undefined;
+		let lastTop = 0;
+		const follow = () => {
+			const top = page.scrollTop || 0;
+			if (top === lastTop) return;
+			lastTop = top;
+			layer.style.translate = top ? `0 ${top}px` : "";
+		};
+		follow();
+		page.addEventListener("scroll", follow, { passive: true });
+		return () => page.removeEventListener("scroll", follow);
+	}, []);
+	return react.createElement("div", {
+		className: "lyrics-lyricsContainer-LyricsBackdrop",
+		ref: layerRef,
+		"aria-hidden": "true",
+	});
+});
 
 // Global SearchBar manager to prevent duplicate instances
 const SearchBarManager = {
@@ -9936,7 +9986,8 @@ const SyncedExpandedLyricsPage = react.memo(({ lyrics = [], trackUri = "", provi
 		react.createElement("p", {
 			className: "lyrics-lyricsContainer-LyricsUnsyncedPadding",
 		}),
-		react.createElement(SearchBar, null)
+		react.createElement(SearchBar, null),
+		react.createElement(LyricsBackdropLayer, null)
 	);
 });
 
@@ -10008,7 +10059,8 @@ const UnsyncedLyricsPage = react.memo(({ lyrics = [], provider, contributors, co
 			className: "lyrics-lyricsContainer-LyricsUnsyncedPadding",
 		}),
 
-		react.createElement(SearchBar, null)
+		react.createElement(SearchBar, null),
+		react.createElement(LyricsBackdropLayer, null)
 	);
 });
 

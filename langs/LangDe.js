@@ -225,6 +225,10 @@ window.LANG_DE = {
       "label": "Seitlicher Rand des Songtexts",
       "desc": "Fügt links und rechts Abstand hinzu, damit der Songtext weiter innen steht. Mit linksbündiger Ausrichtung liegt der Text wie in Spotifys Vollbild nahe der Bildschirmmitte. 0 % schaltet es aus."
     },
+    "lyricsBackdropBlur": {
+      "label": "Unschärfe hinter dem Songtext",
+      "desc": "Legt nur hinter den Songtextbereich eine Gaußsche Unschärfe, damit der Text auch vor unruhigen Hintergründen wie Videos lesbar bleibt. Der unscharfe Bereich folgt der Textausrichtung. 0px schaltet es aus."
+    },
     "noise": {
       "label": "Noise-Overlay",
       "desc": "Fügt dem Hintergrund einen Filmkörnungseffekt hinzu"

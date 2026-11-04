@@ -225,6 +225,10 @@ window.LANG_CS = {
       "label": "Boční okraj textu",
       "desc": "Přidá místo po obou stranách textu, aby byl blíže středu. Se zarovnáním vlevo bude text jako v režimu celé obrazovky Spotify poblíž středu obrazovky. 0 % je vypnuto."
     },
+    "lyricsBackdropBlur": {
+      "label": "Rozmazání za textem",
+      "desc": "Přidá gaussovské rozmazání jen za oblast textu, aby zůstal čitelný i na rušném pozadí, například u videa. Rozmazaná oblast se řídí zarovnáním textu. 0px je vypnuto."
+    },
     "noise": {
       "label": "Překrytí šumem",
       "desc": "Přidejte na pozadí efekt filmového zrna"

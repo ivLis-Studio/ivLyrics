@@ -225,6 +225,10 @@ window.LANG_ID = {
       "label": "Margin samping lirik",
       "desc": "Menambahkan ruang di kedua sisi lirik agar lebih ke tengah. Dengan rata kiri, lirik berada dekat tengah layar seperti layar penuh Spotify. 0% berarti mati."
     },
+    "lyricsBackdropBlur": {
+      "label": "Blur di belakang lirik",
+      "desc": "Menambahkan blur Gaussian hanya di belakang area lirik agar tetap mudah dibaca di atas latar yang ramai seperti video. Area blur mengikuti perataan lirik. 0px berarti mati."
+    },
     "noise": {
       "label": "Overlay Noise",
       "desc": "Tambahkan efek film grain pada latar belakang"

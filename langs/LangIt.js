@@ -225,6 +225,10 @@ window.LANG_IT = {
       "label": "Margine laterale del testo",
       "desc": "Aggiunge spazio su entrambi i lati del testo per avvicinarlo al centro. Con l'allineamento a sinistra, il testo resta vicino al centro dello schermo come nello schermo intero di Spotify. 0% lo disattiva."
     },
+    "lyricsBackdropBlur": {
+      "label": "Sfocatura dietro il testo",
+      "desc": "Applica una sfocatura gaussiana solo dietro l'area del testo, così resta leggibile su sfondi complessi come i video. L'area sfocata segue l'allineamento del testo. 0px la disattiva."
+    },
     "noise": {
       "label": "Overlay rumore",
       "desc": "Aggiunge un effetto grana pellicola allo sfondo"
