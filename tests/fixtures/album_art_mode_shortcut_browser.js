@@ -29,6 +29,7 @@ async page => {
       await page.screenshot({ path: `output/playwright/album-shortcut-setting-${width}.png` });
       await page.evaluate(() => window.ivLyricsCloseConfig(true));
       await page.addScriptTag({ url: origin + '/VinylPlayerMode.js' });
+      await page.addScriptTag({ url: origin + '/PlaylistPicker.js' });
       await page.addScriptTag({ url: origin + '/FullscreenOverlay.js' });
       await page.evaluate(() => {
         Object.assign(CONFIG.visual, { 'reduce-motion': true, 'fullscreen-auto-hide-ui': false,

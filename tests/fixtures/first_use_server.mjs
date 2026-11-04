@@ -11,7 +11,7 @@ if (!modules) throw new Error("Pass a node_modules directory containing React 18
 const files = new Map([
   ["/react.js", resolve(modules, "react/umd/react.development.js")],
   ["/react-dom.js", resolve(modules, "react-dom/umd/react-dom.development.js")],
-  ...["SettingsStyles.js", "OptionsMenu.js", "SetupWizard.js", "LearningMode.js", "I18n.js", "FullscreenOverlay.js", "style.css"]
+  ...["SettingsStyles.js", "OptionsMenu.js", "SetupWizard.js", "LearningMode.js", "I18n.js", "PlaylistPicker.js", "FullscreenOverlay.js", "style.css"]
     .map(name => ["/" + name, resolve(root, name)]),
 ]);
 const languages = readdirSync(resolve(root, "langs")).filter(name => /^Lang[A-Za-z]+\.js$/.test(name));

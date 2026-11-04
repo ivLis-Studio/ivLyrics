@@ -608,6 +608,69 @@ const CreatorProfileTrackCover = react.memo(({ title, artist }) => {
 	);
 });
 
+const CreatorProfileTrackRow = react.memo(({
+	item,
+	copy,
+	onTrackClick,
+	openPlaylistTrackKey,
+	onPlaylistOpenChange,
+	theme
+}) => {
+	const trackKey = `${item.trackId}:${item.provider}`;
+	const updatedLabel = formatContributorTimestamp(item.updatedAt || item.createdAt);
+	const title = item.trackName || copy.unknownTrack;
+	const subtitle = item.artists || item.trackId;
+
+	return react.createElement(
+		"div",
+		{ className: "lyrics-creator-profile-track", key: trackKey },
+		// The row is a container rather than a button so the playlist picker can
+		// sit beside it without nesting one interactive element inside another.
+		react.createElement(
+			"button",
+			{
+				type: "button",
+				className: "lyrics-creator-profile-track-open",
+				onClick: () => onTrackClick(item.trackId)
+			},
+			react.createElement(CreatorProfileTrackCover, { title, artist: subtitle }),
+			react.createElement(
+				"div",
+				{ className: "lyrics-creator-profile-track-main" },
+				react.createElement("div", { className: "lyrics-creator-profile-track-title" }, title),
+				react.createElement(
+					"div",
+					{ className: "lyrics-creator-profile-track-subline" },
+					react.createElement("span", { className: "lyrics-creator-profile-track-artist" }, subtitle),
+					updatedLabel && react.createElement("span", { className: "lyrics-creator-profile-track-updated" }, `${copy.updated} ${updatedLabel}`)
+				)
+			)
+		),
+		react.createElement(
+			"div",
+			{ className: "lyrics-creator-profile-track-actions" },
+			react.createElement(
+				"div",
+				{ className: "lyrics-creator-profile-track-side" },
+				react.createElement(SyncScoreBadge, { points: item.syncPoints }),
+				react.createElement("span", { className: "lyrics-creator-profile-track-provider" }, item.provider)
+			),
+			item.trackId && react.createElement(window.PlaylistPicker.PlaylistPickerButton, {
+				trackUri: `spotify:track:${item.trackId}`,
+				buttonClassName: "lyrics-creator-profile-track-playlist",
+				iconSize: 16,
+				// The contribution grid scrolls, so an in-flow menu would be clipped.
+				anchored: true,
+				theme,
+				// Keep the portalled menu inside the panel that owns the row.
+				boundary: ".lyrics-creator-profile-modal",
+				open: openPlaylistTrackKey === trackKey,
+				onOpenChange: (nextOpen) => onPlaylistOpenChange(nextOpen ? trackKey : null)
+			})
+		)
+	);
+});
+
 const CreatorDecorationEditor = react.memo(({
 	displayName,
 	tier,
@@ -802,6 +865,8 @@ const SyncCreatorProfileModal = react.memo(({
 	const [isEditingGreeting, setIsEditingGreeting] = react.useState(false);
 	const [greetingDraft, setGreetingDraft] = react.useState(rawGreeting);
 	const [isDecorationEditorOpen, setIsDecorationEditorOpen] = react.useState(false);
+	// Only one contribution row shows its playlist menu at a time.
+	const [openPlaylistTrackKey, setOpenPlaylistTrackKey] = react.useState(null);
 	const canLike = !!profileData.viewer?.canLike;
 	const liked = !!profileData.viewer?.liked;
 	const isOwnProfile = !!profileData.viewer?.isOwnProfile;
@@ -1297,35 +1362,15 @@ const SyncCreatorProfileModal = react.memo(({
 							react.createElement(
 								"div",
 								{ className: `lyrics-creator-profile-grid ${listRefreshing ? "is-refreshing" : ""}`.trim() },
-								...contributions.map((item) => {
-									const updatedLabel = formatContributorTimestamp(item.updatedAt || item.createdAt);
-									return react.createElement(
-										"button",
-										{
-											type: "button",
-											key: `${item.trackId}:${item.provider}`,
-											className: "lyrics-creator-profile-track",
-											onClick: () => onTrackClick(item.trackId)
-						},
-						react.createElement(CreatorProfileTrackCover, {
-							title: item.trackName || copy.unknownTrack,
-							artist: item.artists || item.trackId
-						}),
-						react.createElement(
-							"div",
-							{ className: "lyrics-creator-profile-track-main" },
-											react.createElement("div", { className: "lyrics-creator-profile-track-title" }, item.trackName || copy.unknownTrack),
-											react.createElement("div", { className: "lyrics-creator-profile-track-artist" }, item.artists || item.trackId)
-										),
-										react.createElement(
-										"div",
-										{ className: "lyrics-creator-profile-track-side" },
-										react.createElement(SyncScoreBadge, { points: item.syncPoints }),
-										react.createElement("span", { className: "lyrics-creator-profile-track-provider" }, item.provider),
-											updatedLabel && react.createElement("span", { className: "lyrics-creator-profile-track-updated" }, `${copy.updated} ${updatedLabel}`)
-										)
-									);
-								})
+								...contributions.map((item) => react.createElement(CreatorProfileTrackRow, {
+									key: `${item.trackId}:${item.provider}`,
+									item,
+									copy,
+									onTrackClick,
+									openPlaylistTrackKey,
+									onPlaylistOpenChange: setOpenPlaylistTrackKey,
+									theme: uiTheme
+								}))
 							),
 							hasMoreContributions && react.createElement(
 								"div",

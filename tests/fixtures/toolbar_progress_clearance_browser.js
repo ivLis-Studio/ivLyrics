@@ -37,6 +37,7 @@ async page => {
       await page.setViewportSize({ width, height });
       await page.emulateMedia({ reducedMotion: osReduced ? 'reduce' : 'no-preference' });
       await page.goto(`${origin}/?surface=toolbar&language=${language}&theme=dark`);
+      await page.addScriptTag({ url: origin + '/PlaylistPicker.js' });
       await page.addScriptTag({ url: origin + '/FullscreenOverlay.js' });
       await page.evaluate(({ pageOnly, appReduced, width }) => {
         const root = document.getElementById('fixture'), mount = document.getElementById('toolbar');

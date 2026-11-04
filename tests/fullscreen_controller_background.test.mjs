@@ -138,9 +138,20 @@ function renderComponent(component, props, extra = {}) {
     createElement: (type, elementProps, ...children) => ({ type, props: { ...elementProps, children } }),
   };
   const context = {
-    react, console, window: {}, document: { addEventListener() {}, removeEventListener() {} },
+    react, console,
+    // The playlist menu now lives in its own module; mirror its wrapper shape so
+    // the control row renders exactly what production renders.
+    window: {
+      PlaylistPicker: {
+        PlaylistPickerButton: (props) => react.createElement(
+          "div",
+          { className: props.wrapperClassName || "fullscreen-playlist-control" },
+          react.createElement("button", { className: props.buttonClassName, style: props.buttonStyle })
+        )
+      }
+    },
+    document: { addEventListener() {}, removeEventListener() {} },
     formatTime: () => "0:00", I18n: { t: (key) => key }, Toast: { success() {}, error() {} },
-    PLAYLIST_ADD_ICON_PATH: "", PLAYLIST_STATUS_BATCH_SIZE: 1,
     Spicetify: {
       Player: { data: { item: { uri: "spotify:track:one" } }, getVolume: () => 1, getShuffle: () => false,
         getRepeat: () => 0, getProgress: () => 90000, getDuration: () => 180000,
