@@ -736,3 +736,27 @@ test('actual creator effect drafts commit independently and arbitrary existing s
   manual.commit();
   assert.equal(manual.capture.length, 1);
 });
+
+test('a queued part outside its saved row is repaired as import provenance instead of blocking every submission', async () => {
+  const outsideError = () => Object.assign(
+    new Error('Invalid work snapshot: Line 24, parallel part 2: range 1 is outside the parent line'), { status: 400 }
+  );
+  const original = { ...legacyEvent('record'), syncData: snapshot(1) };
+  const repaired = snapshot(2);
+  let repairCalls = 0;
+  const value = fixture({ saved: legacyWork([original]),
+    repairSnapshot: () => { repairCalls++; return repaired; },
+    request: event => {
+      if (event.action === 'record') throw outsideError();
+      return { success: true, sessionId: 'server-session', sequence: event.sequence };
+    }
+  });
+  const receipt = await value.tracker.submission(snapshot(3));
+  assert.equal(repairCalls, 1);
+  assert.deepEqual(value.sent.map(event => event.action), ['record', 'import', 'checkpoint']);
+  assert.deepEqual(value.sent[1].syncData, repaired);
+  assert.equal(value.sent[1].target, undefined);
+  assert.equal(value.sent[1].activeSeconds, 0);
+  assert.deepEqual(receipt, { workSessionId: 'server-session', workSequence: 4 });
+  value.tracker.stop();
+});

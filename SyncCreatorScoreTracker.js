@@ -18,6 +18,10 @@
   };
   const sameSnapshot = (left, right) => Boolean(left && right)
     && JSON.stringify(comparable(left)) === JSON.stringify(comparable(right));
+  // Only structural rejections that the editor can repair without inventing
+  // timing: backwards marks, and parts/ranges a stale layout left outside their
+  // saved row. Other validation failures keep the queue stopped as evidence.
+  const REPAIRABLE_SNAPSHOT_ERROR = /^Invalid work snapshot: .+: (?:time goes backwards|.+ is outside the parent line(?: interior)?)$/;
 
   // This queue records editor actions, never decides points. Imported files and
   // recovered drafts contain no trusted evidence; only the server owns credit.
@@ -95,7 +99,7 @@
         const recoveredEvents = new Set();
         const repairInvalidSnapshot = async (next, error) => {
           if (error?.status !== 400 || typeof error.message !== 'string'
-            || !/^Invalid work snapshot: .+: time goes backwards$/.test(error.message)
+            || !REPAIRABLE_SNAPSHOT_ERROR.test(error.message)
             || typeof options.repairSnapshot !== 'function' || next.snapshotRepaired
             || attemptedSnapshotRepairs.has(next.eventId)) return false;
           attemptedSnapshotRepairs.add(next.eventId);

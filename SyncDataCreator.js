@@ -1274,6 +1274,100 @@ const sliceSyncCreatorLineTiming = (line, start, end) => {
 	if (!sliced.styleRanges.length) delete sliced.styleRanges;
 	return parts.length > 1 ? refreshSyncCreatorLineCharsFromParallel(sliced) : rejoinSyncCreatorParallelLine(sliced);
 };
+// Parts, ranges and merge/split markers belong inside their saved row. The
+// displayed row can be wider than the saved one (for example after merging with
+// a lyric that has no timing yet), so keep only what the saved row covers.
+// Rows that are already inside their bounds are returned unchanged.
+const clipSyncCreatorLineToBounds = (line) => {
+	const start = Number(line?.start);
+	const end = Number(line?.end);
+	if (!Number.isInteger(start) || !Number.isInteger(end) || end < start) return line;
+	const length = end - start + 1;
+	const isIntegerRange = range => Number.isInteger(range?.start) && Number.isInteger(range?.end) && range.end >= range.start;
+	const isOutside = range => isIntegerRange(range) && (range.start < start || range.end > end);
+	const hasOutside = ranges => Array.isArray(ranges) && ranges.some(isOutside);
+	const clipRanges = ranges => ranges.flatMap(range => {
+		if (!isOutside(range)) return [range];
+		const from = Math.max(start, range.start);
+		const to = Math.min(end, range.end);
+		return to >= from ? [{ ...range, start: from, end: to }] : [];
+	});
+	const clipPart = (part) => {
+		const ranges = Array.isArray(part?.ranges) ? part.ranges : null;
+		if (!ranges || !hasOutside(ranges) || !ranges.every(isIntegerRange)) return part;
+		const hasChars = Array.isArray(part.chars) && part.chars.length === countSyncCreatorRangeChars(ranges);
+		const nextRanges = [];
+		const join = [];
+		const chars = [];
+		let charIndex = 0;
+		ranges.forEach((range, rangeIndex) => {
+			const from = Math.max(start, range.start);
+			const to = Math.min(end, range.end);
+			if (to >= from) {
+				if (nextRanges.length) join.push(part.join?.[rangeIndex - 1] ?? 1);
+				nextRanges.push({ ...range, start: from, end: to });
+				if (hasChars) chars.push(...part.chars.slice(charIndex + from - range.start, charIndex + to - range.start + 1));
+			}
+			charIndex += range.end - range.start + 1;
+		});
+		if (!nextRanges.length) return null;
+		const nextPart = { ...part, ranges: nextRanges, join };
+		if (hasChars) {
+			nextPart.chars = chars;
+		} else {
+			// Timing that cannot be mapped onto the kept characters is dropped.
+			delete nextPart.chars;
+			delete nextPart.timing;
+		}
+		return nextPart;
+	};
+	const parallel = line.parallel && typeof line.parallel === 'object' ? line.parallel : null;
+	const parts = Array.isArray(parallel?.parts) ? parallel.parts : null;
+	const mergedStarts = Array.isArray(line.mergedLineContinuationStarts) ? line.mergedLineContinuationStarts : null;
+	const splitPoints = Array.isArray(parallel?.manualSplitPoints) ? parallel.manualSplitPoints : null;
+	const needsClip = hasOutside(line.hiddenRanges) || hasOutside(line.styleRanges) || hasOutside(parallel?.hiddenRanges)
+		|| Boolean(parts?.some(part => hasOutside(part?.ranges)))
+		|| Boolean(mergedStarts?.some(value => Number.isInteger(value) && (value <= start || value > end)))
+		|| Boolean(splitPoints?.some(point => Number.isInteger(point) && (point <= 0 || point >= length)));
+	if (!needsClip) return line;
+
+	const nextLine = { ...line };
+	for (const key of ['hiddenRanges', 'styleRanges']) {
+		if (!Array.isArray(line[key])) continue;
+		const ranges = clipRanges(line[key]);
+		if (ranges.length) nextLine[key] = ranges;
+		else delete nextLine[key];
+	}
+	if (mergedStarts) {
+		const starts = mergedStarts.filter(value => !Number.isInteger(value) || (value > start && value <= end));
+		if (starts.length) nextLine.mergedLineContinuationStarts = starts;
+		else delete nextLine.mergedLineContinuationStarts;
+	}
+	if (parts) {
+		const nextParts = parts.map(clipPart).filter(Boolean);
+		if (!nextParts.length) {
+			delete nextLine.parallel;
+		} else {
+			const nextParallel = { ...parallel, parts: nextParts };
+			if (Array.isArray(parallel.hiddenRanges)) {
+				const hiddenRanges = clipRanges(parallel.hiddenRanges);
+				if (hiddenRanges.length) nextParallel.hiddenRanges = hiddenRanges;
+				else delete nextParallel.hiddenRanges;
+			}
+			// An empty list stays meaningful: every manual boundary was removed.
+			if (splitPoints) {
+				nextParallel.manualSplitPoints = splitPoints.filter(point => !Number.isInteger(point) || (point > 0 && point < length));
+			}
+			nextLine.parallel = nextParallel;
+		}
+	}
+	return nextLine;
+};
+const clipSyncCreatorSyncDataToLineBounds = (data) => {
+	if (!Array.isArray(data?.lines)) return data;
+	const lines = data.lines.map(clipSyncCreatorLineToBounds);
+	return lines.some((line, index) => line !== data.lines[index]) ? { ...data, lines } : data;
+};
 const preserveSyncCreatorParallelTimingRuns = (parallel) => {
 	if (!Array.isArray(parallel?.parts)) return parallel;
 	const usedIds = new Set(parallel.parts.map(part => part.id));
@@ -7079,7 +7173,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			delete lineData.styleRanges;
 		}
 
-		lineData = repairSyncCreatorLineCharsFromParallel(lineData);
+		// The committed row is authoritative; a stale wider layout cannot leave
+		// vocal parts outside it.
+		lineData = repairSyncCreatorLineCharsFromParallel(clipSyncCreatorLineToBounds(lineData));
 
 		if (existingIndex >= 0) {
 			nextLines[existingIndex] = lineData;
@@ -9266,7 +9362,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				return {
 					...prev,
 					lines: prev.lines.map((line, index) => index === targetIndex
-						? refreshSyncCreatorLineCharsFromParallel({
+						? refreshSyncCreatorLineCharsFromParallel(clipSyncCreatorLineToBounds({
 							...sourceLine,
 							parallel: preserveSyncCreatorParallelTimingRuns({
 								...parallel,
@@ -9274,7 +9370,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 									? { ...part, chars: shiftedPart.times }
 									: part)
 							})
-						})
+						}))
 						: line)
 				};
 			});
@@ -9331,13 +9427,15 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				} : line.parallel
 			});
 			const shiftedLine = targetPart
-				? refreshSyncCreatorLineCharsFromParallel({
+				// The displayed row can include merged lyrics that the saved row
+				// does not cover yet; only the saved row's parts are written back.
+				? refreshSyncCreatorLineCharsFromParallel(clipSyncCreatorLineToBounds({
 					...targetLine,
 					parallel: preserveSyncCreatorParallelTimingRuns({
 						...parallel,
 						parts: parallel.parts.map(part => part === targetPart ? { ...part, chars: shiftTimes(part.chars) } : part)
 					})
-				})
+				}))
 				: shiftLine(targetLine);
 
 			return {
@@ -9575,7 +9673,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	// Capture the baseline before edits. ISRC resolution can finish later; queued
 	// edits retain their original snapshots instead of turning into imported work.
 	const buildScoreSnapshot = useCallback((data) => {
-		const raw = prepareSyncCreatorWorkSnapshot(data || { version: SYNC_CREATOR_SYNC_DATA_VERSION, lines: [] });
+		const raw = clipSyncCreatorSyncDataToLineBounds(
+			prepareSyncCreatorWorkSnapshot(data || { version: SYNC_CREATOR_SYNC_DATA_VERSION, lines: [] })
+		);
 		const expanded = attachSelectedLrclibSource(raw);
 		if (!expanded) return null;
 		if (isCompleteSyncCreatorLrclibSource(raw.source)) expanded.source = raw.source;
@@ -9585,7 +9685,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	}, [attachSelectedLrclibSource, lyricsFullTextChars, lyricsLanguage, trackDurationMs]);
 	const repairScoreSnapshot = useCallback((data) => {
 		try {
-			const repaired = prepareSyncCreatorWorkSnapshot(data);
+			const repaired = clipSyncCreatorSyncDataToLineBounds(prepareSyncCreatorWorkSnapshot(data));
 			assertValidSyncCreatorSyncData(repaired);
 			// Keep the historical source and body. Current layout drafts and the
 			// current song's source must never be projected onto queued work.

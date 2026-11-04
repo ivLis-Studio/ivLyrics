@@ -1025,3 +1025,53 @@ test('a file that fits no available lyrics fails instead of reporting success', 
     assert.deepEqual(plain(editor.context.syncData), before, 'a newer lyrics load replaces a pending import');
 });
 
+
+test('offsetting a part after merging with an untimed lyric never saves a part outside its row', () => {
+    // Reported as "Invalid work snapshot: Line N, parallel part 2: range 1 is
+    // outside the parent line": the displayed row covers ABCD+EFG, the saved row
+    // only ABCD, and the untimed EFG part used to be written into the saved row.
+    const rows = ['PRE', 'ABCD', 'EFG', 'TAIL'];
+    let start = 0;
+    const offsets = rows.map(row => { const offset = start; start += row.length; return offset; });
+    const data = { version: 5, lines: [0, 1, 3].map(index => ({
+        start: offsets[index], end: offsets[index] + rows[index].length - 1,
+        chars: Array.from(rows[index], (_, char) => index * 10 + char / 4 + 1),
+        granularity: 'character', speaker: 'NORMAL', kind: 'vocal',
+    })) };
+    const editor = createEditor({ rows, data });
+    editor.api.mergeCurrentLineWithNext();
+    editor.render('a');
+    assert.deepEqual(plain(editor.context.currentParallelData.parts.map(part => part.ranges)),
+        [[{ start: 3, end: 6 }], [{ start: 7, end: 9 }]], 'the displayed row still offers both vocals');
+    editor.shift(100);
+    const saved = plain(editor.line());
+    assert.equal(saved.end, 6);
+    assert.deepEqual(saved.parallel.parts.map(part => part.ranges), [[{ start: 3, end: 6 }]]);
+    assert.deepEqual(saved.parallel.parts[0].chars, [11.1, 11.35, 11.6, 11.85]);
+    assert.doesNotThrow(() => editor.api.assertValidSyncCreatorSyncData(editor.context.syncData));
+    assert.deepEqual(plain(editor.context.currentParallelData.parts.map(part => part.id)), ['a', 'b'],
+        'the untimed vocal can still be recorded on the merged row');
+});
+
+test('work snapshots and queued-snapshot repair keep every part inside its saved row', () => {
+    const editor = createEditor();
+    const outside = plain(editor.context.syncData);
+    outside.lines[1].parallel = { layout: 'stack', manualSplitPoints: [2, 6], parts: [
+        { id: 'a', role: 'lead', ranges: [{ start: 3, end: 6 }], join: [], granularity: 'character', chars: [11, 11.25, 11.5, 11.75] },
+        { id: 'b', role: 'background', ranges: [{ start: 5, end: 9 }], join: [], granularity: 'character', chars: [11.5, 11.75, 20, 20.5, 21] },
+        { id: 'c', role: 'background', ranges: [{ start: 7, end: 9 }], join: [], granularity: 'character' },
+    ] };
+    outside.lines[1].mergedLineContinuationStarts = [7];
+    assert.throws(() => editor.api.assertValidSyncCreatorSyncData(outside), /parent line/);
+    const expected = [[{ start: 3, end: 6 }], [{ start: 5, end: 6 }]];
+    for (const result of [editor.api.buildScoreSnapshot(outside), editor.api.repairScoreSnapshot(outside)]) {
+        const row = plain(result).lines[1];
+        assert.deepEqual(row.parallel.parts.map(part => part.ranges), expected);
+        assert.deepEqual(row.parallel.parts[1].chars, [11.5, 11.75]);
+        assert.deepEqual(row.parallel.manualSplitPoints, [2]);
+        assert.equal(row.mergedLineContinuationStarts, undefined);
+    }
+    const valid = plain(editor.context.syncData);
+    assert.deepEqual(plain(editor.api.buildScoreSnapshot(valid)).lines, plain(editor.api.compactSyncCreatorSyncData(valid, editor.context.lyricsFullTextChars, 'en')).lines,
+        'rows already inside their bounds are unchanged');
+});
