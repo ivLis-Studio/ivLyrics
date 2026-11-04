@@ -313,6 +313,33 @@
         }
     }
 
+    // Before the provider row became the master switch, the manager ignored
+    // this provider's provider-level flags, and the row could not be clicked.
+    // A flag could therefore stay off while an endpoint had turned the
+    // capability back on. Lift such stale flags once, so the update keeps
+    // every capability that was working; later choices are left alone.
+    const MASTER_SWITCH_MIGRATION_KEY = 'master-switch-migrated';
+
+    function migrateStaleMasterSwitches() {
+        const manager = window.AIAddonManager;
+        if (typeof manager?.isCapabilityEnabled !== 'function'
+            || typeof manager?.setCapabilityEnabled !== 'function') return;
+        const done = getSetting(MASTER_SWITCH_MIGRATION_KEY, false);
+        if (done === true || done === 'true') return;
+        const savedCapabilities = [
+            getPrimaryCapabilities(),
+            ...getFallbackProviders().map(connection => connection.capabilities)
+        ];
+        for (const capability of ENDPOINT_CAPABILITIES) {
+            const master = manager.isCapabilityEnabled(ADDON_INFO.id, capability);
+            if (master === true || master === 'true') continue;
+            if (savedCapabilities.some(capabilities => isEndpointCapabilityEnabled(capabilities, capability))) {
+                manager.setCapabilityEnabled(ADDON_INFO.id, capability, true);
+            }
+        }
+        setSetting(MASTER_SWITCH_MIGRATION_KEY, true);
+    }
+
     function getPrimaryCapabilities() {
         const raw = getSetting('primary-capabilities', null);
         if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
@@ -1515,6 +1542,11 @@
         ...ADDON_INFO,
 
         async init() {
+            try {
+                migrateStaleMasterSwitches();
+            } catch (error) {
+                window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Master switch migration skipped: ${error?.message || error}`);
+            }
             window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Initialized (v${ADDON_INFO.version})`);
         },
 

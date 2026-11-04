@@ -11,10 +11,11 @@ const PREFIX = "ivLyrics:ai:";
 // Full manager + ChatGPT addon in one VM context. The provider-level
 // capability flags (addon:chatgpt:capability:*) act as the master switch;
 // the addon's primary-capabilities store holds the endpoint-own flags.
-const loadHarness = () => {
+const loadHarness = (seed = {}) => {
 	const storage = new Map();
 	storage.set(`${PREFIX}addon:chatgpt:api-keys`, JSON.stringify(["sk-test"]));
 	storage.set(`${PREFIX}addon:chatgpt:model`, "gpt-4o-mini");
+	for (const [key, value] of Object.entries(seed)) storage.set(`${PREFIX}${key}`, value);
 	const fetchCalls = [];
 	const window = {
 		ivLyricsFetch: async (url, options) => {
@@ -55,8 +56,8 @@ const loadHarness = () => {
 	return { window, storage, fetchCalls };
 };
 
-const ready = async () => {
-	const harness = loadHarness();
+const ready = async (seed) => {
+	const harness = loadHarness(seed);
 	const manager = harness.window.AIAddonManager;
 	await manager._initPromise;
 	await manager.setProviderEnabled("chatgpt", true);
@@ -125,6 +126,45 @@ test("endpoint pronunciation still inherits translate inside the effective check
 	assert.equal(hooks.getRequestTargets("pronunciation").length, 0);
 	assert.equal(manager.isCapabilityEnabled("chatgpt", "pronunciation"), true);
 	assert.equal(hooks.getRequestTargets("metadata").length, 1);
+});
+
+// Before the master switch, the manager ignored these provider-level flags, so
+// an endpoint could serve a capability whose stored flag still said off.
+test("the update lifts a stale master flag that an endpoint still uses, once", async () => {
+	const { manager, hooks } = await ready({
+		"addon:chatgpt:capability:metadata": "false",
+		"addon:chatgpt:primary-capabilities": JSON.stringify({ metadata: true }),
+	});
+	assert.equal(manager.isCapabilityEnabled("chatgpt", "metadata"), true);
+	assert.deepEqual(Array.from(manager.getEnabledProvidersFor("metadata"), provider => provider.id), ["chatgpt"]);
+	assert.equal(hooks.getRequestTargets("metadata").length, 1);
+
+	// A later choice to turn the master off survives the next start.
+	await manager.setCapabilityEnabled("chatgpt", "metadata", false);
+	await manager.getAddon("chatgpt").init();
+	assert.equal(manager.isCapabilityEnabled("chatgpt", "metadata"), false);
+});
+
+test("the update keeps a master flag off when no saved connection uses the capability", async () => {
+	const { manager } = await ready({
+		"addon:chatgpt:capability:metadata": "false",
+		"addon:chatgpt:primary-capabilities": JSON.stringify({ metadata: false }),
+	});
+	assert.equal(manager.isCapabilityEnabled("chatgpt", "metadata"), false);
+	assert.deepEqual(Array.from(manager.getEnabledProvidersFor("metadata"), provider => provider.id), []);
+});
+
+test("an added connection that serves the capability also keeps it working", async () => {
+	const { manager, hooks } = await ready({
+		"addon:chatgpt:capability:tmi": "false",
+		"addon:chatgpt:primary-capabilities": JSON.stringify({ tmi: false }),
+		"addon:chatgpt:fallback-providers": JSON.stringify([{
+			id: "backup", name: "Backup", apiKeys: "sk-backup",
+			baseUrl: "https://backup.test/v1", model: "gpt-4o-mini", enabled: true,
+		}]),
+	});
+	assert.equal(manager.isCapabilityEnabled("chatgpt", "tmi"), true);
+	assert.equal(hooks.getRequestTargets("tmi").length, 1);
 });
 
 // Render harness mirroring tests/openai_primary_presentation.test.mjs: the
