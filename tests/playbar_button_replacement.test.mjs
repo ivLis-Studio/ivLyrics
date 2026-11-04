@@ -160,3 +160,27 @@ test("public click events, active state and existing SVGs survive reenabling", (
   h.toggle("playbar-button", true); h.toggle("fullscreen-button", true);
   assertConnected(h); assert.equal(lyrics.active, false); assert.equal(h.historyListeners.size, 1);
 });
+
+test("Spotify 1.3.6 bar without main-nowPlayingBar-right still gets both replacements", () => {
+  const h = createPlaybarHarness({ layout: "spotify-1.3.6", controlsClass: "Wd77zsAyau4UGFnxn60b" });
+  assertConnected(h); h.advance(3000); assertConnected(h);
+  assert.equal(h.warnings.length, 0);
+  assert.ok(h.controls().classList.contains("ivlyrics-playbar-controls"));
+  assert.ok(h.created.every((button) => button.registerCalls === 1));
+  // Spotify replaces the extra controls and then the whole bar.
+  h.controls().replaceWith(h.newControls()); h.flush(); assertConnected(h);
+  const layout = h.document.createElement("footer"); h.layout.replaceWith(layout); h.layout = layout; h.flush();
+  names.forEach((name) => assert.equal(h.hideStyle(name), undefined, "detached replacements release native controls"));
+  h.root = h.mount(); h.flush(); assertConnected(h);
+  names.forEach((name) => h.toggle(name, false));
+  assert.ok(h.created.every((button) => !button.element.isConnected));
+  names.forEach((name) => assert.equal(h.hideStyle(name), undefined));
+});
+
+test("Spotify 1.3.6 bar that mounts late is found from its player controls", () => {
+  const h = createPlaybarHarness({ layout: "spotify-1.3.6", mounted: false });
+  assert.equal(h.created.length, 0);
+  names.forEach((name) => assert.equal(h.hideStyle(name), undefined));
+  h.advance(3000); h.root = h.mount(); h.flush(); assertConnected(h);
+  assert.ok([...h.observers].every((observer) => [...observer.targets.values()].every((options) => !options.subtree)));
+});

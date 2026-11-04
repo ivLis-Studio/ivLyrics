@@ -206,7 +206,7 @@ function installPlaybarApi(h) {
 }
 
 export function createPlaybarHarness({ enabled = true, apiReady = true, historyReady = true,
-  mounted = true, controlsClass = "main-nowPlayingBar-extraControls", source = productionSource } = {}) {
+  mounted = true, controlsClass = "main-nowPlayingBar-extraControls", layout = "legacy", source = productionSource } = {}) {
   const h = createDomHarness();
   const { document, window, context } = h;
   h.created = []; h.warnings = [];
@@ -231,9 +231,23 @@ export function createPlaybarHarness({ enabled = true, apiReady = true, historyR
     }
     return controls;
   };
+  // "legacy": Spicetify-mapped .main-nowPlayingBar-right. "spotify-1.3.6": the same
+  // three-column bar with unmapped class names, identified only by test ids.
   h.mount = () => {
-    const root = document.createElement("div"); root.className = "main-nowPlayingBar-right";
-    root.appendChild(h.newControls()); h.layout.appendChild(root); return root;
+    const root = document.createElement("div");
+    if (layout === "legacy") {
+      root.className = "main-nowPlayingBar-right";
+      root.appendChild(h.newControls()); h.layout.appendChild(root); return root;
+    }
+    const bar = document.createElement("aside"); bar.setAttribute("data-testid", "now-playing-bar");
+    const row = document.createElement("div"); row.className = "dhrE1Mg11rVzWEJ5Xy84";
+    const left = document.createElement("div"); left.className = "GT3btISbKLXrhHILRLON";
+    const center = document.createElement("div"); center.className = "Fv_NJY1uLWlqyJ8IKpAP";
+    const player = document.createElement("div"); player.setAttribute("data-testid", "player-controls");
+    root.className = "_rXd41iaM5t1x5IDLxCJ";
+    center.appendChild(player); root.appendChild(h.newControls());
+    row.append(left, center, root); bar.appendChild(row); h.layout.appendChild(bar);
+    return root;
   };
   h.root = mounted ? h.mount() : null;
   h.installApi = () => installPlaybarApi(h);
@@ -246,7 +260,9 @@ export function createPlaybarHarness({ enabled = true, apiReady = true, historyR
   h.history = history; h.historyListeners = historyListeners;
   h.makeHistoryReady = () => { window.Spicetify.Platform.History = history; };
   h.hideStyle = (name) => document.head.children.find((node) => node.classList.contains(`ivLyrics:visual:${name}`));
-  h.controls = () => document.querySelector(".main-nowPlayingBar-right > div");
+  h.controls = () => layout === "legacy"
+    ? document.querySelector(".main-nowPlayingBar-right > div")
+    : document.querySelector('[data-testid="player-controls"]')?.parentElement?.parentElement?.children.at(-1)?.children[0] || null;
   vm.runInContext(source, context); h.flush();
   return h;
 }

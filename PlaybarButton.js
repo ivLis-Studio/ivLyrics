@@ -123,7 +123,24 @@
 		replacement.enabled = window.Spicetify?.LocalStorage?.get(`ivLyrics:visual:${replacement.name}`) === "true";
 	}
 
-	const ROOT_SELECTOR = ".main-nowPlayingBar-right";
+	// Spicetify maps Spotify's right-hand bar column to main-nowPlayingBar-right,
+	// but Spotify 1.3.6 renamed it and Spicetify 2.46.x has no mapping, so that
+	// class (and Spicetify.Playbar.Button's own container lookup) finds nothing.
+	// Fall back to Spotify's stable test ids: player-controls is the centre
+	// column of the bar's three-column row, and the last column is the right side.
+	const LEGACY_ROOT_SELECTOR = ".main-nowPlayingBar-right";
+	const PLAYER_CONTROLS_SELECTOR = '[data-testid="now-playing-bar"] [data-testid="player-controls"]';
+	const ROOT_SELECTOR = `${LEGACY_ROOT_SELECTOR}, ${PLAYER_CONTROLS_SELECTOR}`;
+
+	function findPlaybarRoot() {
+		const legacyRoot = document.querySelector(LEGACY_ROOT_SELECTOR);
+		if (legacyRoot) return legacyRoot;
+		const centerColumn = document.querySelector(PLAYER_CONTROLS_SELECTOR)?.parentElement;
+		const row = centerColumn?.parentElement;
+		const rightColumn = row?.children?.[row.children.length - 1];
+		return rightColumn && rightColumn !== centerColumn ? rightColumn : null;
+	}
+
 	let playbarRoot = null;
 	let controls = null;
 	let observer = null;
@@ -222,7 +239,7 @@
 		if (retryTimer !== null) clearTimeout(retryTimer);
 		retryTimer = null;
 
-		const root = playbarRoot?.isConnected ? playbarRoot : document.querySelector(ROOT_SELECTOR);
+		const root = playbarRoot?.isConnected ? playbarRoot : findPlaybarRoot();
 		const container = root && Array.from(root.children).find((node) => node.tagName === "DIV");
 		if (refreshObserver || !observer || root !== playbarRoot || container !== controls) {
 			restoreNativeButtons();
