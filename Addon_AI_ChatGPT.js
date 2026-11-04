@@ -607,6 +607,110 @@
         }, patch);
     }
 
+    // Reasoning models (o-series, GPT-5 and later) answer HTTP 400 when a
+    // request carries sampling parameters such as temperature or top_p. The
+    // default patch sends temperature and the settings screen saves that
+    // patch, so the keys are dropped per request for these models rather than
+    // only from the default. Chat-tuned variants (gpt-5-chat-latest) keep them.
+    const REASONING_UNSUPPORTED_SAMPLING_KEYS = ['temperature', 'top_p'];
+
+    function isOpenAIReasoningModel(model) {
+        const name = String(model || '').trim().toLowerCase().replace(/^.*\//, '');
+        if (!name || name.includes('-chat')) return false;
+        if (/^o\d/.test(name)) return true;
+        const generation = /^gpt-(\d+)/.exec(name);
+        // Azure names its GPT-3.5 deployments "gpt-35-turbo".
+        return !!generation && generation[1] !== '35' && Number(generation[1]) >= 5;
+    }
+
+    // Fields an endpoint rejected with HTTP 400, remembered in memory per
+    // endpoint and model so later requests leave them out from the start.
+    const rejectedRequestFields = new Map();
+
+    function getRejectedRequestFieldsKey(baseUrl, model) {
+        return JSON.stringify([normalizeBaseUrl(baseUrl), String(model || '').trim()]);
+    }
+
+    function adaptRequestBodyForModel(body, baseUrl, model) {
+        const rejected = rejectedRequestFields.get(getRejectedRequestFieldsKey(baseUrl, model));
+        const result = { ...body };
+        if (rejected?.sampling || isOpenAIReasoningModel(model)) {
+            for (const key of REASONING_UNSUPPORTED_SAMPLING_KEYS) delete result[key];
+        }
+        if (rejected?.maxTokens && result.max_tokens !== undefined) {
+            if (result.max_completion_tokens === undefined) result.max_completion_tokens = result.max_tokens;
+            delete result.max_tokens;
+        }
+        return result;
+    }
+
+    async function readRejectedRequestError(response) {
+        if (response?.status !== 400 || typeof response?.clone !== 'function') return null;
+        try {
+            const rawText = String(await response.clone().text() || '').trim();
+            let error = null;
+            try {
+                const parsed = JSON.parse(rawText);
+                error = parsed?.error && typeof parsed.error === 'object' ? parsed.error : parsed;
+            } catch {
+                // Plain-text error body.
+            }
+            return {
+                param: String(error?.param || '').trim().toLowerCase(),
+                code: String(error?.code || '').toLowerCase(),
+                message: String(error?.message || (error ? '' : rawText))
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    // Learns which optional field caused an "unsupported" HTTP 400. Returns
+    // true only for a newly learned field the request actually carried, so a
+    // request is re-sent at most once per field group.
+    async function learnRejectedRequestFields(response, baseUrl, model, body) {
+        const error = await readRejectedRequestError(response);
+        if (!error) return false;
+        const unsupported = error.code.includes('unsupported')
+            || /unsupported|not supported|does not support|only the default/i.test(error.message);
+        if (!unsupported) return false;
+        const names = field => error.param === field || new RegExp(`\\b${field}\\b`, 'i').test(error.message);
+        const key = getRejectedRequestFieldsKey(baseUrl, model);
+        const rejected = { ...(rejectedRequestFields.get(key) || {}) };
+        let learned = false;
+        if (!rejected.sampling && REASONING_UNSUPPORTED_SAMPLING_KEYS.some(field => body?.[field] !== undefined && names(field))) {
+            rejected.sampling = true;
+            learned = true;
+        }
+        if (!rejected.maxTokens && body?.max_tokens !== undefined && names('max_tokens')) {
+            rejected.maxTokens = true;
+            learned = true;
+        }
+        if (learned) rejectedRequestFields.set(key, rejected);
+        return learned;
+    }
+
+    // POSTs a JSON body built for this endpoint and model. When the endpoint
+    // rejects a field the addon can omit (sampling parameters on reasoning
+    // models, max_tokens where max_completion_tokens is required), the body is
+    // rebuilt and re-sent before any response text reaches the caller.
+    async function postOpenAIRequest(endpoint, apiKey, baseUrl, model, buildBody, requestTimeoutMs) {
+        for (let pass = 0; ; pass++) {
+            const body = adaptRequestBodyForModel(buildBody(), baseUrl, model);
+            const response = await window.ivLyricsFetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify(body)
+            }, requestTimeoutMs);
+            if (pass >= 2 || !(await learnRejectedRequestFields(response, baseUrl, model, body))) {
+                return response;
+            }
+        }
+    }
+
     // ============================================
     // API Call Functions
     // ============================================
@@ -792,14 +896,11 @@
                 try {
                     const endpoint = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
 
-                    const response = await window.ivLyricsFetch(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${apiKey}`
-                        },
-                        body: JSON.stringify(buildChatGPTRequestBody(model, prompt))
-                    }, requestTimeoutMs);
+                    const response = await postOpenAIRequest(
+                        endpoint, apiKey, baseUrl, model,
+                        () => buildChatGPTRequestBody(model, prompt),
+                        requestTimeoutMs
+                    );
 
                     if (response.status === 429 || response.status === 403) {
                         window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Target ${target.label} failed (${response.status}), trying next...`);
@@ -955,14 +1056,11 @@
 
                 try {
                     const endpoint = `${normalizeBaseUrl(baseUrl)}/responses`;
-                    const response = await window.ivLyricsFetch(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${apiKey}`
-                        },
-                        body: JSON.stringify(buildResponsesRequestBody(model, prompt))
-                    }, requestTimeoutMs);
+                    const response = await postOpenAIRequest(
+                        endpoint, apiKey, baseUrl, model,
+                        () => buildResponsesRequestBody(model, prompt),
+                        requestTimeoutMs
+                    );
 
                     if (response.status === 429 || response.status === 403) {
                         lastError = new Error(`[ChatGPT Web Search] ${target.label} failed: HTTP ${response.status}${getHttpStatusHint(response.status)}`);
@@ -1146,14 +1244,11 @@
                 try {
                     const endpoint = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
 
-                    const response = await window.ivLyricsFetch(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${apiKey}`
-                        },
-                        body: JSON.stringify(buildChatGPTRequestBody(model, prompt, { stream: true }))
-                    }, requestTimeoutMs);
+                    const response = await postOpenAIRequest(
+                        endpoint, apiKey, baseUrl, model,
+                        () => buildChatGPTRequestBody(model, prompt, { stream: true }),
+                        requestTimeoutMs
+                    );
 
                     if (response.status === 429 || response.status === 403) {
                         window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Stream: target ${target.label} failed (${response.status}), trying next...`);
@@ -1321,17 +1416,10 @@
         } catch {
             patch = null;
         }
-        const body = patch && typeof patch === 'object'
+        const buildBody = () => patch && typeof patch === 'object'
             ? mergeRequestBody({ model, messages: [{ role: 'user', content: 'Reply with just "OK" if you receive this.' }] }, patch)
             : { model, messages: [{ role: 'user', content: 'Reply with just "OK" if you receive this.' }] };
-        const response = await window.ivLyricsFetch(endpoint, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify(body)
-        });
+        const response = await postOpenAIRequest(endpoint, apiKey, baseUrl, model, buildBody);
         if (!response.ok) {
             throw new Error(`[ChatGPT] ${await buildHttpErrorDetail(response)}`);
         }
