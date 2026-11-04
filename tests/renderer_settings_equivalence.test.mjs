@@ -39,7 +39,7 @@ const applyInterludeCollapse = (source) => {
 		'						!!paddedLyrics[activeLineIndex]?.interludeInfo?.isInterlude',
 		'						|| isTrailingInterludeActive',
 		'					)',
-		'				)) || (isTrailingInterludeActive && isAnchorLine);',
+		'				)) || (isTrailingInterludeActive && isAnchorLine && !(compact && isScrolling));',
 	].join('\n');
 	const collapsed = source.replace(search, replacement);
 	assert.notEqual(collapsed, source, "frozen baseline no longer contains the interlude collapse anchor");
@@ -277,12 +277,7 @@ test("manual scrolling preserves live source props and returns to unchanged auto
 		for (const position of [2300, 2316, 2332, 2400, 3200, 3400, 7200]) {
 			const result = compare(engines, lyrics, position, {}, `scrolling=${scrolling}`);
 			if (scrolling) {
-				for (const element of result.elements) {
-				if (element.props.hiddenFromAccessibility === true) {
-					assert.match(element.props.className || '', /lyrics-lyricsContainer-LyricsLine-paddingLine/,
-						'browsing may only collapse sung rows and the trailing anchor around an active interlude');
-				}
-			}
+				assert.ok(result.elements.every((element) => element.props.hiddenFromAccessibility !== true));
 				assert.ok(result.elements.some((element) => element.props.seekTime === 12000));
 			}
 		}

@@ -43,26 +43,12 @@ test('an instrumental break collapses already sung rows out of layout and access
 	assert.equal(row(result, '日本語の声').hiddenFromAccessibility, false);
 });
 
-test('manual scrolling during the same break still collapses already sung rows', () => {
+test('manual scrolling during the same break keeps every row readable', () => {
 	const engine = createEngine(currentSource);
 	engine.setScrolling(true);
 	const result = engine.render(makeLyrics(), 7200);
-	assert.ok(result.elements.some((element) => element.props.line?.interludeInfo?.isInterlude),
-		'fixture must place the active row inside an interlude');
-	for (const text of ['First vocal', 'Overlapping response']) {
-		const props = row(result, text);
-		assert.ok(props, `${text} must stay rendered`);
-		assert.match(props.className, /lyrics-lyricsContainer-LyricsLine-paddingLine/);
-		assert.match(props.className, /lyrics-lyricsContainer-LyricsLine-paddingBefore/);
-		assert.equal(props.hiddenFromAccessibility, true, `${text} must leave the accessibility tree`);
-	}
-	// The trailing dots own the layout alone: the anchor lyric collapses with the sung rows.
-	const anchor = row(result, 'Inline styled voice');
-	assert.ok(anchor, 'the anchor lyric must stay rendered');
-	assert.match(anchor.className, /lyrics-lyricsContainer-LyricsLine-paddingLine/);
-	assert.equal(anchor.hiddenFromAccessibility, true, 'the anchor lyric must leave the accessibility tree while the trailing dots own the layout');
-	// Every upcoming vocal stays readable.
-	assert.equal(row(result, '日本語の声').hiddenFromAccessibility, false);
+	assert.ok(result.elements.every((element) => element.props.hiddenFromAccessibility !== true),
+		'manual browsing must never hide a row, even inside an interlude');
 });
 
 test('an explicit instrumental marker collapses the finished line too', () => {

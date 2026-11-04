@@ -7019,6 +7019,7 @@ const useSyncedLyricsEngine = ({
 					animationIndex: visibilityAnimationIndex,
 				}) || (
 					visibilityAnimationIndex < 0
+					&& !(compact && isScrolling)
 					&& (
 						!!paddedLyrics[layoutActiveLineIndex]?.interludeInfo?.isInterlude
 						// The visual anchor can sit on the dots while layout still holds the lyric.
@@ -7026,7 +7027,8 @@ const useSyncedLyricsEngine = ({
 						|| isTrailingInterludeActive
 					)
 				))
-				|| (isTrailingInterludeActive && isAnchorLine));
+				// Manual browsing in compact mode keeps every row, as shouldHideSyncedLine does.
+				|| (isTrailingInterludeActive && isAnchorLine && !(compact && isScrolling)));
 			if (isOutsideVisibleRange) {
 				className += " lyrics-lyricsContainer-LyricsLine-paddingLine";
 				className += visibilityAnimationIndex < 0
