@@ -2990,6 +2990,14 @@ window.LANG_MS = {
     "dragHint": "Heret (drag) untuk merekodkan pemasaan bagi setiap huruf. Heret ke kiri untuk membatalkan.",
     "globalOffset": "Ofset Keseluruhan",
     "lineOffset": "Ofset Baris",
+    "lastCharEnd": {
+      "title": "Akhir huruf terakhir",
+      "auto": "Automatik",
+      "markNow": "Tamatkan sekarang",
+      "clear": "Kosongkan",
+      "invalid": "Akhir mesti selepas huruf terakhir dan dalam 60 saat.",
+      "hint": "Menandakan berapa lama huruf terakhir ditahan. Semasa lagu dimainkan, tekan \"Tamatkan sekarang\" tepat ketika bunyi berhenti."
+    },
     "lineOffsetUnavailable": "Tersedia selepas penyegerakan",
     "selectionOffsetRequiresTiming": "Aksara yang dipilih memerlukan pemasaan dahulu - segerakkan baris sebelum menganjak sebahagiannya.",
     "synced": "Berdaftar",

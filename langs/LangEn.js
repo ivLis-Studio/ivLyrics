@@ -2990,6 +2990,14 @@ window.LANG_EN = {
     "dragHint": "Drag to record character timing. Drag left to cancel.",
     "globalOffset": "Global Offset",
     "lineOffset": "Line Offset",
+    "lastCharEnd": {
+      "title": "Last letter end",
+      "auto": "Auto",
+      "markNow": "End now",
+      "clear": "Clear",
+      "invalid": "The end must come after the last letter and within 60 seconds.",
+      "hint": "Marks how long the last letter is held. While the song plays, press “End now” the moment the sound stops."
+    },
     "lineOffsetUnavailable": "Available after syncing",
     "selectionOffsetRequiresTiming": "Selected characters need timing first - sync the line before offsetting part of it.",
     "synced": "Registered",

@@ -70,3 +70,13 @@ test('committing a vocal preserves overlapping earlier and later lines', () => {
         + '\nglobalThis.result = nextSyncData;', context);
     assert.deepEqual(JSON.parse(JSON.stringify(context.result)), data);
 });
+
+test('a held line end follows a whole-line offset', () => {
+    const data = fixture();
+    data.lines[1].lastCharEnd = 90;
+    data.lines[1].parallel.parts[1].lastCharEnd = 88;
+    const result = shift(data, 100);
+    assert.equal(result.lines[1].lastCharEnd, 90.1);
+    assert.equal(result.lines[1].parallel.parts[1].lastCharEnd, 88.1);
+    assert.equal(shift(result, -100).lines[1].lastCharEnd, 90);
+});

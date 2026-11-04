@@ -2990,6 +2990,14 @@ window.LANG_KO = {
     "dragHint": "드래그하여 글자별 타이밍을 기록하세요. 왼쪽으로 드래그하면 취소됩니다.",
     "globalOffset": "전체 오프셋",
     "lineOffset": "라인 오프셋",
+    "lastCharEnd": {
+      "title": "마지막 글자 끝",
+      "auto": "자동",
+      "markNow": "지금 끝",
+      "clear": "지우기",
+      "invalid": "끝 시간은 마지막 글자 뒤, 60초 이내여야 합니다.",
+      "hint": "마지막 글자를 길게 끄는 구간을 표시합니다. 곡을 재생하다가 소리가 끝나는 순간 '지금 끝'을 누르세요."
+    },
     "lineOffsetUnavailable": "싱크 후 조정 가능",
     "selectionOffsetRequiresTiming": "선택한 문자는 먼저 타이밍이 필요합니다 - 일부를 오프셋하기 전에 줄을 싱크하세요.",
     "synced": "등록됨",

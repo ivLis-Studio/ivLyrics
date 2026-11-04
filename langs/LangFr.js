@@ -2990,6 +2990,14 @@ window.LANG_FR = {
     "dragHint": "Faites glisser pour minuter par caractère. Glisser à gauche pour annuler.",
     "globalOffset": "Décalage global",
     "lineOffset": "Décalage de ligne",
+    "lastCharEnd": {
+      "title": "Fin de la dernière lettre",
+      "auto": "Auto",
+      "markNow": "Finir maintenant",
+      "clear": "Effacer",
+      "invalid": "La fin doit venir après la dernière lettre et dans les 60 secondes.",
+      "hint": "Indique combien de temps la dernière lettre est tenue. Pendant la lecture, appuyez sur « Finir maintenant » au moment où le son s'arrête."
+    },
     "lineOffsetUnavailable": "Disponible après la synchronisation",
     "selectionOffsetRequiresTiming": "Les caractères sélectionnés nécessitent d'abord un minutage - synchronisez la ligne avant d'en décaler une partie.",
     "synced": "Synchro",

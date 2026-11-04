@@ -2990,6 +2990,14 @@ window.LANG_ES = {
     "dragHint": "Arrastra para grabar el tiempo por carácter. Arrastra a la izquierda para cancelar.",
     "globalOffset": "Desfase global",
     "lineOffset": "Desfase de línea",
+    "lastCharEnd": {
+      "title": "Fin de la última letra",
+      "auto": "Automático",
+      "markNow": "Terminar ahora",
+      "clear": "Borrar",
+      "invalid": "El final debe ir después de la última letra y dentro de 60 segundos.",
+      "hint": "Marca cuánto se sostiene la última letra. Mientras suena la canción, pulsa «Terminar ahora» en el momento en que se corta el sonido."
+    },
     "lineOffsetUnavailable": "Disponible después de sincronizar",
     "selectionOffsetRequiresTiming": "Los caracteres seleccionados necesitan temporización primero - sincroniza la línea antes de desplazar una parte.",
     "synced": "Registrado",

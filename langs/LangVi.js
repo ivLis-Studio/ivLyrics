@@ -2990,6 +2990,14 @@ window.LANG_VI = {
     "dragHint": "Kéo chuột để ghi lại thời gian cho từng chữ. Kéo sang trái để hủy.",
     "globalOffset": "Offset tổng thể",
     "lineOffset": "Offset dòng",
+    "lastCharEnd": {
+      "title": "Kết thúc chữ cuối",
+      "auto": "Tự động",
+      "markNow": "Kết thúc ngay",
+      "clear": "Xóa",
+      "invalid": "Thời điểm kết thúc phải sau chữ cuối và trong vòng 60 giây.",
+      "hint": "Đánh dấu chữ cuối được ngân dài bao lâu. Khi bài hát đang phát, hãy bấm \"Kết thúc ngay\" đúng lúc âm thanh dừng."
+    },
     "lineOffsetUnavailable": "Khả dụng sau khi đồng bộ",
     "selectionOffsetRequiresTiming": "Các ký tự đã chọn cần có thời gian trước - hãy đồng bộ dòng trước khi dịch chuyển một phần.",
     "synced": "Đã ghi",

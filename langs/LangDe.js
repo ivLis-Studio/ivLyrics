@@ -2990,6 +2990,14 @@ window.LANG_DE = {
     "dragHint": "Ziehen zum Anpassen des Timings. Nach links ziehen zum Abbrechen.",
     "globalOffset": "Globaler Offset",
     "lineOffset": "Zeilen-Offset",
+    "lastCharEnd": {
+      "title": "Ende des letzten Buchstabens",
+      "auto": "Automatisch",
+      "markNow": "Jetzt beenden",
+      "clear": "Löschen",
+      "invalid": "Das Ende muss nach dem letzten Buchstaben und innerhalb von 60 Sekunden liegen.",
+      "hint": "Legt fest, wie lange der letzte Buchstabe gehalten wird. Drücke während der Wiedergabe „Jetzt beenden“, sobald der Ton endet."
+    },
     "lineOffsetUnavailable": "Nach dem Synchronisieren verfügbar",
     "selectionOffsetRequiresTiming": "Die ausgewählten Zeichen brauchen zuerst Timing - synchronisiere die Zeile, bevor du einen Teil verschiebst.",
     "synced": "Registriert",

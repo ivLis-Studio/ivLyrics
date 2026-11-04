@@ -2990,6 +2990,14 @@ window.LANG_CS = {
     "dragHint": "Přetažením zaznamenáte časování znaků. Přetažením doleva zrušíte.",
     "globalOffset": "Globální offset",
     "lineOffset": "Posun řádku",
+    "lastCharEnd": {
+      "title": "Konec posledního písmene",
+      "auto": "Automaticky",
+      "markNow": "Ukončit teď",
+      "clear": "Vymazat",
+      "invalid": "Konec musí být po posledním písmenu a do 60 sekund.",
+      "hint": "Označí, jak dlouho se poslední písmeno drží. Během přehrávání stiskněte „Ukončit teď“ ve chvíli, kdy zvuk skončí."
+    },
     "lineOffsetUnavailable": "Dostupné po synchronizaci",
     "selectionOffsetRequiresTiming": "Vybrané znaky nejprve potřebují časování - před posunutím části synchronizujte řádek.",
     "synced": "Registrováno",

@@ -2990,6 +2990,14 @@ window.LANG_JA = {
     "dragHint": "ドラッグして文字ごとのタイミングを記録してください。左にドラッグするとキャンセルされます。",
     "globalOffset": "全体オフセット",
     "lineOffset": "行オフセット",
+    "lastCharEnd": {
+      "title": "最後の文字の終わり",
+      "auto": "自動",
+      "markNow": "今ここで終了",
+      "clear": "クリア",
+      "invalid": "終了時間は最後の文字より後、60秒以内にしてください。",
+      "hint": "最後の文字を伸ばして歌う区間を指定します。曲を再生しながら、音が終わった瞬間に「今ここで終了」を押してください。"
+    },
     "lineOffsetUnavailable": "同期後に調整可能",
     "selectionOffsetRequiresTiming": "選択した文字には先にタイミングが必要です - 一部をオフセットする前に行を同期してください。",
     "synced": "登録済み",

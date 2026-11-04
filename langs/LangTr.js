@@ -2990,6 +2990,14 @@ window.LANG_TR = {
     "dragHint": "Karakter zamanlamasını kaydetmek için sürükleyin. İptal etmek için sola sürükleyin.",
     "globalOffset": "Genel Ofset",
     "lineOffset": "Satır Ofseti",
+    "lastCharEnd": {
+      "title": "Son harfin bitişi",
+      "auto": "Otomatik",
+      "markNow": "Şimdi bitir",
+      "clear": "Temizle",
+      "invalid": "Bitiş, son harften sonra ve 60 saniye içinde olmalıdır.",
+      "hint": "Son harfin ne kadar uzatıldığını işaretler. Şarkı çalarken ses kesildiği anda \"Şimdi bitir\"e basın."
+    },
     "lineOffsetUnavailable": "Senkronize ettikten sonra kullanılabilir",
     "selectionOffsetRequiresTiming": "Seçili karakterlerin önce zamanlaması olmalı - bir kısmını kaydırmadan önce satırı senkronize edin.",
     "synced": "Kaydedildi",

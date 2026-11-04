@@ -2990,6 +2990,14 @@ window.LANG_ZH_TW = {
     "dragHint": "拖曳以記錄每個字的時機。向左拖曳可取消。",
     "globalOffset": "全域偏移",
     "lineOffset": "行偏移",
+    "lastCharEnd": {
+      "title": "最後一個字的結束",
+      "auto": "自動",
+      "markNow": "此刻結束",
+      "clear": "清除",
+      "invalid": "結束時間必須在最後一個字之後，且不超過 60 秒。",
+      "hint": "標記最後一個字拉長的時間。播放歌曲時，在聲音結束的那一刻按下「此刻結束」。"
+    },
     "lineOffsetUnavailable": "同步後可調整",
     "selectionOffsetRequiresTiming": "所選字元需要先有時間軸 - 在偏移其中一部分之前請先同步該行。",
     "synced": "已登錄",

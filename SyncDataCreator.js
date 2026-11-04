@@ -70,6 +70,9 @@ const SYNC_CREATOR_DEFAULT_KIND = 'vocal';
 const SYNC_CREATOR_MAX_MERGED_LINES = 5;
 const SYNC_CREATOR_MAX_PARALLEL_PARTS = 16;
 const SYNC_CREATOR_MAX_PART_ID_LENGTH = 32;
+// A held final note may end at most this long after its last character starts
+// (lastCharEnd, matching the server's limit).
+const SYNC_CREATOR_MAX_LAST_CHAR_HOLD_SEC = 60;
 const SYNC_CREATOR_SYNC_DATA_VERSION = 5;
 const SYNC_CREATOR_SOURCE_ADDON_ID = 'lrclib';
 const SYNC_CREATOR_GRANULARITIES = new Set(['line', 'word', 'character']);
@@ -404,6 +407,15 @@ const shiftSyncCreatorSelectionTimes = (savedChars, selStart, selEnd, deltaSec, 
 		times[i] = Math.round(Math.max(0, saved[i] + appliedDelta) * 1000) / 1000;
 	}
 	return { ok: true, times };
+};
+// Moves a held end (lastCharEnd) by however much its last character moved.
+const followSyncCreatorLastCharShift = (target, before, after) => {
+	const value = target?.lastCharEnd;
+	if (typeof value !== 'number' || !Number.isFinite(value) || !Array.isArray(before) || !Array.isArray(after)) return {};
+	const delta = after[after.length - 1] - before[before.length - 1];
+	return Number.isFinite(delta) && delta !== 0
+		? { lastCharEnd: Math.round((value + delta) * 1000) / 1000 }
+		: {};
 };
 const getSyncCreatorLockedPlaybackProgressIndex = (previewIndex, lockIndex, recordingIndex) => {
 	const numericLockIndex = Number(lockIndex);
@@ -811,6 +823,46 @@ const getSyncCreatorRangesValidationError = (ranges, lineStart, lineEnd, label) 
 
 	return null;
 };
+// Optional end of a line's or part's last character (seconds), for a held final
+// note. It must come after that character's own time and within the hold limit.
+const getSyncCreatorLastCharEndError = (target, times) => {
+	if (target?.lastCharEnd === undefined) return null;
+	const lastTime = Array.isArray(times) ? times[times.length - 1] : null;
+	if (!isFiniteSyncCreatorTime(lastTime)) return 'lastCharEnd needs character timing';
+	if (!isFiniteSyncCreatorTime(target.lastCharEnd) || target.lastCharEnd <= lastTime
+		|| target.lastCharEnd > lastTime + SYNC_CREATOR_MAX_LAST_CHAR_HOLD_SEC) {
+		return `lastCharEnd must be after the last character and within ${SYNC_CREATOR_MAX_LAST_CHAR_HOLD_SEC} seconds`;
+	}
+	return null;
+};
+// Drops end marks that no longer follow their last character (after a re-sync,
+// an offset or a split). Data without such marks is returned unchanged.
+const sanitizeSyncCreatorLastCharEnds = (data) => {
+	if (!Array.isArray(data?.lines)) return data;
+	let changed = false;
+	const clean = (target, times) => {
+		if (target?.lastCharEnd === undefined || !getSyncCreatorLastCharEndError(target, times)) return target;
+		changed = true;
+		const next = { ...target };
+		delete next.lastCharEnd;
+		return next;
+	};
+	const lines = data.lines.map((line) => {
+		const lineLength = Number(line?.end) - Number(line?.start) + 1;
+		let next = clean(line, decodeSyncCreatorCompactTiming(line, lineLength)?.chars);
+		if (Array.isArray(next?.parallel?.parts)) {
+			const parts = next.parallel.parts.map(part => clean(
+				part,
+				decodeSyncCreatorCompactTiming(part, countSyncCreatorRangeChars(part?.ranges))?.chars
+			));
+			if (parts.some((part, index) => part !== next.parallel.parts[index])) {
+				next = { ...next, parallel: { ...next.parallel, parts } };
+			}
+		}
+		return next;
+	});
+	return changed ? { ...data, lines } : data;
+};
 const getSyncCreatorSyncDataValidationError = (data) => {
 	if (!data || !Array.isArray(data.lines)) return 'Invalid sync data format';
 
@@ -834,6 +886,8 @@ const getSyncCreatorSyncDataValidationError = (data) => {
 		if (backwardLineCharIndex >= 0) {
 			return `Line ${lineIndex + 1}, char ${backwardLineCharIndex}: time goes backwards`;
 		}
+		const lineLastCharEndError = getSyncCreatorLastCharEndError(line, line.chars);
+		if (lineLastCharEndError) return `Line ${lineIndex + 1}: ${lineLastCharEndError}`;
 		if (line.granularity !== undefined && normalizeSyncCreatorGranularity(line.granularity) !== line.granularity) {
 			return `Line ${lineIndex + 1}: invalid sync granularity`;
 		}
@@ -898,7 +952,12 @@ const getSyncCreatorSyncDataValidationError = (data) => {
 				`Line ${lineIndex + 1}, parallel part ${partLabel}`
 			);
 			if (rangeError) return rangeError;
-			if (!Array.isArray(part?.chars)) continue;
+			if (!Array.isArray(part?.chars)) {
+				if (part?.lastCharEnd !== undefined) {
+					return `Line ${lineIndex + 1}, parallel part ${partLabel}: lastCharEnd needs character timing`;
+				}
+				continue;
+			}
 			const expectedPartLength = countSyncCreatorRangeChars(part.ranges);
 			if (part.chars.length !== expectedPartLength) {
 				return `Line ${lineIndex + 1}, parallel part ${partLabel}: expected ${expectedPartLength} char timings, received ${part.chars.length}`;
@@ -914,6 +973,8 @@ const getSyncCreatorSyncDataValidationError = (data) => {
 			if (part.granularity !== undefined && normalizeSyncCreatorGranularity(part.granularity) !== part.granularity) {
 				return `Line ${lineIndex + 1}, parallel part ${partLabel}: invalid sync granularity`;
 			}
+			const partLastCharEndError = getSyncCreatorLastCharEndError(part, part.chars);
+			if (partLastCharEndError) return `Line ${lineIndex + 1}, parallel part ${partLabel}: ${partLastCharEndError}`;
 		}
 
 		if (line?.parallel?.hiddenRanges !== undefined) {
@@ -1257,7 +1318,11 @@ const sliceSyncCreatorLineTiming = (line, start, end) => {
 			}
 			charIndex += range.end - range.start + 1;
 		}
-		return ranges.length ? [{ ...part, ranges, join, ...(Array.isArray(part.chars) ? { chars: times } : {}) }] : [];
+		if (!ranges.length) return [];
+		const slicedPart = { ...part, ranges, join, ...(Array.isArray(part.chars) ? { chars: times } : {}) };
+		// A held end belongs to the part's last character; keep it only with it.
+		if (ranges[ranges.length - 1].end !== part.ranges[part.ranges.length - 1]?.end) delete slicedPart.lastCharEnd;
+		return [slicedPart];
 	});
 	const sliced = {
 		...line, start, end, chars, granularity: 'character',
@@ -1270,6 +1335,7 @@ const sliceSyncCreatorLineTiming = (line, start, end) => {
 		} } : {})
 	};
 	delete sliced.mergedLineContinuationStarts;
+	if (end !== Number(line?.end)) delete sliced.lastCharEnd;
 	if (!sliced.hiddenRanges.length) delete sliced.hiddenRanges;
 	if (!sliced.styleRanges.length) delete sliced.styleRanges;
 	return parts.length > 1 ? refreshSyncCreatorLineCharsFromParallel(sliced) : rejoinSyncCreatorParallelLine(sliced);
@@ -1312,12 +1378,14 @@ const clipSyncCreatorLineToBounds = (line) => {
 		});
 		if (!nextRanges.length) return null;
 		const nextPart = { ...part, ranges: nextRanges, join };
+		if (nextRanges[nextRanges.length - 1].end !== ranges[ranges.length - 1].end) delete nextPart.lastCharEnd;
 		if (hasChars) {
 			nextPart.chars = chars;
 		} else {
 			// Timing that cannot be mapped onto the kept characters is dropped.
 			delete nextPart.chars;
 			delete nextPart.timing;
+			delete nextPart.lastCharEnd;
 		}
 		return nextPart;
 	};
@@ -1403,7 +1471,11 @@ const preserveSyncCreatorParallelTimingRuns = (parallel) => {
 				run.chars.push(time);
 			}
 		}
-		return runs;
+		// Only the run that holds the part's last character keeps its held end.
+		const lastIndex = part.ranges[part.ranges.length - 1]?.end;
+		return runs.map(run => (run.ranges[run.ranges.length - 1]?.end === lastIndex || run.lastCharEnd === undefined
+			? run
+			: (({ lastCharEnd, ...rest }) => rest)(run)));
 	});
 	return { ...parallel, parts };
 };
@@ -3654,7 +3726,12 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 						) || undefined,
 						kind: normalizeSyncCreatorKind(existing?.kind || part.kind) || SYNC_CREATOR_DEFAULT_KIND,
 						granularity: normalizeSyncCreatorGranularity(existing?.granularity || existingLine?.granularity),
-						chars: reusableChars
+						chars: reusableChars,
+						// The held end stays with the same saved vocal and its marks.
+						...(isFiniteSyncCreatorTime(existing?.lastCharEnd) && reusableChars === existing.chars
+							&& areSyncCreatorParallelRangesEqual(part.ranges, existing.ranges)
+							? { lastCharEnd: existing.lastCharEnd }
+							: {})
 					};
 				})
 		});
@@ -7143,6 +7220,11 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					};
 					if (Array.isArray(syncedChars) && syncedChars.length === expectedChars) {
 						nextPart.chars = syncedChars;
+						// Unchanged vocals keep their held end; the re-recorded one starts without it.
+						const heldEnd = part.id === activeParallelPart.id ? undefined
+							: syncedChars === part.chars ? part.lastCharEnd
+								: syncedChars === existingPart?.chars ? existingPart.lastCharEnd : undefined;
+						if (isFiniteSyncCreatorTime(heldEnd)) nextPart.lastCharEnd = heldEnd;
 					}
 					return nextPart;
 				})
@@ -7164,6 +7246,8 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		} else {
 			// Recording the joined target replaces the archived split timings.
 			delete lineData.parallel;
+			// A re-recorded line starts without the old held end of its last character.
+			delete lineData.lastCharEnd;
 		}
 
 		const normalizedStyleRanges = normalizeSyncCreatorStyleRanges(currentLineStyleRanges, lineStart, lineEnd);
@@ -9245,6 +9329,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const adjustGlobalOffset = useCallback((deltaMs) => {
 		claimSessionForLocalEditing();
 		const deltaSec = deltaMs / 1000;
+		const shiftHeldEnd = (target) => (isFiniteSyncCreatorTime(target?.lastCharEnd)
+			? { lastCharEnd: Math.round((target.lastCharEnd + deltaSec) * 1000) / 1000 }
+			: {});
 
 		setSyncData(prev => {
 			if (!prev || !prev.lines) return prev;
@@ -9253,6 +9340,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				lines: prev.lines.map(line => ({
 					...line,
 					chars: line.chars.map(t => Math.round((t + deltaSec) * 1000) / 1000),
+					...shiftHeldEnd(line),
 					parallel: line.parallel ? {
 						...line.parallel,
 						parts: Array.isArray(line.parallel.parts)
@@ -9260,7 +9348,8 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 								...part,
 								chars: Array.isArray(part.chars)
 									? part.chars.map(t => Math.round((t + deltaSec) * 1000) / 1000)
-									: part.chars
+									: part.chars,
+								...shiftHeldEnd(part)
 							}))
 							: line.parallel.parts
 					} : line.parallel
@@ -9345,7 +9434,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					return {
 						...prev,
 						lines: prev.lines.map((line, index) => index === targetIndex
-							? { ...line, chars: shifted.times }
+							? { ...line, chars: shifted.times, ...followSyncCreatorLastCharShift(line, sourceLine.chars, shifted.times) }
 							: line)
 					};
 				}
@@ -9367,7 +9456,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 							parallel: preserveSyncCreatorParallelTimingRuns({
 								...parallel,
 								parts: parallel.parts.map(part => part === targetPart
-									? { ...part, chars: shiftedPart.times }
+									? { ...part, chars: shiftedPart.times, ...followSyncCreatorLastCharShift(part, targetPart.chars, shiftedPart.times) }
 									: part)
 							})
 						}))
@@ -9413,16 +9502,16 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 						: time
 				))
 				: values;
+			const shiftTarget = (target) => {
+				const chars = shiftTimes(target.chars);
+				return { ...target, chars, ...followSyncCreatorLastCharShift(target, target.chars, chars) };
+			};
 			const shiftLine = (line) => ({
-				...line,
-				chars: shiftTimes(line.chars),
+				...shiftTarget(line),
 				parallel: line.parallel ? {
 					...line.parallel,
 					parts: Array.isArray(line.parallel.parts)
-						? line.parallel.parts.map(part => ({
-							...part,
-							chars: shiftTimes(part.chars)
-						}))
+						? line.parallel.parts.map(shiftTarget)
 						: line.parallel.parts
 				} : line.parallel
 			});
@@ -9433,7 +9522,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					...targetLine,
 					parallel: preserveSyncCreatorParallelTimingRuns({
 						...parallel,
-						parts: parallel.parts.map(part => part === targetPart ? { ...part, chars: shiftTimes(part.chars) } : part)
+						parts: parallel.parts.map(part => part === targetPart ? shiftTarget(part) : part)
 					})
 				}))
 				: shiftLine(targetLine);
@@ -9673,9 +9762,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	// Capture the baseline before edits. ISRC resolution can finish later; queued
 	// edits retain their original snapshots instead of turning into imported work.
 	const buildScoreSnapshot = useCallback((data) => {
-		const raw = clipSyncCreatorSyncDataToLineBounds(
+		const raw = sanitizeSyncCreatorLastCharEnds(clipSyncCreatorSyncDataToLineBounds(
 			prepareSyncCreatorWorkSnapshot(data || { version: SYNC_CREATOR_SYNC_DATA_VERSION, lines: [] })
-		);
+		));
 		const expanded = attachSelectedLrclibSource(raw);
 		if (!expanded) return null;
 		if (isCompleteSyncCreatorLrclibSource(raw.source)) expanded.source = raw.source;
@@ -9685,7 +9774,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	}, [attachSelectedLrclibSource, lyricsFullTextChars, lyricsLanguage, trackDurationMs]);
 	const repairScoreSnapshot = useCallback((data) => {
 		try {
-			const repaired = clipSyncCreatorSyncDataToLineBounds(prepareSyncCreatorWorkSnapshot(data));
+			const repaired = sanitizeSyncCreatorLastCharEnds(clipSyncCreatorSyncDataToLineBounds(prepareSyncCreatorWorkSnapshot(data)));
 			assertValidSyncCreatorSyncData(repaired);
 			// Keep the historical source and body. Current layout drafts and the
 			// current song's source must never be projected onto queued work.
@@ -10676,7 +10765,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			Toast.error(I18n.t('syncCreator.noSyncData'));
 			return;
 		}
-		const materializedSyncData = materializeSyncCreatorParallelDrafts(syncData);
+		const materializedSyncData = sanitizeSyncCreatorLastCharEnds(materializeSyncCreatorParallelDrafts(syncData));
 
 		const validateMultiVocalSubmissionMeta = (validationSyncData) => {
 			const linesByStart = new Map(validationSyncData.lines.map(line => [line.start, line]));
@@ -10935,7 +11024,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		}
 
 		try {
-			const expandedExportData = attachSelectedLrclibSource(materializeSyncCreatorParallelDrafts(syncData));
+			const expandedExportData = attachSelectedLrclibSource(sanitizeSyncCreatorLastCharEnds(materializeSyncCreatorParallelDrafts(syncData)));
 			assertValidSyncCreatorSyncData(expandedExportData);
 			const exportData = compactSyncCreatorSyncData(
 				expandedExportData,
@@ -13741,6 +13830,88 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		)
 	);
 
+	// Held end of the current target's last character (lastCharEnd): a final note
+	// that lasts longer than the natural last-character duration.
+	const getCurrentLastCharEndInfo = () => {
+		const line = currentExistingLineData;
+		if (!line) return null;
+		const target = activeParallelPart
+			? line.parallel?.parts?.find(part => part.id === activeParallelPart.id
+				&& areSyncCreatorParallelRangesEqual(part.ranges, activeParallelPart.ranges))
+			: line;
+		if (!target) return null;
+		const times = activeParallelPart
+			? decodeSyncCreatorCompactTiming(target, countSyncCreatorRangeChars(target.ranges))?.chars
+			: getSyncCreatorRejoinedLineChars(decodeSyncCreatorCompactTiming(line, Number(line.end) - Number(line.start) + 1));
+		const lastTime = Array.isArray(times) ? times[times.length - 1] : null;
+		if (!isFiniteSyncCreatorTime(lastTime)) return null;
+		return { lastTime, value: isFiniteSyncCreatorTime(target.lastCharEnd) ? target.lastCharEnd : null };
+	};
+	const setCurrentLastCharEnd = (nextValue) => {
+		const info = getCurrentLastCharEndInfo();
+		if (!info) return;
+		if (nextValue !== null && (!isFiniteSyncCreatorTime(nextValue) || nextValue <= info.lastTime
+			|| nextValue > info.lastTime + SYNC_CREATOR_MAX_LAST_CHAR_HOLD_SEC)) {
+			Toast.error(I18n.t('syncCreator.lastCharEnd.invalid'));
+			return;
+		}
+		claimSessionForLocalEditing();
+		const lineStart = currentLineStart;
+		const part = activeParallelPart;
+		const apply = (target) => {
+			const next = { ...target };
+			if (nextValue === null) delete next.lastCharEnd;
+			else next.lastCharEnd = roundSyncTime(nextValue);
+			return next;
+		};
+		setSyncData(prev => {
+			if (!prev || !Array.isArray(prev.lines)) return prev;
+			return {
+				...prev,
+				lines: prev.lines.map(line => {
+					if (line.start !== lineStart) return line;
+					if (!part) return apply(line);
+					if (!Array.isArray(line.parallel?.parts)) return line;
+					return {
+						...line,
+						parallel: {
+							...line.parallel,
+							parts: line.parallel.parts.map(item => (
+								item.id === part.id && areSyncCreatorParallelRangesEqual(item.ranges, part.ranges) ? apply(item) : item
+							))
+						}
+					};
+				})
+			};
+		});
+	};
+	const renderLastCharEndControls = () => {
+		const info = getCurrentLastCharEndInfo();
+		const styleFor = (disabled) => disabled ? { ...s.lineOffsetBtn, opacity: 0.45, cursor: 'not-allowed' } : s.lineOffsetBtn;
+		const hasValue = Boolean(info) && info.value !== null;
+		const valueLabel = !info
+			? (I18n.t('syncCreator.lineOffsetUnavailable') || '싱크 후 조정 가능')
+			: hasValue
+				? `${info.lastTime.toFixed(2)}s → ${info.value.toFixed(2)}s`
+				: I18n.t('syncCreator.lastCharEnd.auto');
+		const nudge = (deltaSec) => info && setCurrentLastCharEnd(roundSyncTime((hasValue ? info.value : info.lastTime) + deltaSec));
+		const button = (key, label, disabled, onClick) => react.createElement('button', {
+			key, type: 'button', style: styleFor(disabled), disabled, onClick
+		}, label);
+		return react.createElement('div', { style: s.lineOffsetBox, title: I18n.t('syncCreator.lastCharEnd.hint') },
+			react.createElement('div', { style: s.lineOffsetHeader },
+				react.createElement('span', { style: s.lineOffsetLabel }, I18n.t('syncCreator.lastCharEnd.title')),
+				react.createElement('span', { style: s.lineOffsetValue }, valueLabel)
+			),
+			react.createElement('div', { style: s.lineOffsetButtonRow },
+				button('now', I18n.t('syncCreator.lastCharEnd.markNow'), !info, () => setCurrentLastCharEnd(Spicetify.Player.getProgress() / 1000)),
+				button('earlier', '-100ms', !hasValue, () => nudge(-0.1)),
+				button('later', '+100ms', !info, () => nudge(0.1)),
+				button('clear', I18n.t('syncCreator.lastCharEnd.clear'), !hasValue, () => setCurrentLastCharEnd(null))
+			)
+		);
+	};
+
 	const renderLineOffsetControls = () => {
 		const buttonStyle = hasCurrentLineTiming ? s.lineOffsetBtn : { ...s.lineOffsetBtn, opacity: 0.45, cursor: 'not-allowed' };
 		const renderOffsetButton = (deltaMs) => react.createElement('button', {
@@ -13765,6 +13936,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const renderCurrentLineTools = () => lyricsText && lyricsLines.length > 0 && react.createElement('div', { className: 'sync-creator-section sync-creator-current-line-section', style: s.panel },
 		react.createElement('div', { style: s.panelTitle }, I18n.t('syncCreator.currentLine') || '현재 가사'),
 		renderLineOffsetControls(),
+		renderLastCharEndControls(),
 		react.createElement('div', { style: s.rightActionRow },
 			!multiVocalMode && currentFullLineChars.length > 1 && react.createElement('button', {
 				type: 'button',
@@ -14221,7 +14393,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			const source = syncData && Array.isArray(syncData.lines) ? syncData : null;
 			if (!source) return null;
 			return typeof materializeSyncCreatorParallelDrafts === 'function'
-				? materializeSyncCreatorParallelDrafts(source, { preview: true })
+				? sanitizeSyncCreatorLastCharEnds(materializeSyncCreatorParallelDrafts(source, { preview: true }))
 				: source;
 		} catch (error) {
 			return syncData;

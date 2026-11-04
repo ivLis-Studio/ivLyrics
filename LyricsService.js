@@ -5631,6 +5631,9 @@
                     ? line.chars.map(value => shiftSyncDataTimeSeconds(value, offsetSeconds))
                     : line.chars
             };
+            if (line.lastCharEnd !== undefined) {
+                shifted.lastCharEnd = shiftSyncDataTimeSeconds(line.lastCharEnd, offsetSeconds);
+            }
 
             if (line.parallel && typeof line.parallel === 'object') {
                 shifted.parallel = {
@@ -5640,7 +5643,10 @@
                             ...part,
                             chars: Array.isArray(part?.chars)
                                 ? part.chars.map(value => shiftSyncDataTimeSeconds(value, offsetSeconds))
-                                : part?.chars
+                                : part?.chars,
+                            ...(part?.lastCharEnd !== undefined
+                                ? { lastCharEnd: shiftSyncDataTimeSeconds(part.lastCharEnd, offsetSeconds) }
+                                : {})
                         }))
                         : line.parallel.parts
                 };
@@ -6033,6 +6039,9 @@
                 let syllables = [];
                 const chars = Array.from(lineText); // 유니코드 문자 지원
                 const lineGranularity = normalizeSyncDataGranularity(lineData.granularity);
+                // An explicit end for the last character (a held final note). Without
+                // it the last character keeps the natural, capped duration below.
+                const lineLastCharEndTime = getSyncDataMilliseconds(lineData.lastCharEnd);
 
                 for (let j = 0; j < lineData.chars.length && j < chars.length; j++) {
                     const charStartTime = lineCharTimes[j];
@@ -6040,6 +6049,9 @@
 
                     if (j < lineData.chars.length - 1) {
                         charEndTime = lineCharTimes[j + 1];
+                    } else if (Number.isFinite(lineLastCharEndTime) && lineLastCharEndTime > charStartTime) {
+                        charEndTime = lineLastCharEndTime;
+                        lineEndTime = charEndTime;
                     } else if (lineGranularity === 'line') {
                         charEndTime = lineEndTime;
                     } else {
@@ -6064,6 +6076,7 @@
                     if (!part || !Array.isArray(part.ranges) || !Array.isArray(part.chars)) return null;
                     let partSyllables = [];
                     const partGranularity = normalizeSyncDataGranularity(part.granularity || lineData.granularity);
+                    const partLastCharEndTime = getSyncDataMilliseconds(part.lastCharEnd);
                     let partCharIndex = 0;
 
                     part.ranges.forEach((range, rangeIndex) => {
@@ -6132,8 +6145,11 @@
                             const nextPartTime = rangeCharTimes[rangeCharIndex + 1];
                             const naturalEndTime = charStart + Math.round(lastCharMaxDuration * 1000);
                             const isRangeBoundary = sourceIndex === range.end && rangeIndex < part.ranges.length - 1;
+                            const isPartLastChar = sourceIndex === range.end && rangeIndex === part.ranges.length - 1;
                             let charEnd;
-                            if (Number.isFinite(nextPartTime)) {
+                            if (isPartLastChar && Number.isFinite(partLastCharEndTime) && partLastCharEndTime > charStart) {
+                                charEnd = partLastCharEndTime;
+                            } else if (Number.isFinite(nextPartTime)) {
                                 const nextCharStartTime = nextPartTime;
                                 charEnd = isRangeBoundary
                                     ? Math.min(nextCharStartTime, naturalEndTime)
@@ -6155,7 +6171,11 @@
                     });
 
                     if (!partSyllables.length) return null;
-                    partSyllables = collapseSyncDataSyllables(partSyllables, partGranularity, lineEndTime);
+                    const partEndTime = Number.isFinite(partLastCharEndTime)
+                        && partLastCharEndTime > (partSyllables[partSyllables.length - 1]?.startTime ?? Infinity)
+                        ? partLastCharEndTime
+                        : lineEndTime;
+                    partSyllables = collapseSyncDataSyllables(partSyllables, partGranularity, partEndTime);
                     while (partSyllables.length && /^\s+$/u.test(partSyllables[0]?.text || '')) {
                         partSyllables.shift();
                     }

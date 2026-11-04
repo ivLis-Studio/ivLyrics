@@ -1075,3 +1075,28 @@ test('work snapshots and queued-snapshot repair keep every part inside its saved
     assert.deepEqual(plain(editor.api.buildScoreSnapshot(valid)).lines, plain(editor.api.compactSyncCreatorSyncData(valid, editor.context.lyricsFullTextChars, 'en')).lines,
         'rows already inside their bounds are unchanged');
 });
+
+test('held last-character ends move with their own vocal and survive edits to a sibling vocal', () => {
+    const rows = ['PRE', 'ABCDEF', 'TAIL'];
+    const data = { version: 5, lines: [
+        { start: 0, end: 2, chars: [1, 1.25, 1.5], granularity: 'character', speaker: 'NORMAL', kind: 'vocal' },
+        { start: 3, end: 8, chars: [11, 11.25, 11.5, 11.75, 12, 12.25], granularity: 'line', speaker: 'NORMAL', kind: 'vocal',
+            parallel: { layout: 'stack', manualSplitPoints: [2], parts: [
+                { id: 'a', role: 'lead', speaker: 'NORMAL', kind: 'vocal', granularity: 'character', ranges: [{ start: 3, end: 4 }], join: [], chars: [11, 11.25] },
+                { id: 'b', role: 'background', speaker: 'NORMAL', kind: 'vocal', granularity: 'character', ranges: [{ start: 5, end: 8 }], join: [], chars: [11.5, 11.75, 12, 12.25], lastCharEnd: 15 },
+            ] } },
+        { start: 9, end: 12, chars: [21, 21.25, 21.5, 21.75], granularity: 'character', speaker: 'NORMAL', kind: 'vocal' },
+    ] };
+    const editor = createEditor({ rows, data });
+    editor.render('b');
+    editor.shift(100);
+    let parts = plain(editor.line().parallel.parts);
+    assert.deepEqual(parts.find(part => part.id === 'b').chars, [11.6, 11.85, 12.1, 12.35]);
+    assert.equal(parts.find(part => part.id === 'b').lastCharEnd, 15.1);
+    editor.render('a');
+    editor.shift(-100);
+    parts = plain(editor.line().parallel.parts);
+    assert.deepEqual(parts.find(part => part.id === 'a').chars, [10.9, 11.15]);
+    assert.equal(parts.find(part => part.id === 'b').lastCharEnd, 15.1, 'the sibling keeps its held end');
+    assert.doesNotThrow(() => editor.api.assertValidSyncCreatorSyncData(editor.context.syncData));
+});

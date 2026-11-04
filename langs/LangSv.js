@@ -2990,6 +2990,14 @@ window.LANG_SV = {
     "dragHint": "Dra för att spela in teckentiming. Dra åt vänster för att avbryta.",
     "globalOffset": "Global förskjutning",
     "lineOffset": "Radförskjutning",
+    "lastCharEnd": {
+      "title": "Slut på sista bokstaven",
+      "auto": "Automatiskt",
+      "markNow": "Avsluta nu",
+      "clear": "Rensa",
+      "invalid": "Slutet måste komma efter sista bokstaven och inom 60 sekunder.",
+      "hint": "Anger hur länge den sista bokstaven hålls ut. Tryck på ”Avsluta nu” under uppspelningen precis när ljudet tar slut."
+    },
     "lineOffsetUnavailable": "Tillgängligt efter synkning",
     "selectionOffsetRequiresTiming": "De valda tecknen behöver tajmning först - synka raden innan du förskjuter en del av den.",
     "synced": "Registrerad",

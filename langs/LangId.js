@@ -2990,6 +2990,14 @@ window.LANG_ID = {
     "dragHint": "Seret untuk merekam waktu per karakter. Seret ke kiri untuk membatalkan.",
     "globalOffset": "Offset Global",
     "lineOffset": "Offset Baris",
+    "lastCharEnd": {
+      "title": "Akhir huruf terakhir",
+      "auto": "Otomatis",
+      "markNow": "Akhiri sekarang",
+      "clear": "Hapus",
+      "invalid": "Akhir harus setelah huruf terakhir dan dalam 60 detik.",
+      "hint": "Menandai berapa lama huruf terakhir ditahan. Saat lagu diputar, tekan \"Akhiri sekarang\" tepat ketika suara berhenti."
+    },
     "lineOffsetUnavailable": "Tersedia setelah disinkronkan",
     "selectionOffsetRequiresTiming": "Karakter yang dipilih membutuhkan pewaktuan terlebih dahulu - sinkronkan baris sebelum menggeser sebagiannya.",
     "synced": "Tersinkron",
