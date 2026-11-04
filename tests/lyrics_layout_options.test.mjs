@@ -40,3 +40,19 @@ test("the current-line position moves the anchor used by both synced layouts", (
 	assert.equal(typography({ "lyrics-anchor-position": "95" })["--ivfs-lyrics-anchor-ratio"], 0.8);
 	assert.equal("--ivfs-lyrics-anchor-ratio" in typography({ "lyrics-anchor-position": "abc" }), false);
 });
+
+test("album covers up to 500px keep their size; larger covers fit the window", () => {
+	const overlay = readFileSync(new URL("../FullscreenOverlay.js", import.meta.url), "utf8");
+	const sandbox = vm.createContext({});
+	vm.runInContext(`${extract(overlay, "    const FULLSCREEN_ALBUM_FIXED_MAX =", "    // Format time helper")}
+globalThis.fit = fitFullscreenAlbumSize;`, sandbox);
+	const fit = sandbox.fit;
+	assert.equal(fit(400, 800, 600), 400, "existing sizes never change, even in small windows");
+	assert.equal(fit(500, 800, 600), 500);
+	assert.equal(fit(800, 2560, 1440), 800);
+	assert.equal(fit(800, 1920, 1080), 800);
+	assert.equal(fit(760, 1600, 900), 620, "height leaves room for the title and controls");
+	assert.equal(fit(760, 1200, 1400), 500, "a narrow two-column window keeps the old maximum");
+	assert.equal(fit(760, 1200, 1400, false), 760, "single column can use the full width");
+	assert.equal(fit(700, NaN, NaN), 700);
+});

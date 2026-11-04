@@ -14109,7 +14109,7 @@ react.createElement(OptionList, {
               key: "fullscreen-album-size",
               type: ConfigSliderRange,
               min: 100,
-              max: 500,
+              max: 800,
               step: 10,
               unit: "px",
               defaultValue: CONFIG.visual["fullscreen-album-size"] || 400,

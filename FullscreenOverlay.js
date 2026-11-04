@@ -3,6 +3,20 @@ const FullscreenOverlay = (() => {
     const react = Spicetify.React;
     const { useState, useEffect, useCallback, useMemo, useRef } = react;
 
+    // Album sizes up to the former 500px slider cap render exactly as set.
+    // Larger sizes fit the window so the cover cannot push the title, artist
+    // and controls (or the lyrics column) off screen; they never go below 500.
+    const FULLSCREEN_ALBUM_FIXED_MAX = 500;
+    const fitFullscreenAlbumSize = (configuredSize, viewportWidth, viewportHeight, twoColumn = true) => {
+        const size = Number(configuredSize);
+        if (!Number.isFinite(size) || size <= FULLSCREEN_ALBUM_FIXED_MAX) return size;
+        const heightLimit = Number.isFinite(viewportHeight) && viewportHeight > 0
+            ? viewportHeight - 280 : size;
+        const widthLimit = Number.isFinite(viewportWidth) && viewportWidth > 0
+            ? viewportWidth / (twoColumn ? 2 : 1) - 112 : size;
+        return Math.max(FULLSCREEN_ALBUM_FIXED_MAX, Math.min(size, heightLimit, widthLimit));
+    };
+
     // Format time helper (ms to mm:ss)
     const formatTime = (ms) => {
         if (!ms || ms < 0) return "0:00";
@@ -2538,7 +2552,9 @@ const FullscreenOverlay = (() => {
             const cdWidthLimit = Number.isFinite(viewportWidth) && viewportWidth > 0
                 ? Math.max(100, viewportWidth / (CONFIG?.visual?.["fullscreen-two-column"] !== false ? 2 : 1) - 112) / Math.max(1, cdExtent) : preferredCdSlotSize;
             const albumSize = cdAlbumActive
-                ? Math.min(preferredCdSlotSize, cdHeightLimit, cdWidthLimit) : configuredAlbumSize;
+                ? Math.min(preferredCdSlotSize, cdHeightLimit, cdWidthLimit)
+                : fitFullscreenAlbumSize(configuredAlbumSize, viewportWidth, viewportHeight,
+                    CONFIG?.visual?.["fullscreen-two-column"] !== false);
             const albumRadiusValue = Number(CONFIG?.visual?.["fullscreen-album-radius"]);
             const albumRadius = isNaN(albumRadiusValue) ? 12 : albumRadiusValue;
             const vinylAnimationsEnabled = CONFIG?.visual?.["fullscreen-vinyl-animations"] !== false;
