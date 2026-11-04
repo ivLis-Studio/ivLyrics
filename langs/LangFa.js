@@ -588,6 +588,7 @@ window.LANG_FA = {
       },
       "allProvidersFailed": "همه ارائه دهندگان هوش مصنوعی در پردازش درخواست ناموفق بودند.",
       "enabledCapabilities": "قابلیت‌های فعال",
+      "capabilityBlockedByProvider": "توسط کلید اصلی ارائه‌دهنده مسدود شده",
       "capabilitiesDesc": "ویژگی‌هایی که این ارائه‌دهنده مدیریت می‌کند را انتخاب کنید",
       "openaiConnections": "ارائه‌دهندگان اضافی سازگار با OpenAI",
       "openaiConnectionsDesc": "اگر اتصال اصلی ناموفق باشد، ارائه‌دهندگان فعال زیر به‌ترتیب امتحان می‌شوند.",

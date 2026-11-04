@@ -588,6 +588,7 @@ window.LANG_CS = {
       },
       "allProvidersFailed": "Všem poskytovatelům AI se nepodařilo požadavek zpracovat.",
       "enabledCapabilities": "Povolené schopnosti",
+      "capabilityBlockedByProvider": "Zablokováno hlavním přepínačem poskytovatele",
       "capabilitiesDesc": "Vyberte funkce, které tento poskytovatel zpracovává",
       "openaiConnections": "Další poskytovatelé kompatibilní s OpenAI",
       "openaiConnectionsDesc": "Pokud hlavní připojení selže, postupně se vyzkouší níže zapnutí poskytovatelé.",

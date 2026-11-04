@@ -592,6 +592,7 @@ window.LANG_KO = {
       },
       "allProvidersFailed": "모든 AI 제공자가 요청에 실패했습니다.",
       "enabledCapabilities": "활성화된 기능",
+      "capabilityBlockedByProvider": "제공자 마스터 스위치로 차단됨",
       "capabilitiesDesc": "이 제공자가 처리할 기능을 선택하세요",
       "removeConnection": "제공자 삭제",
       "testThisConnection": "이 제공자 연결 테스트",

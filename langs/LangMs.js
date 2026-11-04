@@ -588,6 +588,7 @@ window.LANG_MS = {
       },
       "allProvidersFailed": "Semua penyedia AI gagal memproses permintaan.",
       "enabledCapabilities": "Fungsi Diaktifkan",
+      "capabilityBlockedByProvider": "Disekat oleh suis indu pembekal",
       "capabilitiesDesc": "Pilih fungsi yang akan dikendalikan oleh penyedia ini",
       "openaiConnections": "Penyedia tambahan yang serasi dengan OpenAI",
       "openaiConnectionsDesc": "Jika sambungan utama gagal, penyedia yang diaktifkan di bawah akan dicuba mengikut turutan.",

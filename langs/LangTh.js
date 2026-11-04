@@ -588,6 +588,7 @@ window.LANG_TH = {
       },
       "allProvidersFailed": "ผู้ให้บริการ AI ทั้งหมดล้มเหลวในการร้องขอ",
       "enabledCapabilities": "ความสามารถที่เปิดใช้งาน",
+      "capabilityBlockedByProvider": "ถูกบล็อกโดยสวิตช์หลักของผู้ให้บริการ",
       "capabilitiesDesc": "เลือกคุณสมบัติที่ผู้ให้บริการรายนี้จัดการ",
       "openaiConnections": "ผู้ให้บริการเพิ่มเติมที่เข้ากันได้กับ OpenAI",
       "openaiConnectionsDesc": "หากการเชื่อมต่อหลักล้มเหลว จะลองผู้ให้บริการที่เปิดใช้ด้านล่างตามลำดับ",

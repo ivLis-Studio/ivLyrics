@@ -588,6 +588,7 @@ window.LANG_TR = {
       },
       "allProvidersFailed": "Tüm YZ sağlayıcıları isteği işlemekte başarısız oldu.",
       "enabledCapabilities": "Etkin Yetenekler",
+      "capabilityBlockedByProvider": "Sağlayıcı ana anahtarı tarafından engellendi",
       "capabilitiesDesc": "Bu sağlayıcının hangi özellikleri yöneteceğini seçin",
       "openaiConnections": "Ek OpenAI uyumlu sağlayıcılar",
       "openaiConnectionsDesc": "Birincil bağlantı başarısız olursa aşağıdaki etkin sağlayıcılar sırayla denenir.",

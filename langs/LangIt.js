@@ -588,6 +588,7 @@ window.LANG_IT = {
       },
       "allProvidersFailed": "Tutti i fornitori AI hanno fallito nell'elaborazione della richiesta.",
       "enabledCapabilities": "Funzionalità abilitate",
+      "capabilityBlockedByProvider": "Bloccato dall'interruttore principale del provider",
       "capabilitiesDesc": "Seleziona quali funzionalità gestisce questo fornitore",
       "openaiConnections": "Altri provider compatibili con OpenAI",
       "openaiConnectionsDesc": "Se la connessione principale non riesce, vengono provati in ordine i provider attivati qui sotto.",

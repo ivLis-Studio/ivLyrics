@@ -588,6 +588,7 @@ window.LANG_AR = {
       },
       "allProvidersFailed": "فشل جميع موفري AI في معالجة الطلب.",
       "enabledCapabilities": "القدرات المفعلة",
+      "capabilityBlockedByProvider": "محظور بواسطة المفتاح الرئيسي للمزود",
       "capabilitiesDesc": "حدد الميزات التي يتعامل معها هذا المزود",
       "openaiConnections": "مزوّدون إضافيون متوافقون مع OpenAI",
       "openaiConnectionsDesc": "إذا فشل الاتصال الأساسي، تُجرَّب المزوّدات المفعّلة أدناه بالترتيب.",

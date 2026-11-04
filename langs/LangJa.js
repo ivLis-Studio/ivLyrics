@@ -588,6 +588,7 @@ window.LANG_JA = {
       },
       "allProvidersFailed": "すべてのAIプロバイダーの要求に失败しました。",
       "enabledCapabilities": "有効な機能",
+      "capabilityBlockedByProvider": "プロバイダーのマスタースイッチによってブロックされています",
       "capabilitiesDesc": "このプロバイダーが処理する機能を選択してください",
       "openaiConnections": "追加のOpenAI互換プロバイダー",
       "openaiConnectionsDesc": "基本の接続が失敗すると、以下の有効なプロバイダーを順番に試します。",

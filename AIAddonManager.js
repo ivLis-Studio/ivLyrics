@@ -2368,16 +2368,15 @@ ${normalizedText}
                     return false;
                 }
                 // 2. 사용자가 해당 기능을 활성화했는지 확인 (기본값 true)
-                // perEndpointCapabilities Addon은 엔드포인트별 선택이 유일한
-                // 기준이므로 저장된 제공자 수준 검사를 건너뛴다.
+                // perEndpointCapabilities Addon도 제공자 수준 스위치가 상한이므로
+                // 제공자 수준 검사를 함께 통과해야 한다. 엔드포인트별 선택은 그
+                // 아래에서 addon 내부가 추가로 거른다.
                 // 메서드가 존재하지 않는 경우(구버전 캐시 등) 안전하게 true 처리
                 if (typeof this.isCapabilityEnabled !== 'function') {
                     return true;
                 }
 
-                const isEnabled = addon.perEndpointCapabilities === true
-                    ? true
-                    : this.isCapabilityEnabled(addon.id, storedCapability);
+                const isEnabled = this.isCapabilityEnabled(addon.id, storedCapability);
                 if (!isEnabled) {
                     return false;
                 }

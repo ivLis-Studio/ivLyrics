@@ -588,6 +588,7 @@ window.LANG_BN = {
       },
       "allProvidersFailed": "সমস্ত AI প্রদানকারী অনুরোধ প্রক্রিয়া করতে ব্যর্থ হয়েছে।",
       "enabledCapabilities": "সক্রিয় সক্ষমতা",
+      "capabilityBlockedByProvider": "প্রোভাইডার মাস্টার দ্বারা ব্লক করা হয়েছে",
       "capabilitiesDesc": "এই প্রদানকারী কোন বৈশিষ্ট্যগুলো পরিচালনা করবে তা নির্বাচন করুন",
       "openaiConnections": "অতিরিক্ত OpenAI-সামঞ্জস্যপূর্ণ প্রদানকারী",
       "openaiConnectionsDesc": "মূল সংযোগ ব্যর্থ হলে নিচের সক্রিয় প্রদানকারীদের ক্রমানুসারে চেষ্টা করা হবে।",

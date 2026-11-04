@@ -592,6 +592,7 @@ window.LANG_EN = {
       },
       "allProvidersFailed": "All AI providers failed to process the request.",
       "enabledCapabilities": "Enabled Capabilities",
+      "capabilityBlockedByProvider": "Blocked by provider master",
       "capabilitiesDesc": "Select which features this provider handles",
       "removeConnection": "Remove provider",
       "testThisConnection": "Test this provider",

@@ -588,6 +588,7 @@ window.LANG_HI = {
       },
       "allProvidersFailed": "सभी AI प्रदाता अनुरोध को संसाधित करने में विफल रहेा",
       "enabledCapabilities": "सक्षम क्षमताएँ",
+      "capabilityBlockedByProvider": "प्रोवाइडर मास्टर स्विच द्वारा अवरुद्ध",
       "capabilitiesDesc": "चुनें कि यह प्रदाता कौन सी सुविधाएँ संभालता है",
       "openaiConnections": "अतिरिक्त OpenAI-संगत प्रदाता",
       "openaiConnectionsDesc": "मुख्य कनेक्शन विफल होने पर नीचे दिए गए सक्रिय प्रदाताओं को क्रम से आज़माया जाएगा।",

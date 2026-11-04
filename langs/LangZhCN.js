@@ -588,6 +588,7 @@ window.LANG_ZH_CN = {
       },
       "allProvidersFailed": "所有 AI 提供商都无法处理该请求。",
       "enabledCapabilities": "启用的功能",
+      "capabilityBlockedByProvider": "已被提供方总开关禁用",
       "capabilitiesDesc": "选择该供应商处理的功能",
       "openaiConnections": "其他兼容 OpenAI 的提供商",
       "openaiConnectionsDesc": "如果主连接失败，将按顺序尝试下方已启用的提供商。",

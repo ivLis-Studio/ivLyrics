@@ -588,6 +588,7 @@ window.LANG_DE = {
       },
       "allProvidersFailed": "Alle KI-Anbieter konnten die Anfrage nicht verarbeiten.",
       "enabledCapabilities": "Aktivierte Funktionen",
+      "capabilityBlockedByProvider": "Durch den Haupt-Schalter des Anbieters blockiert",
       "capabilitiesDesc": "Wählen Sie aus, welche Funktionen dieser Anbieter übernimmt",
       "openaiConnections": "Weitere OpenAI-kompatible Anbieter",
       "openaiConnectionsDesc": "Wenn die primäre Verbindung fehlschlägt, werden die unten aktivierten Anbieter der Reihe nach versucht.",

@@ -55,9 +55,9 @@
             characterPronunciation: true,
             culturalAnnotations: true
         },
-        // Capabilities are toggled per endpoint inside this addon's settings
-        // UI, so the provider-level toggle group in Settings stays hidden and
-        // the manager skips its stored provider-level capability check.
+        // Capabilities are toggled per endpoint inside this addon's settings UI;
+        // the provider-level toggle in the Settings row stays clickable and acts
+        // as the master switch (ceiling) over those endpoint choices.
         perEndpointCapabilities: true,
         // 하드코딩된 모델 목록 (fallback용)
         // models: [
@@ -298,6 +298,48 @@
         return next;
     }
 
+    // The provider-level switch is the ceiling: an endpoint can only serve a
+    // capability while the master switch allows it, but its own choice stays
+    // saved so re-enabling the master restores it.
+    function isEffectiveCapability(masterEnabled, endpointCapabilities, capability) {
+        return masterEnabled === true && isEndpointCapabilityEnabled(endpointCapabilities, capability);
+    }
+
+    function isMasterCapabilityEnabled(capability) {
+        try {
+            return window.AIAddonManager?.isCapabilityEnabled?.(ADDON_INFO.id, capability) ?? true;
+        } catch {
+            return true;
+        }
+    }
+
+    // Before the provider row became the master switch, the manager ignored
+    // this provider's provider-level flags, and the row could not be clicked.
+    // A flag could therefore stay off while an endpoint had turned the
+    // capability back on. Lift such stale flags once, so the update keeps
+    // every capability that was working; later choices are left alone.
+    const MASTER_SWITCH_MIGRATION_KEY = 'master-switch-migrated';
+
+    function migrateStaleMasterSwitches() {
+        const manager = window.AIAddonManager;
+        if (typeof manager?.isCapabilityEnabled !== 'function'
+            || typeof manager?.setCapabilityEnabled !== 'function') return;
+        const done = getSetting(MASTER_SWITCH_MIGRATION_KEY, false);
+        if (done === true || done === 'true') return;
+        const savedCapabilities = [
+            getPrimaryCapabilities(),
+            ...getFallbackProviders().map(connection => connection.capabilities)
+        ];
+        for (const capability of ENDPOINT_CAPABILITIES) {
+            const master = manager.isCapabilityEnabled(ADDON_INFO.id, capability);
+            if (master === true || master === 'true') continue;
+            if (savedCapabilities.some(capabilities => isEndpointCapabilityEnabled(capabilities, capability))) {
+                manager.setCapabilityEnabled(ADDON_INFO.id, capability, true);
+            }
+        }
+        setSetting(MASTER_SWITCH_MIGRATION_KEY, true);
+    }
+
     function getPrimaryCapabilities() {
         const raw = getSetting('primary-capabilities', null);
         if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
@@ -335,7 +377,7 @@
         const targets = [];
         const seen = new Set();
         for (const connection of getProviderConnections()) {
-            if (capability && !isEndpointCapabilityEnabled(connection.capabilities, capability)) continue;
+            if (capability && !isEffectiveCapability(isMasterCapabilityEnabled(capability), connection.capabilities, capability)) continue;
             const baseUrl = normalizeBaseUrl(connection.baseUrl) || DEFAULT_OPENAI_BASE_URL;
             const researchWebSearch = isEndpointCapabilityEnabled(connection.capabilities, 'researchWebSearch');
             for (const apiKey of parseConnectionKeys(connection.apiKeys)) {
@@ -1500,6 +1542,11 @@
         ...ADDON_INFO,
 
         async init() {
+            try {
+                migrateStaleMasterSwitches();
+            } catch (error) {
+                window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Master switch migration skipped: ${error?.message || error}`);
+            }
             window.__ivLyricsDebugLog?.(`[ChatGPT Addon] Initialized (v${ADDON_INFO.version})`);
         },
 
@@ -1687,6 +1734,7 @@
                             ],
                             capabilities: primaryCapabilities,
                             onToggle: togglePrimaryCapability,
+                            blockedByMaster: capability => !isMasterCapabilityEnabled(capability),
                             testButton: React.createElement('button', {
                                 type: 'button', onClick: handleTest, className: 'ai-addon-btn ai-addon-btn-secondary'
                             }, aiText('testConnection', 'Test Connection')),
@@ -1703,25 +1751,31 @@
             };
 
             // Share presentation only: the primary keeps its original settings and handlers.
-            function renderConnectionCard({ heading, actions, fields, capabilities, onToggle, testButton, status }) {
+            function renderConnectionCard({ heading, actions, fields, capabilities, onToggle, blockedByMaster, testButton, status }) {
                 return React.createElement('div', { className: 'ai-addon-connection-card' },
                     React.createElement('div', { className: 'ai-addon-connection-header' }, heading, actions),
                     React.createElement('div', { className: 'ai-addon-connection-fields' }, ...fields),
-                    React.createElement(CapabilityControls, { capabilities, onToggle }),
+                    React.createElement(CapabilityControls, { capabilities, onToggle, blockedByMaster }),
                     React.createElement('div', { className: 'ai-addon-connection-footer' }, testButton, status)
                 );
             }
 
-            function CapabilityControls({ capabilities, onToggle }) {
+            // A chip blocked by the provider master switch stays clickable so the
+            // endpoint choice is kept for when the master switch is re-enabled.
+            function CapabilityControls({ capabilities, onToggle, blockedByMaster }) {
                 return React.createElement('div', { className: 'ai-addon-setting ai-addon-connection-capabilities' },
                     React.createElement('label', null, aiText('enabledCapabilities', 'Enabled Capabilities')),
                     React.createElement('div', { className: 'ai-addon-caps-container' },
                         ENDPOINT_CAPABILITIES.map(capability => {
                             const enabled = isEndpointCapabilityEnabled(capabilities, capability);
+                            // Blocked-but-saved: the endpoint still wants the
+                            // capability but the provider master switch is off.
+                            const blocked = enabled && blockedByMaster?.(capability) === true;
                             return React.createElement('button', {
                                 key: capability, type: 'button',
-                                className: `ai-addon-cap-chip ${enabled ? 'active' : ''} cap-${capability}`,
-                                'aria-pressed': enabled, onClick: () => onToggle(capability)
+                                className: `ai-addon-cap-chip ${enabled ? 'active' : ''} ${blocked ? 'is-blocked ' : ''}cap-${capability}`,
+                                'aria-pressed': enabled, onClick: () => onToggle(capability),
+                                title: blocked ? aiText('capabilityBlockedByProvider', 'Blocked by provider master') : undefined
                             }, aiText(`supports.${capability}`, ENDPOINT_CAPABILITY_FALLBACKS[capability]));
                         })
                     )
@@ -1838,6 +1892,7 @@
                     onToggle: capability => onChange({
                         capabilities: toggleEndpointCapability(connection.capabilities, capability)
                     }),
+                    blockedByMaster: capability => !isMasterCapabilityEnabled(capability),
                     testButton: React.createElement('button', {
                         type: 'button', className: 'ai-addon-btn ai-addon-btn-secondary',
                         disabled: testing || loading || !keys.length || !selectedModel,

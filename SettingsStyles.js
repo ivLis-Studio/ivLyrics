@@ -890,6 +890,9 @@ const SETTINGS_MODAL_CSS = `
 #${APP_NAME}-config-container .ai-addon-cap-chip { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: transparent; color: var(--text-3); font-size: 12.5px; font-weight: 500; cursor: pointer; user-select: none; transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast); }
 #${APP_NAME}-config-container .ai-addon-cap-chip:hover { color: var(--text-2); border-color: var(--line-3); }
 #${APP_NAME}-config-container .ai-addon-cap-chip.active, #${APP_NAME}-config-container .ai-addon-cap-chip.active[class*="cap-"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-text); }
+/* Blocked by the provider master switch: keeps the blue active look, hatched. */
+#${APP_NAME}-config-container .ai-addon-cap-chip.is-blocked { position: relative; background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-text); }
+#${APP_NAME}-config-container .ai-addon-cap-chip.is-blocked::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: repeating-linear-gradient(-18deg, transparent 0 4px, rgba(150, 150, 150, .75) 4px 6px); pointer-events: none; }
 #${APP_NAME}-config-container .ai-addon-cap-chip svg { width: 12px; height: 12px; }
 #${APP_NAME}-config-container .ai-addon-capabilities-title { margin-bottom: 6px; font-size: 12.5px; font-weight: 500; color: var(--text-2); }
 #${APP_NAME}-config-container .ai-addon-capabilities-desc { margin-top: 6px; font-size: 12px; color: var(--text-3); }

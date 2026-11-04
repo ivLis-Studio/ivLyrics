@@ -588,6 +588,7 @@ window.LANG_VI = {
       },
       "allProvidersFailed": "Tất cả các nhà cung cấp AI đã thất bại khi xử lý yêu cầu.",
       "enabledCapabilities": "Khả năng đã kích hoạt",
+      "capabilityBlockedByProvider": "Bị chặn bởi công tắc chính của nhà cung cấp",
       "capabilitiesDesc": "Chọn các tính năng mà nhà cung cấp này xử lý",
       "openaiConnections": "Nhà cung cấp tương thích OpenAI bổ sung",
       "openaiConnectionsDesc": "Nếu kết nối chính thất bại, các nhà cung cấp đã bật bên dưới sẽ được thử lần lượt.",

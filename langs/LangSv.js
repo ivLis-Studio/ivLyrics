@@ -588,6 +588,7 @@ window.LANG_SV = {
       },
       "allProvidersFailed": "Alla AI-leverantörer kunde inte behandla begäran.",
       "enabledCapabilities": "Aktiverade funktioner",
+      "capabilityBlockedByProvider": "Blockerad av leverantörens huvudbrytare",
       "capabilitiesDesc": "Välj vilka funktioner den här leverantören hanterar",
       "openaiConnections": "Ytterligare OpenAI-kompatibla leverantörer",
       "openaiConnectionsDesc": "Om den primära anslutningen misslyckas provas de aktiverade leverantörerna nedan i ordning.",
