@@ -31,6 +31,23 @@ test('no :has() rule depends on a class karaoke toggles during playback', () => 
     assert.deepEqual(offenders, []);
 });
 
+test('strength fades cover every text effect but do not animate plain lyric rows', () => {
+    const transition = css.match(/--ivlyrics-effect-strength var\(--ivlyrics-effect-transition-duration, ([^)]+)\)/);
+    assert.equal(transition?.[1], '0s', 'plain rows do not animate an unused inherited value');
+    const effectKinds = [...pages.matchAll(/const KARAOKE_TEXT_EFFECT_KIND_CLASSES = new Set\(\[([\s\S]*?)\]\)/g)][0][1]
+        .match(/"([a-z]+)"/g).map(kind => kind.slice(1, -1)).sort();
+    const rule = css.match(/(:is\(\.lyrics-lyricsContainer-LyricsLine, \.lyrics-karaoke-part\)[^{]+)\{\s*--ivlyrics-effect-transition-duration: ([^;]+);/);
+    assert.ok(rule, 'whole-line and vocal-part effect rule exists');
+    assert.equal(rule[2], 'var(--iv-lyrics-centering-duration, 300ms)', 'effect fade keeps the configured duration');
+    const lists = [...rule[1].matchAll(/:is\((\.effect[^)]+)\)/g)];
+    assert.equal(lists.length, 2, 'whole-line and inline-range effects both retain their fade');
+    for (const [, kinds] of lists) {
+        assert.deepEqual(kinds.split(', ').map(kind => kind.slice(1)).sort(), effectKinds);
+    }
+    assert.match(rule[1], /\.lyrics-karaoke-line:has\(\.ivlyrics-karaoke-range-style/);
+    assert.equal((rule[1].match(/:not\(\.text-effects-disabled\)/g) || []).length, 2);
+});
+
 test('past karaoke rows and anchored vocal rows are styled from marks the app sets', () => {
     assert.equal(css.match(/\.lyrics-lyricsContainer-LyricsLine\.lyrics-lyricsContainer-LyricsLine-complete:not\(\.lyrics-lyricsContainer-LyricsLine-active\)/g)?.length, 3,
         'the past-line opacity, colour and highlight-mode rules use the row class');

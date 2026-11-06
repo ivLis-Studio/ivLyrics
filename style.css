@@ -2126,7 +2126,7 @@ body.ivlyrics-page-active .main-topBar-container {
     opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
     letter-spacing var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
     text-shadow var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
-    --ivlyrics-effect-strength var(--iv-lyrics-centering-duration, 300ms)
+    --ivlyrics-effect-strength var(--ivlyrics-effect-transition-duration, 0s)
       var(--iv-lyrics-centering-ease, cubic-bezier(0.42, 0, 0.58, 1));
 }
 
@@ -2642,6 +2642,15 @@ div.lyrics-tabBar-headerItemLink {
 
 .lyrics-karaoke-line.is-effect-focused {
   --ivlyrics-effect-strength: 1;
+}
+
+/* Strength is inherited by every glyph. Animate it only when an effect uses
+   it, otherwise each plain lyric hand-off restyles all descendants for 300ms.
+   Whole-line, vocal-part and inline-range effects keep the same fade curve.
+   The :has() is on the affected line itself and watches static metadata. */
+:is(.lyrics-lyricsContainer-LyricsLine, .lyrics-karaoke-part):is(.effect, .adlib, .pulse, .wave, .sparkle, .echo, .whisper, .bounce, .sway, .glow, .glitch, .flicker, .float, .blur, .pop):not(.text-effects-disabled) .lyrics-karaoke-line,
+.lyrics-karaoke-line:has(.ivlyrics-karaoke-range-style:is(.effect, .adlib, .pulse, .wave, .sparkle, .echo, .whisper, .bounce, .sway, .glow, .glitch, .flicker, .float, .blur, .pop):not(.text-effects-disabled)) {
+  --ivlyrics-effect-transition-duration: var(--iv-lyrics-centering-duration, 300ms);
 }
 
 .lyrics-karaoke-line.is-text-run {
