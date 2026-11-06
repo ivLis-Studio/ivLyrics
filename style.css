@@ -13416,6 +13416,14 @@ body.ivlyrics-sync-creator-covering > #main {
     opacity var(--iv-motion-duration-fast) var(--iv-motion-ease-standard);
 }
 
+/* Spotify's native body-drag-top remains behind this full-window editor.
+   Native drag hit testing ignores DOM z-index: explicitly exclude the
+   header and its controls so mouse clicks reach them instead of dragging. */
+.ivlyrics-sync-creator-shell .sync-creator-header,
+.ivlyrics-sync-creator-shell .sync-creator-header button {
+  -webkit-app-region: no-drag;
+}
+
 .ivlyrics-sync-creator-shell button:hover:not(:disabled) {
   filter: brightness(1.08);
 }

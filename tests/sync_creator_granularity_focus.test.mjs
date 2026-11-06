@@ -78,3 +78,11 @@ test('keyboard focus keeps the existing accent ring', () => {
 	const declarations = rule('.ivlyrics-sync-creator-shell button:focus-visible');
 	assert.match(declarations, /box-shadow:\s*0 0 0 3px rgba\(var\(--iv-sync-accent-rgb,/);
 });
+
+test('every header control excludes the native Spotify window drag region', () => {
+	// A DOM hit test and React onClick alone cannot detect this failure: the
+	// native window consumes the mouse before it reaches the web document.
+	const declarations = rule('.ivlyrics-sync-creator-shell .sync-creator-header button');
+	assert.match(declarations, /-webkit-app-region:\s*no-drag\s*;/);
+	assert.match(css, /\.ivlyrics-sync-creator-shell \.sync-creator-header,\s*\.ivlyrics-sync-creator-shell \.sync-creator-header button\s*\{/);
+});
