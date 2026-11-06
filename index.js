@@ -5083,9 +5083,30 @@ const FLOATING_TOOLBAR_MODE_LABEL_KEYS = Object.freeze({
   unsynced: "modes.unsynced",
 });
 
+// Spotify's stylesheets list aria-hidden and role inside :has() arguments.
+// When a lyric row toggles either (rows entering or leaving the visible
+// window, at every line change), Chromium can restyle hundreds of unrelated
+// elements below an ancestor a non-subject :has() was evaluated on. The tooltip rule
+// made <body> such an ancestor through body:has(#lyrics-fullscreen-container),
+// so the container's presence is mirrored as a body class instead.
+const FULLSCREEN_CONTAINER_BODY_CLASS = "ivlyrics-fullscreen-container-mounted";
+const watchFullscreenContainerBodyClass = () => {
+  const body = typeof document !== "undefined" ? document.body : null;
+  if (!body || typeof MutationObserver === "undefined" || body.ivlyricsFullscreenContainerObserver) return;
+  const sync = () => body.classList.toggle(
+    FULLSCREEN_CONTAINER_BODY_CLASS,
+    !!document.getElementById("lyrics-fullscreen-container")
+  );
+  // The container is only ever appended to <body> itself.
+  body.ivlyricsFullscreenContainerObserver = new MutationObserver(sync);
+  body.ivlyricsFullscreenContainerObserver.observe(body, { childList: true });
+  sync();
+};
+
 class LyricsContainer extends react.Component {
   constructor() {
     super();
+    watchFullscreenContainerBodyClass();
     this.handleFocusedLyricsChange = (fullscreenFocusedLyricsActive) => {
       if (this.state.fullscreenFocusedLyricsActive !== fullscreenFocusedLyricsActive) {
         this.setState({ fullscreenFocusedLyricsActive });

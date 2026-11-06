@@ -3779,8 +3779,10 @@ div.lyrics-tabBar-headerItemLink {
 
 /* Spotify renders TooltipWrapper popovers in a body-level Tippy portal.
  * Keep that portal above the ivLyrics fullscreen layer without changing
- * tooltip stacking anywhere else in Spotify. */
-body:has(#lyrics-fullscreen-container) [data-tippy-root] {
+ * tooltip stacking anywhere else in Spotify. The class mirrors the fullscreen
+ * container (index.js): a body:has() rule made each lyric row's aria-hidden or
+ * role change restyle hundreds of Spotify elements. */
+body.ivlyrics-fullscreen-container-mounted [data-tippy-root] {
   z-index: calc(var(--iv-layer-fullscreen) + 8) !important;
 }
 
@@ -9436,19 +9438,19 @@ html.is-lp-view-switch::view-transition-new(root) {
 }
 
 /* Keep the configured video/gradient/album background intact in LP mode while
-   removing the regular lyrics and floating controls behind the focused view. */
-.lyrics-lyricsContainer-LyricsContainer:has(> .fullscreen-vinyl-overlay) > .lyrics-lyricsContainer-SyncedLyricsPage,
-.lyrics-lyricsContainer-LyricsContainer:has(> .fullscreen-vinyl-overlay) > .lyrics-lyricsContainer-UnsyncedLyricsPage,
-.lyrics-lyricsContainer-LyricsContainer:has(> .fullscreen-vinyl-overlay) > .lyrics-credit-footer,
-.lyrics-lyricsContainer-LyricsContainer:has(> .fullscreen-vinyl-overlay) > .lyrics-track-sync-pill,
-.lyrics-lyricsContainer-LyricsContainer:has(> .fullscreen-vinyl-overlay) > .lyrics-quick-sync-stack,
-.lyrics-lyricsContainer-LyricsContainer:has(> .fullscreen-vinyl-overlay) > .lyrics-config-button-container {
+   removing the regular lyrics and floating controls behind the focused view.
+   These match the overlay's siblings directly: a :has() on the container made
+   it an ancestor that Spotify's aria-hidden/role :has() rules restyle on
+   every lyric row change. */
+.lyrics-lyricsContainer-LyricsContainer > .fullscreen-vinyl-overlay ~ :is(.lyrics-lyricsContainer-SyncedLyricsPage, .lyrics-lyricsContainer-UnsyncedLyricsPage, .lyrics-credit-footer, .lyrics-track-sync-pill, .lyrics-quick-sync-stack, .lyrics-config-button-container),
+.lyrics-lyricsContainer-LyricsContainer > :is(.lyrics-lyricsContainer-SyncedLyricsPage, .lyrics-lyricsContainer-UnsyncedLyricsPage, .lyrics-credit-footer, .lyrics-track-sync-pill, .lyrics-quick-sync-stack, .lyrics-config-button-container):has(~ .fullscreen-vinyl-overlay) {
   visibility: hidden !important;
   opacity: 0 !important;
   pointer-events: none !important;
 }
 
-.lyrics-lyricsContainer-LyricsContainer:has(> .fullscreen-vinyl-overlay) > .lyrics-generation-status-stack {
+.lyrics-lyricsContainer-LyricsContainer > .fullscreen-vinyl-overlay ~ .lyrics-generation-status-stack,
+.lyrics-lyricsContainer-LyricsContainer > .lyrics-generation-status-stack:has(~ .fullscreen-vinyl-overlay) {
   top: max(20px, env(safe-area-inset-top));
   left: max(20px, env(safe-area-inset-left));
   z-index: 1200;
