@@ -7451,7 +7451,8 @@ const SETTINGS_FALLBACK_DEFAULT_VALUES = Object.freeze({
   "sync-creator-word-forward-alt-key": "", "sync-creator-word-back-key": ",",
   "sync-creator-word-back-alt-key": "", "sync-creator-syllable-key": ";",
   "sync-creator-syllable-alt-key": "", "sync-creator-drag-key": "/",
-  "sync-creator-drag-alt-key": "numpaddivide",
+  "sync-creator-drag-alt-key": "numpaddivide", "sync-creator-last-char-end-key": "`",
+  "sync-creator-last-char-end-alt-key": "",
 });
 
 const SETTINGS_DEFAULT_BACKGROUND_MODE = "gradient-background";
@@ -12453,6 +12454,14 @@ const ConfigModal = ({
         items: [
           { key: "sync-creator-drag-key", defaultValue: CONFIG.visual["sync-creator-drag-key"] ?? "/" },
           { key: "sync-creator-drag-alt-key", defaultValue: CONFIG.visual["sync-creator-drag-alt-key"] ?? "numpaddivide" },
+        ],
+      },
+      {
+        id: "last-char-end",
+        label: getSettingsText("syncCreator.lastCharEnd.markNow", "End now"),
+        items: [
+          { key: "sync-creator-last-char-end-key", defaultValue: CONFIG.visual["sync-creator-last-char-end-key"] ?? "`" },
+          { key: "sync-creator-last-char-end-alt-key", defaultValue: CONFIG.visual["sync-creator-last-char-end-alt-key"] ?? "" },
         ],
       },
     ];

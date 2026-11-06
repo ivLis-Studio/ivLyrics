@@ -2776,6 +2776,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		wordBack: { primary: 'sync-creator-word-back-key', secondary: 'sync-creator-word-back-alt-key', defaultPrimary: ',' },
 		syllable: { primary: 'sync-creator-syllable-key', secondary: 'sync-creator-syllable-alt-key', defaultPrimary: ';' },
 		drag: { primary: 'sync-creator-drag-key', secondary: 'sync-creator-drag-alt-key', defaultPrimary: '/', defaultSecondary: 'numpaddivide' },
+		lastCharEnd: { primary: 'sync-creator-last-char-end-key', secondary: 'sync-creator-last-char-end-alt-key', defaultPrimary: '`' },
 	};
 	const SYNC_CREATOR_AUTO_BOUNDARY_CHARS_KEY = 'sync-creator-auto-boundary-chars';
 	const normalizeHotkeyToken = (value) => {
@@ -7940,6 +7941,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
 	}, [activeParallelTargetId, claimSessionForLocalEditing, resetCurrentSyncInput]);
 
+	const lastCharEndShortcutRef = useRef(null);
 	// 키보드 이벤트 리스너 등록
 	useEffect(() => {
 		const resetKeyboardSyncStateForDependencyChange = () => {
@@ -8182,6 +8184,12 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				.find(([, bindings]) => bindings.includes(normalizedHotkey))?.[0] || null;
 			const staticHotkeys = new Set(['enter', 'backspace', 'space']);
 			if (!shortcutAction && !isDragHotkey && !staticHotkeys.has(normalizedHotkey)) return;
+
+			if (shortcutAction === 'lastCharEnd') {
+				consumeKeyboardEvent();
+				lastCharEndShortcutRef.current?.();
+				return;
+			}
 
 			// record 모드가 아니면 처리하지 않음
 			if (mode !== 'record') return;
@@ -11912,8 +11920,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			padding: '10px 0',
 			borderRadius: '0',
 			background: 'transparent',
-			borderTop: `1px solid ${TOSS_BORDER}`,
-			borderBottom: `1px solid ${TOSS_BORDER}`
+			border: 'none'
 		},
 		lineOffsetHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' },
 		lineOffsetLabel: { fontSize: '11px', color: 'var(--spice-subtext)', fontWeight: '800', letterSpacing: '0.04em', textTransform: 'uppercase' },
@@ -12146,9 +12153,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		},
 		effectStripRow: {
 			flexShrink: 0,
-			display: 'grid',
-			gridTemplateColumns: 'auto minmax(0, 1fr)',
-			alignItems: 'center',
+			display: 'flex',
+			flexWrap: 'wrap',
+			alignItems: 'flex-start',
 			gap: '12px',
 			marginTop: '4px',
 			padding: '12px 0 0',
@@ -12161,21 +12168,17 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			fontWeight: '850',
 			color: 'var(--spice-subtext)',
 			whiteSpace: 'nowrap',
-			letterSpacing: '0.04em'
+			letterSpacing: '0.04em',
+			paddingTop: '4px'
 		},
 		effectStrip: {
 			display: 'flex',
-			flexWrap: 'nowrap',
+			flexWrap: 'wrap',
 			alignItems: 'stretch',
 			gap: '6px',
-			width: '100%',
+			flex: '1 1 340px',
 			minWidth: 0,
-			overflowX: 'auto',
-			overflowY: 'hidden',
-			padding: '4px 4px 8px',
-			overscrollBehaviorX: 'contain',
-			scrollbarWidth: 'thin',
-			scrollPaddingInline: '4px'
+			padding: '4px 4px 8px'
 		},
 		effectPill: {
 			flex: '0 0 auto',
@@ -13729,6 +13732,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				[getSyncCreatorShortcutDisplay('wordBack'), I18n.t('syncCreator.shortcuts.wordBack') || '한 단어 취소'],
 				[getSyncCreatorShortcutDisplay('syllable'), I18n.t('syncCreator.shortcuts.syllable') || '음절'],
 				[getSyncCreatorShortcutDisplay('drag'), I18n.t('syncCreator.shortcuts.drag') || '누르면 드래그'],
+				[getSyncCreatorShortcutDisplay('lastCharEnd'), I18n.t('syncCreator.lastCharEnd.markNow') || '지금 끝'],
 				[I18n.t('syncCreator.shortcuts.rightClick') || 'Right click', I18n.t('syncCreator.shortcuts.lockToCharacter') || '해당 글자까지 잠금'],
 				['↑ / ↓', `${I18n.t('syncCreator.prevLine') || 'Previous Line'} / ${I18n.t('syncCreator.nextLineBtn') || 'Next Line'}`],
 				['Enter', I18n.t('syncCreator.shortcuts.finish') || '라인 완료'],
@@ -14068,6 +14072,8 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			};
 		});
 	};
+	// Latest handler for the bindable "End now" shortcut (see handleKeyDown).
+	lastCharEndShortcutRef.current = () => setCurrentLastCharEnd(Spicetify.Player.getProgress() / 1000);
 	const renderLastCharEndControls = () => {
 		const info = getCurrentLastCharEndInfo();
 		const styleFor = (disabled) => disabled ? { ...s.lineOffsetBtn, opacity: 0.45, cursor: 'not-allowed' } : s.lineOffsetBtn;
@@ -14081,7 +14087,10 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		const button = (key, label, disabled, onClick) => react.createElement('button', {
 			key, type: 'button', style: styleFor(disabled), disabled, onClick
 		}, label);
-		return react.createElement('div', { style: s.lineOffsetBox, title: I18n.t('syncCreator.lastCharEnd.hint') },
+		return react.createElement('div', {
+			style: { ...s.lineOffsetBox, marginTop: 0, borderTop: `1px solid ${TOSS_BORDER}` },
+			title: I18n.t('syncCreator.lastCharEnd.hint')
+		},
 			react.createElement('div', { style: s.lineOffsetHeader },
 				react.createElement('span', { style: s.lineOffsetLabel }, I18n.t('syncCreator.lastCharEnd.title')),
 				react.createElement('span', { style: s.lineOffsetValue }, valueLabel)
