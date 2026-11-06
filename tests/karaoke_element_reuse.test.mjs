@@ -29,7 +29,11 @@ harnessSource = harnessSource.replace(elementFactory, `createElement: (tag, prop
 }`);
 const { createHarness, makeLine } = new Function('assert', 'execFileSync', 'readFileSync', 'vm',
   harnessSource + '\nreturn { createHarness, makeLine };')(assert, execFileSync, readFileSync, vm);
-const exactTree = value => JSON.parse(JSON.stringify(value));
+// CJK now has intentional layout-only whitespace parents. Compare every
+// existing paint node while the whitespace regression checks those parents.
+const exactTree = value => JSON.parse(JSON.stringify(value, (key, entry) =>
+  Array.isArray(entry) ? entry.flat(Infinity).flatMap(child =>
+    child?.props?.className === 'lyrics-karaoke-wrap-group' ? child.children.flat(Infinity) : [child]) : entry));
 const countMotion = source => source.replace(
   'const getKaraokeBounceValues = (position, isActive, startTime, endTime, attenuation = 1, motionProfile = null) => {',
   'const getKaraokeBounceValues = (position, isActive, startTime, endTime, attenuation = 1, motionProfile = null) => { counts.bounceCalls++;'

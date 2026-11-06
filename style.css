@@ -2020,10 +2020,6 @@ body.ivlyrics-page-active .main-topBar-container {
   will-change: transform;
 }
 
-.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) {
-  letter-spacing: -0.005em;
-}
-
 .lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine {
   filter: blur(calc(var(--blur-index) * 1.5px));
 }
@@ -2336,6 +2332,14 @@ body.ivlyrics-page-active .main-topBar-container {
   overflow-wrap: break-word;
   width: 100%;
   /* Ensure full width for wrapping */
+}
+
+/* Prefer explicit spaces in CJK too. Only a token wider than the lyric
+   column falls back to grapheme wrapping; focus never changes this policy. */
+:is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView, .lyrics-lyricsContainer-UnsyncedLyricsPage)
+  .lyrics-lyricsContainer-LyricsLine > p {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 @media (min-width: 1280px) {
@@ -2676,8 +2680,8 @@ div.lyrics-tabBar-headerItemLink {
 }
 
 .lyrics-karaoke-line.has-word-wrap {
-  word-break: normal;
-  overflow-wrap: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .lyrics-karaoke-stack {
@@ -3307,6 +3311,7 @@ div.lyrics-tabBar-headerItemLink {
   will-change: transform, opacity, filter, text-shadow;
 }
 
+.lyrics-karaoke-wrap-group,
 .lyrics-karaoke-word {
   display: inline-block;
   max-width: 100%;

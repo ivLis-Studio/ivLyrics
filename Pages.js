@@ -4839,6 +4839,51 @@ const shouldWrapKaraokeByWord = (text, motionStyle = null) => {
 		|| (motionStyle === "expressive" && /[^\s.\-\u2010\u2011][.\-\u2010\u2011]+[^\s.\-\u2010\u2011]/u.test(normalizedText));
 };
 
+const shouldPreferKaraokeWhitespaceWrap = (text) => (
+	/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(text)
+	&& /\S\s+\S/u.test(text)
+);
+
+// Source timing units control fill/motion, not line breaks. Keep the units
+// between two explicit spaces together, including when a provider times each
+// CJK character separately. The CSS width limit still lets long groups wrap.
+const createKaraokeWhitespaceWrapBuilder = (elements, elementCache) => {
+	let children = [];
+	let startIndex = 0;
+	const flush = () => {
+		if (children.length === 0) return;
+		if (children.length === 1) {
+			elements.push(children[0]);
+		} else {
+			const key = `karaoke-whitespace-${startIndex}`;
+			const cached = elementCache?.get(key);
+			if (cached && cached.children.length === children.length
+				&& children.every((child, index) => child === cached.children[index])) {
+				elements.push(cached.element);
+			} else {
+				const element = react.createElement("span", {
+					className: "lyrics-karaoke-wrap-group", key,
+				}, children);
+				elementCache?.set(key, { children, element });
+				elements.push(element);
+			}
+		}
+		children = [];
+	};
+	return {
+		push(element, isSpace, index) {
+			if (isSpace) {
+				flush();
+				elements.push(element);
+			} else {
+				if (children.length === 0) startIndex = index;
+				children.push(element);
+			}
+		},
+		flush,
+	};
+};
+
 const clampKaraokeFillCurveValue = (value, fallback = 0) => {
 	const numberValue = Number(value);
 	if (!Number.isFinite(numberValue)) {
@@ -5160,7 +5205,7 @@ const wrapKaraokeInlineStyleRuns = (
 const buildKaraokeWordElements = (
 	timedChars,
 	charElements,
-	{ position = 0, isActive = false, isComplete = false, globalCharOffset = 0, activeGlobalCharIndex = -1, wordTimed = false, wordRenderCache = null, presentationCache = null, elementCache = null, wordSupplementByKey = null, livePaint = false, motionStyle = null, expressiveWordStarts = null } = {}
+	{ position = 0, isActive = false, isComplete = false, globalCharOffset = 0, activeGlobalCharIndex = -1, wordTimed = false, wordRenderCache = null, presentationCache = null, elementCache = null, wordSupplementByKey = null, livePaint = false, motionStyle = null, expressiveWordStarts = null, preferWhitespaceWrap = false } = {}
 ) => {
 	if (!Array.isArray(timedChars) || !Array.isArray(charElements) || timedChars.length !== charElements.length) {
 		return charElements;
@@ -5177,6 +5222,13 @@ const buildKaraokeWordElements = (
 	};
 
 	const wordElements = [];
+	const whitespaceWrap = preferWhitespaceWrap ? createKaraokeWhitespaceWrapBuilder(wordElements, elementCache) : null;
+	const appendWords = (...elements) => {
+		for (const element of elements) {
+			if (whitespaceWrap) whitespaceWrap.push(element, false, currentWordStart);
+			else wordElements.push(element);
+		}
+	};
 	let currentWord = [];
 	let currentWordStart = 0;
 	let currentWordUnit = null;
@@ -5324,12 +5376,12 @@ const buildKaraokeWordElements = (
 			// Keep one annotation stack for the source word, with independently
 			// moving pieces inside it. A shared reading/gloss must not repeat.
 			if (wordSupplementByKey instanceof Map) {
-				wordElements.push(buildWord(currentWordStart, currentWord, currentWordUnit, { nestedWords: parts }));
+				appendWords(buildWord(currentWordStart, currentWord, currentWordUnit, { nestedWords: parts }));
 			} else {
-				wordElements.push(...parts);
+				appendWords(...parts);
 			}
 		} else {
-			wordElements.push(buildWord(currentWordStart, currentWord, currentWordUnit));
+			appendWords(buildWord(currentWordStart, currentWord, currentWordUnit));
 		}
 		currentWord = [];
 		currentWordUnit = null;
@@ -5364,12 +5416,16 @@ const buildKaraokeWordElements = (
 
 		if (isWhitespace) {
 			flushWord();
-			wordElements.push(...wrapKaraokeInlineStyleRuns([charInfo], [element], {
+			const spaces = wrapKaraokeInlineStyleRuns([charInfo], [element], {
 				keyPrefix: "karaoke-space-inline-style",
 				sourceIndexOffset: index,
 				presentationCache,
 				elementCache,
-			}));
+			});
+			for (const space of spaces) {
+				if (whitespaceWrap) whitespaceWrap.push(space, true, index);
+				else wordElements.push(space);
+			}
 			continue;
 		}
 
@@ -5377,6 +5433,7 @@ const buildKaraokeWordElements = (
 	}
 
 	flushWord();
+	whitespaceWrap?.flush();
 	return wordElements;
 };
 
@@ -5553,13 +5610,14 @@ const buildKaraokeTextRunElements = (
 	elementCache = null,
 	livePaint = false,
 	readings = null,
-	motionStyle = null
+	motionStyle = null,
+	preferWhitespaceWrap = false
 ) => {
 	const segments = preparedSegments || buildKaraokeTextRunSegments(timedChars, wordTimed, preserveInlineStyles);
 	const renderSegments = textDirection === "rtl" ? [...segments].reverse() : segments;
 	const expressiveMotion = motionStyle === "expressive";
 
-	return renderSegments.map((segment) => {
+	const elements = renderSegments.map((segment) => {
 		if (segment.type === "space") {
 			const cached = elementCache?.get(segment);
 			if (cached) return cached.element;
@@ -5667,6 +5725,13 @@ const buildKaraokeTextRunElements = (
 		});
 		return element;
 	});
+	if (!preferWhitespaceWrap) return elements;
+	const wrappedElements = [];
+	const whitespaceWrap = createKaraokeWhitespaceWrapBuilder(wrappedElements, elementCache);
+	elements.forEach((element, index) => whitespaceWrap.push(element,
+		renderSegments[index].type === "space", renderSegments[index].startIndex));
+	whitespaceWrap.flush();
+	return wrappedElements;
 };
 
 const getPseudoKaraokeRenderAdvance = (karaokeSource) => {
@@ -8890,7 +8955,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 	const furiganaReady = window.FuriganaConverter?.isAvailable?.() === true;
 	const hasCharReadings = charReadings instanceof Map && Array.from(charReadings.values()).some((entry) => typeof entry === 'string' ? !!entry : !!(entry && entry.text));
 	const expressiveMotion = isKaraokeExpressiveMotionEnabled();
-	const { furiganaMap, timedChars, motionProfiles, endTime, wrapByWord, textDirection, useTextRun, preserveInlineStyles, timedText, wordStartTimes, wordRenderCache, textRunSegments, hasInlinePresentation } = useMemo(() => {
+	const { furiganaMap, timedChars, motionProfiles, endTime, wrapByWord, preferWhitespaceWrap, textDirection, useTextRun, preserveInlineStyles, timedText, wordStartTimes, wordRenderCache, textRunSegments, hasInlinePresentation } = useMemo(() => {
 		const sourceSyllables = Array.isArray(line.syllables) && line.syllables.length > 0
 			? line.syllables
 			: getTimedSyllablesFromLine(line);
@@ -8930,6 +8995,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 				getKaraokeLineBounds(line).endTime
 			),
 			wrapByWord: shouldWrapKaraokeByWord(rawLineText, expressiveMotion ? KARAOKE_EXPRESSIVE_MOTION_STYLE : null),
+			preferWhitespaceWrap: shouldPreferKaraokeWhitespaceWrap(rawLineText),
 			textDirection: detectedTextDirection,
 			useTextRun,
 			preserveInlineStyles,
@@ -9225,7 +9291,8 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 			wrapperElementCache,
 			livePaint,
 			textRunReadings,
-			expressiveMotion ? KARAOKE_EXPRESSIVE_MOTION_STYLE : null
+			expressiveMotion ? KARAOKE_EXPRESSIVE_MOTION_STYLE : null,
+			preferWhitespaceWrap
 		)
 		: (wrapByWord || wordTimed)
 		? buildKaraokeWordElements(timedChars, charElements, {
@@ -9242,6 +9309,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 			livePaint,
 			motionStyle: expressiveMotion ? KARAOKE_EXPRESSIVE_MOTION_STYLE : null,
 			expressiveWordStarts: expressiveUnits?.wordStarts || null,
+			preferWhitespaceWrap,
 		})
 		: wrapKaraokeInlineStyleRuns(timedChars, charElements, {
 			presentationCache: presentationCaches.characters,
