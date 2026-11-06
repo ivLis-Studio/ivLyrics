@@ -1972,7 +1972,7 @@ body.ivlyrics-page-active .main-topBar-container {
 
 /* These values position the outer row only. Stop their changing inherited
    values at the content boundary so a hand-off does not restyle every glyph.
-   Keep --offset inherited from the synced root to the row itself. */
+   Each row sets --offset inline, so anchor moves restyle only the rows. */
 .lyrics-lyricsContainer-SyncedLyrics > .lyrics-lyricsContainer-LyricsLine > * {
   --offset: initial;
   --position-index: initial;

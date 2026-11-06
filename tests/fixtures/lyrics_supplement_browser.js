@@ -104,11 +104,11 @@ async (page) => {
         timing: animation.effect.getTiming(), frames: animation.effect.getKeyframes() }));
       const active = document.querySelector('.lyrics-lyricsContainer-LyricsLine-active');
       const center = () => { const rect = active.getBoundingClientRect(); return rect.top + rect.height / 2; };
-      const initialCenter = center(), initialOffset = parseFloat(root.style.getPropertyValue('--offset'));
+      const initialCenter = center(), initialOffset = parseFloat(root.getAttribute('data-compact-offset'));
       const stages = [];
       for (const kind of ['phonetic', 'translation', 'culture']) {
         f.add(kind, 1); await frames();
-        const offsetDelta = parseFloat(root.style.getPropertyValue('--offset')) - initialOffset;
+        const offsetDelta = parseFloat(root.getAttribute('data-compact-offset')) - initialOffset;
         let maxCurveError = 0;
         pairs.forEach(({ row, animation }, index) => {
           const before = samples[index], after = animation.effect.getKeyframes();

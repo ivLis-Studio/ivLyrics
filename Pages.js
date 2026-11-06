@@ -2091,7 +2091,7 @@ const CreditFooter = react.memo(({ provider, contributors }) => {
 });
 window.CreditFooter = CreditFooter;
 
-const IdlingIndicator = react.memo(({ isActive = false, delay = 0, durationMs = 0, settingsRevision = 0, lineRef = null, detailClassName = "", fadeDurationMs = null }) => {
+const IdlingIndicator = react.memo(({ isActive = false, delay = 0, durationMs = 0, settingsRevision = 0, lineRef = null, detailClassName = "", fadeDurationMs = null, offsetPx = null }) => {
 	const className = useMemo(() =>
 		`lyrics-idling-indicator ${!isActive ? "lyrics-idling-indicator-hidden" : ""} lyrics-lyricsContainer-LyricsLine ${isActive ? "lyrics-lyricsContainer-LyricsLine-active" : ""} lyrics-lyricsContainer-LyricsLine-interlude${detailClassName}`,
 		[isActive, detailClassName]
@@ -2101,8 +2101,9 @@ const IdlingIndicator = react.memo(({ isActive = false, delay = 0, durationMs = 
 		"--position-index": 0,
 		"--animation-index": 1,
 		"--indicator-delay": `${delay}ms`,
+		...(Number.isFinite(offsetPx) ? { "--offset": `${offsetPx}px` } : {}),
 		...(Number.isFinite(fadeDurationMs) ? { "--lyrics-interlude-fade-duration": `${fadeDurationMs}ms` } : {}),
-	}), [delay, fadeDurationMs]);
+	}), [delay, fadeDurationMs, offsetPx]);
 
 	if (durationMs <= INTERLUDE_MIN_DURATION_MS) {
 		return null;
@@ -6165,6 +6166,7 @@ const renderLyricsItems = ({ items, isKara, karaokeRenderGranularity = null, pos
 				lineRef: (item.trackLineRef ?? item.isActive) ? activeLineRef : null,
 				detailClassName: item.detailClassName,
 				...(Number.isFinite(item.fadeDurationMs) ? { fadeDurationMs: item.fadeDurationMs } : {}),
+				...(Number.isFinite(item.offsetPx) ? { offsetPx: item.offsetPx } : {}),
 			})
 			: react.createElement(LyricsLineBlock, {
 			key: item.key,
@@ -6587,9 +6589,10 @@ const useSyncedLyricsEngine = ({
 				: "var(--iv-lyrics-centering-duration, 300ms)",
 			"--line-shift-delay": "0s",
 			"--blur-index": 0,
+			"--offset": `${compactOffset}px`,
 			...(isInterludeHandoff ? { "--lyrics-interlude-fade-duration": `${interludeFadeDurationMs}ms` } : {}),
 		};
-	}, [trailingInterludeLine, visualAnchorUsesTrailingInterlude, isScrolling, suppressLayoutShiftAnimation, usesScriptedCompactLineShift, isInterludeHandoff, interludeFadeDurationMs]);
+	}, [trailingInterludeLine, visualAnchorUsesTrailingInterlude, isScrolling, suppressLayoutShiftAnimation, usesScriptedCompactLineShift, isInterludeHandoff, interludeFadeDurationMs, compactOffset]);
 	const compactLineShiftAnimationsRef = useRef(new Map());
 	const compactLineTransformSnapshotsRef = useRef(new WeakMap());
 	const compactLineMotionDataRef = useRef(new WeakMap());
@@ -6789,6 +6792,9 @@ const useSyncedLyricsEngine = ({
 					: "var(--iv-lyrics-centering-duration, 300ms)",
 				"--line-shift-delay": "0s",
 				"--blur-index": Math.min(Math.abs(animationIndex), 3),
+				// Each row carries the anchor offset itself. On the shared root it
+				// restyled every row (and its content) whenever the anchor moved.
+				"--offset": `${compactOffset}px`,
 				...(lineMotionPlan ? getLyricsLineMotionStyle(animationIndex, lineMotionPlan) : null),
 			};
 		});
@@ -6796,6 +6802,7 @@ const useSyncedLyricsEngine = ({
 		linesToRender,
 		compact,
 		isScrolling,
+		compactOffset,
 		layoutActiveLineIndex,
 		visualLineIndex,
 		visualDisplayLineIndex,
@@ -7025,7 +7032,39 @@ const useSyncedLyricsEngine = ({
 	const preludeFadeDurationMs = useMemo(() => getInterludeHandoffState({
 		position: layoutPosition, nextStartTime: firstLyricStartTime, enabled: isPreludeHandoff,
 	}).fadeDurationMs, [isPreludeHandoff, firstLyricStartTime]);
+	// Rows this many places beyond the visible compact window are already
+	// hidden and outside the scripted travel (which only moves the boundary
+	// rows). They are parked at a fixed index with a style reused by identity,
+	// so a line change no longer re-renders and restyles every row.
+	const parkedRowMargin = 3;
+	const parkedLineStylesRef = useRef(new WeakMap());
+	const getParkedLineStyle = (line, parkedIndex, stableStyle) => {
+		const presentation = getLinePresentation(line);
+		const shiftDuration = stableStyle["--line-shift-duration"];
+		const cached = parkedLineStylesRef.current.get(line);
+		if (cached && cached.parkedIndex === parkedIndex && cached.shiftDuration === shiftDuration
+			&& cached.presentation === presentation) {
+			return cached.style;
+		}
+		const style = {
+			cursor: "pointer",
+			...presentation.speakerStyle,
+			"--position-index": parkedIndex,
+			"--animation-index": Math.abs(parkedIndex) + 1,
+			"--line-shift-duration": shiftDuration,
+			"--line-shift-delay": "0s",
+			"--blur-index": Math.min(Math.abs(parkedIndex), 3),
+			// Frozen while parked: the row is hidden, so its anchor offset only
+			// needs refreshing once it re-enters the window with its real index.
+			"--offset": stableStyle["--offset"],
+		};
+		parkedLineStylesRef.current.set(line, { parkedIndex, shiftDuration, presentation, style });
+		return style;
+	};
 	const preparedRenderItems = useMemo(() => {
+		const parkRows = compact && !isScrolling;
+		const parkBefore = -(linesBefore + parkedRowMargin);
+		const parkAfter = linesAfter + parkedRowMargin;
 
 		return linesToRender.flatMap((line, visibleIndex) => {
 			const {
@@ -7049,6 +7088,7 @@ const useSyncedLyricsEngine = ({
 						trackLineRef: lineNumber === visualAnchorLineNumber,
 						detailClassName: getLyricsLineDetailClass(lyricMotionDetailsEnabled, true, false, isPreludeHandoff),
 						...(isPreludeHandoff ? { fadeDurationMs: preludeFadeDurationMs } : {}),
+						offsetPx: compactOffset,
 					};
 				}
 			}
@@ -7064,6 +7104,7 @@ const useSyncedLyricsEngine = ({
 					trackLineRef: lineNumber === visualAnchorLineNumber,
 					detailClassName: getLyricsLineDetailClass(lyricMotionDetailsEnabled && layoutActiveLineIndex === 0, true, false, isPreludeHandoff),
 					...(isPreludeHandoff ? { fadeDurationMs: preludeFadeDurationMs } : {}),
+					offsetPx: compactOffset,
 				};
 			}
 
@@ -7121,13 +7162,20 @@ const useSyncedLyricsEngine = ({
 				isInterludeHandoff && isAnchorLine && line.interludeInfo?.isInterlude
 			);
 
+			let rowStyle = stableLineStyles[visibleIndex];
+			if (parkRows && isOutsideVisibleRange && rowStyle) {
+				const rowIndex = rowStyle["--position-index"];
+				const parkedIndex = rowIndex < parkBefore ? parkBefore : rowIndex > parkAfter ? parkAfter : null;
+				if (parkedIndex !== null) rowStyle = getParkedLineStyle(line, parkedIndex, rowStyle);
+			}
+
 			const item = {
 				type: "line",
 				key: lineNumber,
 				className,
 				style: isInterludeHandoff && isAnchorLine && line.interludeInfo?.isInterlude
-					? { ...stableLineStyles[visibleIndex], "--lyrics-interlude-fade-duration": `${interludeFadeDurationMs}ms` }
-					: stableLineStyles[visibleIndex],
+					? { ...rowStyle, "--lyrics-interlude-fade-duration": `${interludeFadeDurationMs}ms` }
+					: rowStyle,
 				line,
 				startTime,
 				originalText,
@@ -7226,6 +7274,7 @@ const useSyncedLyricsEngine = ({
 		isPreludeHandoff,
 		interludeFadeDurationMs,
 		preludeFadeDurationMs,
+		compactOffset,
 	]);
 	// The full row structure changes at playback boundaries or settings/data
 	// changes. Between them, preserve every static item and update live rows only.
@@ -9702,9 +9751,9 @@ const SyncedLyricsPage = react.memo(({ lyrics = [], trackUri = "", provider, con
 			"div",
 			{
 				className: "lyrics-lyricsContainer-SyncedLyrics",
-				style: {
-					"--offset": `${compactOffset}px`,
-				},
+				// Rows carry --offset themselves (see useSyncedLyricsEngine). The
+				// attribute keeps the anchor offset inspectable without restyling.
+				"data-compact-offset": compactOffset,
 				key: lyricsId,
 			},
 			...renderedItems

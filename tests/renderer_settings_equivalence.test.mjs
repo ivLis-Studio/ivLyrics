@@ -75,6 +75,32 @@ const normalizePresentation = (value) => JSON.parse(JSON.stringify(value, functi
 	return entry;
 }));
 
+// Rows more than three places outside the compact window are now parked at a
+// fixed index (useSyncedLyricsEngine), so line changes skip re-rendering them.
+// They are hidden padding rows; compare both renderers with that clamp applied.
+// Visible and boundary rows, which carry the scripted travel, stay exact.
+// Rows and the prelude indicator also carry the anchor offset themselves
+// instead of inheriting it from the list root; geometry QA covers that value.
+const normalizeParkedRows = (output, visual) => {
+	const parkBefore = -(visual["lines-before"] + 3);
+	const parkAfter = visual["lines-after"] + 3;
+	for (const element of output.elements || []) {
+		if (element?.props?.style) delete element.props.style["--offset"];
+		if (element?.props && Object.hasOwn(element.props, "delay")) delete element.props.offsetPx;
+		const style = element?.props?.style;
+		const classes = String(element?.props?.className || "").split(" ");
+		if (!style || !classes.includes("lyrics-lyricsContainer-LyricsLine-paddingLine")) continue;
+		const index = style["--position-index"];
+		if (typeof index !== "number") continue;
+		const parked = index < parkBefore ? parkBefore : index > parkAfter ? parkAfter : null;
+		if (parked === null) continue;
+		style["--position-index"] = parked;
+		style["--animation-index"] = Math.abs(parked) + 1;
+		style["--blur-index"] = Math.min(Math.abs(parked), 3);
+	}
+	return output;
+};
+
 // Preserve hook state across frames to detect stale caches. These tests compare
 // the engine's actual LyricsLineBlock/IdlingIndicator props, not its internal
 // cache shape. DOM effects and child glyph rendering are deliberately excluded;
@@ -191,6 +217,7 @@ const createEngine = (source) => {
 			};
 			if (raw) return output;
 			const comparable = normalizePresentation(output);
+			normalizeParkedRows(comparable, CONFIG.visual);
 			if (props.compact && !props.isKara && !scrolling && !motionPreference.matches) {
 				// Normal compact rows now delegate movement to WAAPI. Verify that
 				// intentional routing change, then compare every remaining row prop.
