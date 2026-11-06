@@ -1975,7 +1975,7 @@ const CreditFooter = react.memo(({ provider, contributors }) => {
 					react.createElement(
 						"span",
 						{ className: "lyrics-credit-footer-value" },
-						provider
+						provider === "open-lyrics" ? "Open Lyrics" : provider
 				)
 			),
 			visibleContributors.length > 0 && react.createElement(

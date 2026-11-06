@@ -154,6 +154,21 @@ test("a display-only shared snapshot cannot inherit outgoing karaoke or suppress
   assert.equal(h.container.state.lyricsDisplayUri, next.uri);
 });
 
+for (const [storedProvider, expected] of [["removed-provider", null], ["open-lyrics", "open-lyrics"]]) {
+  test(`track selection ${storedProvider} resolves only against registered providers`, async () => {
+    const h = createHarness(), next = track("provider-identity");
+    h.context.window.LyricsAddonManager = { getAddon: id => id === "open-lyrics" ? { id } : null };
+    h.context.window.LyricsService.getTrackLyricsProviderOverride = async () => storedProvider;
+    h.play(next);
+    const completion = h.container.fetchLyrics(next);
+    await flush();
+    assert.equal(h.container.trackLyricsProviderOverride, expected);
+    h.requests[0].resolve({ uri: next.uri, provider: "fixture", synced: lines("Incoming lyric") });
+    await completion;
+    assert.equal(h.container.state.lyricsStatus, "ready");
+  });
+}
+
 for (const staleOutcome of ["resolve", "reject"]) {
   test(`a late ${staleOutcome} from a skipped song cannot hide, replace or publish over the current lyrics`, async () => {
     const h = createHarness();

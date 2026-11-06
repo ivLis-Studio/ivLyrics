@@ -44,7 +44,7 @@ const PREFIXED_HELPERS = [
     ['Addon_AI_Perplexity.js', /\baiText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.'],
     ['Addon_Lyrics_Spotify.js', /\blyricsText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.lyricsProviders.'],
     ['Addon_Lyrics_LyricsPlus.js', /\blyricsText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.lyricsProviders.'],
-    ['Addon_Lyrics_Paxsenix.js', /\blyricsText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.lyricsProviders.'],
+    ['Addon_Lyrics_OpenLyrics.js', /\blyricsText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.lyricsProviders.'],
     ['Addon_Lyrics_Unison.js', /\blyricsText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.lyricsProviders.'],
     ['LearningMode.js', /\bt\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'learningMode.'],
     ['Settings.js', /\b(?:get|format)SettingsPresetText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settingsAdvanced.settingsPresets.'],

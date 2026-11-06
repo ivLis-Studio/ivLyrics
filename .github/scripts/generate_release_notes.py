@@ -184,7 +184,7 @@ def fallback_release_title(entries):
     summary = " ".join(text.lower() for _, text in entries)
     topics = []
     if re.search(
-        r"\blyrics?\b|\btranslation\b|\bpronunciation\b|\bcultural\b|paxsenix|instrumental",
+        r"\blyrics?\b|\btranslation\b|\bpronunciation\b|\bcultural\b|open[- ]lyrics|instrumental",
         summary,
     ):
         topics.append("Lyrics")
@@ -208,7 +208,7 @@ def fallback_release_title(entries):
 def fallback_category(subject):
     value = subject.lower()
     if re.search(
-        r"lyrics?|translation|pronunciation|cultural|provider|paxsenix|"
+        r"lyrics?|translation|pronunciation|cultural|provider|open[- ]lyrics|"
         r"instrumental|karaoke|overlay",
         value,
     ):

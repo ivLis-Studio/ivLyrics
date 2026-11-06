@@ -89,10 +89,10 @@
         TYPE_FIRST: 'type-first-v1'
     };
     const DEFAULT_PROVIDER_ORDER = [
+        'open-lyrics',
+        'lyricsplus',
         'spotify',
         'lrclib',
-        'paxsenix',
-        'lyricsplus',
         'unison'
     ];
     const PSEUDO_KARAOKE_SOURCES = new Set([

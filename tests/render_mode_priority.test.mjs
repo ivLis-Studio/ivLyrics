@@ -29,7 +29,7 @@ const lyrics = [{ text: "Test lyric", startTime: 1000, endTime: 2000 }];
 
 test("defaults word-timed provider lyrics to character rendering without changing source metadata", () => {
   const state = {
-    provider: "paxsenix",
+    provider: "open-lyrics",
     karaokeGranularity: "word",
     karaoke: lyrics,
     synced: lyrics,

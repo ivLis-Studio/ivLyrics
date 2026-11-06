@@ -12,7 +12,7 @@ function effectBetween(startMarker, endMarker) {
   return source.slice(body, end);
 }
 
-function positionHarness({sourceType = 'paxsenix', trackOffset = 0, globalOffset = 0, snapshot = null, reducePanelMotion = false} = {}) {
+function positionHarness({sourceType = 'open-lyrics', trackOffset = 0, globalOffset = 0, snapshot = null, reducePanelMotion = false} = {}) {
   const events = [], updates = [], polls = [];
   let position = 0, nextId = 1, poll = null, frame = null, stopped = false;
   const cancelled = [];

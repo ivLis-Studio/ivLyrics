@@ -7801,6 +7801,12 @@ class LyricsContainer extends react.Component {
       if (!isLatestLyricsRequest()) {
         return;
       }
+      // A removed provider is an obsolete per-track preference, not a request
+      // to silently transfer its settings or sync data to a new provider.
+      if (trackLyricsProviderOverride && window.LyricsAddonManager?.getAddon
+        && !window.LyricsAddonManager.getAddon(trackLyricsProviderOverride)) {
+        trackLyricsProviderOverride = null;
+      }
       this.trackLanguageOverride = trackLanguageOverride;
       this.trackBackgroundOverride = trackBackgroundOverride;
       if (!hasSpotifyTrackId) {
