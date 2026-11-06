@@ -13321,6 +13321,18 @@ html.is-lp-view-switch::view-transition-new(root) {
   z-index: var(--iv-layer-modal);
 }
 
+/* Set after the editor's fade-in, while its opaque shell covers the window:
+   Spotify's UI underneath is neither visible nor worth repainting. */
+body.ivlyrics-sync-creator-covering > #main {
+  visibility: hidden;
+}
+
+/* Effect cards scrolled out of view keep their looping preview paused. */
+.ivlyrics-sync-effect-card[data-iv-preview-paused] .ivlyrics-sync-kind-preview,
+.ivlyrics-sync-effect-card[data-iv-preview-paused] .ivlyrics-sync-kind-preview * {
+  animation-play-state: paused !important;
+}
+
 .ivlyrics-line-counter-overlay {
   position: absolute;
   bottom: 20px;

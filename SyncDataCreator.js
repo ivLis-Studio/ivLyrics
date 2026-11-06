@@ -6105,6 +6105,68 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		return () => observer.disconnect();
 	}, []);
 
+	// The opaque editor covers the whole window once its fade-in ends. Until
+	// then the page behind shows through, so it stays painted; afterwards
+	// Spotify's UI is skipped instead of being repainted under the editor.
+	useEffect(() => {
+		const shell = containerRef.current;
+		const body = typeof document !== 'undefined' ? document.body : null;
+		if (!shell || !body) return undefined;
+		let covered = false;
+		const cover = () => {
+			if (covered) return;
+			covered = true;
+			body.classList.add('ivlyrics-sync-creator-covering');
+		};
+		const handleAnimationDone = (event) => {
+			if (event.target === shell) cover();
+		};
+		shell.addEventListener('animationend', handleAnimationDone);
+		shell.addEventListener('animationcancel', handleAnimationDone);
+		const fadeRunning = typeof shell.getAnimations === 'function'
+			&& shell.getAnimations().some(animation => animation.playState === 'running');
+		const fallbackTimer = setTimeout(cover, fadeRunning ? 1000 : 0);
+		return () => {
+			clearTimeout(fallbackTimer);
+			shell.removeEventListener('animationend', handleAnimationDone);
+			shell.removeEventListener('animationcancel', handleAnimationDone);
+			body.classList.remove('ivlyrics-sync-creator-covering');
+		};
+	}, []);
+
+	// Each text-effect card loops its preview animation. Cards scrolled out of
+	// the effect strip are invisible, so their previews pause until they return.
+	const effectPreviewObserverRef = useRef(null);
+	const effectPreviewCardsRef = useRef(new Set());
+	useEffect(() => {
+		const shell = containerRef.current;
+		if (!shell || typeof IntersectionObserver !== 'function') return;
+		const observed = effectPreviewCardsRef.current;
+		const cards = shell.querySelectorAll('.ivlyrics-sync-effect-card');
+		if (cards.length === observed.size && Array.prototype.every.call(cards, card => observed.has(card))) return;
+		const observer = effectPreviewObserverRef.current ??= new IntersectionObserver((entries) => {
+			for (const entry of entries) {
+				entry.target.toggleAttribute('data-iv-preview-paused', !entry.isIntersecting);
+			}
+		}, { threshold: 0 });
+		const current = new Set(cards);
+		for (const card of observed) {
+			if (current.has(card)) continue;
+			observer.unobserve(card);
+			observed.delete(card);
+		}
+		for (const card of current) {
+			if (observed.has(card)) continue;
+			observer.observe(card);
+			observed.add(card);
+		}
+	});
+	useEffect(() => () => {
+		effectPreviewObserverRef.current?.disconnect();
+		effectPreviewObserverRef.current = null;
+		effectPreviewCardsRef.current.clear();
+	}, []);
+
 	// 다음 곡 방지 - 싱크 생성기가 보일 때만 활성화
 	useEffect(() => {
 		// 초기 마운트/업데이트 시 visibility 상태 동기화
