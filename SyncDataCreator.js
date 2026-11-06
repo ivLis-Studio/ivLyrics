@@ -7216,25 +7216,26 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		const lineStart = currentLineStart;
 		const lineEnd = lineStart + currentFullLineChars.length - 1;
 		const fullCharCount = currentFullLineChars.length;
-		const nextLines = syncData?.lines
-			? syncData.lines.map((line) => ({
-				...line,
-				chars: Array.isArray(line.chars) ? [...line.chars] : [],
-				parallel: line.parallel ? sanitizeSyncCreatorParallel({
-					...line.parallel,
-					parts: Array.isArray(line.parallel.parts)
-						? line.parallel.parts.map(part => ({
-							...part,
-							ranges: Array.isArray(part.ranges) ? part.ranges.map(range => ({ ...range })) : [],
-							join: Array.isArray(part.join) ? [...part.join] : [],
-							chars: Array.isArray(part.chars) ? [...part.chars] : undefined
-						}))
-						: []
-				}) : undefined
-			}))
-			: [];
+		// Only the recorded row changes. Keep all other rows (and their timing
+		// arrays) stable so one tap does not copy/sanitize the entire song.
+		const nextLines = syncData?.lines ? [...syncData.lines] : [];
 		const existingIndex = nextLines.findIndex((line) => line.start === lineStart);
-		const existingLine = existingIndex >= 0 ? nextLines[existingIndex] : null;
+		const sourceLine = existingIndex >= 0 ? nextLines[existingIndex] : null;
+		const existingLine = sourceLine ? {
+			...sourceLine,
+			chars: Array.isArray(sourceLine.chars) ? [...sourceLine.chars] : [],
+			parallel: sourceLine.parallel ? sanitizeSyncCreatorParallel({
+				...sourceLine.parallel,
+				parts: Array.isArray(sourceLine.parallel.parts)
+					? sourceLine.parallel.parts.map(part => ({
+						...part,
+						ranges: Array.isArray(part.ranges) ? part.ranges.map(range => ({ ...range })) : [],
+						join: Array.isArray(part.join) ? [...part.join] : [],
+						chars: Array.isArray(part.chars) ? [...part.chars] : undefined
+					}))
+					: []
+			}) : undefined
+		} : null;
 		const normalizedRawChars = normalizeCommittedLineChars(
 			rawChars,
 			syncGranularity,
