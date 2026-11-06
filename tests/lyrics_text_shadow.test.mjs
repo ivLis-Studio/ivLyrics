@@ -161,10 +161,14 @@ test("TV metadata lines keep room for their text-shadow halo", () => {
 	assert.ok(artistSecondaryOverflow.includes("hidden"), ".fullscreen-tv-artist-secondary keeps an overflow:hidden fallback");
 	assert.ok(declarationsFor(".fullscreen-tv-artist-secondary", "overflow-clip-margin").length, ".fullscreen-tv-artist-secondary declares overflow-clip-margin");
 
-	// Primary artist and album lines paint with visible overflow; adding any
-	// clipping declaration there would box their shadows the same way.
+	// Primary artist and album now truncate long metadata on one line. Their
+	// soft halo is a filter applied after clipping, rather than a text shadow
+	// inside the ellipsis box.
 	for (const selector of [".fullscreen-tv-artist", ".fullscreen-tv-album-name"]) {
-		assert.equal(declarationsFor(selector, "overflow").length, 0, `${selector} must not clip its shadow`);
-		assert.equal(declarationsFor(selector, "overflow-clip-margin").length, 0, `${selector} must not clip its shadow`);
+		assert.ok(declarationsFor(selector, "overflow").includes("hidden"));
+		assert.ok(declarationsFor(selector, "filter").some(value => value.includes("drop-shadow(")));
+		for (const value of declarationsFor(selector, "text-shadow")) {
+			assert.doesNotMatch(value, /rgba?\(/, `${selector} must keep its blur outside the ellipsis box`);
+		}
 	}
 });

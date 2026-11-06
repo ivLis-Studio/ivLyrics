@@ -1551,6 +1551,75 @@ const FullscreenOverlay = (() => {
         };
     };
 
+    // Fit TV metadata only when its content, fonts or available space changes.
+    // Playback updates must not measure or resize this stationary caption.
+    const observeTvMetadataFit = (container) => {
+        const stack = container.firstElementChild;
+        if (!stack) return () => {};
+        const view = container.ownerDocument?.defaultView || window;
+        const fonts = container.ownerDocument?.fonts;
+        const property = "--fullscreen-tv-metadata-scale";
+        let frame = null;
+        let disposed = false;
+        let force = true;
+        let lastSize = "";
+        const dimensions = () => [container.clientWidth, container.clientHeight,
+            stack.offsetWidth, stack.offsetHeight].join(":");
+        const setScale = (scale) => container.style.setProperty(property, String(scale));
+        const measure = () => {
+            frame = null;
+            if (disposed || !container.isConnected) return;
+            if (!force && dimensions() === lastSize) return;
+            force = false;
+            const height = container.clientHeight;
+            if (height <= 0 || container.clientWidth <= 0) return;
+            setScale(1);
+            if (stack.offsetHeight > height) {
+                // Font scaling can change the title's wrapping. Search the
+                // actual layout instead of assuming height scales linearly.
+                let low = 0.4, high = 1;
+                for (let step = 0; step < 8; step++) {
+                    const middle = (low + high) / 2;
+                    setScale(middle);
+                    if (stack.offsetHeight <= height) low = middle;
+                    else high = middle;
+                }
+                setScale(Math.floor(low * 1000) / 1000);
+            }
+            lastSize = dimensions();
+        };
+        const schedule = (contentChanged = false) => {
+            if (disposed) return;
+            force ||= contentChanged;
+            if (frame === null) frame = view.requestAnimationFrame(measure);
+        };
+        const resizeObserver = typeof view.ResizeObserver === "function"
+            ? new view.ResizeObserver(() => schedule()) : null;
+        resizeObserver?.observe(container);
+        resizeObserver?.observe(stack);
+        const contentChanged = () => schedule(true);
+        const mutationObserver = typeof view.MutationObserver === "function"
+            ? new view.MutationObserver(contentChanged) : null;
+        // Observe the content, not our own scale property on its parent.
+        mutationObserver?.observe(stack, {
+            subtree: true, childList: true, characterData: true,
+            attributes: true, attributeFilter: ["style"],
+        });
+        view.addEventListener("resize", contentChanged);
+        fonts?.addEventListener?.("loadingdone", contentChanged);
+        fonts?.ready?.then(contentChanged);
+        measure();
+        return () => {
+            disposed = true;
+            if (frame !== null) view.cancelAnimationFrame(frame);
+            resizeObserver?.disconnect();
+            mutationObserver?.disconnect();
+            view.removeEventListener("resize", contentChanged);
+            fonts?.removeEventListener?.("loadingdone", contentChanged);
+            container.style.removeProperty(property);
+        };
+    };
+
     // Main Overlay Component
     const Overlay = ({
         coverUrl,
@@ -1586,6 +1655,11 @@ const FullscreenOverlay = (() => {
         const [duration, setDuration] = useState(0);
         const [, setMetadataRevision] = useState(0);
         const metadataSnapshotRef = useRef(null);
+        const tvMetadataCleanupRef = useRef(null);
+        const setTvMetadataRef = useCallback((container) => {
+            tvMetadataCleanupRef.current?.();
+            tvMetadataCleanupRef.current = container ? observeTvMetadataFit(container) : null;
+        }, []);
         const albumLyricsRegionCleanupRef = useRef(null);
         const setAlbumLyricsPanelRef = useCallback((panel) => {
             albumLyricsRegionCleanupRef.current?.();
@@ -2801,7 +2875,7 @@ const FullscreenOverlay = (() => {
                 key: `${type}-${line.kind}`,
                 className: `fullscreen-tv-${type}${index > 0 ? ` fullscreen-tv-${type}-secondary` : ""}`,
                 style: {
-                    fontSize: `${index === 0 ? fontSize : Math.round(fontSize * secondaryScale)}px`
+                    fontSize: `calc(${index === 0 ? fontSize : Math.round(fontSize * secondaryScale)}px * var(--fullscreen-tv-metadata-scale, 1))`
                 }
             }, line.value));
         };
@@ -2848,7 +2922,8 @@ const FullscreenOverlay = (() => {
 
         const renderTvModeSongInfo = () => react.createElement(react.Fragment, null,
                 react.createElement("div", {
-                    className: "fullscreen-tv-song-info"
+                    className: "fullscreen-tv-song-info",
+                    style: { "--fullscreen-tv-album-size": `${tvAlbumSize}px` }
                 },
                     // TV mode keeps the plain album artwork. Context click or hold opens TMI.
                     react.createElement("div", {
@@ -2873,7 +2948,8 @@ const FullscreenOverlay = (() => {
                         })
                     ),
                     // Track info (Title, Artist, Album)
-                    react.createElement("div", { className: "fullscreen-tv-track-info" },
+                    react.createElement("div", { className: "fullscreen-tv-track-info", ref: setTvMetadataRef },
+                      react.createElement("div", { className: "fullscreen-tv-metadata-stack" },
                         // Title (honors the same metadata display mode as normal fullscreen)
                         react.createElement("div", {
                             ...createNavigationProps(currentTrackUri, "fullscreen-tv-title-container")
@@ -2910,6 +2986,7 @@ const FullscreenOverlay = (() => {
                                 } catch (e) { return ''; }
                             })()
                         )
+                      )
                     )
                 ),
                 // TV Mode Controls & Progress (right side)

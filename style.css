@@ -12945,13 +12945,14 @@ html.is-lp-view-switch::view-transition-new(root) {
 
 /* TV Mode Song Info - Bottom Left */
 .fullscreen-tv-song-info {
+  --fullscreen-tv-info-gap: 20px;
   position: fixed;
   bottom: var(--fullscreen-tv-edge-offset);
   left: var(--fullscreen-tv-edge-offset);
   z-index: 100;
   display: flex;
-  align-items: flex-end;
-  gap: 20px;
+  align-items: center;
+  gap: var(--fullscreen-tv-info-gap);
   transition:
     opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
     transform var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
@@ -12977,11 +12978,20 @@ html.is-lp-view-switch::view-transition-new(root) {
 .fullscreen-tv-track-info {
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  gap: 4px;
-  padding-bottom: 8px;
+  justify-content: center;
+  height: var(--fullscreen-tv-album-size, 140px);
+  width: max-content;
   min-width: 0;
-  max-width: 50vw;
+  max-width: min(50vw, calc(100vw - var(--fullscreen-tv-album-size, 140px) - 2 * var(--fullscreen-tv-edge-offset) - var(--fullscreen-tv-info-gap)));
+}
+
+.fullscreen-tv-metadata-stack {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: calc(4px * var(--fullscreen-tv-metadata-scale, 1));
+  min-width: 0;
+  max-width: 100%;
 }
 
 .fullscreen-tv-title-container,
@@ -12994,7 +13004,7 @@ html.is-lp-view-switch::view-transition-new(root) {
 }
 
 .fullscreen-tv-title-container {
-  gap: 2px;
+  gap: calc(2px * var(--fullscreen-tv-metadata-scale, 1));
   /* Soft halo for the TV titles. A filter on the container (which has no
      overflow clipping) paints the same halo text-shadow would, without being
      cut into a rectangle by the titles' overflow:hidden clamp box. */
@@ -13003,7 +13013,7 @@ html.is-lp-view-switch::view-transition-new(root) {
 }
 
 .fullscreen-tv-artist-container {
-  gap: 1px;
+  gap: calc(1px * var(--fullscreen-tv-metadata-scale, 1));
 }
 
 /* TV Mode Title */
@@ -13041,11 +13051,14 @@ html.is-lp-view-switch::view-transition-new(root) {
 .fullscreen-tv-artist {
   font-weight: 500;
   color: rgba(255, 255, 255, 0.85);
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  text-shadow: var(--fullscreen-artist-outline-shadow, 0 0 0 transparent);
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
   line-height: 1.3;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-family: "Pretendard Variable", Pretendard, -apple-system,
     BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI",
     "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
@@ -13075,13 +13088,17 @@ html.is-lp-view-switch::view-transition-new(root) {
 
 /* TV Mode Album Name */
 .fullscreen-tv-album-name {
-  font-size: 14px;
+  font-size: calc(14px * var(--fullscreen-tv-metadata-scale, 1));
   font-weight: 400;
   color: rgba(255, 255, 255, 0.6);
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  text-shadow: var(--fullscreen-artist-outline-shadow, 0 0 0 transparent);
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.4));
+  display: block;
+  max-width: 100%;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-family: "Pretendard Variable", Pretendard, -apple-system,
     BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI",
     "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
@@ -13113,7 +13130,7 @@ html.is-lp-view-switch::view-transition-new(root) {
   }
 
   .fullscreen-tv-song-info {
-    gap: 16px;
+    --fullscreen-tv-info-gap: 16px;
   }
 }
 
@@ -13124,11 +13141,11 @@ html.is-lp-view-switch::view-transition-new(root) {
   }
 
   .fullscreen-tv-song-info {
-    gap: 12px;
+    --fullscreen-tv-info-gap: 12px;
   }
 
   .fullscreen-tv-track-info {
-    max-width: 60vw;
+    max-width: min(60vw, calc(100vw - var(--fullscreen-tv-album-size, 140px) - 2 * var(--fullscreen-tv-edge-offset) - var(--fullscreen-tv-info-gap)));
   }
 }
 
@@ -19277,15 +19294,11 @@ body.ivlyrics-sync-creator-covering > #main {
 }
 
 .fullscreen-tv-artist {
-  text-shadow:
-    var(--fullscreen-artist-outline-shadow, 0 0 0 transparent),
-    0 2px 6px rgba(0, 0, 0, 0.5);
+  text-shadow: var(--fullscreen-artist-outline-shadow, 0 0 0 transparent);
 }
 
 .fullscreen-tv-album-name {
-  text-shadow:
-    var(--fullscreen-artist-outline-shadow, 0 0 0 transparent),
-    0 1px 4px rgba(0, 0, 0, 0.4);
+  text-shadow: var(--fullscreen-artist-outline-shadow, 0 0 0 transparent);
 }
 
 .fullscreen-clock {
