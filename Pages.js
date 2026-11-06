@@ -7667,7 +7667,9 @@ const buildKaraokeTimedChars = (line) => {
 		return coalesceKaraokeTimedGraphemes(timedChars, lyricsLocale);
 	}
 
-	const fallbackChars = splitKaraokeGraphemes(getCopyableText(line?.text) || "", lyricsLocale);
+	// A karaoke track can contain line-timed rows. Presentation stores the
+	// pronunciation in `text`, so those rows must use the preserved original.
+	const fallbackChars = splitKaraokeGraphemes(getCopyableText(line?.originalText ?? line?.text) || "", lyricsLocale);
 	const { startTime, endTime } = getKaraokeLineBounds(line);
 	const totalDuration = Math.max(1, endTime - startTime || 500);
 	const charDuration = Math.max(1, totalDuration / Math.max(1, fallbackChars.length || 1));
@@ -8893,7 +8895,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 			? line.syllables
 			: getTimedSyllablesFromLine(line);
 		const rawLineText = sourceSyllables.map((syllable) => syllable?.text || "").join("")
-			|| getCopyableText(line.text)
+			|| getCopyableText(line.originalText ?? line.text)
 			|| "";
 		const processedText = furiganaMapOverride instanceof Map
 			? ""
