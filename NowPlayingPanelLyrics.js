@@ -5967,6 +5967,9 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
         }
 
         try {
+            // Native preview suppression also applies when startup restores
+            // ivLyrics, where insertPanelLyrics intentionally never mounts.
+            injectStyles();
             setPanelActiveState(true);
             setupPageDetection();
             setupObserver();

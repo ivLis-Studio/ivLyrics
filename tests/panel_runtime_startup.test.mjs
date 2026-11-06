@@ -77,7 +77,7 @@ class Element {
   get previousElementSibling() { return this.parentElement?.children[this.parentElement.children.indexOf(this) - 1] || null; }
 }
 
-function harness({ panelInitially = true, headerInitially = true, failPlayerSubscriptions = 0 } = {}) {
+function harness({ panelInitially = true, headerInitially = true, failPlayerSubscriptions = 0, initialPath = '/', enabled = true } = {}) {
   let time = 0, nextTimer = 1;
   const timers = new Map(), observers = [], renders = [], errors = [];
   const windowListeners = new Map(), playerListeners = new Map(), historyListeners = new Set();
@@ -125,15 +125,15 @@ function harness({ panelInitially = true, headerInitially = true, failPlayerSubs
   const Spicetify = {
     React: { Component: class {}, memo: component => component, createElement: (type, props, ...children) => ({ type, props, children }) },
     ReactDOM, Player: player, LocalStorage: { get: () => null, set() {} },
-    Platform: { History: { location: { pathname: '/' }, listen(listener) { historyListeners.add(listener); return () => historyListeners.delete(listener); } } },
+    Platform: { History: { location: { pathname: initialPath }, listen(listener) { historyListeners.add(listener); return () => historyListeners.delete(listener); } } },
   };
   const window = {
-    Spicetify, location: { pathname: '/' },
+    Spicetify, location: { pathname: initialPath },
     addEventListener: (name, listener) => add(windowListeners, name, listener),
     removeEventListener: (name, listener) => remove(windowListeners, name, listener),
   };
   const context = vm.createContext({
-    window, document, Spicetify, localStorage: { getItem: () => null, setItem() {} },
+    window, document, Spicetify, localStorage: { getItem: key => key === 'ivLyrics:visual:panel-lyrics-enabled' ? String(enabled) : null, setItem() {} },
     console: { log() {}, warn: (...args) => errors.push(args), error: (...args) => errors.push(args) },
     CSS: { supports: () => false },
     Date: class extends Date { static now() { return time; } },
@@ -290,4 +290,31 @@ test('the startup 1000 ms follow-up does not delay an earlier missing-header ins
   assert.ok(h.container()?.querySelector(`.${sectionClass}`), 'the existing 150 ms header retry is retained');
   assert.ok(h.renders[0].time <= 150);
   assert.equal(h.container().previousElementSibling, h.info);
+});
+
+for (const panelInitially of [true, false]) {
+  test(`starting on ivLyrics installs the native-preview suppression before panel arrival: ${panelInitially}`, () => {
+    const h = harness({ initialPath: '/ivLyrics', panelInitially });
+    h.load();
+    assert.equal(h.state().runtimeStarted, true);
+    assert.equal(h.container(), null, 'the ivLyrics page does not mount a duplicate panel');
+    const style = h.document.getElementById('ivlyrics-panel-lyrics-styles');
+    assert.ok(style, 'visibility rules must not depend on mounting a custom panel');
+    assert.match(style.textContent, /body\.ivlyrics-panel-lyrics-active \[data-testid="lyrics-npv-section"\]\s*\{\s*display: none !important;/);
+    assert.equal(h.body.classList.contains('ivlyrics-panel-lyrics-active'), true);
+    if (!panelInitially) { h.addPanel(); h.mutate(); h.advance(1100); }
+    assert.equal(h.container(), null);
+    h.window.NowPlayingPanelLyrics.setEnabled(false);
+    assert.equal(h.body.classList.contains('ivlyrics-panel-lyrics-active'), false, 'disabling restores the native preview');
+  });
+}
+
+test('enabling the panel while already on ivLyrics installs suppression without mounting lyrics', () => {
+  const h = harness({ initialPath: '/ivLyrics', enabled: false });
+  h.load();
+  assert.equal(h.body.classList.contains('ivlyrics-panel-lyrics-active'), false);
+  h.window.NowPlayingPanelLyrics.setEnabled(true);
+  assert.ok(h.document.getElementById('ivlyrics-panel-lyrics-styles'));
+  assert.equal(h.body.classList.contains('ivlyrics-panel-lyrics-active'), true);
+  assert.equal(h.container(), null);
 });
