@@ -506,12 +506,21 @@ const getSyncCreatorFrameAlignedProgress = (frameTime = NaN) => {
 const syncCreatorPreviewLiveClock = { getPosition: getSyncCreatorFrameAlignedProgress };
 const syncCreatorPreviewUsesLiveClock = () => typeof requestAnimationFrame === 'function'
 	&& window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches !== true;
-// Reduced motion keeps the editor's position, exactly as before.
-const SyncCreatorLivePreviewClock = ({ fallbackPosition, render }) => {
+// Reduced motion keeps the editor's coarse position. The editor publishes it
+// through positionStore, so only this preview re-renders on each commit.
+const SyncCreatorLivePreviewClock = ({ fallbackPosition, positionStore = null, render }) => {
 	const live = syncCreatorPreviewUsesLiveClock();
 	const [position, setPosition] = react.useState(() => Number(fallbackPosition) || 0);
 	react.useEffect(() => {
-		if (!live) return undefined;
+		if (!live) {
+			if (!positionStore) return undefined;
+			const sync = () => {
+				const next = Number(positionStore.get());
+				if (Number.isFinite(next)) setPosition((previous) => (previous === next ? previous : next));
+			};
+			sync();
+			return positionStore.subscribe(sync);
+		}
 		let frameId = null;
 		let timerId = null;
 		let lastCommit = -Infinity;
@@ -548,8 +557,67 @@ const SyncCreatorLivePreviewClock = ({ fallbackPosition, render }) => {
 			if (frameId !== null) cancelAnimationFrame(frameId);
 			if (timerId !== null) clearTimeout(timerId);
 		};
-	}, [live]);
-	return render(live ? position : fallbackPosition);
+	}, [live, positionStore]);
+	return render(live || positionStore ? position : fallbackPosition);
+};
+// Coarse editor playback position (35 ms while recording, 80 ms in preview).
+// It used to be SyncDataCreator state, so every commit re-rendered the whole
+// editor; readouts that show it now subscribe and re-render on their own.
+const createSyncCreatorPositionStore = (initialPosition = 0) => {
+	let value = initialPosition;
+	const listeners = new Set();
+	return {
+		get: () => value,
+		set: (next) => {
+			const resolved = typeof next === 'function' ? next(value) : next;
+			if (Object.is(resolved, value)) return;
+			value = resolved;
+			for (const listener of [...listeners]) listener(value);
+		},
+		subscribe: (listener) => {
+			listeners.add(listener);
+			return () => { listeners.delete(listener); };
+		},
+	};
+};
+const useSyncCreatorPosition = (positionStore) => {
+	if (typeof react.useSyncExternalStore === 'function') {
+		return react.useSyncExternalStore(positionStore.subscribe, positionStore.get);
+	}
+	const [position, setPosition] = react.useState(() => positionStore.get());
+	react.useEffect(() => {
+		setPosition(positionStore.get());
+		return positionStore.subscribe(setPosition);
+	}, [positionStore]);
+	return position;
+};
+// Building an Intl formatter costs far more than formatting with one; the
+// history list formatted every entry with a new formatter on each render.
+let syncCreatorHistoryTimeFormat = null;
+let syncCreatorHistoryTimeFormatLocale = null;
+const getSyncCreatorHistoryTimeFormat = () => {
+	const locale = typeof navigator !== 'undefined' ? navigator.language : undefined;
+	if (!syncCreatorHistoryTimeFormat || syncCreatorHistoryTimeFormatLocale !== locale) {
+		syncCreatorHistoryTimeFormat = new Intl.DateTimeFormat(undefined, {
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit'
+		});
+		syncCreatorHistoryTimeFormatLocale = locale;
+	}
+	return syncCreatorHistoryTimeFormat;
+};
+const SyncCreatorPlaybackTime = ({ positionStore, style, formatTime }) => (
+	react.createElement('span', { style }, formatTime(useSyncCreatorPosition(positionStore)))
+);
+const SyncCreatorPlaybackBar = ({ positionStore, barStyle, fillStyle, onClick }) => {
+	const position = useSyncCreatorPosition(positionStore);
+	const playbackPercent = (position / (Spicetify.Player?.data?.item?.duration?.milliseconds || 1)) * 100;
+	return react.createElement('div', {
+		style: { ...barStyle, '--iv-progress': `${playbackPercent}%` },
+		'data-iv-progress-bar': 'true',
+		onClick
+	}, react.createElement('div', { style: { ...fillStyle, width: `${playbackPercent}%` } }));
 };
 const countSyncCreatorRangeChars = (ranges) => (Array.isArray(ranges) ? ranges : []).reduce((sum, range) => {
 	const start = Number(range?.start);
@@ -3786,7 +3854,8 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const [showCharacterPronunciationConsent, setShowCharacterPronunciationConsent] = useState(false);
 	const [mode, setMode] = useState('idle');
 	const [syncGranularity, setSyncGranularity] = useState(SYNC_CREATOR_DEFAULT_GRANULARITY);
-	const [position, setPosition] = useState(0);
+	const [positionStore] = useState(() => createSyncCreatorPositionStore(0));
+	const setPosition = positionStore.set;
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [hasUnsubmittedSync, setHasUnsubmittedSync] = useState(false);
 	const [hasPublishedSync, setHasPublishedSync] = useState(false);
@@ -4042,10 +4111,39 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	}, []);
 	const getHistoryPanelHeightBounds = useCallback(() => {
 		const railHeight = historyPanelRef.current?.parentElement?.clientHeight || 720;
+		historyRailHeightRef.current = railHeight;
 		return {
 			min: SYNC_CREATOR_HISTORY_MIN_HEIGHT,
 			max: Math.max(SYNC_CREATOR_HISTORY_MIN_HEIGHT, railHeight - 180)
 		};
+	}, []);
+	// Rendering the resize handle read the rail height, forcing a synchronous
+	// layout in every editor render. The rail size is observed instead.
+	const historyRailHeightRef = useRef(0);
+	const historyRailObserverRef = useRef({ rail: null, observer: null });
+	const getRenderedHistoryPanelMaxHeight = () => Math.max(
+		SYNC_CREATOR_HISTORY_MIN_HEIGHT,
+		(historyRailHeightRef.current || 720) - 180
+	);
+	useEffect(() => {
+		const rail = historyPanelRef.current?.parentElement || null;
+		const tracked = historyRailObserverRef.current;
+		if (tracked.rail === rail) return;
+		tracked.observer?.disconnect();
+		tracked.rail = rail;
+		tracked.observer = null;
+		if (!rail || typeof ResizeObserver !== 'function') return;
+		const update = () => {
+			historyRailHeightRef.current = rail.clientHeight || 720;
+			rail.querySelector('.sync-creator-history-resize-handle')
+				?.setAttribute('aria-valuemax', String(Math.round(getRenderedHistoryPanelMaxHeight())));
+		};
+		tracked.observer = new ResizeObserver(update);
+		tracked.observer.observe(rail);
+	});
+	useEffect(() => () => {
+		historyRailObserverRef.current.observer?.disconnect();
+		historyRailObserverRef.current = { rail: null, observer: null };
 	}, []);
 	const persistHistoryPanelHeight = useCallback((height) => {
 		try {
@@ -11258,9 +11356,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	}, [getPreviewCharsForLine]);
 
 	const getPreviewProgressIndex = useCallback((lineIndex) => {
-		const progressIndex = getPreviewProgressIndexAtTime(lineIndex, position / 1000);
+		const progressIndex = getPreviewProgressIndexAtTime(lineIndex, positionStore.get() / 1000);
 		return Number.isFinite(progressIndex) ? Math.floor(progressIndex) : -1;
-	}, [getPreviewProgressIndexAtTime, position]);
+	}, [getPreviewProgressIndexAtTime, positionStore]);
 
 	const applyParallelPlaybackProgressVisual = useCallback((currentTimeSec) => {
 		// These read-only previews never share recording refs or lock state.
@@ -11394,10 +11492,12 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	}, [currentLineIndex, lyricsText, activeParallelPartId, currentSpeakerTextColor]);
 
 	useEffect(() => {
-		if (mode === 'record') {
+		if (mode !== 'record') return undefined;
+		lastPaintedPlaybackIndexRef.current = -2;
+		return positionStore.subscribe(() => {
 			lastPaintedPlaybackIndexRef.current = -2;
-		}
-	}, [mode, position, currentLineIndex, activeParallelPartId]);
+		});
+	}, [mode, positionStore, currentLineIndex, activeParallelPartId]);
 
 	// Clear offset selection whenever the displayed line changes
 	// (nav buttons, shortcuts, preview auto-follow) so stale selections
@@ -13698,17 +13798,17 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 
 	const renderPlaybackPanel = () => {
 		if (!lyricsText) return null;
-		const playbackPercent = (position / (Spicetify.Player?.data?.item?.duration?.milliseconds || 1)) * 100;
 		return react.createElement('div', { className: 'sync-creator-transport-section', style: { ...s.panel, ...s.transportPanel } },
 			react.createElement('div', { style: s.transportRow },
 				react.createElement('button', { style: s.seekBtn, onClick: () => handleSeekOffset(-3000) }, '-3s'),
 				react.createElement('button', { style: s.seekBtn, onClick: () => handleSeekOffset(-1000) }, '-1s'),
-				react.createElement('span', { style: s.playbackTime }, formatTime(position)),
-				react.createElement('div', {
-					style: { ...s.playbackBar, '--iv-progress': `${playbackPercent}%` },
-					'data-iv-progress-bar': 'true',
+				react.createElement(SyncCreatorPlaybackTime, { positionStore, style: s.playbackTime, formatTime }),
+				react.createElement(SyncCreatorPlaybackBar, {
+					positionStore,
+					barStyle: s.playbackBar,
+					fillStyle: s.playbackFill,
 					onClick: handleSeek
-				}, react.createElement('div', { style: { ...s.playbackFill, width: `${playbackPercent}%` } })),
+				}),
 				react.createElement('span', { style: s.playbackTime }, formatTime(Spicetify.Player?.data?.item?.duration?.milliseconds || 0)),
 				react.createElement('button', { style: s.seekBtn, onClick: () => handleSeekOffset(1000) }, '+1s'),
 				react.createElement('button', { style: s.seekBtn, onClick: () => handleSeekOffset(3000) }, '+3s')
@@ -13962,11 +14062,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		const date = getHistoryDate(timestamp);
 		if (!date) return '';
 		try {
-			return new Intl.DateTimeFormat(undefined, {
-				hour: '2-digit',
-				minute: '2-digit',
-				second: '2-digit'
-			}).format(date);
+			return getSyncCreatorHistoryTimeFormat().format(date);
 		} catch (error) {
 			return date.toLocaleTimeString();
 		}
@@ -14136,7 +14232,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			'aria-orientation': 'horizontal',
 			'aria-label': I18n.t('syncCreator.historyResize') || '작업 내역 높이 조절',
 			'aria-valuemin': SYNC_CREATOR_HISTORY_MIN_HEIGHT,
-			'aria-valuemax': Math.round(getHistoryPanelHeightBounds().max),
+			'aria-valuemax': Math.round(getRenderedHistoryPanelMaxHeight()),
 			'aria-valuenow': Math.round(historyPanelHeight || 190),
 			title: I18n.t('syncCreator.historyResizeHint') || '위아래로 드래그해 작업 내역 높이를 조절합니다.',
 			onPointerDown: handleHistoryResizePointerDown,
@@ -14758,7 +14854,11 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		}
 	), []);
 	const renderLivePreviewOverlay = () => (showLivePreview
-		? react.createElement(SyncCreatorLivePreviewClock, { fallbackPosition: position, render: renderLivePreviewOverlayAt })
+		? react.createElement(SyncCreatorLivePreviewClock, {
+			fallbackPosition: positionStore.get(),
+			positionStore,
+			render: renderLivePreviewOverlayAt
+		})
 		: null);
 	const renderLivePreviewOverlayAt = (position) => {
 		const PageRenderer = null;
