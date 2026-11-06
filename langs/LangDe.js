@@ -1234,6 +1234,10 @@ window.LANG_DE = {
     "instrumentalBreak": {
       "title": "Instrumental-Markierung",
       "subtitle": "Ersetzt lange leere oder reine Notenzeilen durch ein Symbol",
+      "keepPreviousLyrics": {
+        "label": "Vorherige Liedzeilen in Instrumentalpausen behalten",
+        "desc": "Zeigt in Instrumentalpausen die eingestellte Anzahl vorheriger Liedzeilen an. Bei 0 vorherigen Zeilen bleiben sie ausgeblendet."
+      },
       "autoDetect": {
         "label": "Instrumentale Lücken automatisch erkennen",
         "desc": "Wenn nach dem Ende einer Karaoke-Zeile vor der nächsten Zeile eine lange Lücke bleibt, wird automatisch ein Instrumental-Marker angezeigt."

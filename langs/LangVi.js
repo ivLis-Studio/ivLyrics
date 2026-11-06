@@ -1234,6 +1234,10 @@ window.LANG_VI = {
     "instrumentalBreak": {
       "title": "Dấu đoạn nhạc",
       "subtitle": "Thay khoảng trống lời dài hoặc dòng chỉ có nốt bằng biểu tượng",
+      "keepPreviousLyrics": {
+        "label": "Giữ lời trước đó trong đoạn nhạc không lời",
+        "desc": "Tiếp tục hiển thị số dòng lời trước đó đã đặt trong đoạn nhạc không lời. Nếu số dòng trước là 0, chúng vẫn bị ẩn."
+      },
       "autoDetect": {
         "label": "Tự phát hiện khoảng nhạc dạo",
         "desc": "Sau khi một dòng lời karaoke kết thúc, tự động hiển thị dấu nhạc dạo nếu có khoảng trống dài trước dòng tiếp theo."

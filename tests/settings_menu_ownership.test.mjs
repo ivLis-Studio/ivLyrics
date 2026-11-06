@@ -169,6 +169,28 @@ test("album-art mode shortcut has one LP settings owner, persistent saving and t
   assert.deepEqual(h.saves, [{ method: "saveConfig", key, value: true }]);
 });
 
+test("instrumental previous-lyrics option has a persistent appearance owner and resets to off", () => {
+  const key = "instrumental-break-keep-previous", h = harness();
+  const physical = allDeclarations(h).filter(({ item }) => item.key === key);
+  assert.equal(physical.length, 1);
+  assert.equal(physical[0].tabId, "appearance");
+  assert.equal(physical[0].sectionKey, "instrumental-break");
+  assert.equal(physical[0].item.defaultValue, false);
+  assert.equal(h.getSettingDefaultValue(key), false);
+  h.clearCalls();
+  physical[0].onChange(key, true);
+  assert.equal(h.visual[key], true);
+  assert.deepEqual(h.saves, [{ method: "saveConfig", key, value: true }]);
+  h.render();
+  const registry = Array.from(h.api.buildSettingsRegistry()).filter(entry => entry.key === key);
+  assert.equal(registry.length, 1);
+  assert.equal(registry[0].tabId, "appearance");
+  h.clearCalls();
+  h.api.resetChangedEntries(registry);
+  assert.equal(h.visual[key], false);
+  assert.deepEqual(h.saves, [{ method: "saveConfig", key, value: false }]);
+});
+
 test("Song Controls groups visibility and appearance under one searchable section without changing values", () => {
   const values = {
     "fullscreen-show-controls": false,

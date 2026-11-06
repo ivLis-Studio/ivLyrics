@@ -1234,6 +1234,10 @@ window.LANG_IT = {
     "instrumentalBreak": {
       "title": "Indicatore strumentale",
       "subtitle": "Sostituisce i lunghi spazi vuoti o le righe solo con note con un'icona",
+      "keepPreviousLyrics": {
+        "label": "Mantieni i versi precedenti durante le pause strumentali",
+        "desc": "Mantiene visibile il numero configurato di versi precedenti durante le pause strumentali. Con 0 versi precedenti, restano nascosti."
+      },
       "autoDetect": {
         "label": "Rileva automaticamente le pause strumentali",
         "desc": "Dopo la fine di una riga karaoke, mostra automaticamente un indicatore strumentale se c’è una lunga pausa prima della riga successiva."

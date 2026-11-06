@@ -1234,6 +1234,10 @@ window.LANG_SV = {
     "instrumentalBreak": {
       "title": "Instrumentmarkör",
       "subtitle": "Ersätter långa tomma rader eller rader med bara noter med en ikon",
+      "keepPreviousLyrics": {
+        "label": "Behåll tidigare textrader under instrumentalpauser",
+        "desc": "Visar det inställda antalet tidigare textrader under instrumentalpauser. Om antalet är 0 förblir de dolda."
+      },
       "autoDetect": {
         "label": "Identifiera instrumentala pauser automatiskt",
         "desc": "När en karaokerad är klar visas en instrumentalmarkör automatiskt om det finns en lång paus före nästa rad."

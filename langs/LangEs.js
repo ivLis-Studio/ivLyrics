@@ -1234,6 +1234,10 @@ window.LANG_ES = {
     "instrumentalBreak": {
       "title": "Marcador instrumental",
       "subtitle": "Sustituye los huecos largos vacíos o solo con notas por un icono",
+      "keepPreviousLyrics": {
+        "label": "Mantener las letras anteriores durante los interludios",
+        "desc": "Mantiene visible el número configurado de líneas anteriores durante los interludios. Si el número es 0, permanecen ocultas."
+      },
       "autoDetect": {
         "label": "Detectar pausas instrumentales automáticamente",
         "desc": "Después de que termine una línea de karaoke, muestra automáticamente un marcador instrumental si hay una pausa larga antes de la siguiente línea."

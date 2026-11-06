@@ -7348,6 +7348,7 @@ const SETTINGS_DEFAULT_VALUES = Object.freeze({
   "sync-data-custom-speaker-colors-enabled": true, "album-bg-blur": "20", "reduce-motion": false,
   "performance-frame-rate": 60, "instrumental-break-icon": "equalizer",
   "instrumental-break-show-label": false, "instrumental-break-auto-detect": true,
+  "instrumental-break-keep-previous": false,
   "instrumental-break-label-font-family": "", "instrumental-break-label-font-size": "",
   "instrumental-break-label-font-weight": "", "instrumental-break-label-opacity": "",
   "instrumental-break-label-outline-width": "0", "instrumental-break-label-outline-color": "#000000",
@@ -13027,6 +13028,13 @@ react.createElement(OptionList, {
               info: I18n.t("settingsAdvanced.instrumentalBreak.autoDetect.desc") || "After a karaoke lyric line finishes, show an instrumental marker for a long gap before the next line.",
               type: ConfigSlider,
               defaultValue: CONFIG.visual["instrumental-break-auto-detect"] ?? true,
+            },
+            {
+              desc: I18n.t("settingsAdvanced.instrumentalBreak.keepPreviousLyrics.label"),
+              key: "instrumental-break-keep-previous",
+              info: I18n.t("settingsAdvanced.instrumentalBreak.keepPreviousLyrics.desc"),
+              type: ConfigSlider,
+              defaultValue: CONFIG.visual["instrumental-break-keep-previous"] ?? false,
             },
             {
               desc: I18n.t("settingsAdvanced.instrumentalBreak.icon.label") || "Icon Design",

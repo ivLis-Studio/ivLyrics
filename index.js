@@ -2484,6 +2484,10 @@ const CONFIG = {
       "ivLyrics:visual:instrumental-break-auto-detect",
       true
     ),
+    "instrumental-break-keep-previous": StorageManager.get(
+      "ivLyrics:visual:instrumental-break-keep-previous",
+      false
+    ),
     "instrumental-break-label-font-family":
       StorageManager.getItem("ivLyrics:visual:instrumental-break-label-font-family") ||
       "",

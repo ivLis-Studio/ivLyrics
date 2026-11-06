@@ -1234,6 +1234,10 @@ window.LANG_TR = {
   "instrumentalBreak": {
     "title": "Enstrümantal İşareti",
     "subtitle": "Uzun boşlukları veya sadece nota olan söz boşluklarını bir simgeyle değiştir",
+    "keepPreviousLyrics": {
+      "label": "Enstrümantal aralarda önceki sözleri koru",
+      "desc": "Enstrümantal aralarda ayarlanan sayıda önceki söz satırını görünür tutar. Önceki satır sayısı 0 ise gizli kalırlar."
+    },
     "autoDetect": {
       "label": "Enstrümantal boşlukları otomatik algıla",
       "desc": "Bir karaoke satırı bittikten sonra, bir sonraki satıra kadar uzun bir boşluk varsa enstrümantal işareti göster."

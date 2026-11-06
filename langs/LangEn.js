@@ -1234,6 +1234,10 @@ window.LANG_EN = {
     "instrumentalBreak": {
       "title": "Instrumental Marker",
       "subtitle": "Replace long blank or note-only lyric gaps with an icon",
+      "keepPreviousLyrics": {
+        "label": "Keep previous lyrics during instrumental breaks",
+        "desc": "Keep the configured number of previous lyric lines visible during instrumental breaks. A previous-line count of 0 keeps them hidden."
+      },
       "autoDetect": {
         "label": "Auto-detect instrumental gaps",
         "desc": "After a karaoke lyric line finishes, show an instrumental marker for a long gap before the next line."

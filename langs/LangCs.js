@@ -1234,6 +1234,10 @@ window.LANG_CS = {
     "instrumentalBreak": {
       "title": "Instrumentální marker",
       "subtitle": "Nahraďte dlouhé prázdné mezery nebo mezery v textech pouze pro poznámky ikonou",
+      "keepPreviousLyrics": {
+        "label": "Ponechat předchozí text během instrumentálních pasáží",
+        "desc": "Během instrumentálních pasáží zobrazuje nastavený počet předchozích řádků textu. Při počtu 0 zůstanou skryté."
+      },
       "autoDetect": {
         "label": "Automatická detekce instrumentálních mezer",
         "desc": "Po skončení řádku karaoke textu zobrazí instrumentální značku, pokud je před dalším řádkem dlouhá mezera."

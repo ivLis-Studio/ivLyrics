@@ -61,3 +61,69 @@ test('an explicit instrumental marker collapses the finished line too', () => {
 	assert.match(props.className, /lyrics-lyricsContainer-LyricsLine-paddingLine/);
 	assert.equal(props.hiddenFromAccessibility, true);
 });
+
+test('keeping previous lyrics respects the configured count around a virtual instrumental marker', () => {
+	for (const compact of [true, false]) {
+		for (const before of [0, 1, 2, 3]) {
+			const engine = createEngine(currentSource);
+			engine.CONFIG.visual['instrumental-break-keep-previous'] = true;
+			engine.CONFIG.visual['lines-before'] = before;
+			const result = engine.render(makeLyrics(), 7200, { compact });
+			const texts = ['First vocal', 'Overlapping response', 'Inline styled voice'];
+			texts.forEach((text, index) => {
+				assert.equal(row(result, text).hiddenFromAccessibility, texts.length - index > before,
+					`${compact ? 'compact' : 'expanded'} ${before} previous: ${text}`);
+			});
+			const marker = result.elements.find(element => element.props.line?.isVirtualTrailingInterlude)?.props;
+			assert.ok(marker?.isCurrentLine, 'the instrumental marker remains active');
+			assert.equal(marker.hiddenFromAccessibility, false);
+			assert.equal(row(result, '日本語の声').hiddenFromAccessibility, false, 'upcoming lyrics are unaffected');
+		}
+	}
+});
+
+test('keeping previous lyrics also applies to explicit instrumental rows and line-synced lyrics', () => {
+	const lyrics = [lyric(1000, 1500, 'First'), lyric(2000, 2500, 'Second'),
+		{ startTime: 3000, text: '♪' }, lyric(7000, 8000, 'Next')];
+	for (const isKara of [true, false]) for (const before of [0, 1, 2]) {
+		const engine = createEngine(currentSource);
+		engine.CONFIG.visual['instrumental-break-keep-previous'] = true;
+		engine.CONFIG.visual['lines-before'] = before;
+		const result = engine.render(lyrics, 4000, { isKara });
+		assert.equal(row(result, 'First').hiddenFromAccessibility, before < 2);
+		assert.equal(row(result, 'Second').hiddenFromAccessibility, before < 1);
+		assert.equal(row(result, 'Next').hiddenFromAccessibility, false);
+	}
+});
+
+test('the option updates a cached interlude immediately and preserves manual browsing', () => {
+	const engine = createEngine(currentSource);
+	const lyrics = makeLyrics();
+	engine.CONFIG.visual['lines-before'] = 1;
+	const render = () => engine.render(lyrics, 7200);
+	assert.equal(row(render(), 'Inline styled voice').hiddenFromAccessibility, true);
+	engine.CONFIG.visual['instrumental-break-keep-previous'] = true;
+	assert.equal(row(render(), 'Inline styled voice').hiddenFromAccessibility, false);
+	engine.CONFIG.visual['instrumental-break-keep-previous'] = false;
+	assert.equal(row(render(), 'Inline styled voice').hiddenFromAccessibility, true);
+	engine.setScrolling(true);
+	for (const enabled of [false, true]) {
+		engine.CONFIG.visual['instrumental-break-keep-previous'] = enabled;
+		assert.ok(render().elements.every(element => element.props.hiddenFromAccessibility !== true));
+	}
+});
+
+test('ordinary playback remains unchanged and the last lyric can stay above the outro marker', () => {
+	const engine = createEngine(currentSource);
+	const lyrics = makeLyrics();
+	for (const position of [2000, 8500]) {
+		engine.CONFIG.visual['instrumental-break-keep-previous'] = false;
+		const before = JSON.parse(JSON.stringify(engine.render(lyrics, position)));
+		engine.CONFIG.visual['instrumental-break-keep-previous'] = true;
+		assert.deepEqual(JSON.parse(JSON.stringify(engine.render(lyrics, position))), before);
+	}
+	engine.CONFIG.visual['lines-before'] = 1;
+	const outro = engine.render(lyrics, 16000);
+	assert.equal(row(outro, 'Final vocal').hiddenFromAccessibility, false);
+	assert.ok(outro.elements.some(element => element.props.line?.isVirtualTrailingInterlude));
+});

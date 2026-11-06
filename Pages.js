@@ -7025,6 +7025,7 @@ const useSyncedLyricsEngine = ({
 	const itemPlaybackInterval = isKara ? getSyncedPlaybackBoundaryIndex(playbackBoundaries, position) : 0;
 	const bounceEnabled = CONFIG.visual["karaoke-bounce"] === true;
 	const linesAfter = CONFIG.visual["lines-after"];
+	const keepPreviousDuringInterlude = CONFIG.visual["instrumental-break-keep-previous"] === true;
 	const firstLyricStartTime = lyrics[0]?.startTime || 1;
 	const isBeforeFirstLyric = layoutPosition < firstLyricStartTime;
 	const isPreludeHandoff = lyricMotionDetailsEnabled && isBeforeFirstLyric
@@ -7112,9 +7113,15 @@ const useSyncedLyricsEngine = ({
 			const playbackState = getSyncedLinePlaybackState(playbackWindows[lineNumber], position);
 			const isHighlightedLine = isKara ? playbackState.isHighlighted : lineNumber === activeLineIndex;
 			const isAnimatingLine = isKara ? playbackState.isAnimating : isAnchorLine;
-			const visibilityAnimationIndex = compact
+			let visibilityAnimationIndex = compact
 				? displayLineNumber - activeDisplayLineIndex
 				: lineNumber - layoutActiveLineIndex;
+			// An auto-detected gap inserts a virtual marker after the last sung
+			// row. Count that row as the first previous lyric, just as a real
+			// instrumental row would, including the zero-previous-lines case.
+			if (keepPreviousDuringInterlude && isTrailingInterludeActive && lineNumber <= layoutActiveLineIndex) {
+				visibilityAnimationIndex -= 1;
+			}
 			let className = `lyrics-lyricsContainer-LyricsLine ${getLinePresentation(line).metaClass}`;
 			const isCurrentRenderedLine = isHighlightedLine
 				&& !(isAnchorLine && isTrailingInterludeActive);
@@ -7137,6 +7144,7 @@ const useSyncedLyricsEngine = ({
 					animationIndex: visibilityAnimationIndex,
 				}) || (
 					visibilityAnimationIndex < 0
+					&& !keepPreviousDuringInterlude
 					&& !(compact && isScrolling)
 					&& (
 						!!paddedLyrics[layoutActiveLineIndex]?.interludeInfo?.isInterlude
@@ -7146,7 +7154,8 @@ const useSyncedLyricsEngine = ({
 					)
 				))
 				// Manual browsing in compact mode keeps every row, as shouldHideSyncedLine does.
-				|| (isTrailingInterludeActive && isAnchorLine && !(compact && isScrolling)));
+				|| (isTrailingInterludeActive && isAnchorLine && !(compact && isScrolling)
+					&& (!keepPreviousDuringInterlude || linesBefore <= 0)));
 			if (isOutsideVisibleRange) {
 				className += " lyrics-lyricsContainer-LyricsLine-paddingLine";
 				className += visibilityAnimationIndex < 0
@@ -7266,6 +7275,7 @@ const useSyncedLyricsEngine = ({
 		getLinePresentation,
 		linesBefore,
 		linesAfter,
+		keepPreviousDuringInterlude,
 		suppressLayoutShiftAnimation,
 		usesScriptedCompactLineShift,
 		settingsRevision,

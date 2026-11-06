@@ -1234,6 +1234,10 @@ window.LANG_ZH_CN = {
     "instrumentalBreak": {
       "title": "器乐段标记",
       "subtitle": "用图标替换较长的空白或仅含音符的歌词段",
+      "keepPreviousLyrics": {
+        "label": "间奏时保留之前的歌词",
+        "desc": "间奏期间仍显示设定行数的上一段歌词。之前的显示行数为0时不显示。"
+      },
       "autoDetect": {
         "label": "自动检测间奏空档",
         "desc": "卡拉 OK 歌词行结束后，如果到下一行之间有较长空档，则自动显示间奏标记。"

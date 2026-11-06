@@ -1234,6 +1234,10 @@ window.LANG_FR = {
     "instrumentalBreak": {
       "title": "Repère instrumental",
       "subtitle": "Remplace les longs blancs ou lignes de notes seules par une icône",
+      "keepPreviousLyrics": {
+        "label": "Conserver les paroles précédentes pendant les passages instrumentaux",
+        "desc": "Garde visible le nombre configuré de lignes précédentes pendant les passages instrumentaux. Avec 0 ligne précédente, elles restent masquées."
+      },
       "autoDetect": {
         "label": "Détecter automatiquement les blancs instrumentaux",
         "desc": "Après la fin d’une ligne de karaoké, affiche automatiquement un repère instrumental si un long blanc précède la ligne suivante."
