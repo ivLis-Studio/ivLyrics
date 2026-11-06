@@ -9109,9 +9109,11 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 			)
 			: charNode;
 		const culturalMarkers = culturalMarkersByCharIndex.get(index) || [];
-		// Keep this virtual parent from the first live frame. Adding a marker
-		// must not replace the already singing glyph with a new Fragment subtree.
-		const element = !livePaint && culturalMarkers.length === 0 ? renderedCharNode : react.createElement(
+		// Live and static glyphs share one shape, so a row entering or leaving
+		// live painting only updates its glyphs. Wrapping live glyphs in a
+		// Fragment remounted every glyph of each row twice per line, and each
+		// remount invalidated layout and re-ran the page's centring pass.
+		const element = culturalMarkers.length === 0 ? renderedCharNode : react.createElement(
 			react.Fragment,
 			{ key: `karaoke-cultural-marker-${index}` },
 			renderedCharNode,

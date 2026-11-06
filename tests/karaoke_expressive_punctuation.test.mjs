@@ -33,7 +33,18 @@ const wrapperGate = source => {
 };
 const beforeWrapperChange = currentSource.replace(wrapperGate(currentSource), wrapperGate(baseline));
 
-const plain = value => JSON.parse(JSON.stringify(value));
+// Live glyphs no longer sit in an empty cultural-marker Fragment (it rendered
+// no DOM but remounted glyphs on live transitions). Compare what is beneath.
+const unwrapEmptyMarkerFragments = tree => {
+  if (Array.isArray(tree)) return tree.map(unwrapEmptyMarkerFragments);
+  if (!tree || typeof tree !== 'object') return tree;
+  if (tree.tag === 'fragment' && String(tree.props?.key).startsWith('karaoke-cultural-marker-')
+    && Array.isArray(tree.children?.[1]) && tree.children[1].length === 0) {
+    return unwrapEmptyMarkerFragments(tree.children[0]);
+  }
+  return Object.fromEntries(Object.entries(tree).map(([key, value]) => [key, unwrapEmptyMarkerFragments(value)]));
+};
+const plain = value => unwrapEmptyMarkerFragments(JSON.parse(JSON.stringify(value)));
 const nodes = (tree, name = null, result = []) => {
   if (Array.isArray(tree)) tree.forEach(child => nodes(child, name, result));
   else if (tree && typeof tree === 'object') {
