@@ -9826,10 +9826,13 @@ class LyricsContainer extends react.Component {
 
     this.handleSyncCreatorVisibility = (event) => {
       const active = event?.detail?.active ?? !!document.getElementById("ivLyrics-sync-creator-overlay");
-      if (this.state.isSyncCreatorActive !== active) {
+      // Compare against the pending state: a close and reopen in one tick must
+      // end active, or the full karaoke page keeps rendering under the editor.
+      this.setState((state) => {
+        if (state.isSyncCreatorActive === active) return null;
         this.lastProcessedMode = null;
-        this.setState({ isSyncCreatorActive: active });
-      }
+        return { isSyncCreatorActive: active };
+      });
     };
     window.addEventListener("ivLyrics:sync-creator-visibility", this.handleSyncCreatorVisibility);
     this.handleSyncCreatorVisibility();
