@@ -1,0 +1,1533 @@
+{
+  "format": 6,
+  "vectors": [
+    {
+      "name": "line",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 9,
+            "timing": {
+              "unit": "line",
+              "startMs": 1234,
+              "endMs": 2000
+            }
+          }
+        ]
+      },
+      "legacy": {
+        "version": 5,
+        "lines": [
+          {
+            "start": 0,
+            "end": 8,
+            "granularity": "line",
+            "timing": 1.234,
+            "lastCharEnd": 2
+          }
+        ]
+      },
+      "canonical": "{\"indexUnit\":\"nfc-codepoint\",\"lines\":[{\"id\":\"l0\",\"length\":9,\"offset\":0,\"timing\":{\"endMs\":2000,\"startMs\":1234,\"unit\":\"line\"}}],\"timeUnit\":\"ms\",\"version\":6}"
+    },
+    {
+      "name": "word",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 9,
+            "timing": {
+              "unit": "word",
+              "lengths": [
+                3,
+                3,
+                3
+              ],
+              "startMs": 1000,
+              "deltaMs": [
+                250,
+                750
+              ]
+            }
+          }
+        ]
+      },
+      "legacy": {
+        "version": 5,
+        "lines": [
+          {
+            "start": 0,
+            "end": 8,
+            "granularity": "word",
+            "timing": [
+              [
+                2,
+                1
+              ],
+              [
+                5,
+                1.25
+              ],
+              [
+                8,
+                2
+              ]
+            ]
+          }
+        ]
+      },
+      "canonical": "{\"indexUnit\":\"nfc-codepoint\",\"lines\":[{\"id\":\"l0\",\"length\":9,\"offset\":0,\"timing\":{\"deltaMs\":[250,750],\"lengths\":[3,3,3],\"startMs\":1000,\"unit\":\"word\"}}],\"timeUnit\":\"ms\",\"version\":6}"
+    },
+    {
+      "name": "character",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 5,
+            "timing": {
+              "unit": "character",
+              "startMs": 0,
+              "deltaMs": [
+                0,
+                1,
+                1233,
+                766
+              ],
+              "endMs": 3000
+            }
+          }
+        ]
+      },
+      "legacy": {
+        "version": 5,
+        "lines": [
+          {
+            "start": 0,
+            "end": 4,
+            "granularity": "character",
+            "chars": [
+              0,
+              0,
+              0.001,
+              1.234,
+              2
+            ],
+            "lastCharEnd": 3
+          }
+        ]
+      },
+      "canonical": "{\"indexUnit\":\"nfc-codepoint\",\"lines\":[{\"id\":\"l0\",\"length\":5,\"offset\":0,\"timing\":{\"deltaMs\":[0,1,1233,766],\"endMs\":3000,\"startMs\":0,\"unit\":\"character\"}}],\"timeUnit\":\"ms\",\"version\":6}"
+    },
+    {
+      "name": "mixed",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 5,
+            "timing": {
+              "unit": "mixed",
+              "runs": [
+                {
+                  "length": 2,
+                  "timing": {
+                    "unit": "word",
+                    "lengths": [
+                      2
+                    ],
+                    "startMs": 1000,
+                    "deltaMs": []
+                  }
+                },
+                {
+                  "length": 3,
+                  "timing": {
+                    "unit": "character",
+                    "startMs": 2000,
+                    "deltaMs": [
+                      1,
+                      299
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "legacy": {
+        "version": 5,
+        "lines": [
+          {
+            "start": 0,
+            "end": 4,
+            "granularity": "character",
+            "chars": [
+              1,
+              1,
+              2,
+              2.001,
+              2.3
+            ],
+            "unitLayout": [
+              {
+                "length": 2,
+                "unit": "word",
+                "lengths": [
+                  2
+                ]
+              },
+              {
+                "length": 3,
+                "unit": "character"
+              }
+            ]
+          }
+        ]
+      },
+      "canonical": "{\"indexUnit\":\"nfc-codepoint\",\"lines\":[{\"id\":\"l0\",\"length\":5,\"offset\":0,\"timing\":{\"runs\":[{\"length\":2,\"timing\":{\"deltaMs\":[],\"lengths\":[2],\"startMs\":1000,\"unit\":\"word\"}},{\"length\":3,\"timing\":{\"deltaMs\":[1,299],\"startMs\":2000,\"unit\":\"character\"}}],\"unit\":\"mixed\"}}],\"timeUnit\":\"ms\",\"version\":6}"
+    },
+    {
+      "name": "parallel",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l5",
+            "offset": 5,
+            "length": 4,
+            "styles": [
+              {
+                "range": [
+                  2,
+                  4
+                ],
+                "kind": "echo"
+              }
+            ],
+            "parallel": {
+              "layout": "stack",
+              "parts": [
+                {
+                  "id": "a",
+                  "role": "lead",
+                  "ranges": [
+                    [
+                      0,
+                      2
+                    ]
+                  ],
+                  "join": [],
+                  "timing": {
+                    "unit": "line",
+                    "startMs": 1000
+                  }
+                },
+                {
+                  "id": "b",
+                  "role": "background",
+                  "ranges": [
+                    [
+                      2,
+                      4
+                    ]
+                  ],
+                  "join": [],
+                  "timing": {
+                    "unit": "line",
+                    "startMs": 2000
+                  }
+                }
+              ],
+              "splits": [
+                2
+              ]
+            },
+            "derivedTiming": {
+              "unit": "character"
+            }
+          }
+        ]
+      },
+      "legacy": {
+        "version": 5,
+        "lines": [
+          {
+            "start": 5,
+            "end": 8,
+            "styleRanges": [
+              {
+                "start": 7,
+                "end": 8,
+                "kind": "echo"
+              }
+            ],
+            "parallel": {
+              "layout": "stack",
+              "parts": [
+                {
+                  "id": "a",
+                  "role": "lead",
+                  "ranges": [
+                    {
+                      "start": 5,
+                      "end": 6
+                    }
+                  ],
+                  "join": [],
+                  "granularity": "line",
+                  "timing": 1
+                },
+                {
+                  "id": "b",
+                  "role": "background",
+                  "ranges": [
+                    {
+                      "start": 7,
+                      "end": 8
+                    }
+                  ],
+                  "join": [],
+                  "granularity": "line",
+                  "timing": 2
+                }
+              ],
+              "manualSplitPoints": [
+                2
+              ]
+            },
+            "granularity": "character",
+            "chars": [
+              1,
+              1,
+              2,
+              2
+            ]
+          }
+        ]
+      },
+      "canonical": "{\"indexUnit\":\"nfc-codepoint\",\"lines\":[{\"derivedTiming\":{\"unit\":\"character\"},\"id\":\"l5\",\"length\":4,\"offset\":5,\"parallel\":{\"layout\":\"stack\",\"parts\":[{\"id\":\"a\",\"join\":[],\"ranges\":[[0,2]],\"role\":\"lead\",\"timing\":{\"startMs\":1000,\"unit\":\"line\"}},{\"id\":\"b\",\"join\":[],\"ranges\":[[2,4]],\"role\":\"background\",\"timing\":{\"startMs\":2000,\"unit\":\"line\"}}],\"splits\":[2]},\"styles\":[{\"kind\":\"echo\",\"range\":[2,4]}]}],\"timeUnit\":\"ms\",\"version\":6}"
+    },
+    {
+      "name": "overlap",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 3,
+            "timing": {
+              "unit": "character",
+              "startMs": 1000,
+              "deltaMs": [
+                100,
+                100
+              ]
+            },
+            "parallel": {
+              "layout": "stack",
+              "parts": [
+                {
+                  "id": "a",
+                  "role": "lead",
+                  "ranges": [
+                    [
+                      0,
+                      3
+                    ]
+                  ],
+                  "join": [],
+                  "timing": {
+                    "unit": "character",
+                    "startMs": 1000,
+                    "deltaMs": [
+                      100,
+                      100
+                    ]
+                  }
+                },
+                {
+                  "id": "b",
+                  "role": "background",
+                  "ranges": [
+                    [
+                      0,
+                      3
+                    ]
+                  ],
+                  "join": [],
+                  "timing": {
+                    "unit": "character",
+                    "startMs": 500,
+                    "deltaMs": [
+                      100,
+                      100
+                    ]
+                  }
+                }
+              ],
+              "hidden": [
+                [
+                  1,
+                  2
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      "legacy": {
+        "version": 5,
+        "lines": [
+          {
+            "start": 0,
+            "end": 2,
+            "parallel": {
+              "layout": "stack",
+              "parts": [
+                {
+                  "id": "a",
+                  "role": "lead",
+                  "ranges": [
+                    {
+                      "start": 0,
+                      "end": 2
+                    }
+                  ],
+                  "join": [],
+                  "granularity": "character",
+                  "chars": [
+                    1,
+                    1.1,
+                    1.2
+                  ]
+                },
+                {
+                  "id": "b",
+                  "role": "background",
+                  "ranges": [
+                    {
+                      "start": 0,
+                      "end": 2
+                    }
+                  ],
+                  "join": [],
+                  "granularity": "character",
+                  "chars": [
+                    0.5,
+                    0.6,
+                    0.7
+                  ]
+                }
+              ],
+              "hiddenRanges": [
+                {
+                  "start": 1,
+                  "end": 1
+                }
+              ]
+            },
+            "granularity": "character",
+            "chars": [
+              1,
+              1.1,
+              1.2
+            ]
+          }
+        ]
+      },
+      "canonical": "{\"indexUnit\":\"nfc-codepoint\",\"lines\":[{\"id\":\"l0\",\"length\":3,\"offset\":0,\"parallel\":{\"hidden\":[[1,2]],\"layout\":\"stack\",\"parts\":[{\"id\":\"a\",\"join\":[],\"ranges\":[[0,3]],\"role\":\"lead\",\"timing\":{\"deltaMs\":[100,100],\"startMs\":1000,\"unit\":\"character\"}},{\"id\":\"b\",\"join\":[],\"ranges\":[[0,3]],\"role\":\"background\",\"timing\":{\"deltaMs\":[100,100],\"startMs\":500,\"unit\":\"character\"}}]},\"timing\":{\"deltaMs\":[100,100],\"startMs\":1000,\"unit\":\"character\"}}],\"timeUnit\":\"ms\",\"version\":6}"
+    },
+    {
+      "name": "unicode-styles",
+      "text": "가👩🏽‍💻 é猫",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "source": {
+          "lineCharCounts": [
+            8
+          ],
+          "lineCount": 1,
+          "textCharCount": 8
+        },
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 8,
+            "timing": {
+              "unit": "character",
+              "startMs": 1000,
+              "deltaMs": [
+                123,
+                123,
+                123,
+                123,
+                123,
+                123,
+                123
+              ]
+            },
+            "meta": {
+              "speaker": "CUSTOM",
+              "speaker-color": "#aabbcc",
+              "speaker-fallback": "FEMALE 1",
+              "kind": "vocal"
+            },
+            "styles": [
+              {
+                "range": [
+                  1,
+                  5
+                ],
+                "speaker": "MALE 1",
+                "kind": "echo"
+              }
+            ]
+          }
+        ]
+      },
+      "legacy": {
+        "version": 5,
+        "source": {
+          "lineCharCounts": [
+            8
+          ],
+          "lineCount": 1,
+          "textCharCount": 8
+        },
+        "lines": [
+          {
+            "start": 0,
+            "end": 7,
+            "speaker": "CUSTOM",
+            "speaker-color": "#aabbcc",
+            "speaker-fallback": "FEMALE 1",
+            "kind": "vocal",
+            "styleRanges": [
+              {
+                "start": 1,
+                "end": 4,
+                "speaker": "MALE 1",
+                "kind": "echo"
+              }
+            ],
+            "granularity": "character",
+            "chars": [
+              1,
+              1.123,
+              1.246,
+              1.369,
+              1.492,
+              1.615,
+              1.738,
+              1.861
+            ]
+          }
+        ]
+      },
+      "canonical": "{\"indexUnit\":\"nfc-codepoint\",\"lines\":[{\"id\":\"l0\",\"length\":8,\"meta\":{\"kind\":\"vocal\",\"speaker\":\"CUSTOM\",\"speaker-color\":\"#aabbcc\",\"speaker-fallback\":\"FEMALE 1\"},\"offset\":0,\"styles\":[{\"kind\":\"echo\",\"range\":[1,5],\"speaker\":\"MALE 1\"}],\"timing\":{\"deltaMs\":[123,123,123,123,123,123,123],\"startMs\":1000,\"unit\":\"character\"}}],\"source\":{\"lineCharCounts\":[8],\"lineCount\":1,\"textCharCount\":8},\"timeUnit\":\"ms\",\"version\":6}"
+    },
+    {
+      "name": "unknown-legacy",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 3,
+            "timing": {
+              "unit": "character",
+              "startMs": 0,
+              "deltaMs": [
+                0,
+                1
+              ],
+              "declared": false
+            }
+          }
+        ]
+      },
+      "legacy": {
+        "version": 5,
+        "lines": [
+          {
+            "start": 0,
+            "end": 2,
+            "chars": [
+              0,
+              0,
+              0.001
+            ]
+          }
+        ]
+      },
+      "canonical": "{\"indexUnit\":\"nfc-codepoint\",\"lines\":[{\"id\":\"l0\",\"length\":3,\"offset\":0,\"timing\":{\"declared\":false,\"deltaMs\":[0,1],\"startMs\":0,\"unit\":\"character\"}}],\"timeUnit\":\"ms\",\"version\":6}"
+    },
+    {
+      "name": "equal-word-starts",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 6,
+            "timing": {
+              "unit": "word",
+              "lengths": [
+                3,
+                3
+              ],
+              "startMs": 1000,
+              "deltaMs": [
+                0
+              ]
+            }
+          }
+        ]
+      },
+      "legacy": {
+        "version": 5,
+        "lines": [
+          {
+            "start": 0,
+            "end": 5,
+            "granularity": "word",
+            "timing": [
+              [
+                2,
+                1
+              ],
+              [
+                5,
+                1
+              ]
+            ]
+          }
+        ]
+      },
+      "canonical": "{\"indexUnit\":\"nfc-codepoint\",\"lines\":[{\"id\":\"l0\",\"length\":6,\"offset\":0,\"timing\":{\"deltaMs\":[0],\"lengths\":[3,3],\"startMs\":1000,\"unit\":\"word\"}}],\"timeUnit\":\"ms\",\"version\":6}"
+    },
+    {
+      "name": "parallel-held",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 4,
+            "parallel": {
+              "layout": "stack",
+              "parts": [
+                {
+                  "id": "a",
+                  "role": "lead",
+                  "ranges": [
+                    [
+                      0,
+                      2
+                    ]
+                  ],
+                  "join": [],
+                  "timing": {
+                    "unit": "word",
+                    "lengths": [
+                      1,
+                      1
+                    ],
+                    "startMs": 1000,
+                    "deltaMs": [
+                      500
+                    ],
+                    "endMs": 2200
+                  }
+                },
+                {
+                  "id": "b",
+                  "role": "background",
+                  "ranges": [
+                    [
+                      2,
+                      4
+                    ]
+                  ],
+                  "join": [],
+                  "timing": {
+                    "unit": "character",
+                    "startMs": 2000,
+                    "deltaMs": [
+                      500
+                    ],
+                    "endMs": 3500
+                  }
+                }
+              ]
+            },
+            "derivedTiming": {
+              "unit": "character",
+              "endMs": 4000
+            }
+          }
+        ]
+      },
+      "legacy": {
+        "version": 5,
+        "lines": [
+          {
+            "start": 0,
+            "end": 3,
+            "parallel": {
+              "layout": "stack",
+              "parts": [
+                {
+                  "id": "a",
+                  "role": "lead",
+                  "ranges": [
+                    {
+                      "start": 0,
+                      "end": 1
+                    }
+                  ],
+                  "join": [],
+                  "granularity": "word",
+                  "timing": [
+                    [
+                      0,
+                      1
+                    ],
+                    [
+                      1,
+                      1.5
+                    ]
+                  ],
+                  "lastCharEnd": 2.2
+                },
+                {
+                  "id": "b",
+                  "role": "background",
+                  "ranges": [
+                    {
+                      "start": 2,
+                      "end": 3
+                    }
+                  ],
+                  "join": [],
+                  "granularity": "character",
+                  "chars": [
+                    2,
+                    2.5
+                  ],
+                  "lastCharEnd": 3.5
+                }
+              ]
+            },
+            "granularity": "character",
+            "chars": [
+              1,
+              1.5,
+              2,
+              2.5
+            ],
+            "lastCharEnd": 4
+          }
+        ]
+      },
+      "canonical": "{\"indexUnit\":\"nfc-codepoint\",\"lines\":[{\"derivedTiming\":{\"endMs\":4000,\"unit\":\"character\"},\"id\":\"l0\",\"length\":4,\"offset\":0,\"parallel\":{\"layout\":\"stack\",\"parts\":[{\"id\":\"a\",\"join\":[],\"ranges\":[[0,2]],\"role\":\"lead\",\"timing\":{\"deltaMs\":[500],\"endMs\":2200,\"lengths\":[1,1],\"startMs\":1000,\"unit\":\"word\"}},{\"id\":\"b\",\"join\":[],\"ranges\":[[2,4]],\"role\":\"background\",\"timing\":{\"deltaMs\":[500],\"endMs\":3500,\"startMs\":2000,\"unit\":\"character\"}}]}}],\"timeUnit\":\"ms\",\"version\":6}"
+    },
+    {
+      "name": "joined-ranges",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 6,
+            "parallel": {
+              "layout": "stack",
+              "parts": [
+                {
+                  "id": "a",
+                  "role": "lead",
+                  "ranges": [
+                    [
+                      0,
+                      2
+                    ],
+                    [
+                      4,
+                      6
+                    ]
+                  ],
+                  "join": [
+                    1
+                  ],
+                  "timing": {
+                    "unit": "word",
+                    "lengths": [
+                      2,
+                      2
+                    ],
+                    "startMs": 1000,
+                    "deltaMs": [
+                      1000
+                    ]
+                  }
+                },
+                {
+                  "id": "b",
+                  "role": "background",
+                  "ranges": [
+                    [
+                      2,
+                      4
+                    ]
+                  ],
+                  "join": [],
+                  "timing": {
+                    "unit": "character",
+                    "startMs": 1500,
+                    "deltaMs": [
+                      300
+                    ]
+                  }
+                }
+              ]
+            },
+            "derivedTiming": {
+              "unit": "character"
+            }
+          }
+        ]
+      },
+      "legacy": {
+        "version": 5,
+        "lines": [
+          {
+            "start": 0,
+            "end": 5,
+            "parallel": {
+              "layout": "stack",
+              "parts": [
+                {
+                  "id": "a",
+                  "role": "lead",
+                  "ranges": [
+                    {
+                      "start": 0,
+                      "end": 1
+                    },
+                    {
+                      "start": 4,
+                      "end": 5
+                    }
+                  ],
+                  "join": [
+                    1
+                  ],
+                  "granularity": "word",
+                  "timing": [
+                    [
+                      1,
+                      1
+                    ],
+                    [
+                      3,
+                      2
+                    ]
+                  ]
+                },
+                {
+                  "id": "b",
+                  "role": "background",
+                  "ranges": [
+                    {
+                      "start": 2,
+                      "end": 3
+                    }
+                  ],
+                  "join": [],
+                  "granularity": "character",
+                  "chars": [
+                    1.5,
+                    1.8
+                  ]
+                }
+              ]
+            },
+            "granularity": "character",
+            "chars": [
+              1,
+              1,
+              1.5,
+              1.8,
+              2,
+              2
+            ]
+          }
+        ]
+      },
+      "canonical": "{\"indexUnit\":\"nfc-codepoint\",\"lines\":[{\"derivedTiming\":{\"unit\":\"character\"},\"id\":\"l0\",\"length\":6,\"offset\":0,\"parallel\":{\"layout\":\"stack\",\"parts\":[{\"id\":\"a\",\"join\":[1],\"ranges\":[[0,2],[4,6]],\"role\":\"lead\",\"timing\":{\"deltaMs\":[1000],\"lengths\":[2,2],\"startMs\":1000,\"unit\":\"word\"}},{\"id\":\"b\",\"join\":[],\"ranges\":[[2,4]],\"role\":\"background\",\"timing\":{\"deltaMs\":[300],\"startMs\":1500,\"unit\":\"character\"}}]}}],\"timeUnit\":\"ms\",\"version\":6}"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "version-only",
+      "v6": {
+        "version": 6,
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 9,
+            "timing": {
+              "unit": "word",
+              "lengths": [
+                3,
+                3,
+                3
+              ],
+              "startMs": 1000,
+              "deltaMs": [
+                250,
+                750
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "wrong-index-unit",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "utf16",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 9,
+            "timing": {
+              "unit": "word",
+              "lengths": [
+                3,
+                3,
+                3
+              ],
+              "startMs": 1000,
+              "deltaMs": [
+                250,
+                750
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "fractional-time",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 9,
+            "timing": {
+              "unit": "word",
+              "lengths": [
+                3,
+                3,
+                3
+              ],
+              "startMs": 0.5,
+              "deltaMs": [
+                250,
+                750
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "boolean-time",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 9,
+            "timing": {
+              "unit": "word",
+              "lengths": [
+                3,
+                3,
+                3
+              ],
+              "startMs": true,
+              "deltaMs": [
+                250,
+                750
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "negative-delta",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 9,
+            "timing": {
+              "unit": "word",
+              "lengths": [
+                3,
+                3,
+                3
+              ],
+              "startMs": 1000,
+              "deltaMs": [
+                -1,
+                750
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "word-coverage",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 9,
+            "timing": {
+              "unit": "word",
+              "lengths": [
+                1
+              ],
+              "startMs": 1000,
+              "deltaMs": [
+                250,
+                750
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "word-delta-count",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 9,
+            "timing": {
+              "unit": "word",
+              "lengths": [
+                3,
+                3,
+                3
+              ],
+              "startMs": 1000,
+              "deltaMs": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown-unit",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 9,
+            "timing": {
+              "unit": "syllable",
+              "lengths": [
+                3,
+                3,
+                3
+              ],
+              "startMs": 1000,
+              "deltaMs": [
+                250,
+                750
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "line-id",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "wrong",
+            "offset": 0,
+            "length": 9,
+            "timing": {
+              "unit": "word",
+              "lengths": [
+                3,
+                3,
+                3
+              ],
+              "startMs": 1000,
+              "deltaMs": [
+                250,
+                750
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "overlapping-lines",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 9,
+            "timing": {
+              "unit": "word",
+              "lengths": [
+                3,
+                3,
+                3
+              ],
+              "startMs": 1000,
+              "deltaMs": [
+                250,
+                750
+              ]
+            }
+          },
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 9,
+            "timing": {
+              "unit": "word",
+              "lengths": [
+                3,
+                3,
+                3
+              ],
+              "startMs": 1000,
+              "deltaMs": [
+                250,
+                750
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "allocation-bound",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 1000000000,
+            "timing": {
+              "unit": "word",
+              "lengths": [
+                3,
+                3,
+                3
+              ],
+              "startMs": 1000,
+              "deltaMs": [
+                250,
+                750
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "style-outside",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 9,
+            "timing": {
+              "unit": "word",
+              "lengths": [
+                3,
+                3,
+                3
+              ],
+              "startMs": 1000,
+              "deltaMs": [
+                250,
+                750
+              ]
+            },
+            "styles": [
+              {
+                "range": [
+                  0,
+                  100
+                ],
+                "kind": "echo"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "mixed-coverage",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 5,
+            "timing": {
+              "unit": "mixed",
+              "runs": [
+                {
+                  "length": 1,
+                  "timing": {
+                    "unit": "word",
+                    "lengths": [
+                      2
+                    ],
+                    "startMs": 1000,
+                    "deltaMs": []
+                  }
+                },
+                {
+                  "length": 3,
+                  "timing": {
+                    "unit": "character",
+                    "startMs": 2000,
+                    "deltaMs": [
+                      1,
+                      299
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "mixed-inner-hold",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l0",
+            "offset": 0,
+            "length": 5,
+            "timing": {
+              "unit": "mixed",
+              "runs": [
+                {
+                  "length": 2,
+                  "timing": {
+                    "unit": "word",
+                    "lengths": [
+                      2
+                    ],
+                    "startMs": 1000,
+                    "deltaMs": [],
+                    "endMs": 1500
+                  }
+                },
+                {
+                  "length": 3,
+                  "timing": {
+                    "unit": "character",
+                    "startMs": 2000,
+                    "deltaMs": [
+                      1,
+                      299
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "derived-gap",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l5",
+            "offset": 5,
+            "length": 4,
+            "styles": [
+              {
+                "range": [
+                  2,
+                  4
+                ],
+                "kind": "echo"
+              }
+            ],
+            "parallel": {
+              "layout": "stack",
+              "parts": [
+                {
+                  "id": "a",
+                  "role": "lead",
+                  "ranges": [
+                    [
+                      0,
+                      2
+                    ]
+                  ],
+                  "join": [],
+                  "timing": {
+                    "unit": "line",
+                    "startMs": 1000
+                  }
+                }
+              ],
+              "splits": [
+                2
+              ]
+            },
+            "derivedTiming": {
+              "unit": "character"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "bad-local-range",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l5",
+            "offset": 5,
+            "length": 4,
+            "styles": [
+              {
+                "range": [
+                  2,
+                  4
+                ],
+                "kind": "echo"
+              }
+            ],
+            "parallel": {
+              "layout": "stack",
+              "parts": [
+                {
+                  "id": "a",
+                  "role": "lead",
+                  "ranges": [
+                    [
+                      0,
+                      100
+                    ]
+                  ],
+                  "join": [],
+                  "timing": {
+                    "unit": "line",
+                    "startMs": 1000
+                  }
+                },
+                {
+                  "id": "b",
+                  "role": "background",
+                  "ranges": [
+                    [
+                      2,
+                      4
+                    ]
+                  ],
+                  "join": [],
+                  "timing": {
+                    "unit": "line",
+                    "startMs": 2000
+                  }
+                }
+              ],
+              "splits": [
+                2
+              ]
+            },
+            "derivedTiming": {
+              "unit": "character"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "pending-with-timing",
+      "v6": {
+        "version": 6,
+        "timeUnit": "ms",
+        "indexUnit": "nfc-codepoint",
+        "lines": [
+          {
+            "id": "l5",
+            "offset": 5,
+            "length": 4,
+            "styles": [
+              {
+                "range": [
+                  2,
+                  4
+                ],
+                "kind": "echo"
+              }
+            ],
+            "parallel": {
+              "layout": "stack",
+              "parts": [
+                {
+                  "id": "a",
+                  "role": "lead",
+                  "ranges": [
+                    [
+                      0,
+                      2
+                    ]
+                  ],
+                  "join": [],
+                  "timing": {
+                    "unit": "line",
+                    "startMs": 1000
+                  },
+                  "pendingUnit": "line"
+                },
+                {
+                  "id": "b",
+                  "role": "background",
+                  "ranges": [
+                    [
+                      2,
+                      4
+                    ]
+                  ],
+                  "join": [],
+                  "timing": {
+                    "unit": "line",
+                    "startMs": 2000
+                  }
+                }
+              ],
+              "splits": [
+                2
+              ]
+            },
+            "derivedTiming": {
+              "unit": "character"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -3598,6 +3598,7 @@
             }
             url.searchParams.set('isrc', isrc);
             url.searchParams.set('request-version', SYNC_DATA_REQUEST_VERSION);
+            url.searchParams.set('format', '6');
             if (provider) {
                 url.searchParams.set('provider', provider);
             }
@@ -4670,6 +4671,8 @@
         }
 
         async function submitSyncData(trackId, provider, syncData, metadata = {}, options = {}) {
+            if (!window.SyncDataCodec) throw new Error('Sync v6 codec is unavailable. Please update ivLyrics.');
+            syncData = window.SyncDataCodec.encode(syncData);
             if (String(provider || '').trim().toLowerCase() === 'lrclib') {
                 const lrclibId = syncData?.source?.lrclibId === null || syncData?.source?.lrclibId === undefined
                     ? ''
@@ -5667,6 +5670,10 @@
          * sync-data v3 also strips standalone parenthetical wrappers from parallel vocal part ranges.
          */
         function applySyncDataToLyrics(lyrics, syncData, options = {}) {
+            if (syncData?.syncData?.version === 6) {
+                try { syncData = { ...syncData, syncData: window.SyncDataCodec.decode(syncData.syncData) }; }
+                catch (error) { console.warn('[ivLyrics] Invalid sync data:', error); return null; }
+            }
             if (!lyrics || !syncData || !syncData.syncData || !syncData.syncData.lines) {
                 return null;
             }

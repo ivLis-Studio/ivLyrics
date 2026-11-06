@@ -305,7 +305,77 @@
     };
   };
 
+  const changedFields = (before, after) => ({
+    put: Object.fromEntries(Object.entries(after).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(before[key]))),
+    remove: Object.keys(before).filter(key => !Object.prototype.hasOwnProperty.call(after, key)),
+  });
+  const applyFields = (before, patch) => {
+    if (!isPlainObject(patch?.put) || !Array.isArray(patch.remove)) throw new Error("Invalid draft patch");
+    const value = { ...before };
+    for (const key of patch.remove) delete value[key];
+    for (const [key, item] of Object.entries(patch.put)) Object.defineProperty(value, key, { value: cloneValue(item), enumerable: true, writable: true, configurable: true });
+    return value;
+  };
+  const compactDraft = draft => {
+    const result = cloneValue(draft);
+    if (result?.syncData && root.SyncDataCodec) {
+      try { result.syncData = root.SyncDataCodec.encode(result.syncData); } catch { /* Unfinished input remains recoverable. */ }
+    }
+    return result;
+  };
+  const draftPatch = (before, after) => {
+    const patch = changedFields(before, after);
+    if (before.syncData?.version === 6 && after.syncData?.version === 6) {
+      delete patch.put.syncData;
+      patch.sync = root.SyncDataCodec.diff(before.syncData, after.syncData);
+    }
+    if (before.editor && after.editor) { delete patch.put.editor; patch.editor = changedFields(before.editor, after.editor); }
+    return patch;
+  };
+  const applyDraftPatch = (before, patch) => {
+    const next = applyFields(before, patch);
+    if (patch.sync) next.syncData = root.SyncDataCodec.applyPatch(before.syncData, patch.sync);
+    if (patch.editor) next.editor = applyFields(before.editor, patch.editor);
+    return next;
+  };
+  // Keep API recordVersion 1; storage encoding is private and old records are
+  // read unchanged. Every tenth entry is independently recoverable after damage.
+  const packStoredRecord = record => {
+    if (!root.SyncDataCodec) return record;
+    let previous = null;
+    const result = { ...record, storageEncoding: 6, history: record.history.map((entry, index) => {
+      const snapshot = compactDraft(entry.snapshot);
+      const patch = previous && index % 10 ? draftPatch(previous, snapshot) : null;
+      const next = { ...entry, ...(patch && JSON.stringify(patch).length < JSON.stringify(snapshot).length
+        ? { patch } : { snapshot }) };
+      if (next.patch) delete next.snapshot;
+      previous = snapshot; return next;
+    }) };
+    const draft = compactDraft(record.draft);
+    const same = record.history.find(entry => JSON.stringify(compactDraft(entry.snapshot)) === JSON.stringify(draft));
+    result.draft = same ? { historyRef: same.id } : draft;
+    return result;
+  };
+  const unpackStoredRecord = record => {
+    if (record?.storageEncoding !== 6) return record;
+    if (!root.SyncDataCodec) return null;
+    let previous = null;
+    const history = [];
+    for (const entry of Array.isArray(record.history) ? record.history : []) {
+      try {
+        const snapshot = entry.patch ? applyDraftPatch(previous, entry.patch) : cloneValue(entry.snapshot);
+        if (snapshot?.syncData?.version === 6) root.SyncDataCodec.validate(snapshot.syncData);
+        if (!normalizeDraft(snapshot)) throw new Error("Invalid checkpoint");
+        const next = { ...entry, snapshot }; delete next.patch;
+        history.push(next); previous = snapshot;
+      } catch { previous = null; }
+    }
+    const draft = record.draft?.historyRef ? history.find(entry => entry.id === record.draft.historyRef)?.snapshot || null : record.draft;
+    const result = { ...record, draft, history }; delete result.storageEncoding;
+    return result;
+  };
   const decodeStoredRecord = (record) => {
+    record = unpackStoredRecord(record);
     const strictRecord = normalizeRecord(record);
     if (strictRecord) return strictRecord;
     if (!isPlainObject(record) || record.recordVersion !== RECORD_VERSION) return null;
@@ -571,7 +641,7 @@
             const normalized = normalizeRecord(nextRecord);
             if (!normalized) throw new Error("Invalid Sync Creator draft record.");
             nextRecord = normalized;
-            store.put(normalized);
+            store.put(packStoredRecord(normalized));
           }
         } catch (error) {
           transaction.abort();
@@ -837,6 +907,7 @@
       mergeCheckpointRecord,
       mergeRestoredRecord,
       decodeStoredRecord,
+      packStoredRecord, unpackStoredRecord,
       normalizeDraft,
       normalizeCharacterPronunciationResult,
       normalizeCharacterPronunciationRecord,

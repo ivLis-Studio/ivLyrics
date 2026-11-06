@@ -5,6 +5,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const require = createRequire(import.meta.url);
+const SyncDataCodec = vm.runInNewContext(readFileSync(new URL('../SyncDataCodec.js', import.meta.url), 'utf8') + ';SyncDataCodec');
 const { create } = require('../SyncCreatorScoreTracker.js');
 const creator = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
 const service = readFileSync(new URL('../LyricsService.js', import.meta.url), 'utf8');
@@ -37,7 +38,7 @@ function submissionHarness(fetchImpl) {
   const calls = [], cacheWrites = [];
   const submit = vm.runInNewContext(slice(service, '        async function submitSyncData(', '        /**')
     + '\nsubmitSyncData', {
-    I18n, Utils: { getAuthToken: () => 'session', requireDiscordAuth: async () => {} },
+    window: { SyncDataCodec }, I18n, Utils: { getAuthToken: () => 'session', requireDiscordAuth: async () => {} },
     resolveSyncDataIdentity: async () => ({ isrc: 'USABC1234567', trackId: 'track' }),
     getUserHash: () => 'user', getSyncDataTrackMetadata: () => ({}), getCurrentSpotifyProfile: async () => null,
     API_BASE: 'https://lyrics.api.ivl.is', SYNC_DATA_REQUEST_VERSION: '20260701',

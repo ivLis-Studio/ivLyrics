@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { createRequire } from 'node:module';
+const SyncDataCodec = createRequire(import.meta.url)('../SyncDataCodec.js');
 
 const utilsSource = readFileSync(new URL('../Utils.js', import.meta.url), 'utf8');
 const serviceSource = readFileSync(new URL('../LyricsService.js', import.meta.url), 'utf8');
@@ -71,7 +73,7 @@ test('shipping submit service consumes operation separately from the posted meta
   const start = serviceSource.indexOf('        async function submitSyncData(');
   const end = serviceSource.indexOf('        /**', start);
   let posted;
-  const context = { Utils: f.utils, I18n: { t: () => 'login required' },
+  const context = { window: { SyncDataCodec }, Utils: f.utils, I18n: { t: () => 'login required' },
     resolveSyncDataIdentity: async () => ({ isrc: 'USABC1234567', trackId: 'track' }),
     getUserHash: () => 'user-a', getSyncDataTrackMetadata: () => ({}), getCurrentSpotifyProfile: async () => null,
     API_BASE: 'https://api.example', SYNC_DATA_REQUEST_VERSION: '20260701', Spicetify: { Config: { version: 'test' } },

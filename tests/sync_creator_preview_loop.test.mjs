@@ -814,6 +814,7 @@ test("committing a selected recording preserves every nonselected saved or inher
 	assert.ok(mappingStart > 0 && mappingEnd > mappingStart);
 	vm.runInContext(`globalThis.committedParts = (() => {
 		const countRangeChars = countSyncCreatorRangeChars;
+		${source.slice(source.indexOf("const projectSyncCreatorUnitLayout ="), source.indexOf("const encodeSyncCreatorCompactTiming ="))}
 		${source.slice(mappingStart, mappingEnd)}
 		return parts;
 	})();`, preview.context);

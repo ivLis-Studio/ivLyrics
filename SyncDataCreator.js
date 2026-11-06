@@ -73,6 +73,7 @@ const SYNC_CREATOR_MAX_PART_ID_LENGTH = 32;
 // A held final note may end at most this long after its last character starts
 // (lastCharEnd, matching the server's limit).
 const SYNC_CREATOR_MAX_LAST_CHAR_HOLD_SEC = 60;
+// Internal editing compatibility view. Persistent/network writers use SyncDataCodec v6.
 const SYNC_CREATOR_SYNC_DATA_VERSION = 5;
 const SYNC_CREATOR_SOURCE_ADDON_ID = 'lrclib';
 const SYNC_CREATOR_GRANULARITIES = new Set(['line', 'word', 'character']);
@@ -735,6 +736,14 @@ const decodeSyncCreatorCompactTiming = (target, expectedLength) => {
 	delete decoded.timing;
 	return decoded;
 };
+const projectSyncCreatorUnitLayout = (source, target) => {
+	if (!source?.unitLayout || !window.SyncDataCodec || !Array.isArray(target?.chars)) return target;
+	const ranges = value => Array.isArray(value?.ranges) ? value.ranges : [{ start: value?.start, end: value?.end }];
+	const flatten = value => ranges(value).flatMap(range => Number.isInteger(range.start) && Number.isInteger(range.end)
+		? Array.from({ length: Math.max(0, range.end - range.start + 1) }, (_,index)=>range.start+index) : []);
+	const positions = new Map(flatten(source).map((index,local)=>[index,local]));
+	return window.SyncDataCodec.projectUnits(source,target,flatten(target).map(index=>positions.get(index)));
+};
 const encodeSyncCreatorCompactTiming = (target, sourceChars, locale = undefined) => {
 	if (!target || typeof target !== 'object' || !Array.isArray(target.chars)) return target;
 	const granularity = normalizeSyncCreatorGranularity(target.granularity);
@@ -932,6 +941,9 @@ const sanitizeSyncCreatorLastCharEnds = (data) => {
 	return changed ? { ...data, lines } : data;
 };
 const getSyncCreatorSyncDataValidationError = (data) => {
+	if (data?.version === 6) {
+		try { data = prepareSyncCreatorWorkSnapshot(data); } catch (error) { return error.message; }
+	}
 	if (!data || !Array.isArray(data.lines)) return 'Invalid sync data format';
 
 	for (let lineIndex = 0; lineIndex < data.lines.length; lineIndex++) {
@@ -1079,6 +1091,8 @@ const canonicalSyncCreatorSyncLineForUnsubmittedCompare = (line) => {
 		kind: normalizeSyncCreatorKind(line?.kind) || SYNC_CREATOR_DEFAULT_KIND,
 		speaker: normalizeSyncCreatorSpeaker(line?.speaker) || SYNC_CREATOR_DEFAULT_SPEAKER,
 		granularity: normalizeSyncCreatorGranularity(line?.granularity),
+		unitLayout: line?.unitLayout || null,
+		lastCharEnd: line?.lastCharEnd === undefined ? null : finiteTime(line.lastCharEnd),
 		speakerColor: normalizeSyncCreatorSpeakerColor(line?.['speaker-color']),
 		speakerFallback: normalizeSyncCreatorSpeakerFallback(line?.['speaker-fallback']),
 		hiddenRanges: canonicalRanges(line?.hiddenRanges),
@@ -1101,12 +1115,20 @@ const canonicalSyncCreatorSyncLineForUnsubmittedCompare = (line) => {
 			kind: normalizeSyncCreatorKind(part?.kind) || SYNC_CREATOR_DEFAULT_KIND,
 			speaker: normalizeSyncCreatorSpeaker(part?.speaker) || SYNC_CREATOR_DEFAULT_SPEAKER,
 			granularity: normalizeSyncCreatorGranularity(part?.granularity || line?.granularity),
+			unitLayout: part?.unitLayout || null,
+			lastCharEnd: part?.lastCharEnd === undefined ? null : finiteTime(part.lastCharEnd),
 			speakerColor: normalizeSyncCreatorSpeakerColor(part?.['speaker-color']),
 			speakerFallback: normalizeSyncCreatorSpeakerFallback(part?.['speaker-fallback'])
 		}))
 	};
 };
 const areSyncCreatorSyncBodiesEqual = (left, right) => {
+	if (left?.version === 6 || right?.version === 6) {
+		try {
+			left = prepareSyncCreatorWorkSnapshot(window.SyncDataCodec.encode(left));
+			right = prepareSyncCreatorWorkSnapshot(window.SyncDataCodec.encode(right));
+		} catch (_) { return false; }
+	}
 	const leftLines = Array.isArray(left?.lines) ? left.lines : [];
 	const rightLines = Array.isArray(right?.lines) ? right.lines : [];
 	if (leftLines.length !== rightLines.length) return false;
@@ -1455,7 +1477,7 @@ const clipSyncCreatorLineToBounds = (line) => {
 			delete nextPart.timing;
 			delete nextPart.lastCharEnd;
 		}
-		return nextPart;
+		return projectSyncCreatorUnitLayout(part, nextPart);
 	};
 	const parallel = line.parallel && typeof line.parallel === 'object' ? line.parallel : null;
 	const parts = Array.isArray(parallel?.parts) ? parallel.parts : null;
@@ -1548,6 +1570,7 @@ const preserveSyncCreatorParallelTimingRuns = (parallel) => {
 	return { ...parallel, parts };
 };
 const prepareSyncCreatorWorkSnapshot = (data) => {
+	if (data?.version === 6) data = window.SyncDataCodec.decode(data);
 	if (!Array.isArray(data?.lines)) return data;
 	return { ...data, lines: data.lines.map(line => {
 		const expanded = decodeSyncCreatorCompactTiming(line, Number(line.end) - Number(line.start) + 1);
@@ -1841,6 +1864,7 @@ const shiftSyncCreatorLineIndexes = (lines, charOffset) => {
 };
 
 const normalizeLoadedSyncCreatorBodyForLyrics = (syncBody, lyricsText) => {
+	if (syncBody?.version === 6) syncBody = window.SyncDataCodec.decode(syncBody);
 	if (!syncBody || !Array.isArray(syncBody.lines)) return syncBody;
 
 	const sourceLineCounts = Array.isArray(syncBody?.source?.lineCharCounts)
@@ -3453,6 +3477,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	};
 
 	const sanitizeSyncCreatorSyncData = (data, fullTextChars = null) => {
+		if (data?.version === 6) data = window.SyncDataCodec.decode(data);
 		if (!data || !Array.isArray(data.lines)) return data;
 		let migratedParallelRanges = false;
 		const lines = data.lines.map((line) => {
@@ -3528,30 +3553,11 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 
 	const compactSyncCreatorSyncData = (data, fullTextChars = null, locale = undefined) => {
 		if (!data || !Array.isArray(data.lines)) return data;
-		const sourceChars = Array.isArray(fullTextChars) ? fullTextChars : [];
-		const lines = data.lines.map((line) => {
-			const lineChars = sourceChars.slice(Number(line.start), Number(line.end) + 1);
-			let nextLine = encodeSyncCreatorCompactTiming(line, lineChars, locale);
-			if (line.parallel && Array.isArray(line.parallel.parts)) {
-				nextLine = {
-					...nextLine,
-					parallel: {
-						...line.parallel,
-						parts: line.parallel.parts.map((part) => {
-							const partChars = (Array.isArray(part.ranges) ? part.ranges : [])
-								.flatMap(range => sourceChars.slice(Number(range.start), Number(range.end) + 1));
-							return encodeSyncCreatorCompactTiming(part, partChars, locale);
-						})
-					}
-				};
-			}
-			return nextLine;
+		if (!window.SyncDataCodec) throw new Error('Sync v6 codec is unavailable. Please update ivLyrics.');
+		return window.SyncDataCodec.encode(data, {
+			chars: Array.isArray(fullTextChars) ? fullTextChars : [],
+			wordRanges: chars => getSyncCreatorWordRanges(chars, locale)
 		});
-		return {
-			...data,
-			version: Math.max(SYNC_CREATOR_SYNC_DATA_VERSION, Number(data.version) || 1),
-			lines
-		};
 	};
 
 	const buildParentheticalParallelTemplate = (lineChars, lineStart = 0, options = {}) => {
@@ -3781,7 +3787,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					true,
 					sourceSpeaker
 				);
-				return {
+				return projectSyncCreatorUnitLayout(existing, {
 						...part,
 						role: existing?.role || part.role,
 						speaker,
@@ -3800,7 +3806,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 							&& areSyncCreatorParallelRangesEqual(part.ranges, existing.ranges)
 							? { lastCharEnd: existing.lastCharEnd }
 							: {})
-					};
+					});
 				})
 		});
 		// Partitioning the main lyric text must not discard a second voice that
@@ -7376,6 +7382,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 							? { 'speaker-color': partSpeakerColor }
 							: {}),
 						kind: part.kind,
+						...(part.id !== activeParallelPart.id && (existingPart?.unitLayout || part.unitLayout) ? { unitLayout: existingPart?.unitLayout || part.unitLayout } : {}),
 						ranges: part.ranges,
 						join: part.join || []
 					};
@@ -7387,7 +7394,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 								: syncedChars === existingPart?.chars ? existingPart.lastCharEnd : undefined;
 						if (isFiniteSyncCreatorTime(heldEnd)) nextPart.lastCharEnd = heldEnd;
 					}
-					return nextPart;
+					return part.id === activeParallelPart.id ? nextPart : projectSyncCreatorUnitLayout(existingPart || part, nextPart);
 				})
 				.filter(Boolean);
 
@@ -7409,6 +7416,19 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			delete lineData.parallel;
 			// A re-recorded line starts without the old held end of its last character.
 			delete lineData.lastCharEnd;
+		}
+
+		const input = scoreInputRef.current;
+		if (input?.key === `${lineStart}:${activeParallelTargetId}` && input.indexes?.size && window.SyncDataCodec) {
+			const previousTarget = activeParallelPart ? existingLine?.parallel?.parts?.find(part => part.id === activeParallelPart.id) : existingLine;
+			const target = activeParallelPart ? lineData.parallel?.parts?.find(part => part.id === activeParallelPart.id) : lineData;
+			if (previousTarget && target) {
+				const localIndexes = currentLineCharRefs.map((ref,index) => input.indexes.has(ref.absoluteIndex) ? index : -1).filter(index=>index>=0);
+				const recorded = window.SyncDataCodec.recordedUnits(previousTarget, target, localIndexes, input.granularity,
+					getSyncCreatorWordRanges(currentLineChars, lyricsLanguage || undefined));
+				if (activeParallelPart) Object.assign(target, recorded);
+				else lineData = recorded;
+			}
 		}
 
 		const normalizedStyleRanges = normalizeSyncCreatorStyleRanges(currentLineStyleRanges, lineStart, lineEnd);
@@ -9939,7 +9959,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			assertValidSyncCreatorSyncData(repaired);
 			// Keep the historical source and body. Current layout drafts and the
 			// current song's source must never be projected onto queued work.
-			return encodeSyncCreatorWorkSnapshot(repaired, data);
+			return window.SyncDataCodec.encode(encodeSyncCreatorWorkSnapshot(repaired, window.SyncDataCodec.decode(data)));
 		} catch (_) {
 			return null;
 		}

@@ -28,8 +28,47 @@
   function create(options) {
     const now = options.now || Date.now;
     const scope = `${options.accountId}:${options.isrc}:lrclib`;
+    const codec = options.codec || root.SyncDataCodec;
+    // The legacy adapter is retained for hosts that load the tracker in isolation.
+    // Production loads the codec first; the server independently rejects old writes.
+    const compact = value => {
+      if (!codec) return clone(value);
+      try { return codec.encode(value); } catch { return clone(value); }
+    };
+    const equivalent = (left, right) => {
+      if (codec) { try { return codec.canonical(left) === codec.canonical(right); } catch {} }
+      return sameSnapshot(left, right);
+    };
+    const packState = value => {
+      if (!codec) return clone(value);
+      let base = value.lastSnapshot || null;
+      const { queue, ...header } = value;
+      return { ...clone(header), version: 2, queue: queue.map(event => {
+        const { syncData, ...fields } = event;
+        const next = clone(fields);
+        try {
+          const data = codec.encode(event.syncData);
+          next.snapshotPatch = codec.diff(base, data);
+          delete next.syncData;
+          base = data;
+        } catch { next.syncData = clone(syncData); base = null; }
+        return next;
+      }) };
+    };
+    const unpackState = value => {
+      if (value.version !== 2) return value;
+      let base = value.lastSnapshot || null;
+      return { ...value, queue: value.queue.map(event => {
+        const next = { ...event };
+        if (event.snapshotPatch) {
+          next.syncData = codec.applyPatch(base, event.snapshotPatch);
+          delete next.snapshotPatch;
+        }
+        base = next.syncData; return next;
+      }) };
+    };
     let state = { version: 1, scope, sessionId: '', sequence: 0, queue: [] };
-    let latest = clone(options.initialSyncData);
+    let latest = compact(options.initialSyncData);
     let loading = true;
     let stopped = false;
     let processing = null;
@@ -43,7 +82,7 @@
     const attemptedSnapshotRepairs = new Set();
     const isAuthorized = () => options.isAuthorized?.() !== false;
     const persist = () => {
-      const snapshot = clone(state);
+      const snapshot = packState(state);
       persistChain = persistChain.catch(() => undefined).then(() => options.storage?.saveScoreWork?.(scope, snapshot));
       // Persistence failure never loses the in-memory queue or blocks editing.
       persistChain.catch(() => undefined);
@@ -51,11 +90,13 @@
     };
     const ready = Promise.resolve(options.storage?.getScoreWork?.(scope)).catch(() => null).then(saved => {
       const pending = state.queue;
-      if (saved?.version === 1 && saved.scope === scope && Array.isArray(saved.queue)) {
-        state = { ...saved, queue: [...saved.queue, ...pending] };
+      if ([1, 2].includes(saved?.version) && saved.scope === scope && Array.isArray(saved.queue)) {
+        const restored = unpackState(saved);
+        state = { ...restored, lastSnapshot: restored.lastSnapshot ? compact(restored.lastSnapshot) : undefined,
+          queue: [...restored.queue.map(event => ({ ...event, syncData: compact(event.syncData) })), ...pending] };
       }
       if (!state.sessionId && !state.queue.some(event => event.action === 'start')) {
-        state.queue.unshift({ eventId: eventId(), action: 'start', syncData: clone(options.initialSyncData), activeSeconds: 0 });
+        state.queue.unshift({ eventId: eventId(), action: 'start', syncData: compact(options.initialSyncData), activeSeconds: 0 });
       }
       loading = false;
       persist();
@@ -78,7 +119,7 @@
     const enqueue = (action, syncData = latest, target) => {
       if (stopped || !isAuthorized()) return false;
       sample();
-      latest = clone(syncData);
+      latest = compact(syncData);
       const activeSeconds = Math.min(HEARTBEAT_MS * 2 / 1000, Math.floor(pendingSeconds));
       pendingSeconds -= activeSeconds;
       state.queue.push({ eventId: eventId(), action, syncData: clone(latest), ...(target ? { target: clone(target) } : {}), activeSeconds });
@@ -107,8 +148,8 @@
           try {
             repaired = await options.repairSnapshot(clone(next.syncData));
             if (!repaired || typeof repaired !== 'object' || !Array.isArray(repaired.lines)
-              || sameSnapshot(next.syncData, repaired)) return false;
-            repaired = clone(repaired);
+              || equivalent(next.syncData, repaired)) return false;
+            repaired = compact(repaired);
           } catch { return false; }
           if (!isAuthorized()) throw new Error('Sync scoring account changed.');
           // Validation rejected this event before hashing or saving it. Repair
@@ -116,6 +157,7 @@
           const replacement = { ...next, syncData: repaired,
             action: next.action === 'start' ? 'start' : 'import', activeSeconds: 0, snapshotRepaired: true };
           delete replacement.target;
+          delete replacement.request;
           state.queue[0] = replacement;
           await persist();
           return true;
@@ -133,6 +175,7 @@
           let resumed;
           try {
             resumed = await options.request({ action: 'resume', eventId: eventId(),
+              ...(codec ? { formatVersion: 6 } : {}),
               isrc: options.isrc, provider: 'lrclib', ...(state.sessionId ? { sessionId: state.sessionId } : {}) });
           } catch (resumeError) {
             if (resumeError?.status === 409) conflictError = failure;
@@ -145,15 +188,16 @@
           // Only acknowledged events may be discarded. Similar data alone
           // cannot erase an import boundary or assert that a record was saved.
           const acknowledged = state.queue.findIndex(event => event.eventId === resumed.lastEventId
-            && sameSnapshot(event.syncData, resumed.syncData));
-          const unchanged = sameSnapshot(state.lastSnapshot || (!state.sequence ? options.initialSyncData : null), resumed.syncData);
+            && equivalent(event.syncData, resumed.syncData));
+          const unchanged = equivalent(state.lastSnapshot || (!state.sequence ? options.initialSyncData : null), resumed.syncData);
           if (acknowledged < 0 && !unchanged) {
             conflictError = failure;
             throw failure;
           }
           recoveredEvents.add(next.eventId);
           if (acknowledged >= 0) state.queue.splice(0, acknowledged + 1);
-          state.lastSnapshot = clone(resumed.syncData);
+          state.lastSnapshot = compact(resumed.syncData);
+          if (codec) state.lastHash = await codec.hash(state.lastSnapshot);
           state.sessionId = resumed.sessionId;
           state.sequence = resumed.sequence;
           if (resumed.sameSession === false) {
@@ -161,20 +205,49 @@
             // unchanged server snapshot as the new baseline.
             state.sessionId = '';
             state.sequence = 0;
-            state.queue.unshift({ eventId: eventId(), action: 'start', syncData: clone(resumed.syncData), activeSeconds: 0 });
+            state.queue.unshift({ eventId: eventId(), action: 'start', syncData: compact(resumed.syncData), activeSeconds: 0 });
           }
+          for (const event of state.queue) delete event.request;
           await persist();
         };
         while (state.queue.length) {
           if (!isAuthorized()) throw new Error('Sync scoring account changed.');
           const next = state.queue[0];
-          const payload = {
+          let payload = next.request || {
             ...clone(next), isrc: options.isrc, provider: 'lrclib',
             ...(state.sessionId ? { sessionId: state.sessionId } : {}),
             sequence: next.action === 'start' ? 0 : state.sequence + 1
           };
           // The durable repair marker is local, never part of a request hash.
           delete payload.snapshotRepaired;
+          delete payload.request;
+          if (codec && !next.request) {
+            try {
+              const data = codec.encode(next.syncData);
+              const resultHash = await codec.hash(data);
+              payload.formatVersion = 6;
+              payload.resultHash = resultHash;
+              if (next.action === 'start' || !state.lastSnapshot) payload.syncData = data;
+              else {
+                payload.baseHash = state.lastHash || await codec.hash(state.lastSnapshot);
+                if (next.action === 'heartbeat') {
+                  if (!equivalent(state.lastSnapshot, data)) {
+                    // An observed change without manual input is a checkpoint,
+                    // never a heartbeat that can manufacture recording credit.
+                    payload.action = 'checkpoint';
+                    payload.patch = codec.diff(state.lastSnapshot, data);
+                  }
+                } else payload.patch = codec.diff(state.lastSnapshot, data);
+                delete payload.syncData;
+              }
+              next.syncData = data;
+              next.request = clone(payload);
+            } catch (error) {
+              const rejection = Object.assign(new Error('Invalid work snapshot: Line timing: ' + error.message.replace(/^Invalid sync v6: /, '')), { status: 400 });
+              if (await repairInvalidSnapshot(next, rejection)) continue;
+              rejectedWorkError = rejection; throw rejection;
+            }
+          }
           // Persist before sending. Retried requests retain the same event ID.
           await persist();
           let result;
@@ -198,9 +271,13 @@
           if (next.action !== 'start' && (result.sessionId !== state.sessionId || result.sequence !== payload.sequence)) {
             throw new Error('Sync work acknowledgement did not match the queued edit.');
           }
+          if (codec && result.contentHash !== payload.resultHash) {
+            throw new Error('Sync work acknowledgement content hash did not match the queued edit.');
+          }
           state.sessionId = result.sessionId;
           state.sequence = result.sequence;
           state.lastSnapshot = clone(next.syncData);
+          if (codec) state.lastHash = payload.resultHash;
           state.queue.shift();
           lastError = null;
           await persist();
@@ -219,7 +296,7 @@
     return {
       scope, ready, interact, enqueue, flush, heartbeat,
       suspend() { sample(); lastInteraction = -Infinity; },
-      observe(syncData) { latest = clone(syncData); },
+      observe(syncData) { latest = compact(syncData); },
       async submission(syncData) {
         if (conflictError) throw conflictError;
         if (rejectedWorkError) throw rejectedWorkError;

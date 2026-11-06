@@ -159,3 +159,16 @@ test('published-sync presence is tracked wherever the baseline changes', () => {
 	const revert = source.slice(source.indexOf('const handleRevertToPublished ='), source.indexOf('const handleSubmit ='));
 	assert.ok(revert.includes('setHasPublishedSync(true);'));
 });
+
+test('a v6 published baseline equals its expanded editor view and remains dirty after a unit or held-end change',()=>{
+  const context=vm.createContext({console,structuredClone,window:{}});
+  vm.runInContext(readFileSync(new URL('../SyncDataCodec.js',import.meta.url),'utf8'),context);
+  vm.runInContext(helpersSource+';globalThis.compare = areSyncCreatorSyncBodiesEqual;globalThis.expand = prepareSyncCreatorWorkSnapshot;',context);
+  const codec=context.window.SyncDataCodec;
+  for(const granularity of ['line','word','character']){
+    const before={version:5,lines:[{start:0,end:3,granularity,...(granularity==='line'?{timing:1}:granularity==='word'?{timing:[[1,1],[3,2]]}:{chars:[1,1.1,2,2.1]})}]};
+    const wire=codec.encode(before),editor=structuredClone(context.expand(wire));
+    assert.equal(context.compare(wire,editor),true,granularity);
+    editor.lines[0].lastCharEnd=3;assert.equal(context.compare(wire,editor),false,granularity);
+  }
+});

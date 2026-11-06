@@ -70,6 +70,7 @@
 		"LearningMode.js"
 	],
 	"subfiles_extension": [
+		"SyncDataCodec.js",
 		"InstrumentalBreaks.js",
 		"StoragePersistence.js",
 		"MarketplaceManager.js",

@@ -7,7 +7,7 @@ import vm from 'node:vm';
 
 const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
 const draftStore = createRequire(import.meta.url)('../SyncCreatorDraftStore.js');
-const plain = value => JSON.parse(JSON.stringify(value));
+const plain = value => JSON.parse(JSON.stringify(value?.version === 6 ? createRequire(import.meta.url)('../SyncDataCodec.js').decode(value) : value));
 const slice = (startMarker, endMarker) => {
     const start = source.indexOf(startMarker);
     const end = source.indexOf(endMarker, start + startMarker.length);
@@ -53,7 +53,7 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
     let input;
     let revision = 100;
     const context = vm.createContext({
-        console, structuredClone, Blob, window: {}, clearTimeout() {}, setTimeout() {},
+        console, structuredClone, Blob, window: { SyncDataCodec: createRequire(import.meta.url)('../SyncDataCodec.js') }, clearTimeout() {}, setTimeout() {},
         useCallback: fn => fn, useMemo: fn => fn(),
         syncCreatorDraftStore: draftStore,
         syncData: structuredClone(fixture), lyricsLines: rows, lyricsText: rows.join('\n'),
@@ -200,13 +200,13 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
         split: point => { context.api.toggleManualParallelSplitPoint(point); render(); },
         record: () => plain(context.api.buildSyncCreatorSessionRecord()),
         recover: record => { context.api.applySyncCreatorSessionRecord(record, { announce: false }); render(); },
-        export: async () => { await context.api.exportSyncData(); return JSON.parse(savedFile); },
+        export: async () => { await context.api.exportSyncData(); const wire = JSON.parse(savedFile); assert.equal(wire.version, 6); return context.window.SyncDataCodec.decode(wire); },
         submit: async () => {
             context.trackIsrc = 'USFIX1234567';
             submittedFile = null;
             await context.api.handleSubmit();
             assert.ok(submittedFile, 'the production submit callback must reach the intercepted transport');
-            return submittedFile;
+            return context.window.SyncDataCodec.decode(submittedFile);
         },
         import: async file => {
             context.api.importSyncData();
@@ -832,7 +832,7 @@ test('manual joins survive the backend validator, storage normalizer, public GET
 test('published merged groups render once with exact edited timing marks in the real lyric decoder', async () => {
     const { KaraokeWordTiming, SyncDataSourceCompatibility } = createRequire(import.meta.url)('../LyricsService.js');
     const playbackSource = readFileSync(new URL('../LyricsService.js', import.meta.url), 'utf8');
-    const playback = vm.createContext({ window: {}, Spicetify: {}, console, KaraokeWordTiming, SyncDataSourceCompatibility });
+    const playback = vm.createContext({ window: { SyncDataCodec: createRequire(import.meta.url)('../SyncDataCodec.js') }, Spicetify: {}, console, KaraokeWordTiming, SyncDataSourceCompatibility });
     const addonSource = readFileSync(new URL('../Addon_Lyrics_Lrclib.js', import.meta.url), 'utf8');
     vm.runInContext(addonSource.slice(addonSource.indexOf('    function buildLrclibSyncDataParallelParts('),
         addonSource.indexOf('    function stripLrcTimestamps(', addonSource.indexOf('    function buildLrclibSyncDataParallelParts('))), playback);
@@ -847,7 +847,10 @@ test('published merged groups render once with exact edited timing marks in the 
     for (const expectedText of [['ABCD', 'EF'], ['ABCDEF']]) {
         if (expectedText.length === 1) editor.split(4);
         const published = await editor.submit();
-        const result = plain(playback.apply(rows.map(text => ({ text })), { provider: 'lrclib', syncData: published }))[1];
+        const wire = playback.window.SyncDataCodec.encode(published);
+        const played = playback.apply(rows.map(text => ({ text })), { provider: 'lrclib', syncData: wire });
+        assert.deepEqual(plain(played), plain(playback.apply(rows.map(text => ({ text })), { provider: 'lrclib', syncData: published })), 'v6 and legacy playback are identical');
+        const result = plain(played)[1];
         const vocals = result.vocals ? [result.vocals.lead, ...result.vocals.background] : [result];
         assert.deepEqual(vocals.map(part => part.text), expectedText,
             'ordered wire timing targets must not become separate visible vocal rows');
