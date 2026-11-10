@@ -93,6 +93,7 @@
         'lyricsplus',
         'spotify',
         'lrclib',
+        'lrcred',
         'unison'
     ];
     const PSEUDO_KARAOKE_SOURCES = new Set([
