@@ -6451,30 +6451,53 @@ class LyricsContainer extends react.Component {
       lines: upgraded.karaoke.filter(line => String(line.text || "").trim()),
     };
     this._timingOnlyModeSwitch = true;
-    CACHE[state.uri] = { ...CACHE[state.uri], ...upgraded };
-    const snapshot = window.LyricsService?.getLyricsSnapshot?.(state.uri);
     // Keep request/presentation ownership, pending streams and all auxiliary
     // text. Late stream callbacks merge these same timings before displaying.
-    this.setState({
-      karaoke: upgraded.karaoke, karaokeGranularity: "word", karaokeSource: upgraded.karaokeSource,
-      synced: upgraded.synced, lrcred: upgraded.lrcred,
-      currentLyrics: this.mergeCurrentLyricsTiming(state.currentLyrics, state.uri, state.provider),
-    }, () => {
-      window.LyricsService?.publishLyricsSnapshot?.({
-        ...snapshot, trackUri: state.uri, rawResult: CACHE[state.uri],
-        displayLyrics: this.state.currentLyrics, lyricsType: getLyricsModeTypeKey(this.getCurrentMode()),
-      });
-      this.publishLyricsPresentation(this.state.currentLyrics, {
-        uri: state.uri, provider: state.provider, mode: this.getCurrentMode(),
-        displayMode1: snapshot?.displayMode1, displayMode2: snapshot?.displayMode2,
-        translationSourceLyrics: state.unsynced || state.synced,
-        presentationComplete: snapshot?.presentationComplete === true,
+    // A queued React update is not an applied upgrade. Acknowledge it only
+    // after commit; a track transition or unmount may discard the update.
+    this._pendingTimingUpgradeResolve?.(false);
+    return new Promise(resolve => {
+      const finish = applied => {
+        if (this._pendingTimingUpgradeResolve === finish) this._pendingTimingUpgradeResolve = null;
+        resolve(applied);
+      };
+      this._pendingTimingUpgradeResolve = finish;
+      const isCurrent = current => this._pendingTimingUpgradeResolve === finish
+        && this.isCurrentLyricsState(current) && current.uri === upgraded.uri
+        && current.provider === upgraded.provider && !current.syncDataApplied;
+      this.setState(previous => isCurrent(previous) ? {
+        karaoke: upgraded.karaoke, karaokeGranularity: "word", karaokeSource: upgraded.karaokeSource,
+        synced: upgraded.synced, lrcred: upgraded.lrcred,
+        currentLyrics: this.mergeCurrentLyricsTiming(previous.currentLyrics, state.uri, state.provider),
+      } : null, () => {
+        if (!isCurrent(this.state) || this.state.karaoke !== upgraded.karaoke) {
+          finish(false);
+          return;
+        }
+        try {
+          CACHE[state.uri] = { ...CACHE[state.uri], ...upgraded };
+          const snapshot = window.LyricsService?.getLyricsSnapshot?.(state.uri);
+          window.LyricsService?.publishLyricsSnapshot?.({
+            ...snapshot, trackUri: state.uri, rawResult: CACHE[state.uri],
+            displayLyrics: this.state.currentLyrics, lyricsType: getLyricsModeTypeKey(this.getCurrentMode()),
+          });
+          this.publishLyricsPresentation(this.state.currentLyrics, {
+            uri: state.uri, provider: state.provider, mode: this.getCurrentMode(),
+            displayMode1: snapshot?.displayMode1, displayMode2: snapshot?.displayMode2,
+            translationSourceLyrics: state.unsynced || state.synced,
+            presentationComplete: snapshot?.presentationComplete === true,
+          });
+        } catch (error) {
+          console.warn('[ivLyrics] Could not publish applied word timing:', error);
+        } finally {
+          finish(true);
+        }
       });
     });
-    return true;
   }
 
   clearPendingLyricsUpdates() {
+    this._pendingTimingUpgradeResolve?.(false);
     if (this.streamingApplyTimer) {
       clearTimeout(this.streamingApplyTimer);
       this.streamingApplyTimer = null;
@@ -10457,6 +10480,7 @@ class LyricsContainer extends react.Component {
   componentWillUnmount() {
     if (this._isComponentMounted === false) return;
     this._isComponentMounted = false;
+    this._pendingTimingUpgradeResolve?.(false);
     this._lyricsEditRequestSeq += 1;
     document.body.classList.remove('ivlyrics-page-active');
 

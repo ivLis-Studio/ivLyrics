@@ -473,7 +473,7 @@
         const playerItem = typeof Spicetify !== 'undefined' ? Spicetify.Player?.data?.item : null;
         const container = window.lyricContainer;
         const state = container?.state;
-        if (!wordSyncEnabled() || playerItem?.uri !== info.uri || state?.uri !== info.uri) return;
+        if (!wordSyncEnabled() || playerItem?.uri !== info.uri || state?.uri !== info.uri) return false;
         // A quick generation may finish before the original fetch is displayed.
         if (state.isLoading) {
             if (attempts < 200) {
@@ -483,10 +483,32 @@
             throw new Error('Timed out waiting to apply word sync');
         }
         const hasRealKaraoke = state.karaoke?.length && !window.PseudoKaraokeService?.isPseudoSource?.(state.karaokeSource);
-        if (state.provider !== 'lrcred' || state.syncDataApplied || hasRealKaraoke) return;
+        if (state.provider !== 'lrcred' || state.syncDataApplied) return false;
+        if (hasRealKaraoke) return true;
         if (typeof container.applyLyricsTimingUpgrade !== 'function'
             || (await container.applyLyricsTimingUpgrade(upgraded)) === false) {
             throw new Error('Could not apply word sync to the current lyrics');
+        }
+        return true;
+    };
+
+    const rememberWordSync = (info, upgraded) => {
+        const canUpgrade = cached => cached?.provider === 'lrcred'
+            && !cached.syncDataApplied && sameLyricsLines(cached, upgraded)
+            && (!cached.karaoke?.length || window.PseudoKaraokeService?.isPseudoSource?.(cached.karaokeSource));
+        // The page can be closed while generation runs. Update its raw caches
+        // too, otherwise reopening it may reuse the old line-only snapshot
+        // without consulting the newly written provider cache.
+        const cached = window.CACHE?.[info.uri];
+        if (canUpgrade(cached)) window.CACHE[info.uri] = { ...cached, ...upgraded };
+        const snapshot = window.LyricsService?.getLyricsSnapshot?.(info.uri);
+        if (canUpgrade(snapshot?.rawResult)) {
+            window.LyricsService?.publishLyricsSnapshot?.({
+                ...snapshot, trackUri: info.uri,
+                rawResult: { ...snapshot.rawResult, ...upgraded },
+                karaokeSource: upgraded.karaokeSource,
+                source: 'lrcred-word-sync',
+            });
         }
     };
 
@@ -505,8 +527,8 @@
                 const upgraded = { ...withParsedLyrics(result, parsed), karaokeGranularity: 'word' };
                 const cacheId = cacheIdFor(info);
                 if (cacheId) await window.LyricsService?.cacheLyrics?.(cacheId, 'lrcred', upgraded);
-                await refreshSyncedTrack(info, upgraded);
-                completed = true;
+                rememberWordSync(info, upgraded);
+                completed = await refreshSyncedTrack(info, upgraded);
             } catch (error) {
                 window.__ivLyricsDebugLog?.('[lrc.red Lyrics Addon] Could not deliver word sync', { error: error.message });
             } finally {

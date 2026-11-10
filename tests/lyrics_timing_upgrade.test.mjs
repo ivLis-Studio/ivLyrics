@@ -28,6 +28,7 @@ function setup() {
     });
     vm.runInContext(`class Container {
         ${section('  mergeCurrentLyricsTiming(', '  clearPendingLyricsUpdates()')}
+        ${section('  clearPendingLyricsUpdates()', '  getLyricsLayoutHasLyrics(')}
         ${section('  applyStreamingTranslation({', '\n  /**\n   * 번역 재생성')}
     }; globalThis.Container = Container;`, context);
     const app = new context.Container();
@@ -43,7 +44,13 @@ function setup() {
         isCurrentLyricsState: state => state.uri === uri && state.lyricsRequestSeq === 7,
         isCurrentLyricsUri: value => value === uri,
         getCurrentMode: () => 0,
-        setState(update, callback) { this.state = { ...this.state, ...update }; callback?.(); },
+        setState(update, callback) {
+            const patch = typeof update === 'function' ? update(this.state) : update;
+            if (patch) this.state = { ...this.state, ...patch };
+            callback?.();
+        },
+        clearLyricsLoading() {}, clearPhoneticLoading() {}, clearTranslationLoading() {},
+        clearCulturalAnnotationsLoading() {}, clearWordSyncLoading() {}, restoreWordSyncLoading() {},
         publishLyricsPresentation: (...args) => presentations.push(args),
         optimizeTranslations: () => [{ ...display, text2: 'finished translation', translationText: 'finished translation' }],
         provideLanguageCode: () => 'en',
@@ -53,9 +60,9 @@ function setup() {
 
 const upgrade = () => ({ uri, provider: 'lrcred', karaokeSource: 'lrcred', karaoke: [word], synced: [word], lrcred: { syncType: 'word' } });
 
-test('timing upgrade preserves translated text, phonetics, cache and in-flight request ownership', () => {
+test('timing upgrade preserves translated text, phonetics, cache and in-flight request ownership', async () => {
     const h = setup(), originalMemory = h.app._dmResults, originalInflight = h.app._inflightGemini;
-    assert.equal(h.app.applyLyricsTimingUpgrade(upgrade()), true);
+    assert.equal(await h.app.applyLyricsTimingUpgrade(upgrade()), true);
     const display = h.app.state.currentLyrics[0];
     assert.equal(display.text, 'phonetic');
     assert.equal(display.originalText, 'Fixture lyric');
@@ -71,6 +78,32 @@ test('timing upgrade preserves translated text, phonetics, cache and in-flight r
     assert.equal(h.CACHE[uri].karaokeSource, 'lrcred');
     assert.equal(h.snapshots[0].displayLyrics[0].text2, 'translation');
 });
+
+for (const interrupt of [false, 'track', 'cleanup']) {
+    test(`a queued React timing update is acknowledged only after commit (interrupt ${interrupt})`, async () => {
+        const h = setup();
+        let commit, settled = false;
+        const setState = h.app.setState.bind(h.app);
+        h.app.setState = (update, callback) => { commit = () => setState(update, callback); };
+        const pending = h.app.applyLyricsTimingUpgrade(upgrade());
+        pending.then(() => { settled = true; });
+        await Promise.resolve();
+        assert.equal(settled, false);
+        assert.equal(h.app.state.karaoke, undefined);
+        assert.equal(h.CACHE[uri], undefined);
+        assert.equal(h.snapshots.length, 0);
+        if (interrupt === 'track') h.app.state = { ...h.app.state, uri: 'track-b' };
+        if (interrupt === 'cleanup') {
+            h.app.clearPendingLyricsUpdates();
+            assert.equal(await pending, false, 'cleanup settles even if React discards the callback');
+        }
+        commit();
+        assert.equal(await pending, !interrupt);
+        assert.equal(h.snapshots.length, interrupt ? 0 : 1);
+        assert.equal(!!h.app.state.karaoke, !interrupt);
+        assert.equal(!!h.CACHE[uri], !interrupt);
+    });
+}
 
 test('already scheduled streaming translation updates retain newly installed word timings', () => {
     const h = setup();
