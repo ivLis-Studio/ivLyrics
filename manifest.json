@@ -91,6 +91,7 @@
 		"LrclibLocalDatabaseRuntime.js",
 		"LrclibLocalDatabase.js",
 		"Addon_Lyrics_Lrclib.js",
+		"Addon_Lyrics_LrcRed.js",
 		"Addon_Lyrics_LyricsPlus.js",
 		"Addon_Lyrics_Unison.js",
 		"Addon_Lyrics_OpenLyrics.js",
