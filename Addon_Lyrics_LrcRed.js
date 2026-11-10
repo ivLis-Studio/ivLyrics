@@ -32,7 +32,7 @@
     'use strict';
 
     const API_BASE = 'https://lrc.red';
-    const CACHE_VERSION = '2026-11-10-lrcred-5';
+    const CACHE_VERSION = '2026-11-11-lrcred-6';
     const ATTRIBUTION = 'Lyrics from lrc.red (https://lrc.red).';
     const REQUEST_TIMEOUT_MS = 15000;
 
@@ -110,24 +110,17 @@
     };
 
     const normalizeString = (str) => String(str || '')
+        .normalize('NFKC')
         .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, ' ')
+        // Fold Latin accents without dropping Japanese voicing or marks in
+        // other scripts. Canonical spellings still compare identically.
+        .normalize('NFD')
+        .replace(/(\p{Script=Latin})\p{M}+/gu, '$1')
+        .normalize('NFC')
+        .replace(/['’‘`´]/g, '')
+        .replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ')
         .replace(/\s+/g, ' ')
         .trim();
-
-    const similarity = (a, b) => {
-        const na = normalizeString(a);
-        const nb = normalizeString(b);
-        if (!na || !nb) return 0;
-        const longer = na.length >= nb.length ? na : nb;
-        const shorter = na.length >= nb.length ? nb : na;
-        if (longer.length === 0) return 1;
-        let matches = 0;
-        for (let i = 0; i < shorter.length; i++) {
-            if (longer.includes(shorter[i])) matches++;
-        }
-        return matches / Math.max(longer.length, 1);
-    };
 
     const normalizeDurationSeconds = (info) => {
         const duration = Number(info?.durationMs ?? info?.duration_ms ?? info?.duration ?? 0);
@@ -158,6 +151,47 @@
         return queries;
     };
 
+    const titleMatchScore = (actual, expected) => {
+        const compact = (value) => normalizeString(value).replace(/ /g, '');
+        const wanted = compact(expected);
+        if (!wanted || !compact(actual)) return 0;
+        if (compact(actual) === wanted) return 1;
+        // Query simplification can remove any subtitle, but identity matching
+        // may ignore only known version labels, never e.g. "Song (Part II)".
+        const versionLabel = /\b(?:feat(?:uring)?|ft|version|remaster(?:ed)?|remix|mix|edit|edition|live|acoustic|mono|stereo)\b|\bfrom the vault\b/i;
+        const core = (value) => compact(String(value || '')
+            .replace(/\(([^()]*)\)|\[([^\[\]]*)\]/g,
+                (whole, parentheses, brackets) => versionLabel.test(parentheses ?? brackets) ? ' ' : whole)
+            .replace(/\s+-\s+(.+)$/, (whole, suffix) => versionLabel.test(suffix) ? '' : whole));
+        const wantedCore = core(expected);
+        const actualCore = core(actual);
+        return wantedCore && actualCore === wantedCore ? 0.9 : 0;
+    };
+
+    const sameArtist = (actual, expected) => {
+        const wanted = normalizeString(expected);
+        const candidate = normalizeString(actual);
+        if (!wanted || !candidate) return false;
+        if (candidate === wanted) return true;
+        // A catalog may include featured artists where Spotify supplies only
+        // the lead. Do not accept arbitrary substrings such as tribute acts.
+        const lead = (value) => normalizeString(String(value || '').split(
+            /\s+(?:feat(?:uring)?\.?|ft\.?|with|[x×])\s+|[,;&]/iu
+        )[0]);
+        return Boolean(lead(expected)) && lead(actual) === lead(expected);
+    };
+
+    const scoreSearchHit = (hit, info, durationSeconds) => {
+        const titleScore = titleMatchScore(hit?.title, info?.title);
+        if (!normalizeIsrc(hit?.isrc) || !titleScore || !sameArtist(hit?.artist, info?.artist)) return null;
+        const candidateDuration = Number(hit.duration);
+        const durationScore = durationSeconds > 0 && candidateDuration > 0
+            ? Math.max(0, 1 - Math.abs(durationSeconds - candidateDuration) / 30)
+            : 0;
+        // Duration ranks only candidates already identified as the same song.
+        return titleScore * 0.6 + 0.3 + durationScore * 0.1;
+    };
+
     const ISRC_PATTERN = /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/;
 
     const normalizeIsrc = (value) => {
@@ -166,7 +200,6 @@
     };
 
     const resolveIsrcFromInfo = (info) => {
-        const playerItem = (typeof Spicetify !== 'undefined' && Spicetify?.Player?.data?.item) || null;
         const candidates = [
             info?.isrc,
             info?.external_ids?.isrc,
@@ -176,10 +209,10 @@
             info?.metadata?.external_ids?.isrc,
             info?.track?.isrc,
             info?.track?.external_ids?.isrc,
-            playerItem?.isrc,
-            playerItem?.external_ids?.isrc,
-            playerItem?.externalIds?.isrc,
-            playerItem?.metadata?.isrc,
+            info?.track?.externalIds?.isrc,
+            info?.track?.metadata?.isrc,
+            info?.item?.external_ids?.isrc,
+            info?.item?.metadata?.isrc,
         ];
         for (const candidate of candidates) {
             const isrc = normalizeIsrc(candidate);
@@ -189,6 +222,8 @@
     };
 
     const resolveTrackIsrc = async (info) => {
+        // Player metadata can belong to a different song during prefetch or
+        // a local-file lookup. The shared resolver guards that track identity.
         const direct = resolveIsrcFromInfo(info);
         if (direct) return direct;
 
@@ -351,36 +386,18 @@
                 }
 
                 if (!bestHit) {
-                    let searchData = null;
                     for (const query of buildSearchQueries(title, artist)) {
                         const data = await searchTracks(query).catch(() => null);
-                        if (data && Array.isArray(data.hits) && data.hits.length > 0) {
-                            searchData = data;
+                        for (const hit of Array.isArray(data?.hits) ? data.hits : []) {
+                            const score = scoreSearchHit(hit, info, durationSeconds);
+                            if (score !== null && score > bestScore) {
+                                bestScore = score;
+                                bestHit = { ...hit, isrc: normalizeIsrc(hit.isrc) };
+                            }
+                        }
+                        if (bestHit) {
                             window.__ivLyricsDebugLog?.('[lrc.red Lyrics Addon] Search hit', { query, hits: data.hits.length });
                             break;
-                        }
-                    }
-                    if (!searchData) {
-                        result.error = 'No lyrics';
-                        return result;
-                    }
-
-                    for (const hit of searchData.hits) {
-                        const titleSim = similarity(hit.title, title);
-                        const artistSim = similarity(hit.artist, artist);
-                        const combinedSim = (titleSim * 0.6) + (artistSim * 0.4);
-
-                        let durationScore = 0;
-                        if (durationSeconds > 0 && hit.duration) {
-                            const diff = Math.abs(durationSeconds - Number(hit.duration));
-                            durationScore = Math.max(0, 1 - diff / 30);
-                        }
-
-                        const score = combinedSim * 0.7 + durationScore * 0.3;
-
-                        if (score > bestScore) {
-                            bestScore = score;
-                            bestHit = hit;
                         }
                     }
                 }
