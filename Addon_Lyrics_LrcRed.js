@@ -32,7 +32,7 @@
     'use strict';
 
     const API_BASE = 'https://lrc.red';
-    const CACHE_VERSION = '2026-11-11-lrcred-auto-sync-1';
+    const CACHE_VERSION = '2026-11-11-lrcred-auto-sync-2';
     const ATTRIBUTION = 'Lyrics from lrc.red (https://lrc.red).';
     const REQUEST_TIMEOUT_MS = 15000;
     const SYNC_TIMEOUT_MS = 75000;
@@ -314,6 +314,59 @@
         return { karaoke, synced, unsynced };
     };
 
+    // /sync returns the new recording as JSON; the public TTML may still hold
+    // its original line timing. Words contain one or more timed fragments.
+    const parseWordSyncResponse = (payload, expectedIsrc) => {
+        if (normalizeIsrc(payload?.id) !== expectedIsrc) throw new Error('Word sync recording mismatch');
+        const lyrics = payload.lyrics;
+        if (!['word', 'syllable'].includes(String(lyrics?.timing || lyrics?.sync).toLowerCase())
+            || !Array.isArray(lyrics.lines)) throw new Error('Word sync response has no word timing');
+        const milliseconds = value => {
+            if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new Error('Invalid word sync time');
+            return Math.round(value * 1000);
+        };
+        let timedWords = 0;
+        const karaoke = lyrics.lines.filter(line => typeof line?.text === 'string' && line.text.trim()).map(line => {
+            const text = line.text;
+            const syllables = [];
+            let cursor = 0;
+            for (const fragments of line.words || []) {
+                if (!Array.isArray(fragments) || !fragments.length) throw new Error('Invalid word sync fragments');
+                const word = fragments.map(fragment => {
+                    if (typeof fragment?.text !== 'string') throw new Error('Invalid word sync text');
+                    return fragment.text;
+                }).join('');
+                const whitespace = text.slice(cursor).match(/^\s*/u)[0];
+                cursor += whitespace.length;
+                if (!word || !text.startsWith(word, cursor)) throw new Error('Word sync text does not match its line');
+                if (syllables.length) syllables[syllables.length - 1].text += whitespace;
+                const startTime = milliseconds(fragments[0].begin);
+                const endTime = milliseconds(fragments[fragments.length - 1].end);
+                if (endTime < startTime || fragments.some(fragment => milliseconds(fragment.end) < milliseconds(fragment.begin))) {
+                    throw new Error('Invalid word sync range');
+                }
+                syllables.push({ text: (syllables.length ? '' : whitespace) + word, startTime, endTime });
+                cursor += word.length;
+                timedWords++;
+            }
+            if (syllables.length) {
+                const remaining = text.slice(cursor);
+                if (remaining.trim()) throw new Error('Word sync response has unmatched text');
+                syllables[syllables.length - 1].text += remaining;
+            }
+            const startTime = milliseconds(line.begin);
+            const endTime = milliseconds(line.end);
+            if (endTime < startTime) throw new Error('Invalid word sync line range');
+            return { text, startTime, endTime, syllables: syllables.length ? syllables : [{ text, startTime, endTime }] };
+        });
+        if (!timedWords) throw new Error('Word sync response has no timed words');
+        return {
+            karaoke,
+            synced: karaoke.map(({ text, startTime, endTime }) => ({ text, startTime, endTime })),
+            unsynced: karaoke.map(({ text }) => ({ text })),
+        };
+    };
+
     const withParsedLyrics = (result, parsed) => ({
         ...result,
         karaoke: parsed.karaoke.length ? parsed.karaoke : null,
@@ -387,7 +440,7 @@
             }
             job.phase = 'generating';
             for (const uri of job.uris) publishWordSyncStatus(job, uri, 'generating');
-            await fetchWithTimeout(`${API_BASE}/s/${encodeURIComponent(isrc)}/sync`, { method: 'POST' }, SYNC_TIMEOUT_MS, response => {
+            return fetchWithTimeout(`${API_BASE}/s/${encodeURIComponent(isrc)}/sync`, { method: 'POST' }, SYNC_TIMEOUT_MS, async response => {
                 if (!response.ok) {
                     if (response.status === 429 || response.status === 503) {
                         const retryAfter = response.headers?.get?.('Retry-After');
@@ -397,9 +450,10 @@
                     }
                     throw new Error(`Word sync failed (${response.status})`);
                 }
+                // Keep the timeout and loading state through the whole body,
+                // then use these new timings directly instead of re-fetching.
+                return parseWordSyncResponse(await response.json(), isrc);
             });
-            const parsed = normalizeParsedLyrics(parseTtmlLyrics(await getTtmlLyrics(isrc, true), durationMs));
-            return parsed.karaoke.length ? parsed : null;
         }).catch(error => {
             window.__ivLyricsDebugLog?.('[lrc.red Lyrics Addon] Automatic word sync unavailable', { isrc, error: error.message });
             return null;
@@ -415,19 +469,22 @@
         return job;
     };
 
-    const refreshSyncedTrack = (info, upgraded, attempts = 0) => {
+    const refreshSyncedTrack = async (info, upgraded, attempts = 0) => {
         const playerItem = typeof Spicetify !== 'undefined' ? Spicetify.Player?.data?.item : null;
         const container = window.lyricContainer;
         const state = container?.state;
         if (!wordSyncEnabled() || playerItem?.uri !== info.uri || state?.uri !== info.uri || typeof container.applyLyricsTimingUpgrade !== 'function') return;
         // A quick generation may finish before the original fetch is displayed.
         if (state.isLoading) {
-            if (attempts < 200) setTimeout(() => refreshSyncedTrack(info, upgraded, attempts + 1), 100);
+            if (attempts < 200) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                return refreshSyncedTrack(info, upgraded, attempts + 1);
+            }
             return;
         }
         const hasRealKaraoke = state.karaoke?.length && !window.PseudoKaraokeService?.isPseudoSource?.(state.karaokeSource);
         if (state.provider !== 'lrcred' || state.syncDataApplied || hasRealKaraoke) return;
-        container.applyLyricsTimingUpgrade(upgraded);
+        if (container.applyLyricsTimingUpgrade(upgraded) === false) throw new Error('Could not apply word sync to the current lyrics');
     };
 
     const queueWordSync = (info, result, checkFresh = false) => {
@@ -445,7 +502,7 @@
                 const upgraded = { ...withParsedLyrics(result, parsed), karaokeGranularity: 'word' };
                 const cacheId = cacheIdFor(info);
                 if (cacheId) await window.LyricsService?.cacheLyrics?.(cacheId, 'lrcred', upgraded);
-                refreshSyncedTrack(info, upgraded);
+                await refreshSyncedTrack(info, upgraded);
                 completed = true;
             } catch (error) {
                 window.__ivLyricsDebugLog?.('[lrc.red Lyrics Addon] Could not cache word sync', { error: error.message });

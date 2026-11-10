@@ -9,17 +9,17 @@ const info = { uri: 'spotify:track:AAAAAAAAAAAAAAAAAAAAAA', title: 'Fixture', ar
 const flush = async () => { for (let i = 0; i < 3; i++) await new Promise(setImmediate); };
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 
-function createProvider({ word = false, hold = false, status = 204, generatedWord = true, lrcOnly = false } = {}) {
+function createProvider({ word = false, hold = false, holdBody = false, status = 200, generatedWord = true, lrcOnly = false, syncResponse, text = 'Fixture lyric' } = {}) {
     let addon, timerId = 0;
     const generated = new Set(word ? [ISRC] : []), requests = [], writes = [], refreshes = [], cleared = [], gates = [];
     const cache = new Map(), timers = new Map(), notices = [], statuses = [];
     const state = { uri: info.uri, provider: 'lrcred', isLoading: false };
     const player = { data: { item: { uri: info.uri } } };
-    const h = { enabled: true, requests, writes, refreshes, cleared, cache, state, player, gates, notices, statuses };
-    const line = { startTime: 1000, endTime: 2000, text: 'Fixture lyric' };
+    const h = { enabled: true, requests, writes, refreshes, cleared, cache, state, player, gates, notices, statuses, bodyReads: 0 };
+    const line = { startTime: 1000, endTime: 2000, text };
     const parsed = text => ({
         synced: [line],
-        karaoke: text === 'word' ? [{ ...line, syllables: [{ text: 'Fixture lyric', startTime: 1000, endTime: 2000 }] }] : [],
+        karaoke: text === 'word' ? [{ ...line, syllables: [{ text: line.text, startTime: 1000, endTime: 2000 }] }] : [],
     });
     const window = {
         CACHE: {},
@@ -52,8 +52,28 @@ function createProvider({ word = false, hold = false, status = 204, generatedWor
                     init.signal.addEventListener('abort', () => reject(new DOMException('Timed out', 'AbortError')), { once: true });
                 });
             }
-            if (status >= 200 && status < 300 && generatedWord) generated.add(isrc);
-            return new Response(null, { status, headers: { 'Retry-After': '60' } });
+            const words = line.text.split(/\s+/u).filter(Boolean);
+            const payload = syncResponse || { id: isrc, lyrics: {
+                sync: generatedWord ? 'word' : 'line', timing: generatedWord ? 'word' : 'line',
+                lines: [{ text: line.text, begin: 1, end: 2,
+                    words: words.map((text, index) => [{ text, begin: 1 + index / words.length, end: 1 + (index + 1) / words.length }]),
+                }],
+            } };
+            if (holdBody) return {
+                ok: status >= 200 && status < 300, status, headers: new Headers(),
+                json: async () => {
+                    h.bodyReads++;
+                    const gate = deferred(); gates.push(gate);
+                    await new Promise((resolve, reject) => {
+                        gate.promise.then(resolve);
+                        init.signal.addEventListener('abort', () => reject(new DOMException('Timed out', 'AbortError')), { once: true });
+                    });
+                    return payload;
+                },
+            };
+            // Generation output exists only in this response. The public
+            // TTML deliberately remains line-timed to catch stale re-fetches.
+            return Response.json(payload, { status, headers: { 'Retry-After': '60' } });
         }
         if (url.pathname.endsWith('.json')) return Response.json({ ...info, isrc, duration: 200 });
         if (url.pathname.endsWith('.ttml')) {
@@ -100,6 +120,8 @@ test('line lyrics return immediately, then a bodyless POST upgrades cache and th
     assert.equal(h.writes[0].key, 'AAAAAAAAAAAAAAAAAAAAAA');
     assert.equal(h.writes[0].value.lrcred.syncType, 'word');
     assert.ok(h.requests.some(({ url, init }) => url.searchParams.has('t') && init.cache === 'no-store'));
+    const postIndex = h.requests.findIndex(request => request.init.method === 'POST');
+    assert.equal(h.requests.slice(postIndex + 1).length, 0, 'use the JSON response rather than re-fetching stale TTML');
     assert.equal(h.refreshes.length, 1);
     assert.equal(h.window.CACHE[info.uri].karaokeSource, 'lrcred');
     assert.deepEqual(h.cleared, [], 'presentation/translation snapshots are retained');
@@ -234,10 +256,12 @@ test('a fast generation waits for the initial lyric view before refreshing', asy
     await h.lookup(info);
     await flush();
     assert.equal(h.refreshes.length, 0);
+    assert.deepEqual(h.statuses.map(status => status.phase), ['generating']);
     h.state.isLoading = false;
     h.runTimers(100);
     await flush();
     assert.equal(h.refreshes.length, 1);
+    assert.deepEqual(h.statuses.map(status => status.phase), ['generating', 'complete']);
 });
 
 test('generations are serialized and the waiting queue is bounded', async () => {
@@ -260,10 +284,9 @@ test('reading a provider or its cache never starts AI without manager authorizat
 });
 
 test('changed text from generation is never applied over translations of the original', async () => {
-    const h = createProvider();
-    const parse = h.window.ivLyricsLyricsParser.parseTtmlLyrics;
-    h.window.ivLyricsLyricsParser.parseTtmlLyrics = text => text === 'word'
-        ? { karaoke: [{ text: 'Different lyric' }], synced: [{ text: 'Different lyric' }] } : parse(text);
+    const h = createProvider({ syncResponse: { id: ISRC, lyrics: { timing: 'word', lines: [{
+        text: 'Different lyric', begin: 1, end: 2, words: [[{ text: 'Different lyric', begin: 1, end: 2 }]],
+    }] } } });
     await h.lookup(info);
     await flush();
     assert.equal(h.posts().length, 1);
@@ -294,3 +317,61 @@ test('in-flight status is replayable when opening the lyrics page, and clears af
     assert.equal(h.addon.getWordSyncStatuses(info.uri).length, 0);
     assert.equal(h.statuses[0].requestId, h.statuses[1].requestId);
 });
+
+test('response headers do not complete generation before the full JSON body arrives', async () => {
+    const h = createProvider({ holdBody: true });
+    await h.lookup(info); await flush();
+    assert.equal(h.bodyReads, 1);
+    assert.equal(h.writes.length, 0);
+    assert.deepEqual(h.statuses.map(status => status.phase), ['generating']);
+    assert.equal(h.addon.getWordSyncStatuses(info.uri).length, 1);
+    h.gates[0].resolve(); await flush();
+    assert.equal(h.writes[0].value.lrcred.syncType, 'word');
+    assert.deepEqual(h.statuses.map(status => status.phase), ['generating', 'complete']);
+});
+
+test('body download remains under the generation timeout', async () => {
+    const h = createProvider({ holdBody: true });
+    await h.lookup(info); await flush();
+    h.runTimers(75000); await flush();
+    assert.equal(h.posts()[0].init.signal.aborted, true);
+    assert.equal(h.writes.length, 0);
+    assert.deepEqual(h.statuses.map(status => status.phase), ['generating', 'failed']);
+});
+
+test('timed word fragments join without inserting spaces inside a word', async () => {
+    const h = createProvider({ text: 'Bodies moving', syncResponse: { id: ISRC, lyrics: { timing: 'word', lines: [{
+        text: 'Bodies moving', begin: 1, end: 2,
+        words: [[{ text: 'Bod', begin: 1, end: 1.2 }, { text: 'ies', begin: 1.2, end: 1.5 }],
+            [{ text: 'moving', begin: 1.5, end: 2 }]],
+    }] } } });
+    await h.lookup(info); await flush();
+    const words = h.writes[0].value.karaoke[0].syllables;
+    assert.equal(words[0].text, 'Bodies ');
+    assert.equal(words[0].startTime, 1000);
+    assert.equal(words[0].endTime, 1500);
+    assert.equal(words[1].text, 'moving');
+});
+
+test('unspaced Japanese words retain the original text', async () => {
+    const h = createProvider({ text: 'テスト歌詞', syncResponse: { id: ISRC, lyrics: { timing: 'word', lines: [{
+        text: 'テスト歌詞', begin: 1, end: 2,
+        words: [[{ text: 'テスト', begin: 1, end: 1.5 }], [{ text: '歌詞', begin: 1.5, end: 2 }]],
+    }] } } });
+    await h.lookup(info); await flush();
+    assert.equal(h.writes[0].value.karaoke[0].syllables.map(word => word.text).join(''), 'テスト歌詞');
+});
+
+for (const [name, response] of [
+    ['another recording', { id: 'JPAAA2600099', lyrics: { timing: 'word', lines: [] } }],
+    ['invalid timing', { id: ISRC, lyrics: { timing: 'word', lines: [{
+        text: 'Fixture lyric', begin: 2, end: 1, words: [[{ text: 'Fixture lyric', begin: 2, end: 1 }]],
+    }] } }],
+]) {
+    test(`a response with ${name} cannot replace existing lyrics`, async () => {
+        const h = createProvider({ syncResponse: response });
+        await h.lookup(info); await flush();
+        assert.equal(h.writes.length, 0);
+        assert.deepEqual(h.statuses.map(status => status.phase), ['generating', 'failed']);
+    });
+}
