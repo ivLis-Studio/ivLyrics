@@ -2191,6 +2191,7 @@ window.LANG_IT = {
     "label": "Testi Plus"
   },
   "generationStatus": {
+    "wordSync": "Sincronizzazione delle parole",
     "externalWordSync": "Generazione della sincronizzazione parola per parola su un server esterno di testi.",
     "complete": "Fatto!",
     "culturalAnnotations": "Spiegazioni del contesto culturale",

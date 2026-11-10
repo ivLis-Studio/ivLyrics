@@ -2191,6 +2191,7 @@ window.LANG_TH = {
     "label": "เนื้อเพลง Plus"
   },
   "generationStatus": {
+    "wordSync": "ซิงก์ระดับคำ",
     "externalWordSync": "กำลังสร้างข้อมูลซิงก์ระดับคำบนเซิร์ฟเวอร์เนื้อเพลงภายนอก",
     "complete": "เสร็จแล้ว!",
     "culturalAnnotations": "คำอธิบายบริบททางวัฒนธรรม",

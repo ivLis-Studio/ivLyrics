@@ -347,17 +347,33 @@
     let syncQueue = Promise.resolve();
     let pendingSyncs = 0;
     let syncUnavailableUntil = 0;
+    let wordSyncSequence = 0;
+
+    const publishWordSyncStatus = (job, uri, phase) => {
+        window.LyricsAddonManager?.emit?.('lyrics:word-sync:status', {
+            uri, requestId: job.id, phase,
+        });
+    };
 
     const requestWordSync = (isrc, durationMs, checkFresh, info) => {
         const existing = wordSyncJobs.get(isrc);
-        if (existing && (!existing.settled || Date.now() < existing.retryAt)) return existing;
+        if (existing && (!existing.settled || Date.now() < existing.retryAt)) {
+            if (!existing.uris.has(info.uri)) {
+                existing.uris.add(info.uri);
+                if (!existing.settled && existing.phase === 'generating') publishWordSyncStatus(existing, info.uri, 'generating');
+            }
+            return existing;
+        }
         if (pendingSyncs >= 4 || Date.now() < syncUnavailableUntil) return null;
         wordSyncJobs.delete(isrc);
         for (const [key, job] of wordSyncJobs) {
             if (wordSyncJobs.size < 32) break;
             if (job.settled) wordSyncJobs.delete(key);
         }
-        const job = { settled: false, retryAt: Infinity, parsed: null, promise: null };
+        const job = {
+            id: `lrcred-${++wordSyncSequence}`, uris: new Set([info.uri]), finishedUris: new Set(), phase: 'queued',
+            settled: false, retryAt: Infinity, parsed: null, promise: null,
+        };
         pendingSyncs++;
         job.promise = syncQueue.then(async () => {
             if (Date.now() < syncUnavailableUntil || !wordSyncEnabled()) return null;
@@ -369,12 +385,8 @@
                     if (current.karaoke.length) return current;
                 } catch { /* A missing/invalid TTML can still be generated. */ }
             }
-            if (typeof Spicetify !== 'undefined' && Spicetify.Player?.data?.item?.uri === info.uri) {
-                const key = 'generationStatus.externalWordSync';
-                const translated = window.I18n?.t?.(key);
-                Spicetify.showNotification?.(translated && translated !== key
-                    ? translated : 'Generating word-level timing on an external lyrics server.', false, 8000);
-            }
+            job.phase = 'generating';
+            for (const uri of job.uris) publishWordSyncStatus(job, uri, 'generating');
             await fetchWithTimeout(`${API_BASE}/s/${encodeURIComponent(isrc)}/sync`, { method: 'POST' }, SYNC_TIMEOUT_MS, response => {
                 if (!response.ok) {
                     if (response.status === 429 || response.status === 503) {
@@ -427,13 +439,20 @@
         wordSyncDeliveries.set(deliveryKey, job);
         while (wordSyncDeliveries.size > 64) wordSyncDeliveries.delete(wordSyncDeliveries.keys().next().value);
         job.promise.then(async parsed => {
-            if (!parsed || !sameLyricsLines(result, parsed)) return;
-            const upgraded = { ...withParsedLyrics(result, parsed), karaokeGranularity: 'word' };
-            const cacheId = cacheIdFor(info);
-            if (cacheId) await window.LyricsService?.cacheLyrics?.(cacheId, 'lrcred', upgraded);
-            refreshSyncedTrack(info, upgraded);
-        }).catch(error => {
-            window.__ivLyricsDebugLog?.('[lrc.red Lyrics Addon] Could not cache word sync', { error: error.message });
+            let completed = false;
+            try {
+                if (!parsed || !sameLyricsLines(result, parsed)) return;
+                const upgraded = { ...withParsedLyrics(result, parsed), karaokeGranularity: 'word' };
+                const cacheId = cacheIdFor(info);
+                if (cacheId) await window.LyricsService?.cacheLyrics?.(cacheId, 'lrcred', upgraded);
+                refreshSyncedTrack(info, upgraded);
+                completed = true;
+            } catch (error) {
+                window.__ivLyricsDebugLog?.('[lrc.red Lyrics Addon] Could not cache word sync', { error: error.message });
+            } finally {
+                job.finishedUris.add(info.uri);
+                if (job.phase === 'generating') publishWordSyncStatus(job, info.uri, completed ? 'complete' : 'failed');
+            }
         });
     };
 
@@ -448,6 +467,13 @@
         // provider has failed to supply real karaoke lyrics.
         requestWordSync(info, result) {
             queueWordSync(info, result, true);
+        },
+
+        getWordSyncStatuses(uri) {
+            if (!wordSyncEnabled()) return [];
+            return [...wordSyncJobs.values()]
+                .filter(job => job.phase === 'generating' && job.uris.has(uri) && !job.finishedUris.has(uri))
+                .map(job => ({ uri, requestId: job.id, phase: 'generating' }));
         },
 
         async prepareLyricsLookup(info) {

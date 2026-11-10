@@ -12,10 +12,10 @@ const deferred = () => { let resolve; const promise = new Promise(done => { reso
 function createProvider({ word = false, hold = false, status = 204, generatedWord = true, lrcOnly = false } = {}) {
     let addon, timerId = 0;
     const generated = new Set(word ? [ISRC] : []), requests = [], writes = [], refreshes = [], cleared = [], gates = [];
-    const cache = new Map(), timers = new Map(), notices = [];
+    const cache = new Map(), timers = new Map(), notices = [], statuses = [];
     const state = { uri: info.uri, provider: 'lrcred', isLoading: false };
     const player = { data: { item: { uri: info.uri } } };
-    const h = { enabled: true, requests, writes, refreshes, cleared, cache, state, player, gates, notices };
+    const h = { enabled: true, requests, writes, refreshes, cleared, cache, state, player, gates, notices, statuses };
     const line = { startTime: 1000, endTime: 2000, text: 'Fixture lyric' };
     const parsed = text => ({
         synced: [line],
@@ -24,7 +24,10 @@ function createProvider({ word = false, hold = false, status = 204, generatedWor
     const window = {
         CACHE: {},
         I18n: { t: key => `localized:${key}` },
-        LyricsAddonManager: { register(value) { addon = value; }, getAddonSetting: () => h.enabled },
+        LyricsAddonManager: {
+            register(value) { addon = value; }, getAddonSetting: () => h.enabled,
+            emit: (event, detail) => { if (event === 'lyrics:word-sync:status') statuses.push(detail); },
+        },
         LyricsService: {
             extractTrackId: uri => /^spotify:track:([A-Za-z0-9]{22})$/.exec(uri || '')?.[1] || '',
             getCachedLyrics: async key => cache.get(key),
@@ -100,7 +103,9 @@ test('line lyrics return immediately, then a bodyless POST upgrades cache and th
     assert.equal(h.refreshes.length, 1);
     assert.equal(h.window.CACHE[info.uri].karaokeSource, 'lrcred');
     assert.deepEqual(h.cleared, [], 'presentation/translation snapshots are retained');
-    assert.deepEqual(h.notices, ['localized:generationStatus.externalWordSync']);
+    assert.deepEqual(h.notices, [], 'the shared status stack replaces toasts');
+    assert.deepEqual(h.statuses.map(status => status.phase), ['generating', 'complete']);
+    assert.equal(h.statuses[0].uri, info.uri);
     assert.equal(result.karaoke, null, 'the returned line result is not mutated later');
 });
 
@@ -117,6 +122,7 @@ test('concurrent requests for the same recording share one generation and one de
     await Promise.all([h.lookup(info), h.lookup(info)]);
     await flush();
     assert.equal(h.posts().length, 1);
+    assert.equal(h.statuses.filter(status => status.phase === 'generating').length, 1);
     h.gates[0].resolve();
     await flush();
     assert.equal(h.writes.length, 1);
@@ -135,6 +141,7 @@ for (const status of [429, 503]) {
         assert.equal(result.lrcred.syncType, 'line');
         assert.equal(h.posts().length, 1);
         assert.equal(h.writes.length, 0);
+        assert.deepEqual(h.statuses.map(status => status.phase), ['generating', 'failed']);
     });
 }
 
@@ -150,6 +157,7 @@ test('a sync timeout aborts the POST without losing existing lyrics or retrying 
     await flush();
     assert.equal(h.posts().length, 1);
     assert.equal(h.writes.length, 0);
+    assert.deepEqual(h.statuses.map(status => status.phase), ['generating', 'failed']);
 });
 
 test('a successful POST with no usable word timing retains line lyrics', async () => {
@@ -270,4 +278,19 @@ test('prefetching another track never shows a generation notice for the playing 
     assert.equal(h.posts().length, 1);
     assert.equal(h.notices.length, 0);
     assert.equal(h.refreshes.length, 0);
+    assert.ok(h.statuses.every(status => status.uri === 'spotify:track:BBBBBBBBBBBBBBBBBBBBBB'));
+});
+
+test('in-flight status is replayable when opening the lyrics page, and clears after delivery', async () => {
+    const h = createProvider({ hold: true });
+    await h.lookup(info);
+    await flush();
+    const active = h.addon.getWordSyncStatuses(info.uri);
+    assert.equal(active.length, 1);
+    assert.equal(active[0].phase, 'generating');
+    assert.equal(h.addon.getWordSyncStatuses('spotify:track:BBBBBBBBBBBBBBBBBBBBBB').length, 0);
+    h.gates[0].resolve();
+    await flush();
+    assert.equal(h.addon.getWordSyncStatuses(info.uri).length, 0);
+    assert.equal(h.statuses[0].requestId, h.statuses[1].requestId);
 });

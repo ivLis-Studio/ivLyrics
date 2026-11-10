@@ -2191,6 +2191,7 @@ window.LANG_CS = {
     "label": "Texty Plus"
   },
   "generationStatus": {
+    "wordSync": "Synchronizace slov",
     "externalWordSync": "Na externím serveru s texty písní se vytváří synchronizace po slovech.",
     "complete": "Hotovo!",
     "culturalAnnotations": "Vysvětlení kulturního kontextu",

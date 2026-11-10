@@ -2191,6 +2191,7 @@ window.LANG_FA = {
     "label": "متن آهنگ پلاس"
   },
   "generationStatus": {
+    "wordSync": "همگام‌سازی واژه‌ها",
     "externalWordSync": "داده‌های همگام‌سازی واژه‌به‌واژه در یک سرور خارجی متن ترانه در حال تولید است.",
     "complete": "انجام شد!",
     "culturalAnnotations": "توضیح زمینه فرهنگی",

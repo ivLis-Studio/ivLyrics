@@ -2191,6 +2191,7 @@ window.LANG_PT = {
     "label": "Letra Plus"
   },
   "generationStatus": {
+    "wordSync": "Sincronização por palavra",
     "externalWordSync": "Gerando sincronização por palavra em um servidor externo de letras.",
     "complete": "Concluído!",
     "culturalAnnotations": "Explicações de contexto cultural",

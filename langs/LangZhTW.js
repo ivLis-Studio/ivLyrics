@@ -2191,6 +2191,7 @@ window.LANG_ZH_TW = {
     "label": "歌詞 Plus"
   },
   "generationStatus": {
+    "wordSync": "逐詞同步",
     "externalWordSync": "正在外部歌詞伺服器上產生逐詞同步資料。",
     "complete": "完成！",
     "culturalAnnotations": "文化背景說明",

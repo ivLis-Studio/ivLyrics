@@ -2191,6 +2191,7 @@ window.LANG_JA = {
     "label": "歌詞プラス"
   },
   "generationStatus": {
+    "wordSync": "単語同期",
     "externalWordSync": "外部の歌詞サーバーで単語単位の同期データを生成しています。",
     "complete": "完了！",
     "culturalAnnotations": "文化的背景の解説",

@@ -2191,6 +2191,7 @@ window.LANG_MS = {
     "label": "Lirik Plus"
   },
   "generationStatus": {
+    "wordSync": "Penyegerakan perkataan",
     "externalWordSync": "Data penyegerakan setiap perkataan sedang dijana pada pelayan lirik luaran.",
     "complete": "Selesai!",
     "culturalAnnotations": "Penjelasan konteks budaya",

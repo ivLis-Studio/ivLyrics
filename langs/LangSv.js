@@ -2191,6 +2191,7 @@ window.LANG_SV = {
     "label": "Låttext Plus"
   },
   "generationStatus": {
+    "wordSync": "Ordsynkronisering",
     "externalWordSync": "Synkronisering ord för ord skapas på en extern låttextserver.",
     "complete": "Klart!",
     "culturalAnnotations": "Förklaringar av kulturell kontext",

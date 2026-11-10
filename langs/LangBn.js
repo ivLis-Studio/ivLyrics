@@ -2191,6 +2191,7 @@ window.LANG_BN = {
     "label": "লিরিক্স প্লাস"
   },
   "generationStatus": {
+    "wordSync": "শব্দভিত্তিক সিঙ্ক",
     "externalWordSync": "বাহ্যিক গানের কথা সার্ভারে শব্দভিত্তিক সিঙ্ক ডেটা তৈরি করা হচ্ছে।",
     "complete": "সম্পন্ন!",
     "culturalAnnotations": "সাংস্কৃতিক প্রেক্ষাপটের ব্যাখ্যা",

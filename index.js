@@ -4765,6 +4765,14 @@ const GENERATION_REQUEST_PILL_CONFIG = Object.freeze({
     failureKey: "_wordSupplementsLoadingHadFailure",
     loadingStateKey: null,
   }),
+  "word-sync": Object.freeze({
+    tokensKey: "_activeWordSyncLoadingTokens",
+    sequenceKey: "_wordSyncLoadingSeq",
+    timerKey: "wordSyncLoadingTimer",
+    failureKey: "_wordSyncLoadingHadFailure",
+    loadingStateKey: null,
+    loadingDelayMs: 0,
+  }),
 });
 
 // Enhanced FAD container detection - try multiple selectors if main one fails.
@@ -5171,6 +5179,11 @@ class LyricsContainer extends react.Component {
     this._translationLoadingHadFailure = false;
     this._culturalAnnotationsLoadingHadFailure = false;
     this._wordSupplementsLoadingHadFailure = false;
+    this.wordSyncLoadingTimer = null;
+    this._wordSyncLoadingSeq = 0;
+    this._activeWordSyncLoadingTokens = new Set();
+    this._wordSyncLoadingHadFailure = false;
+    this._wordSyncStatusTokens = new Map();
     this._generationPillTimers = new Map();
     this._generationPillRevisions = new Map();
     this._generationRequestDetails = new Map();
@@ -5255,6 +5268,7 @@ class LyricsContainer extends react.Component {
     this.hasLocalLyricsForCurrentTrack = this.hasLocalLyricsForCurrentTrack.bind(this);
     this.removeLocalLyricsForCurrentTrack = this.removeLocalLyricsForCurrentTrack.bind(this);
     this.handleLyricsProviderAttempt = this.handleLyricsProviderAttempt.bind(this);
+    this.handleWordSyncLoading = this.handleWordSyncLoading.bind(this);
     this.handleVideoBackgroundLoadingChange = this.handleVideoBackgroundLoadingChange.bind(this);
 
     // The floating toolbar gets one stable set of callbacks, so its props stay
@@ -6459,6 +6473,8 @@ class LyricsContainer extends react.Component {
     this.clearPhoneticLoading();
     this.clearTranslationLoading();
     this.clearCulturalAnnotationsLoading();
+    this.clearWordSyncLoading();
+    this.restoreWordSyncLoading();
   }
 
   getLyricsLayoutHasLyrics(lyricsState = this.state) {
@@ -6649,6 +6665,32 @@ class LyricsContainer extends react.Component {
     } else {
       this.hideGenerationPill(kind);
     }
+  }
+
+  handleWordSyncLoading(detail = {}) {
+    if (!detail.uri || detail.uri !== this.currentTrackUri || !detail.requestId) return;
+    if (detail.phase === "generating") {
+      if (this._wordSyncStatusTokens.has(detail.requestId)
+        || window.LyricsAddonManager?.isProviderEnabled?.("lrcred") === false) return;
+      this._wordSyncStatusTokens.set(detail.requestId, this.startGenerationRequestLoading("word-sync"));
+      return;
+    }
+    const token = this._wordSyncStatusTokens.get(detail.requestId);
+    if (token === undefined) return;
+    this._wordSyncStatusTokens.delete(detail.requestId);
+    this.clearGenerationRequestLoading("word-sync", token, { completed: detail.phase === "complete" });
+  }
+
+  clearWordSyncLoading() {
+    if (!this._activeWordSyncLoadingTokens) return;
+    this.clearGenerationRequestLoading("word-sync");
+    this._wordSyncStatusTokens.clear();
+  }
+
+  restoreWordSyncLoading() {
+    if (!this._isComponentMounted) return;
+    const statuses = window.LyricsAddonManager?.getAddon?.("lrcred")?.getWordSyncStatuses?.(this.currentTrackUri) || [];
+    statuses.forEach(status => this.handleWordSyncLoading(status));
   }
 
   startLyricsLoading() {
@@ -9914,6 +9956,10 @@ class LyricsContainer extends react.Component {
       "lyrics:search:progress",
       this.handleLyricsProviderAttempt
     ) || null;
+    this._unsubscribeWordSyncLoading = window.LyricsAddonManager?.on?.(
+      "lyrics:word-sync:status", this.handleWordSyncLoading
+    ) || null;
+    this.restoreWordSyncLoading();
 
     this.handleSyncCreatorVisibility = (event) => {
       const active = event?.detail?.active ?? !!document.getElementById("ivLyrics-sync-creator-overlay");
@@ -10409,6 +10455,8 @@ class LyricsContainer extends react.Component {
     window.removeEventListener("ivLyrics:sync-creator-visibility", this.handleSyncCreatorVisibility);
     this._unsubscribeLyricsProviderAttempt?.();
     this._unsubscribeLyricsProviderAttempt = null;
+    this._unsubscribeWordSyncLoading?.();
+    this._unsubscribeWordSyncLoading = null;
     Spicetify.Player?.removeEventListener?.("onplaypause", this.updatePlaybackPausedState);
     Spicetify.Player?.removeEventListener?.("songchange", this.updatePlaybackPausedState);
     Spicetify.Player?.removeEventListener?.("songchange", this.handlePlaybackSongChange);
@@ -10465,8 +10513,9 @@ class LyricsContainer extends react.Component {
     this.clearTranslationLoading();
     this.clearCulturalAnnotationsLoading();
     this.clearWordSupplementsLoading();
+    this.clearWordSyncLoading();
     this.clearVideoBackgroundLoadingDelay();
-    ["lyrics", "translation", "pronunciation", "cultural-annotations", "word-supplements", "video-background"].forEach((kind) => {
+    ["lyrics", "translation", "pronunciation", "cultural-annotations", "word-supplements", "word-sync", "video-background"].forEach((kind) => {
       this.clearGenerationPillTimers(kind);
     });
     this._visibleGenerationPills.clear();
@@ -11080,6 +11129,11 @@ class LyricsContainer extends react.Component {
           key: "word-supplements",
           label: I18n.t("generationStatus.wordSupplements") || "Word details",
           description: I18n.t("generationStatus.wordSupplementsLoading") || "Loading word readings & glosses...",
+        },
+        {
+          key: "word-sync",
+          label: I18n.t("generationStatus.wordSync") || "Word timing",
+          description: I18n.t("generationStatus.externalWordSync") || "Generating word-level timing on an external lyrics server.",
         },
         {
           key: "video-background",

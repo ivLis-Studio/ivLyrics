@@ -2191,6 +2191,7 @@ window.LANG_KO = {
     "label": "가사 플러스"
   },
   "generationStatus": {
+    "wordSync": "단어 싱크",
     "externalWordSync": "외부 가사 서버에서 단어 단위 싱크 데이터를 생성 중입니다.",
     "complete": "완료!",
     "culturalAnnotations": "문화적 설명",
