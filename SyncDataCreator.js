@@ -8149,6 +8149,10 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 
 		const handleKeyDown = (e) => {
 			const normalizedHotkey = getNormalizedHotkeyFromEvent(e);
+			const target = e.target;
+			const isEditingControl = target?.isContentEditable
+				|| ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName)
+				|| target?.closest?.('[role="textbox"], [role="listbox"], [role="menu"], [role="menuitem"], [aria-haspopup]');
 			const consumeKeyboardEvent = () => {
 				e.preventDefault();
 				e.stopPropagation();
@@ -8156,12 +8160,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			};
 			const isSeekHotkey = normalizedHotkey === 'z' || normalizedHotkey === 'x';
 			const handleSeekShortcut = () => {
-				const target = e.target;
-				if (
-					target?.isContentEditable
-					|| ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName)
-					|| target?.closest?.('[role="listbox"], [role="menu"], [role="menuitem"], [aria-haspopup]')
-				) return;
+				if (isEditingControl) return;
 
 				consumeKeyboardEvent();
 				const currentPos = Spicetify.Player.getProgress();
@@ -8186,6 +8185,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			if (!shortcutAction && !isDragHotkey && !staticHotkeys.has(normalizedHotkey)) return;
 
 			if (shortcutAction === 'lastCharEnd') {
+				// This shortcut also runs outside record mode, while text fields
+				// and IME composition must retain normal character input.
+				if (isEditingControl || e.isComposing) return;
 				consumeKeyboardEvent();
 				lastCharEndShortcutRef.current?.();
 				return;
