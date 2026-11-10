@@ -17,6 +17,7 @@
     const PREFER_SYNC_DATA_PROVIDER_SETTING = 'prefer-sync-data-provider';
     const PREFER_SYNC_DATA_PROVIDER_STORAGE_KEY = `ivLyrics:visual:${PREFER_SYNC_DATA_PROVIDER_SETTING}`;
     const LRCLIB_PROVIDER_ID = 'lrclib';
+    const MAX_CONCURRENT_PROVIDER_LOOKUPS = 3;
     const PREFER_LYRICS_TYPE_OVER_PROVIDER_ORDER_SETTING = 'prefer-lyrics-type-over-provider-order';
     const PREFER_LYRICS_TYPE_OVER_PROVIDER_ORDER_STORAGE_KEY = `ivLyrics:visual:${PREFER_LYRICS_TYPE_OVER_PROVIDER_ORDER_SETTING}`;
     const getStoredValue = (key) => window.ivLyricsStoragePersistence
@@ -1582,6 +1583,7 @@
         /**
          * 가사를 가져온다. 품질 우선 옵션에서는 각 제공자를 한 번만 요청하며,
          * 글자 → 단어 → 줄 → 일반 단계 안에서 사용자 지정 제공자 순서를 유지한다.
+         * 같은 단계의 조회는 최대 3개씩 병렬 실행하고 결과 선택은 기존 순서를 따른다.
          */
         async getLyrics(info, forcedProviderId = null) {
             this.clearActiveLyricsSearchProgress(info?.uri, forcedProviderId);
@@ -1685,39 +1687,56 @@
                 enabledProviders.map(provider => [provider.id, this._getProviderTypeSettings(provider)])
             );
             const providerAttempts = new Map();
-            const loadProviderOnce = async (provider, lyricsType = null) => {
+            const providerResults = new Map();
+            const providerQueue = [];
+            let activeProviderLookups = 0;
+            let providerAttemptCount = 0;
+            let providerSelectionFinished = false;
+            const stopProviderQueue = () => {
+                providerSelectionFinished = true;
+                providerQueue.splice(0).forEach(job => job.resolve(null));
+            };
+            const pumpProviderQueue = () => {
+                while (!providerSelectionFinished && activeProviderLookups < MAX_CONCURRENT_PROVIDER_LOOKUPS && providerQueue.length) {
+                    const { provider, lyricsType, resolve } = providerQueue.shift();
+                    activeProviderLookups++;
+                    const attemptDetail = {
+                        uri: info.uri || '',
+                        providerId: provider.id,
+                        providerName: provider.name || provider.id,
+                        attempt: ++providerAttemptCount,
+                        selectionPolicy,
+                        stage: 'provider',
+                        lyricsType
+                    };
+                    this._publishLyricsSearchProgress(info, forcedProviderId, attemptDetail);
+                    this.emit('lyrics:provider:attempt', attemptDetail);
+
+                    Promise.resolve().then(() => this._loadProviderCandidate(
+                        provider, info, context, typeSettingsByProvider.get(provider.id)
+                    )).catch(error => {
+                        console.warn(`[LyricsAddonManager] Provider ${provider.id} failed:`, error);
+                        if (window.AddonDebug?.isEnabled()) window.AddonDebug.error('lyrics', `Provider ${provider.id} error`, error);
+                        return null;
+                    }).then(candidate => {
+                        providerResults.set(provider.id, candidate);
+                        activeProviderLookups--;
+                        resolve(candidate);
+                        // Let the ordered selector claim a winning result
+                        // before spending another slot on a queued provider.
+                        Promise.resolve().then(pumpProviderQueue);
+                    });
+                }
+            };
+            const loadProviderOnce = (provider, lyricsType = null) => {
                 if (providerAttempts.has(provider.id)) {
                     return providerAttempts.get(provider.id);
                 }
-
-                const attemptDetail = {
-                    uri: info.uri || '',
-                    providerId: provider.id,
-                    providerName: provider.name || provider.id,
-                    attempt: providerAttempts.size + 1,
-                    selectionPolicy,
-                    stage: 'provider',
-                    lyricsType
-                };
-                this._publishLyricsSearchProgress(info, forcedProviderId, attemptDetail);
-                this.emit('lyrics:provider:attempt', attemptDetail);
-
-                let candidate = null;
-                try {
-                    candidate = await this._loadProviderCandidate(
-                        provider,
-                        info,
-                        context,
-                        typeSettingsByProvider.get(provider.id)
-                    );
-                } catch (error) {
-                    console.warn(`[LyricsAddonManager] Provider ${provider.id} failed:`, error);
-                    if (window.AddonDebug?.isEnabled()) {
-                        window.AddonDebug.error('lyrics', `Provider ${provider.id} error`, error);
-                    }
-                }
-                providerAttempts.set(provider.id, candidate);
-                return candidate;
+                if (providerSelectionFinished) return Promise.resolve(null);
+                const pending = new Promise(resolve => providerQueue.push({ provider, lyricsType, resolve }));
+                providerAttempts.set(provider.id, pending);
+                pumpProviderQueue();
+                return pending;
             };
 
             if (typePriorityEnabled) {
@@ -1731,6 +1750,7 @@
                         const fallbackType = candidate?.hasSynced ? LYRICS_TYPES.SYNCED : LYRICS_TYPES.UNSYNCED;
                         const selected = this._selectProviderCandidateForType(candidate, fallbackType);
                         if (selected) {
+                            stopProviderQueue();
                             // Do not mistake the synthetic line-timing animation
                             // for word timing, or pass it to the generation job.
                             provider.requestWordSync(info, { ...selected, karaoke: null, karaokeSource: null });
@@ -1740,9 +1760,9 @@
                         }
                     }
                     window.__ivLyricsDebugLog?.(`[LyricsAddonManager] Starting lyrics type phase: ${lyricsType}`);
-                    for (const provider of enabledProviders) {
+                    const phaseProviders = enabledProviders.filter(provider => {
                         const typeSettings = typeSettingsByProvider.get(provider.id);
-                        const existingCandidate = providerAttempts.get(provider.id);
+                        const existingCandidate = providerResults.get(provider.id);
                         const hasAllowedPseudoSyncedFallback = lyricsType === LYRICS_TYPES.SYNCED
                             && (
                                 typeSettings?.[LYRICS_TYPES.CHARACTER]
@@ -1750,18 +1770,21 @@
                             )
                             && existingCandidate?.hasKaraoke
                             && existingCandidate?.isPseudoKaraoke;
-                        if (!hasAllowedPseudoSyncedFallback && !this._canProviderParticipateInType(
+                        return hasAllowedPseudoSyncedFallback || this._canProviderParticipateInType(
                             provider,
                             lyricsType,
                             typeSettings,
                             syncDataProviderIds
-                        )) {
-                            continue;
-                        }
-
+                        );
+                    });
+                    // Start in the existing phase/provider order, with a rolling
+                    // window of three. Await in order, never by response speed.
+                    phaseProviders.forEach(provider => loadProviderOnce(provider, lyricsType));
+                    for (const provider of phaseProviders) {
                         const candidate = await loadProviderOnce(provider, lyricsType);
                         const selectedResult = this._selectProviderCandidateForType(candidate, lyricsType);
                         if (selectedResult) {
+                            stopProviderQueue();
                             const finalResult = this._finalizeLyricsFetch(
                                 selectedResult,
                                 info,
@@ -1775,6 +1798,7 @@
                     }
                 }
             } else {
+                enabledProviders.forEach(provider => loadProviderOnce(provider, null));
                 for (const provider of enabledProviders) {
                     const candidate = await loadProviderOnce(provider, null);
                     if (!candidate) continue;
@@ -1789,6 +1813,7 @@
                                     ? LYRICS_TYPES.UNSYNCED
                                     : null;
                     if (selectionType) {
+                        stopProviderQueue();
                         const finalResult = this._finalizeLyricsFetch(
                             candidate.result,
                             info,
@@ -1801,6 +1826,8 @@
                     }
                 }
             }
+
+            stopProviderQueue();
 
             if (window.AddonDebug?.isEnabled()) {
                 window.AddonDebug.timeEnd('lyrics', 'getLyrics:total');
