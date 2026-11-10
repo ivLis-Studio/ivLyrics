@@ -22,7 +22,7 @@
  * @name lrc.red            - 표시 이름
  * @version 1.0.0           - 버전 정보
  * @author default          - 제작자
- * @default-enabled false   - 기본 비활성화 (신규 커뮤니티 소스)
+ * @default-enabled true    - 기본 활성화 (Open Lyrics 다음 2순위)
  * @supports karaoke: true  - 단어 수준 노래방 모드 지원
  * @supports synced: true   - 시간 동기화된 가사 지원
  * @supports unsynced: true - 시간 동기화 없는 일반 가사 지원
@@ -84,7 +84,7 @@
             unsynced: true
         },
         supportsLocalTracks: true,
-        defaultEnabled: false,
+        defaultEnabled: true,
         icon: 'M2 11a9 9 0 1 0 9-9 9 9 0 0 0-9 9m-1 0h18V7H1zm12-4a1 1 0 1 1 2 0v5h1.586l-2.293-2.293a1 1 0 0 1 1.414-1.414l4 4a1 1 0 0 1 0 1.414l-4 4a1 1 0 0 1-1.414-1.414L11.586 13H11v-5z'
     };
 
