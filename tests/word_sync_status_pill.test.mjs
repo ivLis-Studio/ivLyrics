@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
@@ -95,12 +95,57 @@ test('one request produces one pill and follows the shared complete/exit lifecyc
     assert.equal(h.app.state.generationPills['word-sync'].phase, 'idle');
 });
 
-test('failed generation hides its pill without completing or clearing translation', () => {
+test('failed generation shows a localized failure with a cross, without completing or clearing translation', () => {
     const h = harness(); h.app.startGenerationRequestLoading('translation'); h.advance(1000);
     h.status('generating'); h.status('failed');
-    assert.equal(h.app.state.generationPills['word-sync'].phase, 'idle');
+    assert.equal(h.app.state.generationPills['word-sync'].phase, 'failed');
     assert.equal(h.app.state.generationPills.translation.phase, 'loading');
     assert.equal(h.app._activeTranslationLoadingTokens.size, 1);
+    const nodes = flatten(h.app.renderStatus());
+    const pill = nodes.find(node => node.props?.['data-kind'] === 'word-sync');
+    assert.equal(pill.props.className, 'lyrics-translation-loading-indicator is-failed');
+    assert.ok(nodes.includes('단어 싱크 실패'));
+    assert.ok(nodes.includes('단어 단위 싱크 데이터를 생성하거나 적용하지 못했습니다. 기존 가사를 유지합니다.'));
+    assert.ok(flatten(pill).some(node => node.props?.className === 'lyrics-generation-status-error'));
+    assert.ok(!flatten(pill).some(node => node.props?.className === 'lyrics-generation-status-check'));
+    h.language = 'En';
+    assert.ok(flatten(h.app.renderStatus()).includes('Word timing failed'));
+    h.advance(3999);
+    assert.equal(h.app.state.generationPills['word-sync'].phase, 'failed');
+    h.advance(1);
+    assert.equal(h.app.state.generationPills['word-sync'].phase, 'failed-exiting');
+    assert.ok(flatten(h.app.renderStatus()).includes('Word timing failed'));
+    h.advance(180);
+    assert.equal(h.app.state.generationPills['word-sync'].phase, 'idle');
+});
+
+test('a retry cancels the failure timers and cannot be completed by the old request', () => {
+    const h = harness(); h.status('generating'); h.status('failed');
+    h.status('generating', 'request-b');
+    h.advance(4180);
+    h.status('complete', 'request-a');
+    assert.equal(h.app.state.generationPills['word-sync'].phase, 'loading');
+    h.status('complete', 'request-b');
+    assert.equal(h.app.state.generationPills['word-sync'].phase, 'complete');
+});
+
+test('track cleanup hides both loading and failure without reporting a new failure', () => {
+    const h = harness(); h.status('generating'); h.app.clearWordSyncLoading();
+    assert.equal(h.app.state.generationPills['word-sync'].phase, 'idle');
+    h.status('generating', 'request-b'); h.status('failed', 'request-b');
+    h.app.clearWordSyncLoading(); h.advance(4180);
+    assert.equal(h.app.state.generationPills['word-sync'].phase, 'idle');
+    assert.equal(h.app._wordSyncStatusTokens.size, 0);
+});
+
+test('every supported language includes word sync failure text', () => {
+    for (const file of readdirSync(new URL('../langs/', import.meta.url)).filter(file => /^Lang.*\.js$/.test(file))) {
+        const context = { window: {} };
+        vm.runInNewContext(readFileSync(new URL(`../langs/${file}`, import.meta.url), 'utf8'), context);
+        const messages = Object.values(context.window)[0].generationStatus;
+        assert.ok(messages.wordSyncFailed?.trim(), file);
+        assert.ok(messages.externalWordSyncFailed?.trim(), file);
+    }
 });
 
 test('prefetch status for another track never appears on the current track', () => {

@@ -2193,6 +2193,8 @@ window.LANG_ES = {
   "generationStatus": {
     "wordSync": "Sincronización por palabra",
     "externalWordSync": "Se están generando tiempos por palabra en un servidor externo de letras.",
+    "wordSyncFailed": "Error al sincronizar palabras",
+    "externalWordSyncFailed": "No se pudo generar o aplicar la sincronización por palabra. Se conserva la letra actual.",
     "complete": "¡Listo!",
     "culturalAnnotations": "Explicaciones del contexto cultural",
     "culturalAnnotationsLoading": "Analizando el contexto cultural...",

@@ -2193,6 +2193,8 @@ window.LANG_ZH_TW = {
   "generationStatus": {
     "wordSync": "逐詞同步",
     "externalWordSync": "正在外部歌詞伺服器上產生逐詞同步資料。",
+    "wordSyncFailed": "逐詞同步失敗",
+    "externalWordSyncFailed": "無法產生或套用逐詞同步資料。將保留目前的歌詞。",
     "complete": "完成！",
     "culturalAnnotations": "文化背景說明",
     "culturalAnnotationsLoading": "正在分析文化背景...",

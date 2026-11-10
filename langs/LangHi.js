@@ -2193,6 +2193,8 @@ window.LANG_HI = {
   "generationStatus": {
     "wordSync": "शब्द सिंक",
     "externalWordSync": "बाहरी गीत सर्वर पर शब्द-स्तर का सिंक डेटा तैयार किया जा रहा है।",
+    "wordSyncFailed": "शब्द सिंक विफल",
+    "externalWordSyncFailed": "शब्द-स्तर का सिंक डेटा बनाया या लागू नहीं किया जा सका। मौजूदा गीत के बोल बनाए रखे जाएंगे।",
     "complete": "पूर्ण!",
     "culturalAnnotations": "सांस्कृतिक संदर्भ की व्याख्या",
     "culturalAnnotationsLoading": "सांस्कृतिक संदर्भ का विश्लेषण हो रहा है...",

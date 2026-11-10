@@ -2193,6 +2193,8 @@ window.LANG_EN = {
   "generationStatus": {
     "wordSync": "Word timing",
     "externalWordSync": "Generating word-level timing on an external lyrics server.",
+    "wordSyncFailed": "Word timing failed",
+    "externalWordSyncFailed": "Could not generate or apply word-level timing. Keeping the current lyrics.",
     "complete": "Done!",
     "culturalAnnotations": "Cultural context explanations",
     "culturalAnnotationsLoading": "Analyzing cultural context...",

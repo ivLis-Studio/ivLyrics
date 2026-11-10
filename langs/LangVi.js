@@ -2193,6 +2193,8 @@ window.LANG_VI = {
   "generationStatus": {
     "wordSync": "Đồng bộ từng từ",
     "externalWordSync": "Đang tạo dữ liệu đồng bộ từng từ trên máy chủ lời bài hát bên ngoài.",
+    "wordSyncFailed": "Đồng bộ từng từ thất bại",
+    "externalWordSyncFailed": "Không thể tạo hoặc áp dụng dữ liệu đồng bộ từng từ. Giữ nguyên lời bài hát hiện tại.",
     "complete": "Hoàn tất!",
     "culturalAnnotations": "Giải thích bối cảnh văn hóa",
     "culturalAnnotationsLoading": "Đang phân tích bối cảnh văn hóa...",

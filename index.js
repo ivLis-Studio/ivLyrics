@@ -4725,6 +4725,7 @@ const LyricsCacheEditModal = ({
 const GENERATION_PILL_TIMING = Object.freeze({
   loadingDelayMs: 1000,
   completeHoldMs: 520,
+  failureHoldMs: 4000,
   exitMs: 180,
 });
 
@@ -4772,6 +4773,7 @@ const GENERATION_REQUEST_PILL_CONFIG = Object.freeze({
     failureKey: "_wordSyncLoadingHadFailure",
     loadingStateKey: null,
     loadingDelayMs: 0,
+    showFailure: true,
   }),
 });
 
@@ -5373,6 +5375,14 @@ class LyricsContainer extends react.Component {
   }
 
   completeGenerationPill(kind) {
+    this.settleGenerationPill(kind, "complete");
+  }
+
+  failGenerationPill(kind) {
+    this.settleGenerationPill(kind, "failed");
+  }
+
+  settleGenerationPill(kind, phase) {
     if (!this._visibleGenerationPills.has(kind)) {
       this.hideGenerationPill(kind);
       return;
@@ -5380,6 +5390,7 @@ class LyricsContainer extends react.Component {
 
     this.clearGenerationPillTimers(kind);
     const revision = this.nextGenerationPillRevision(kind);
+    const holdMs = phase === "failed" ? GENERATION_PILL_TIMING.failureHoldMs : GENERATION_PILL_TIMING.completeHoldMs;
     if (!this._isComponentMounted) return;
 
     this.setState((previousState) => ({
@@ -5387,7 +5398,7 @@ class LyricsContainer extends react.Component {
         ...previousState.generationPills,
         [kind]: {
           ...previousState.generationPills?.[kind],
-          phase: "complete",
+          phase,
           revision,
         },
       },
@@ -5403,17 +5414,17 @@ class LyricsContainer extends react.Component {
 
       this.setState((previousState) => {
         const current = previousState.generationPills?.[kind];
-        if (!current || current.revision !== revision || current.phase !== "complete") {
+        if (!current || current.revision !== revision || current.phase !== phase) {
           return null;
         }
         return {
           generationPills: {
             ...previousState.generationPills,
-            [kind]: { ...current, phase: "exiting" },
+            [kind]: { ...current, phase: phase === "failed" ? "failed-exiting" : "exiting" },
           },
         };
       });
-    }, GENERATION_PILL_TIMING.completeHoldMs);
+    }, holdMs);
 
     const removeTimer = setTimeout(() => {
       if (
@@ -5435,7 +5446,7 @@ class LyricsContainer extends react.Component {
           },
         };
       });
-    }, GENERATION_PILL_TIMING.completeHoldMs + GENERATION_PILL_TIMING.exitMs);
+    }, holdMs + GENERATION_PILL_TIMING.exitMs);
 
     this._generationPillTimers.set(kind, { revision, exitTimer, removeTimer });
   }
@@ -6630,7 +6641,7 @@ class LyricsContainer extends react.Component {
     }
   }
 
-  clearGenerationRequestLoading(kind, token = null, { completed = false } = {}) {
+  clearGenerationRequestLoading(kind, token = null, { completed = false, failed = false } = {}) {
     const config = GENERATION_REQUEST_PILL_CONFIG[kind];
     if (!config) return;
 
@@ -6655,6 +6666,8 @@ class LyricsContainer extends react.Component {
       completed &&
       !this[config.failureKey] &&
       this._visibleGenerationPills.has(kind);
+    const shouldFail = config.showFailure && (completed || failed)
+      && this[config.failureKey] && this._visibleGenerationPills.has(kind);
     this[config.failureKey] = false;
     this._generationRequestDetails.delete(kind);
     if (this._isComponentMounted && config.loadingStateKey) {
@@ -6662,6 +6675,8 @@ class LyricsContainer extends react.Component {
     }
     if (shouldComplete) {
       this.completeGenerationPill(kind);
+    } else if (shouldFail) {
+      this.failGenerationPill(kind);
     } else {
       this.hideGenerationPill(kind);
     }
@@ -6675,10 +6690,14 @@ class LyricsContainer extends react.Component {
       this._wordSyncStatusTokens.set(detail.requestId, this.startGenerationRequestLoading("word-sync"));
       return;
     }
+    if (detail.phase !== "complete" && detail.phase !== "failed") return;
     const token = this._wordSyncStatusTokens.get(detail.requestId);
     if (token === undefined) return;
     this._wordSyncStatusTokens.delete(detail.requestId);
-    this.clearGenerationRequestLoading("word-sync", token, { completed: detail.phase === "complete" });
+    this.clearGenerationRequestLoading("word-sync", token, {
+      completed: detail.phase === "complete",
+      failed: detail.phase === "failed",
+    });
   }
 
   clearWordSyncLoading() {
@@ -11134,6 +11153,8 @@ class LyricsContainer extends react.Component {
           key: "word-sync",
           label: I18n.t("generationStatus.wordSync") || "Word timing",
           description: I18n.t("generationStatus.externalWordSync") || "Generating word-level timing on an external lyrics server.",
+          failureLabel: I18n.t("generationStatus.wordSyncFailed") || "Word timing failed",
+          failureDescription: I18n.t("generationStatus.externalWordSyncFailed") || "Could not generate or apply word-level timing. Keeping the current lyrics.",
         },
         {
           key: "video-background",
@@ -11147,13 +11168,15 @@ class LyricsContainer extends react.Component {
           if (!pill || pill.phase === "idle") return null;
 
           const isComplete = pill.phase === "complete" || pill.phase === "exiting";
+          const isFailed = pill.phase === "failed" || pill.phase === "failed-exiting";
           const label = pill.label || definition.label;
           return {
             ...definition,
             ...pill,
+            isFailed,
             label,
-            completeLabel: generationCompleteLabel,
-            description: isComplete
+            completeLabel: isFailed ? definition.failureLabel : generationCompleteLabel,
+            description: isFailed ? definition.failureDescription : isComplete
               ? `${label} ${generationCompleteLabel}`
               : (pill.description || definition.description),
           };
@@ -11191,12 +11214,12 @@ class LyricsContainer extends react.Component {
               react.createElement(
                 "svg",
                 {
-                  className: "lyrics-generation-status-check",
+                  className: status.isFailed ? "lyrics-generation-status-error" : "lyrics-generation-status-check",
                   viewBox: "0 0 16 16",
                   fill: "none",
                 },
                 react.createElement("path", {
-                  d: "M3.25 8.25 6.5 11.25 12.75 4.75",
+                  d: status.isFailed ? "M4 4 12 12 M12 4 4 12" : "M3.25 8.25 6.5 11.25 12.75 4.75",
                   stroke: "currentColor",
                   strokeWidth: "2.2",
                   strokeLinecap: "round",

@@ -2193,6 +2193,8 @@ window.LANG_TH = {
   "generationStatus": {
     "wordSync": "ซิงก์ระดับคำ",
     "externalWordSync": "กำลังสร้างข้อมูลซิงก์ระดับคำบนเซิร์ฟเวอร์เนื้อเพลงภายนอก",
+    "wordSyncFailed": "ซิงก์ระดับคำไม่สำเร็จ",
+    "externalWordSyncFailed": "ไม่สามารถสร้างหรือใช้ข้อมูลซิงก์ระดับคำได้ จะคงเนื้อเพลงปัจจุบันไว้",
     "complete": "เสร็จแล้ว!",
     "culturalAnnotations": "คำอธิบายบริบททางวัฒนธรรม",
     "culturalAnnotationsLoading": "กำลังวิเคราะห์บริบททางวัฒนธรรม...",

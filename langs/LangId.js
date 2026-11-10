@@ -2193,6 +2193,8 @@ window.LANG_ID = {
   "generationStatus": {
     "wordSync": "Sinkronisasi kata",
     "externalWordSync": "Sedang membuat data sinkronisasi per kata di server lirik eksternal.",
+    "wordSyncFailed": "Sinkronisasi kata gagal",
+    "externalWordSyncFailed": "Tidak dapat membuat atau menerapkan sinkronisasi per kata. Lirik saat ini tetap digunakan.",
     "complete": "Selesai!",
     "culturalAnnotations": "Penjelasan konteks budaya",
     "culturalAnnotationsLoading": "Menganalisis konteks budaya...",

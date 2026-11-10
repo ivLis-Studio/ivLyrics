@@ -2193,6 +2193,8 @@ window.LANG_SV = {
   "generationStatus": {
     "wordSync": "Ordsynkronisering",
     "externalWordSync": "Synkronisering ord för ord skapas på en extern låttextserver.",
+    "wordSyncFailed": "Ordsynkronisering misslyckades",
+    "externalWordSyncFailed": "Det gick inte att skapa eller använda synkronisering ord för ord. Den aktuella låttexten behålls.",
     "complete": "Klart!",
     "culturalAnnotations": "Förklaringar av kulturell kontext",
     "culturalAnnotationsLoading": "Analyserar kulturell kontext...",

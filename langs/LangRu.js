@@ -2193,6 +2193,8 @@ window.LANG_RU = {
   "generationStatus": {
     "wordSync": "Синхронизация слов",
     "externalWordSync": "На внешнем сервере текстов создаётся синхронизация по словам.",
+    "wordSyncFailed": "Не удалось синхронизировать слова",
+    "externalWordSyncFailed": "Не удалось создать или применить синхронизацию по словам. Текущий текст сохранён.",
     "complete": "Готово!",
     "culturalAnnotations": "Пояснения культурного контекста",
     "culturalAnnotationsLoading": "Анализируется культурный контекст...",

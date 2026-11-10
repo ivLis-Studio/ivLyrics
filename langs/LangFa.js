@@ -2193,6 +2193,8 @@ window.LANG_FA = {
   "generationStatus": {
     "wordSync": "همگام‌سازی واژه‌ها",
     "externalWordSync": "داده‌های همگام‌سازی واژه‌به‌واژه در یک سرور خارجی متن ترانه در حال تولید است.",
+    "wordSyncFailed": "همگام‌سازی واژه‌ها ناموفق بود",
+    "externalWordSyncFailed": "ایجاد یا اعمال داده‌های همگام‌سازی واژه‌به‌واژه ممکن نشد. متن فعلی ترانه حفظ می‌شود.",
     "complete": "انجام شد!",
     "culturalAnnotations": "توضیح زمینه فرهنگی",
     "culturalAnnotationsLoading": "در حال تحلیل زمینه فرهنگی...",

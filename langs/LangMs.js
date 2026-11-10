@@ -2193,6 +2193,8 @@ window.LANG_MS = {
   "generationStatus": {
     "wordSync": "Penyegerakan perkataan",
     "externalWordSync": "Data penyegerakan setiap perkataan sedang dijana pada pelayan lirik luaran.",
+    "wordSyncFailed": "Penyegerakan perkataan gagal",
+    "externalWordSyncFailed": "Data penyegerakan setiap perkataan tidak dapat dijana atau digunakan. Lirik semasa dikekalkan.",
     "complete": "Selesai!",
     "culturalAnnotations": "Penjelasan konteks budaya",
     "culturalAnnotationsLoading": "Menganalisis konteks budaya...",

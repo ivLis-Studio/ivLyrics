@@ -2193,6 +2193,8 @@ window.LANG_BN = {
   "generationStatus": {
     "wordSync": "শব্দভিত্তিক সিঙ্ক",
     "externalWordSync": "বাহ্যিক গানের কথা সার্ভারে শব্দভিত্তিক সিঙ্ক ডেটা তৈরি করা হচ্ছে।",
+    "wordSyncFailed": "শব্দভিত্তিক সিঙ্ক ব্যর্থ",
+    "externalWordSyncFailed": "শব্দভিত্তিক সিঙ্ক ডেটা তৈরি বা প্রয়োগ করা যায়নি। বর্তমান গানের কথা রাখা হচ্ছে।",
     "complete": "সম্পন্ন!",
     "culturalAnnotations": "সাংস্কৃতিক প্রেক্ষাপটের ব্যাখ্যা",
     "culturalAnnotationsLoading": "সাংস্কৃতিক প্রেক্ষাপট বিশ্লেষণ করা হচ্ছে...",

@@ -2193,6 +2193,8 @@ window.LANG_CS = {
   "generationStatus": {
     "wordSync": "Synchronizace slov",
     "externalWordSync": "Na externím serveru s texty písní se vytváří synchronizace po slovech.",
+    "wordSyncFailed": "Synchronizace slov selhala",
+    "externalWordSyncFailed": "Synchronizaci po slovech se nepodařilo vytvořit nebo použít. Aktuální text zůstává zachován.",
     "complete": "Hotovo!",
     "culturalAnnotations": "Vysvětlení kulturního kontextu",
     "culturalAnnotationsLoading": "Analyzuje se kulturní kontext...",

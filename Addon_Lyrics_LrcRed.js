@@ -473,18 +473,21 @@
         const playerItem = typeof Spicetify !== 'undefined' ? Spicetify.Player?.data?.item : null;
         const container = window.lyricContainer;
         const state = container?.state;
-        if (!wordSyncEnabled() || playerItem?.uri !== info.uri || state?.uri !== info.uri || typeof container.applyLyricsTimingUpgrade !== 'function') return;
+        if (!wordSyncEnabled() || playerItem?.uri !== info.uri || state?.uri !== info.uri) return;
         // A quick generation may finish before the original fetch is displayed.
         if (state.isLoading) {
             if (attempts < 200) {
                 await new Promise(resolve => setTimeout(resolve, 100));
                 return refreshSyncedTrack(info, upgraded, attempts + 1);
             }
-            return;
+            throw new Error('Timed out waiting to apply word sync');
         }
         const hasRealKaraoke = state.karaoke?.length && !window.PseudoKaraokeService?.isPseudoSource?.(state.karaokeSource);
         if (state.provider !== 'lrcred' || state.syncDataApplied || hasRealKaraoke) return;
-        if (container.applyLyricsTimingUpgrade(upgraded) === false) throw new Error('Could not apply word sync to the current lyrics');
+        if (typeof container.applyLyricsTimingUpgrade !== 'function'
+            || (await container.applyLyricsTimingUpgrade(upgraded)) === false) {
+            throw new Error('Could not apply word sync to the current lyrics');
+        }
     };
 
     const queueWordSync = (info, result, checkFresh = false) => {
@@ -505,7 +508,7 @@
                 await refreshSyncedTrack(info, upgraded);
                 completed = true;
             } catch (error) {
-                window.__ivLyricsDebugLog?.('[lrc.red Lyrics Addon] Could not cache word sync', { error: error.message });
+                window.__ivLyricsDebugLog?.('[lrc.red Lyrics Addon] Could not deliver word sync', { error: error.message });
             } finally {
                 job.finishedUris.add(info.uri);
                 if (job.phase === 'generating') publishWordSyncStatus(job, info.uri, completed ? 'complete' : 'failed');

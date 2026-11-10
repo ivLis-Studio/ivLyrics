@@ -2193,6 +2193,8 @@ window.LANG_AR = {
   "generationStatus": {
     "wordSync": "مزامنة الكلمات",
     "externalWordSync": "يجري إنشاء بيانات مزامنة لكل كلمة على خادم خارجي لكلمات الأغاني.",
+    "wordSyncFailed": "فشلت مزامنة الكلمات",
+    "externalWordSyncFailed": "تعذّر إنشاء بيانات المزامنة لكل كلمة أو تطبيقها. سيتم الاحتفاظ بكلمات الأغنية الحالية.",
     "complete": "تم!",
     "culturalAnnotations": "شرح السياق الثقافي",
     "culturalAnnotationsLoading": "جارٍ تحليل السياق الثقافي...",

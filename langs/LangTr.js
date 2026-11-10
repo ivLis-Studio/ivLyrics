@@ -2193,6 +2193,8 @@ window.LANG_TR = {
   "generationStatus": {
     "wordSync": "Kelime eşitleme",
     "externalWordSync": "Harici bir şarkı sözü sunucusunda kelime düzeyinde eşitleme verileri oluşturuluyor.",
+    "wordSyncFailed": "Kelime eşitleme başarısız",
+    "externalWordSyncFailed": "Kelime düzeyinde eşitleme verileri oluşturulamadı veya uygulanamadı. Mevcut şarkı sözleri korunuyor.",
     "complete": "Tamamlandı!",
     "culturalAnnotations": "Kültürel bağlam açıklamaları",
     "culturalAnnotationsLoading": "Kültürel bağlam analiz ediliyor...",

@@ -2193,6 +2193,8 @@ window.LANG_JA = {
   "generationStatus": {
     "wordSync": "単語同期",
     "externalWordSync": "外部の歌詞サーバーで単語単位の同期データを生成しています。",
+    "wordSyncFailed": "単語同期に失敗",
+    "externalWordSyncFailed": "単語単位の同期データを生成または適用できませんでした。現在の歌詞を維持します。",
     "complete": "完了！",
     "culturalAnnotations": "文化的背景の解説",
     "culturalAnnotationsLoading": "文化的背景を分析中...",

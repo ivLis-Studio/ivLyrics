@@ -2193,6 +2193,8 @@ window.LANG_IT = {
   "generationStatus": {
     "wordSync": "Sincronizzazione delle parole",
     "externalWordSync": "Generazione della sincronizzazione parola per parola su un server esterno di testi.",
+    "wordSyncFailed": "Sincronizzazione parole fallita",
+    "externalWordSyncFailed": "Impossibile generare o applicare la sincronizzazione parola per parola. Il testo attuale viene mantenuto.",
     "complete": "Fatto!",
     "culturalAnnotations": "Spiegazioni del contesto culturale",
     "culturalAnnotationsLoading": "Analisi del contesto culturale...",

@@ -2193,6 +2193,8 @@ window.LANG_DE = {
   "generationStatus": {
     "wordSync": "Wortsynchronisierung",
     "externalWordSync": "Auf einem externen Liedtextserver werden Zeitdaten für einzelne Wörter erstellt.",
+    "wordSyncFailed": "Wortsynchronisierung fehlgeschlagen",
+    "externalWordSyncFailed": "Die Zeitdaten für einzelne Wörter konnten nicht erstellt oder angewendet werden. Der aktuelle Liedtext bleibt erhalten.",
     "complete": "Fertig!",
     "culturalAnnotations": "Kulturellen Kontext erklären",
     "culturalAnnotationsLoading": "Kultureller Kontext wird analysiert...",

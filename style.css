@@ -358,6 +358,18 @@ body.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer * {
   transform: scaleX(1);
 }
 
+.lyrics-translation-loading-indicator.is-failed,
+.lyrics-translation-loading-indicator.is-failed-exiting {
+  max-width: 260px;
+  color: #ffd5d7;
+  background: rgba(100, 24, 31, 0.88);
+  border-color: rgba(255, 111, 120, 0.65);
+}
+
+.lyrics-translation-loading-indicator.is-failed-exiting {
+  animation: ivlyricsGenerationPillOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
 .lyrics-translation-loading-label {
   position: relative;
   display: grid;
@@ -392,7 +404,9 @@ body.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer * {
 }
 
 .lyrics-translation-loading-indicator.is-complete .lyrics-generation-status-loading-label,
-.lyrics-translation-loading-indicator.is-exiting .lyrics-generation-status-loading-label {
+.lyrics-translation-loading-indicator.is-exiting .lyrics-generation-status-loading-label,
+.lyrics-translation-loading-indicator.is-failed .lyrics-generation-status-loading-label,
+.lyrics-translation-loading-indicator.is-failed-exiting .lyrics-generation-status-loading-label {
   position: absolute;
   inset: 0 auto auto 0;
   opacity: 0;
@@ -400,7 +414,9 @@ body.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer * {
 }
 
 .lyrics-translation-loading-indicator.is-complete .lyrics-generation-status-complete-label,
-.lyrics-translation-loading-indicator.is-exiting .lyrics-generation-status-complete-label {
+.lyrics-translation-loading-indicator.is-exiting .lyrics-generation-status-complete-label,
+.lyrics-translation-loading-indicator.is-failed .lyrics-generation-status-complete-label,
+.lyrics-translation-loading-indicator.is-failed-exiting .lyrics-generation-status-complete-label {
   position: relative;
   inset: auto;
   opacity: 1;
@@ -428,7 +444,8 @@ body.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer * {
 }
 
 .lyrics-translation-loading-spinner,
-.lyrics-generation-status-check {
+.lyrics-generation-status-check,
+.lyrics-generation-status-error {
   grid-area: 1 / 1;
   width: 16px;
   height: 16px;
@@ -460,7 +477,9 @@ body.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer * {
 }
 
 .lyrics-translation-loading-indicator.is-complete .lyrics-translation-loading-spinner,
-.lyrics-translation-loading-indicator.is-exiting .lyrics-translation-loading-spinner {
+.lyrics-translation-loading-indicator.is-exiting .lyrics-translation-loading-spinner,
+.lyrics-translation-loading-indicator.is-failed .lyrics-translation-loading-spinner,
+.lyrics-translation-loading-indicator.is-failed-exiting .lyrics-translation-loading-spinner {
   opacity: 0;
   transform: scale(0.5);
   animation-play-state: paused;
@@ -588,7 +607,8 @@ body.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer * {
     stroke-dashoffset: 0;
   }
 
-  .lyrics-translation-loading-indicator.is-exiting {
+  .lyrics-translation-loading-indicator.is-exiting,
+  .lyrics-translation-loading-indicator.is-failed-exiting {
     opacity: 0;
   }
 }
@@ -615,7 +635,8 @@ body.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer * {
   stroke-dashoffset: 0;
 }
 
-.motion-reduced .lyrics-translation-loading-indicator.is-exiting {
+.motion-reduced .lyrics-translation-loading-indicator.is-exiting,
+.motion-reduced .lyrics-translation-loading-indicator.is-failed-exiting {
   opacity: 0;
 }
 
