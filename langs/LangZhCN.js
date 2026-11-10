@@ -2191,6 +2191,7 @@ window.LANG_ZH_CN = {
     "label": "歌词 Plus"
   },
   "generationStatus": {
+    "externalWordSync": "正在外部歌词服务器上生成逐词同步数据。",
     "complete": "完成！",
     "culturalAnnotations": "文化背景说明",
     "culturalAnnotationsLoading": "正在分析文化背景...",

@@ -2191,6 +2191,7 @@ window.LANG_DE = {
     "label": "Songtexte Plus"
   },
   "generationStatus": {
+    "externalWordSync": "Auf einem externen Liedtextserver werden Zeitdaten für einzelne Wörter erstellt.",
     "complete": "Fertig!",
     "culturalAnnotations": "Kulturellen Kontext erklären",
     "culturalAnnotationsLoading": "Kultureller Kontext wird analysiert...",

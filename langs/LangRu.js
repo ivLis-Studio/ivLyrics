@@ -2191,6 +2191,7 @@ window.LANG_RU = {
     "label": "Текст Плюс"
   },
   "generationStatus": {
+    "externalWordSync": "На внешнем сервере текстов создаётся синхронизация по словам.",
     "complete": "Готово!",
     "culturalAnnotations": "Пояснения культурного контекста",
     "culturalAnnotationsLoading": "Анализируется культурный контекст...",

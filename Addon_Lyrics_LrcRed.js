@@ -32,9 +32,12 @@
     'use strict';
 
     const API_BASE = 'https://lrc.red';
-    const CACHE_VERSION = '2026-11-11-lrcred-6';
+    const CACHE_VERSION = '2026-11-11-lrcred-auto-sync-1';
     const ATTRIBUTION = 'Lyrics from lrc.red (https://lrc.red).';
     const REQUEST_TIMEOUT_MS = 15000;
+    const SYNC_TIMEOUT_MS = 75000;
+    const SYNC_RETRY_MS = 10 * 60 * 1000;
+    const CLIENT_ID = 'ivLyrics (+https://github.com/ivLis-Studio/ivLyrics; mailto:me@ivl.is)';
 
     function lyricsText(key, fallback, params) {
         const path = `settings.lyricsProviders.${key}`;
@@ -89,21 +92,22 @@
     // Helpers
     // ================================================================================
 
-    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-    const fetchWithTimeout = async (url, init = {}) => {
+    const fetchWithTimeout = async (url, init = {}, timeoutMs = REQUEST_TIMEOUT_MS, read = response => response) => {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         try {
             const response = await fetch(url, {
                 ...init,
                 signal: controller.signal,
                 headers: {
                     'Accept': 'application/json, application/ttml+xml, text/plain, */*',
+                    // The sync route does not implement OPTIONS. Keep its
+                    // bodyless POST a simple CORS request; identify all reads.
+                    ...(init.method === 'POST' ? {} : { 'X-Client-ID': CLIENT_ID }),
                     ...init.headers,
                 },
             });
-            return response;
+            return await read(response);
         } finally {
             clearTimeout(timeoutId);
         }
@@ -258,11 +262,12 @@
         return response.json();
     };
 
-    const getTtmlLyrics = async (isrc) => {
-        const url = `https://lrc.red/s/${encodeURIComponent(isrc)}.ttml`;
-        const response = await fetchWithTimeout(url);
-        if (!response.ok) throw new Error(`TTML fetch failed (${response.status})`);
-        return response.text();
+    const getTtmlLyrics = async (isrc, fresh = false) => {
+        const url = `https://lrc.red/s/${encodeURIComponent(isrc)}.ttml${fresh ? `?t=${Date.now()}` : ''}`;
+        return fetchWithTimeout(url, fresh ? { cache: 'no-store' } : {}, REQUEST_TIMEOUT_MS, async response => {
+            if (!response.ok) throw new Error(`TTML fetch failed (${response.status})`);
+            return response.text();
+        });
     };
 
     const getLrcLyrics = async (isrc) => {
@@ -309,12 +314,153 @@
         return { karaoke, synced, unsynced };
     };
 
+    const withParsedLyrics = (result, parsed) => ({
+        ...result,
+        karaoke: parsed.karaoke.length ? parsed.karaoke : null,
+        synced: parsed.synced.length ? parsed.synced : null,
+        unsynced: parsed.unsynced.length ? parsed.unsynced : null,
+        karaokeSource: parsed.karaoke.length ? 'lrcred' : null,
+        error: parsed.karaoke.length || parsed.synced.length || parsed.unsynced.length ? null : 'No usable lyrics',
+        lrcred: { ...result.lrcred, syncType: parsed.karaoke.length ? 'word' : 'line', lines: parsed.synced.length },
+    });
+
+    const wordSyncEnabled = () => {
+        const manager = window.LyricsAddonManager;
+        if (manager?.isProviderEnabled?.('lrcred') === false) return false;
+        const legacy = manager?.getAddonSetting?.('lrcred', 'enable_karaoke', true) !== false;
+        return manager?.getAddonSetting?.('lrcred', 'enable_word', legacy) !== false;
+    };
+    const sameLyricsLines = (left, right) => {
+        const text = result => (result.synced?.length ? result.synced : result.unsynced || [])
+            .map(line => String(line.originalText ?? line.text ?? '').normalize('NFC').trim()).filter(Boolean);
+        const a = text(left), b = text(right);
+        return a.length > 0 && a.length === b.length && a.every((line, index) => line === b[index]);
+    };
+    const cacheIdFor = info => window.LyricsService?.extractTrackId?.(info?.uri)
+        || window.ivLyricsTrackIdentity?.extractTrackId?.(info?.uri)
+        || (info?.uri ? `local-uri:${info.uri}` : '');
+
+    // One generation at a time, at most four pending recordings. Repeated
+    // playback, prefetch and cache lookups share the same job and cooldown.
+    const wordSyncJobs = new Map();
+    const wordSyncDeliveries = new Map();
+    let syncQueue = Promise.resolve();
+    let pendingSyncs = 0;
+    let syncUnavailableUntil = 0;
+
+    const requestWordSync = (isrc, durationMs, checkFresh, info) => {
+        const existing = wordSyncJobs.get(isrc);
+        if (existing && (!existing.settled || Date.now() < existing.retryAt)) return existing;
+        if (pendingSyncs >= 4 || Date.now() < syncUnavailableUntil) return null;
+        wordSyncJobs.delete(isrc);
+        for (const [key, job] of wordSyncJobs) {
+            if (wordSyncJobs.size < 32) break;
+            if (job.settled) wordSyncJobs.delete(key);
+        }
+        const job = { settled: false, retryAt: Infinity, parsed: null, promise: null };
+        pendingSyncs++;
+        job.promise = syncQueue.then(async () => {
+            if (Date.now() < syncUnavailableUntil || !wordSyncEnabled()) return null;
+            // A persisted line-only result may predate another client's sync.
+            // Read the current TTML before spending another generation on it.
+            if (checkFresh) {
+                try {
+                    const current = normalizeParsedLyrics(parseTtmlLyrics(await getTtmlLyrics(isrc, true), durationMs));
+                    if (current.karaoke.length) return current;
+                } catch { /* A missing/invalid TTML can still be generated. */ }
+            }
+            if (typeof Spicetify !== 'undefined' && Spicetify.Player?.data?.item?.uri === info.uri) {
+                const key = 'generationStatus.externalWordSync';
+                const translated = window.I18n?.t?.(key);
+                Spicetify.showNotification?.(translated && translated !== key
+                    ? translated : 'Generating word-level timing on an external lyrics server.', false, 8000);
+            }
+            await fetchWithTimeout(`${API_BASE}/s/${encodeURIComponent(isrc)}/sync`, { method: 'POST' }, SYNC_TIMEOUT_MS, response => {
+                if (!response.ok) {
+                    if (response.status === 429 || response.status === 503) {
+                        const retryAfter = response.headers?.get?.('Retry-After');
+                        const seconds = Number(retryAfter);
+                        const retryAt = retryAfter && !Number.isFinite(seconds) ? Date.parse(retryAfter) : Date.now() + (seconds || 0) * 1000;
+                        syncUnavailableUntil = Math.max(Date.now() + SYNC_RETRY_MS, retryAt || 0);
+                    }
+                    throw new Error(`Word sync failed (${response.status})`);
+                }
+            });
+            const parsed = normalizeParsedLyrics(parseTtmlLyrics(await getTtmlLyrics(isrc, true), durationMs));
+            return parsed.karaoke.length ? parsed : null;
+        }).catch(error => {
+            window.__ivLyricsDebugLog?.('[lrc.red Lyrics Addon] Automatic word sync unavailable', { isrc, error: error.message });
+            return null;
+        }).then(parsed => {
+            job.parsed = parsed;
+            job.settled = true;
+            job.retryAt = Date.now() + (parsed ? 60 * 60 * 1000 : SYNC_RETRY_MS);
+            pendingSyncs--;
+            return parsed;
+        });
+        syncQueue = job.promise;
+        wordSyncJobs.set(isrc, job);
+        return job;
+    };
+
+    const refreshSyncedTrack = (info, upgraded, attempts = 0) => {
+        const playerItem = typeof Spicetify !== 'undefined' ? Spicetify.Player?.data?.item : null;
+        const container = window.lyricContainer;
+        const state = container?.state;
+        if (!wordSyncEnabled() || playerItem?.uri !== info.uri || state?.uri !== info.uri || typeof container.applyLyricsTimingUpgrade !== 'function') return;
+        // A quick generation may finish before the original fetch is displayed.
+        if (state.isLoading) {
+            if (attempts < 200) setTimeout(() => refreshSyncedTrack(info, upgraded, attempts + 1), 100);
+            return;
+        }
+        const hasRealKaraoke = state.karaoke?.length && !window.PseudoKaraokeService?.isPseudoSource?.(state.karaokeSource);
+        if (state.provider !== 'lrcred' || state.syncDataApplied || hasRealKaraoke) return;
+        container.applyLyricsTimingUpgrade(upgraded);
+    };
+
+    const queueWordSync = (info, result, checkFresh = false) => {
+        const isrc = normalizeIsrc(result.lrcred?.isrc);
+        if (!wordSyncEnabled() || !isrc || result.karaoke?.length || result.syncDataApplied || result.error) return;
+        const job = requestWordSync(isrc, normalizeDurationSeconds(info) * 1000, checkFresh, info);
+        const deliveryKey = `${info.uri}:${isrc}`;
+        if (!job || wordSyncDeliveries.get(deliveryKey) === job) return;
+        wordSyncDeliveries.set(deliveryKey, job);
+        while (wordSyncDeliveries.size > 64) wordSyncDeliveries.delete(wordSyncDeliveries.keys().next().value);
+        job.promise.then(async parsed => {
+            if (!parsed || !sameLyricsLines(result, parsed)) return;
+            const upgraded = { ...withParsedLyrics(result, parsed), karaokeGranularity: 'word' };
+            const cacheId = cacheIdFor(info);
+            if (cacheId) await window.LyricsService?.cacheLyrics?.(cacheId, 'lrcred', upgraded);
+            refreshSyncedTrack(info, upgraded);
+        }).catch(error => {
+            window.__ivLyricsDebugLog?.('[lrc.red Lyrics Addon] Could not cache word sync', { error: error.message });
+        });
+    };
+
     // ================================================================================
     // Addon
     // ================================================================================
 
     const LrcRedLyricsAddon = {
         ...ADDON_INFO,
+
+        // Only the manager may authorize generation after every enabled
+        // provider has failed to supply real karaoke lyrics.
+        requestWordSync(info, result) {
+            queueWordSync(info, result, true);
+        },
+
+        async prepareLyricsLookup(info) {
+            if (!wordSyncEnabled()) return;
+            const cacheId = cacheIdFor(info);
+            if (!cacheId) return;
+            const cached = await window.LyricsService?.getCachedLyrics?.(cacheId, 'lrcred');
+            if (!cached || cached.cacheVersion !== CACHE_VERSION) return;
+            const ready = wordSyncJobs.get(normalizeIsrc(cached.lrcred?.isrc))?.parsed;
+            if (ready && sameLyricsLines(cached, ready) && !cached.karaoke?.length && !cached.syncDataApplied) {
+                await window.LyricsService?.cacheLyrics?.(cacheId, 'lrcred', { ...withParsedLyrics(cached, ready), karaokeGranularity: 'word' });
+            }
+        },
 
         getSettingsUI() {
             const React = Spicetify.React;
@@ -421,45 +567,25 @@
                     duration: bestHit.duration,
                 });
 
-                let ttml = null;
+                let parsed;
                 try {
-                    ttml = await getTtmlLyrics(isrc);
+                    parsed = normalizeParsedLyrics(parseTtmlLyrics(await getTtmlLyrics(isrc), durationSeconds * 1000));
+                    if (!parsed.karaoke.length && !parsed.synced.length && !parsed.unsynced.length) throw new Error('Empty TTML');
                 } catch (ttmlError) {
                     window.__ivLyricsDebugLog?.('[lrc.red Lyrics Addon] TTML failed, trying LRC', { isrc, error: ttmlError.message });
                     try {
                         const lrc = await getLrcLyrics(isrc);
-                        const parsed = normalizeParsedLyrics(
+                        parsed = normalizeParsedLyrics(
                             parseLrcLyrics(stripEnhancedLrcTags(lrc), durationSeconds * 1000)
                         );
-                        result.synced = parsed.synced.length ? parsed.synced : null;
-                        result.karaoke = parsed.karaoke.length ? parsed.karaoke : null;
-                        result.unsynced = parsed.unsynced ? parsed.unsynced : null;
-                        if (result.karaoke) result.karaokeSource = 'lrcred';
-                        result.lrcred = {
-                            id: isrc,
-                            isrc,
-                            title: bestHit.title,
-                            artist: bestHit.artist,
-                            album: bestHit.album || null,
-                            duration: bestHit.duration ?? null,
-                            syncType: 'line',
-                            sourceUrl: `https://lrc.red/s/${isrc}`,
-                        };
-                        if (!result.karaoke && !result.synced && !result.unsynced) {
-                            result.error = 'No usable lyrics';
-                        }
-                        return result;
                     } catch (lrcError) {
                         result.error = 'No lyrics';
                         return result;
                     }
                 }
 
-                const parsed = normalizeParsedLyrics(parseTtmlLyrics(ttml, durationSeconds * 1000));
-                result.karaoke = parsed.karaoke.length ? parsed.karaoke : null;
-                result.synced = parsed.synced.length ? parsed.synced : null;
-                result.unsynced = parsed.unsynced ? parsed.unsynced : null;
-                if (result.karaoke) result.karaokeSource = 'lrcred';
+                const ready = wordSyncJobs.get(isrc)?.parsed;
+                if (ready && sameLyricsLines(parsed, ready)) parsed = ready;
                 result.lrcred = {
                     id: isrc,
                     isrc,
@@ -467,22 +593,17 @@
                     artist: bestHit.artist,
                     album: bestHit.album || null,
                     duration: bestHit.duration ?? null,
-                    syncType: result.karaoke ? 'word' : 'line',
-                    lines: parsed.synced.length,
                     sourceUrl: `https://lrc.red/s/${isrc}`,
                 };
-
-                if (!result.karaoke && !result.synced && !result.unsynced) {
-                    result.error = 'No usable lyrics';
-                }
+                const finalResult = withParsedLyrics(result, parsed);
 
                 window.__ivLyricsDebugLog?.('[lrc.red Lyrics Addon] Loaded lyrics', {
                     isrc,
-                    karaokeLines: result.karaoke?.length || 0,
-                    syncedLines: result.synced?.length || 0,
-                    unsyncedLines: Array.isArray(result.unsynced) ? result.unsynced.length : 0,
+                    karaokeLines: finalResult.karaoke?.length || 0,
+                    syncedLines: finalResult.synced?.length || 0,
+                    unsyncedLines: finalResult.unsynced?.length || 0,
                 });
-                return result;
+                return finalResult;
             } catch (error) {
                 const timedOut = error?.name === 'AbortError';
                 result.error = timedOut ? 'Request timed out' : (error?.message || 'Request error');

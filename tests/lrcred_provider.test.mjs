@@ -14,7 +14,9 @@ function createProvider({ playerItem, resolveIsrc, tracks = {}, hits = [], searc
     const requests = [], resolutions = [], parsedLrc = [];
     const parsed = { karaoke: [], synced: [{ startTime: 1000, text: 'Fixture lyric' }] };
     const window = {
-        LyricsAddonManager: { register(value) { addon = value; } },
+        // These cases isolate identity, matching and parsing. Generation has
+        // its own production-backed asynchronous tests.
+        LyricsAddonManager: { register(value) { addon = value; }, getAddonSetting: () => false },
         LyricsService: { extractTrackId: uri => /^spotify:track:([A-Za-z0-9]{22})$/.exec(uri || '')?.[1] || '' },
         SyncDataService: resolveIsrc ? { resolveTrackIsrc: async (id, info) => {
             resolutions.push({ id, info });

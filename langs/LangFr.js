@@ -2191,6 +2191,7 @@ window.LANG_FR = {
     "label": "Paroles Plus"
   },
   "generationStatus": {
+    "externalWordSync": "La synchronisation mot par mot est en cours de création sur un serveur de paroles externe.",
     "complete": "Terminé !",
     "culturalAnnotations": "Explications du contexte culturel",
     "culturalAnnotationsLoading": "Analyse du contexte culturel...",

@@ -2191,6 +2191,7 @@ window.LANG_HI = {
     "label": "लिरिक्स प्लस"
   },
   "generationStatus": {
+    "externalWordSync": "बाहरी गीत सर्वर पर शब्द-स्तर का सिंक डेटा तैयार किया जा रहा है।",
     "complete": "पूर्ण!",
     "culturalAnnotations": "सांस्कृतिक संदर्भ की व्याख्या",
     "culturalAnnotationsLoading": "सांस्कृतिक संदर्भ का विश्लेषण हो रहा है...",

@@ -2191,6 +2191,7 @@ window.LANG_TR = {
     "label": "ivLyrics"
   },
   "generationStatus": {
+    "externalWordSync": "Harici bir şarkı sözü sunucusunda kelime düzeyinde eşitleme verileri oluşturuluyor.",
     "complete": "Tamamlandı!",
     "culturalAnnotations": "Kültürel bağlam açıklamaları",
     "culturalAnnotationsLoading": "Kültürel bağlam analiz ediliyor...",

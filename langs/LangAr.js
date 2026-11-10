@@ -2191,6 +2191,7 @@ window.LANG_AR = {
     "label": "كلمات بلس"
   },
   "generationStatus": {
+    "externalWordSync": "يجري إنشاء بيانات مزامنة لكل كلمة على خادم خارجي لكلمات الأغاني.",
     "complete": "تم!",
     "culturalAnnotations": "شرح السياق الثقافي",
     "culturalAnnotationsLoading": "جارٍ تحليل السياق الثقافي...",

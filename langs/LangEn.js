@@ -2191,6 +2191,7 @@ window.LANG_EN = {
     "label": "Lyrics Plus"
   },
   "generationStatus": {
+    "externalWordSync": "Generating word-level timing on an external lyrics server.",
     "complete": "Done!",
     "culturalAnnotations": "Cultural context explanations",
     "culturalAnnotationsLoading": "Analyzing cultural context...",

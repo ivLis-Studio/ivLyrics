@@ -3440,8 +3440,9 @@ const getPlainLyricsLines = (...sources) => {
 
 const SYNC_DATA_RENDERER_VERSION = "2026-07-13-timestamp-cluster-v1";
 const getLyricsProviderSelectionPolicy = () => (
-  `${CONFIG.visual["prefer-lyrics-type-over-provider-order"] !== false
-    && CONFIG.visual["prefer-lyrics-type-over-provider-order"] !== "false"
+  `${((CONFIG.visual["prefer-lyrics-type-over-provider-order"] !== false
+    && CONFIG.visual["prefer-lyrics-type-over-provider-order"] !== "false")
+    || window.LyricsAddonManager?.isAutomaticWordSyncFallbackEnabled?.())
     ? "type-first-v1"
     : "provider-first-v1"}:${CONFIG.visual["prefer-sync-data-provider"] !== false
       && CONFIG.visual["prefer-sync-data-provider"] !== "false"
@@ -6389,6 +6390,65 @@ class LyricsContainer extends react.Component {
     return !requestSeq || requestSeq === this._activeLyricsFetchSeq;
   }
 
+  mergeCurrentLyricsTiming(lyrics, uri, provider) {
+    const upgrade = this._lyricsTimingUpgrade;
+    if (!Array.isArray(lyrics) || !upgrade || upgrade.uri !== uri || upgrade.provider !== provider
+      || this.state.uri !== uri || this.state.provider !== provider
+      || upgrade.requestSeq !== this.state.lyricsRequestSeq) return lyrics;
+    const text = line => String(line?.originalText ?? line?.text ?? "").normalize("NFC").trim();
+    const isSource = line => text(line) && !isTranslationNoteLine(text(line));
+    const source = lyrics.filter(isSource);
+    if (source.length !== upgrade.lines.length || source.some((line, index) => text(line) !== text(upgrade.lines[index]))) return lyrics;
+    const patch = (line, timing) => {
+      const next = { ...timing, ...line, startTime: timing.startTime, endTime: timing.endTime };
+      if (timing.syllables) next.syllables = timing.syllables;
+      if (timing.vocals) next.vocals = {
+        ...timing.vocals,
+        lead: timing.vocals.lead ? patch(line.vocals?.lead || {}, timing.vocals.lead) : null,
+        background: timing.vocals.background?.map((part, index) => patch(line.vocals?.background?.[index] || {}, part)) || [],
+      };
+      return next;
+    };
+    let index = 0;
+    return lyrics.map(line => isSource(line) ? patch(line, upgrade.lines[index++]) : line);
+  }
+
+  applyLyricsTimingUpgrade(upgraded) {
+    const state = this.state;
+    if (!this.isCurrentLyricsState(state) || state.uri !== upgraded.uri || state.provider !== upgraded.provider
+      || state.syncDataApplied || !upgraded.karaoke?.length) return false;
+    const text = lines => (lines || []).map(line => String(line.originalText ?? line.text ?? "").normalize("NFC").trim()).filter(Boolean);
+    const original = text(state.synced?.length ? state.synced : state.unsynced);
+    const incoming = text(upgraded.karaoke);
+    if (!original.length || original.length !== incoming.length || original.some((line, index) => line !== incoming[index])) return false;
+    this._lyricsTimingUpgrade = {
+      uri: state.uri, provider: state.provider, requestSeq: state.lyricsRequestSeq,
+      lines: upgraded.karaoke.filter(line => String(line.text || "").trim()),
+    };
+    this._timingOnlyModeSwitch = true;
+    CACHE[state.uri] = { ...CACHE[state.uri], ...upgraded };
+    const snapshot = window.LyricsService?.getLyricsSnapshot?.(state.uri);
+    // Keep request/presentation ownership, pending streams and all auxiliary
+    // text. Late stream callbacks merge these same timings before displaying.
+    this.setState({
+      karaoke: upgraded.karaoke, karaokeGranularity: "word", karaokeSource: upgraded.karaokeSource,
+      synced: upgraded.synced, lrcred: upgraded.lrcred,
+      currentLyrics: this.mergeCurrentLyricsTiming(state.currentLyrics, state.uri, state.provider),
+    }, () => {
+      window.LyricsService?.publishLyricsSnapshot?.({
+        ...snapshot, trackUri: state.uri, rawResult: CACHE[state.uri],
+        displayLyrics: this.state.currentLyrics, lyricsType: getLyricsModeTypeKey(this.getCurrentMode()),
+      });
+      this.publishLyricsPresentation(this.state.currentLyrics, {
+        uri: state.uri, provider: state.provider, mode: this.getCurrentMode(),
+        displayMode1: snapshot?.displayMode1, displayMode2: snapshot?.displayMode2,
+        translationSourceLyrics: state.unsynced || state.synced,
+        presentationComplete: snapshot?.presentationComplete === true,
+      });
+    });
+    return true;
+  }
+
   clearPendingLyricsUpdates() {
     if (this.streamingApplyTimer) {
       clearTimeout(this.streamingApplyTimer);
@@ -6760,7 +6820,7 @@ class LyricsContainer extends react.Component {
         payload.lyricsMode2 ? payload.displayMode2 : null
       );
       const finalLyrics = Array.isArray(optimizedTranslations)
-        ? optimizedTranslations
+        ? (this.mergeCurrentLyricsTiming?.(optimizedTranslations, payload.uri, this.state.provider) || optimizedTranslations)
         : [];
 
       this.setState({
@@ -8265,8 +8325,8 @@ class LyricsContainer extends react.Component {
       this.publishLyricsPresentation(displayLyrics, {
         uri,
         provider: lyricsState.provider || null,
-        karaokeSource: lyricsState.karaokeSource || null,
-        mode,
+        karaokeSource: this._lyricsTimingUpgrade?.uri === uri ? this.state.karaokeSource : (lyricsState.karaokeSource || null),
+        mode: this._lyricsTimingUpgrade?.uri === uri ? this.getCurrentMode() : mode,
         displayMode1,
         displayMode2,
         detectedLanguage: originalLanguage || null,
@@ -8466,7 +8526,7 @@ class LyricsContainer extends react.Component {
         lyricsMode2 ? displayMode2 : null
       );
       const finalLyrics = Array.isArray(optimizedTranslations)
-        ? optimizedTranslations
+        ? (this.mergeCurrentLyricsTiming?.(optimizedTranslations, currentUri, currentProvider) || optimizedTranslations)
         : [];
 
       this.setState({
@@ -10647,6 +10707,14 @@ class LyricsContainer extends react.Component {
       culturalAnnotationsMode,
     ].join("_");
 
+    // Timing alone must not restart a presentation or its in-flight AI work.
+    if (this._timingOnlyModeSwitch) {
+      this._timingOnlyModeSwitch = false;
+      const context = value => typeof value === "string" ? value.slice(value.indexOf("_")) : null;
+      if (this.lastProcessedUri === this.state.uri && context(this.lastProcessedMode) === context(currentModeKey)) {
+        this.lastProcessedMode = currentModeKey;
+      }
+    }
     // Only call lyricsSource on state/mode/translation changes, not every render
     if (
       !isSyncCreatorActive &&

@@ -2191,6 +2191,7 @@ window.LANG_ID = {
     "label": "Lirik Plus"
   },
   "generationStatus": {
+    "externalWordSync": "Sedang membuat data sinkronisasi per kata di server lirik eksternal.",
     "complete": "Selesai!",
     "culturalAnnotations": "Penjelasan konteks budaya",
     "culturalAnnotationsLoading": "Menganalisis konteks budaya...",

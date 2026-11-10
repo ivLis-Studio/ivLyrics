@@ -2191,6 +2191,7 @@ window.LANG_ES = {
     "label": "Letras Plus"
   },
   "generationStatus": {
+    "externalWordSync": "Se están generando tiempos por palabra en un servidor externo de letras.",
     "complete": "¡Listo!",
     "culturalAnnotations": "Explicaciones del contexto cultural",
     "culturalAnnotationsLoading": "Analizando el contexto cultural...",

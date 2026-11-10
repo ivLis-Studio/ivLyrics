@@ -1182,6 +1182,13 @@
         // API Methods
         // ============================================
 
+        isAutomaticWordSyncFallbackEnabled() {
+            const provider = this.getAddon('lrcred');
+            return !!provider && this.isProviderEnabled('lrcred')
+                && typeof provider.requestWordSync === 'function'
+                && this._getProviderTypeSettings(provider)[LYRICS_TYPES.WORD];
+        }
+
         _getProviderTypeSettings(provider) {
             const legacyKaraoke = this.getAddonSetting(provider.id, 'enable_karaoke', null);
             const karaokeFallback = legacyKaraoke === null || legacyKaraoke === undefined
@@ -1590,7 +1597,7 @@
                 ? availableProviders.filter(provider => provider.id === forcedProviderId)
                 : availableProviders;
             const typePriorityEnabled = !forcedProviderId
-                && this.isPreferLyricsTypeOverProviderOrderEnabled();
+                && (this.isPreferLyricsTypeOverProviderOrderEnabled() || this.isAutomaticWordSyncFallbackEnabled());
             if (enabledProviders.length > 0) {
                 const forcedProvider = forcedProviderId ? enabledProviders[0] : null;
                 this._publishLyricsSearchProgress(info, forcedProviderId, {
@@ -1715,6 +1722,23 @@
 
             if (typePriorityEnabled) {
                 for (const lyricsType of LYRICS_TYPE_PRIORITY_ORDER) {
+                    // Karaoke phases have exhausted all enabled providers.
+                    // Prefer this source's original text while it creates word
+                    // timing, rather than displaying another provider's lines.
+                    if (lyricsType === LYRICS_TYPES.SYNCED && this.isAutomaticWordSyncFallbackEnabled()) {
+                        const provider = enabledProviders.find(item => item.id === 'lrcred');
+                        const candidate = provider ? await loadProviderOnce(provider, lyricsType) : null;
+                        const fallbackType = candidate?.hasSynced ? LYRICS_TYPES.SYNCED : LYRICS_TYPES.UNSYNCED;
+                        const selected = this._selectProviderCandidateForType(candidate, fallbackType);
+                        if (selected) {
+                            // Do not mistake the synthetic line-timing animation
+                            // for word timing, or pass it to the generation job.
+                            provider.requestWordSync(info, { ...selected, karaoke: null, karaokeSource: null });
+                            const result = this._finalizeLyricsFetch(selected, info, provider.id, selectionPolicy, fallbackType);
+                            this.clearActiveLyricsSearchProgress(info.uri, forcedProviderId);
+                            return result;
+                        }
+                    }
                     window.__ivLyricsDebugLog?.(`[LyricsAddonManager] Starting lyrics type phase: ${lyricsType}`);
                     for (const provider of enabledProviders) {
                         const typeSettings = typeSettingsByProvider.get(provider.id);
