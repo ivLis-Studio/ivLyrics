@@ -3851,7 +3851,7 @@ const getLastSyllableEndTime = (line) => {
 	return lastEndTime;
 };
 
-const getKaraokeLineFillEndTime = (line) => {
+const computeKaraokeLineFillEndTime = (line) => {
 	const timedChars = applyKaraokeWhitespaceCompensation(buildKaraokeTimedChars(line));
 	const timedCharEndTime = timedChars.reduce((maxEndTime, charInfo) => {
 		const endTime = toFiniteTime(charInfo?.endTime);
@@ -3864,6 +3864,36 @@ const getKaraokeLineFillEndTime = (line) => {
 
 	const lineBounds = getKaraokeLineBounds(line);
 	return toFiniteTime(lineBounds.endTime) ?? getLastSyllableEndTime(line);
+};
+
+// Playback windows, cumulative vocal ends and the trailing-interlude check
+// each need a line's fill end, and every lyrics update (translation and
+// pronunciation streams included) asks again for every line. Rebuilding the
+// line's timed glyphs for each request repeated the same work three or four
+// times. Display copies of a line share its timing arrays, so the cache is
+// keyed by them; any changed input is recomputed.
+const karaokeLineFillEndTimeCache = new WeakMap();
+
+const getKaraokeLineFillEndTime = (line) => {
+	if (!line || typeof line !== "object") return computeKaraokeLineFillEndTime(line);
+	const syllables = line.syllables;
+	const vocals = line.vocals;
+	const key = (syllables && typeof syllables === "object") ? syllables
+		: (vocals && typeof vocals === "object") ? vocals : line;
+	const locale = String(window.Utils?.getDetectedLanguage?.() || "auto");
+	const cached = karaokeLineFillEndTimeCache.get(key);
+	if (cached && cached.syllables === syllables && cached.vocals === vocals
+		&& Object.is(cached.startTime, line.startTime) && Object.is(cached.endTime, line.endTime)
+		&& cached.text === line.text && cached.originalText === line.originalText
+		&& cached.locale === locale) {
+		return cached.value;
+	}
+	const value = computeKaraokeLineFillEndTime(line);
+	karaokeLineFillEndTimeCache.set(key, {
+		syllables, vocals, startTime: line.startTime, endTime: line.endTime,
+		text: line.text, originalText: line.originalText, locale, value,
+	});
+	return value;
 };
 
 const getInterludeInfo = (line, nextLine = null, lineIndex = -1, lineCount = 0) => {
@@ -6658,9 +6688,14 @@ const useSyncedLyricsEngine = ({
 			...(isInterludeHandoff ? { "--lyrics-interlude-fade-duration": `${interludeFadeDurationMs}ms` } : {}),
 		};
 	}, [trailingInterludeLine, visualAnchorUsesTrailingInterlude, isScrolling, suppressLayoutShiftAnimation, usesScriptedCompactLineShift, isInterludeHandoff, interludeFadeDurationMs, compactOffset]);
-	const compactLineShiftAnimationsRef = useRef(new Map());
-	const compactLineTransformSnapshotsRef = useRef(new WeakMap());
-	const compactLineMotionDataRef = useRef(new WeakMap());
+	// Lazily created: useRef(new Map()) built and discarded a collection on
+	// every render, and position updates render this engine at the clock rate.
+	const compactLineShiftAnimationsRef = useRef(null);
+	compactLineShiftAnimationsRef.current ??= new Map();
+	const compactLineTransformSnapshotsRef = useRef(null);
+	compactLineTransformSnapshotsRef.current ??= new WeakMap();
+	const compactLineMotionDataRef = useRef(null);
+	compactLineMotionDataRef.current ??= new WeakMap();
 	const compactLineMotionContextRef = useRef(null);
 	const compactLinePlaybackPositionRef = useRef(position);
 	compactLinePlaybackPositionRef.current = position;
@@ -7103,7 +7138,8 @@ const useSyncedLyricsEngine = ({
 	// rows). They are parked at a fixed index with a style reused by identity,
 	// so a line change no longer re-renders and restyles every row.
 	const parkedRowMargin = 3;
-	const parkedLineStylesRef = useRef(new WeakMap());
+	const parkedLineStylesRef = useRef(null);
+	parkedLineStylesRef.current ??= new WeakMap();
 	const getParkedLineStyle = (line, parkedIndex, stableStyle) => {
 		const presentation = getLinePresentation(line);
 		const shiftDuration = stableStyle["--line-shift-duration"];
@@ -8953,7 +8989,17 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 
 	const furiganaEnabled = CONFIG?.visual?.["furigana-enabled"] === true;
 	const furiganaReady = window.FuriganaConverter?.isAvailable?.() === true;
-	const hasCharReadings = charReadings instanceof Map && Array.from(charReadings.values()).some((entry) => typeof entry === 'string' ? !!entry : !!(entry && entry.text));
+	// The active row renders at the playback clock rate; scan the readings in
+	// place instead of copying them into a new array on every render.
+	let hasCharReadings = false;
+	if (charReadings instanceof Map) {
+		for (const entry of charReadings.values()) {
+			if (typeof entry === 'string' ? entry : entry?.text) {
+				hasCharReadings = true;
+				break;
+			}
+		}
+	}
 	const expressiveMotion = isKaraokeExpressiveMotionEnabled();
 	const { furiganaMap, timedChars, motionProfiles, endTime, wrapByWord, preferWhitespaceWrap, textDirection, useTextRun, preserveInlineStyles, timedText, wordStartTimes, wordRenderCache, textRunSegments, hasInlinePresentation } = useMemo(() => {
 		const sourceSyllables = Array.isArray(line.syllables) && line.syllables.length > 0
