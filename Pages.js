@@ -2341,10 +2341,13 @@ const getTrackPositionFPS = () => {
 	);
 };
 
+// Pronunciation-first rows read ahead of the singer (PronunciationFirst.js
+// getLeadMs); that lead is not a sync offset and is never shown with them.
 const getCurrentLyricsPlaybackPosition = (trackOffset = 0, globalOffset = getGlobalSyncOffsetValue()) => {
 	const newPos = window.Utils?.getSafePlayerProgress?.()
 		?? (Spicetify.Player?.getProgress?.() || 0);
-	const delay = CONFIG.visual.delay + trackOffset + globalOffset;
+	const delay = CONFIG.visual.delay + trackOffset + globalOffset
+		+ (window.ivLyricsPronunciationFirst?.getLeadMs?.() || 0);
 	return Math.round(newPos + delay);
 };
 
@@ -2370,7 +2373,8 @@ const getFrameAlignedPlayerPosition = (frameTime = NaN) => {
 // The same frame-aligned clock in lyric time: the configured delay plus the
 // mounted page's track and global sync offsets.
 const getFrameAlignedLyricsPlaybackPosition = (frameTime = NaN) => getFrameAlignedPlayerPosition(frameTime)
-	+ CONFIG.visual.delay + lyricsPlaybackOffsets.trackOffset + lyricsPlaybackOffsets.globalOffset;
+	+ CONFIG.visual.delay + lyricsPlaybackOffsets.trackOffset + lyricsPlaybackOffsets.globalOffset
+	+ (window.ivLyricsPronunciationFirst?.getLeadMs?.() || 0);
 
 const useLyricsPlaybackPosition = () => {
 	const trackOffset = useTrackOffsetState();

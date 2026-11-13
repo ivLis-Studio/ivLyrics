@@ -6994,6 +6994,8 @@ class LyricsContainer extends react.Component {
    */
   getPronunciationFirstLyrics(lyrics, mode, displayMode1, displayMode2) {
     const api = window.ivLyricsPronunciationFirst;
+    // The page clock reads ahead only while rows show pronunciation first.
+    api?.setDisplayed?.(false);
     if (!api?.needsTiming?.() || !Array.isArray(lyrics) || lyrics.length === 0) return lyrics;
     if (!isPronunciationDisplayMode(displayMode1) && !isPronunciationDisplayMode(displayMode2)) return lyrics;
     const karaoke = isKaraokeRenderMode(mode);
@@ -7001,6 +7003,7 @@ class LyricsContainer extends react.Component {
     // Replacement display already puts the pronunciation first.
     const lineLevel = CONFIG.visual["translate:display-mode"] !== "replace";
     if (!karaoke && (fill || !lineLevel)) return lyrics;
+    if (!fill) api.setDisplayed?.(true);
     const uri = this.state.uri;
     if (karaoke) this.schedulePronunciationTiming(uri, lyrics);
     const timed = karaoke ? api.getTimed(uri, lyrics) : null;
@@ -10805,6 +10808,7 @@ class LyricsContainer extends react.Component {
   componentWillUnmount() {
     if (this._isComponentMounted === false) return;
     this._isComponentMounted = false;
+    window.ivLyricsPronunciationFirst?.setDisplayed?.(false);
     this._pendingTimingUpgradeResolve?.(false);
     this._lyricsEditRequestSeq += 1;
     document.body.classList.remove('ivlyrics-page-active');
@@ -11230,6 +11234,8 @@ class LyricsContainer extends react.Component {
       });
     const cacheEditModal = computeCacheEditModal();
 
+    // The sync creator works on the original timing.
+    if (isSyncCreatorActive) window.ivLyricsPronunciationFirst?.setDisplayed?.(false);
     const renderedCurrentLyrics = isSyncCreatorActive && syncCreatorPlainLyrics.length > 0
       ? syncCreatorPlainLyrics
       : this.getPronunciationFirstLyrics(this.state.currentLyrics, mode, displayMode1, displayMode2);

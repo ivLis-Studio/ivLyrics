@@ -3933,6 +3933,10 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
                 timed: hasKaraokeTiming && trackUri ? api.getTimed(trackUri, lyrics) : null,
             });
         }, [lyrics, hasKaraokeTiming, pronunciationFirstRevision]);
+        // While rows show pronunciation first, the panel clock reads ahead like the page.
+        window._ivLyricsPanelPronunciationLead = displayLyrics !== lyrics
+            ? (window.ivLyricsPronunciationFirst?.LEAD_MS || 0)
+            : 0;
         const containerRef = useRef(null);
         const scrollRef = useRef(null);
         const previousLyricsLayoutRef = useRef(initialLyrics);
@@ -4964,7 +4968,9 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
                 const pseudoAdvance = PSEUDO_KARAOKE_SOURCES.has(karaokeSource)
                     ? pseudoKaraokeAdvanceMs
                     : 0;
-                const adjustedPosition = position + (cachedDelay || 0) + trackOffset + globalOffset + pseudoAdvance;
+                // Pronunciation-first rows read ahead of the singer; not a sync offset.
+                const adjustedPosition = position + (cachedDelay || 0) + trackOffset + globalOffset + pseudoAdvance
+                    + (window._ivLyricsPanelPronunciationLead || 0);
 
                 // 전역 변수에 현재 시간 저장 (KaraokeWord에서 읽음)
                 window._ivLyricsPanelCurrentTime = adjustedPosition;

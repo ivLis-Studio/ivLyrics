@@ -118,6 +118,29 @@ test("the mode is persisted and announced", () => {
 	assert.ok(events.some((event) => event.type === api.CHANGED_EVENT && event.detail.enabled === true));
 });
 
+test("the lyric clock reads 200 ms ahead only while pronunciation first is shown", () => {
+	const { api } = load({ enabled: true });
+	assert.equal(api.getLeadMs(), 0, "nothing shown yet");
+	api.setDisplayed(true);
+	assert.equal(api.getLeadMs(), 200);
+	api.setEnabled(false);
+	assert.equal(api.getLeadMs(), 0, "the mode is off");
+	api.setEnabled(true);
+	api.setDisplayed(false);
+	assert.equal(api.getLeadMs(), 0, "pronunciation is not shown first");
+});
+
+test("the page and panel clocks add the lead outside the sync offsets", () => {
+	const pages = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
+	const index = readFileSync(new URL("../index.js", import.meta.url), "utf8");
+	const panel = readFileSync(new URL("../NowPlayingPanelLyrics.js", import.meta.url), "utf8");
+	assert.equal(pages.match(/\+ \(window\.ivLyricsPronunciationFirst\?\.getLeadMs\?\.\(\) \|\| 0\)/g)?.length, 2,
+		"both the React position and the frame-aligned painter clock");
+	assert.match(index, /if \(!fill\) api\.setDisplayed\?\.\(true\);/);
+	assert.match(index, /if \(isSyncCreatorActive\) window\.ivLyricsPronunciationFirst\?\.setDisplayed\?\.\(false\);/);
+	assert.match(panel, /\+ \(window\._ivLyricsPanelPronunciationLead \|\| 0\);/);
+});
+
 test("AI timing is requested once per pronunciation revision and cached", async () => {
 	const requests = [];
 	const manager = {

@@ -82,6 +82,18 @@
 
 	const toggle = () => setEnabled(!isEnabled());
 
+	// Singing along reads slightly ahead of the voice: while pronunciation
+	// first is shown, the lyric clock runs this much earlier. It is not a
+	// sync offset and never appears in the offset settings.
+	const LEAD_MS = 200;
+	let displayed = false;
+	/** Set by the lyric page: whether its rows currently show pronunciation first. */
+	const setDisplayed = (value) => {
+		displayed = value === true;
+	};
+	/** Milliseconds the lyric page clock runs ahead (0 unless pronunciation first is shown). */
+	const getLeadMs = () => (displayed && isEnabled() ? LEAD_MS : 0);
+
 	// ---------------------------------------------------------------------
 	// Line text helpers
 	// ---------------------------------------------------------------------
@@ -674,6 +686,9 @@
 		needsTiming,
 		setEnabled,
 		toggle,
+		LEAD_MS,
+		setDisplayed,
+		getLeadMs,
 		getUnitGroups,
 		distribute,
 		normalizeParts,
