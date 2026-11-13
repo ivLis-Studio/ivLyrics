@@ -826,7 +826,10 @@ window.LANG_ID = {
     "fullscreenScreenHint": "Membuat Spotify memenuhi seluruh monitor lalu membuka layar penuh",
     "localLyricsApplying": "Menerapkan…",
     "currentTrack": "Trek Saat Ini",
-    "more": "Lainnya"
+    "more": "Lainnya",
+    "pronunciationFirst": "Pelafalan dulu",
+    "pronunciationFirstTitle": "Mode pelafalan dulu",
+    "pronunciationFirstDesc": "Menukar lirik asli dan pelafalan agar mudah ikut menyanyikan lirik berbahasa asing"
   },
   "messages": {
     "noLyrics": "Lirik tidak tersedia",
@@ -2199,7 +2202,11 @@ window.LANG_ID = {
     "culturalAnnotations": "Penjelasan konteks budaya",
     "culturalAnnotationsLoading": "Menganalisis konteks budaya...",
     "wordSupplements": "Detail kata",
-    "wordSupplementsLoading": "Memuat bacaan & glosa..."
+    "wordSupplementsLoading": "Memuat bacaan & glosa...",
+    "pronunciationSync": "Sinkron pelafalan",
+    "pronunciationSyncLoading": "AI sedang menyesuaikan pelafalan dengan waktu lirik...",
+    "pronunciationSyncFailed": "Sinkron pelafalan gagal",
+    "pronunciationSyncFailedDesc": "Tidak dapat menyinkronkan pelafalan dengan AI. Menampilkan waktu perkiraan."
   },
   "videoSync": {
     "title": "Waktu video",

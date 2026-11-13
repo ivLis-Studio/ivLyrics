@@ -826,7 +826,10 @@ window.LANG_ES = {
     "fullscreenScreenHint": "Hace que Spotify ocupe todo el monitor y abre la pantalla completa",
     "localLyricsApplying": "Aplicando…",
     "currentTrack": "Pista actual",
-    "more": "Más"
+    "more": "Más",
+    "pronunciationFirst": "Pronunciación primero",
+    "pronunciationFirstTitle": "Modo pronunciación primero",
+    "pronunciationFirstDesc": "Intercambia la letra original y la pronunciación para cantar fácilmente letras en otros idiomas"
   },
   "messages": {
     "noLyrics": "No hay letras disponibles",
@@ -2199,7 +2202,11 @@ window.LANG_ES = {
     "culturalAnnotations": "Explicaciones del contexto cultural",
     "culturalAnnotationsLoading": "Analizando el contexto cultural...",
     "wordSupplements": "Detalles de palabras",
-    "wordSupplementsLoading": "Cargando lecturas y glosas..."
+    "wordSupplementsLoading": "Cargando lecturas y glosas...",
+    "pronunciationSync": "Sincronía de pronunciación",
+    "pronunciationSyncLoading": "La IA está ajustando la pronunciación a los tiempos de la letra...",
+    "pronunciationSyncFailed": "Error en la sincronía de pronunciación",
+    "pronunciationSyncFailedDesc": "No se pudo sincronizar la pronunciación con IA. Se muestra una sincronía aproximada."
   },
   "videoSync": {
     "title": "Sincronización del video",

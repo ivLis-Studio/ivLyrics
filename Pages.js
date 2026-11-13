@@ -8594,7 +8594,9 @@ const useKaraokeWordStackSupplements = ({ line, timedChars, timedText, wordTimed
 			return "auto";
 		}
 	}, [supplementsApi, timedText, globalLangTick, settingsRevision]);
-	const suitable = !!supplementsApi && !!wordTimed && supplementsApi.isSuitableSourceLanguage(sourceLang);
+	// Pronunciation-first rows already show the reading as the sung text.
+	const suitable = !!supplementsApi && !!wordTimed && line?.pronunciationFirst !== true
+		&& supplementsApi.isSuitableSourceLanguage(sourceLang);
 	const units = useMemo(() => {
 		if (!suitable || !supplementsApi) return [];
 		try {

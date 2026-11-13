@@ -826,7 +826,10 @@ window.LANG_KO = {
     "fullscreenScreenHint": "Spotify를 모니터 전체로 전환해 전체화면을 엽니다",
     "localLyricsApplying": "적용 중…",
     "currentTrack": "현재 곡",
-    "more": "더보기"
+    "more": "더보기",
+    "pronunciationFirst": "발음 우선",
+    "pronunciationFirstTitle": "발음 우선 모드",
+    "pronunciationFirstDesc": "원문과 발음의 위치를 바꿔 외국어 가사를 따라 읽기 쉽게 표시합니다"
   },
   "messages": {
     "noLyrics": "사용 가능한 가사가 없음",
@@ -2199,7 +2202,11 @@ window.LANG_KO = {
     "culturalAnnotations": "문화적 설명",
     "culturalAnnotationsLoading": "문화적 설명을 생성하는 중...",
     "wordSupplements": "단어 상세",
-    "wordSupplementsLoading": "단어 읽기와 뜻을 불러오는 중..."
+    "wordSupplementsLoading": "단어 읽기와 뜻을 불러오는 중...",
+    "pronunciationSync": "발음 싱크",
+    "pronunciationSyncLoading": "AI가 발음을 가사 싱크에 맞추는 중...",
+    "pronunciationSyncFailed": "발음 싱크 실패",
+    "pronunciationSyncFailedDesc": "AI로 발음 싱크를 만들지 못해 근사 싱크로 표시합니다."
   },
   "videoSync": {
     "title": "영상 싱크",

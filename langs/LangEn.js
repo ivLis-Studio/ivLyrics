@@ -826,7 +826,10 @@ window.LANG_EN = {
     "fullscreenScreenHint": "Switches Spotify to fill the whole monitor and opens fullscreen",
     "localLyricsApplying": "Applying…",
     "currentTrack": "Current Track",
-    "more": "More"
+    "more": "More",
+    "pronunciationFirst": "Pronunciation first",
+    "pronunciationFirstTitle": "Pronunciation-first mode",
+    "pronunciationFirstDesc": "Swaps the original lyrics and the pronunciation so foreign lyrics are easy to sing along to"
   },
   "messages": {
     "noLyrics": "No lyrics available",
@@ -2199,7 +2202,11 @@ window.LANG_EN = {
     "culturalAnnotations": "Cultural context explanations",
     "culturalAnnotationsLoading": "Analyzing cultural context...",
     "wordSupplements": "Word details",
-    "wordSupplementsLoading": "Loading word readings & glosses..."
+    "wordSupplementsLoading": "Loading word readings & glosses...",
+    "pronunciationSync": "Pronunciation timing",
+    "pronunciationSyncLoading": "AI is matching the pronunciation to the lyric timing...",
+    "pronunciationSyncFailed": "Pronunciation timing failed",
+    "pronunciationSyncFailedDesc": "Could not time the pronunciation with AI. Showing approximate timing."
   },
   "videoSync": {
     "title": "Video timing",

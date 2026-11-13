@@ -1195,6 +1195,41 @@ Return exactly ${lineCount} pronunciation lines in ${scriptRule.name}, and nothi
         return { systemPrompt, userPrompt, lineCount };
     }
 
+    // Pronunciation-first karaoke: split each line's existing pronunciation
+    // across the line's timed units. Android and iOS send the same request.
+    function buildTimedPronunciationPrompt({ items, lyricsText = '', sourceLang = 'auto' } = {}) {
+        const payload = (Array.isArray(items) ? items : []).map(item => ({
+            i: item.i,
+            n: Array.isArray(item.u) ? item.u.length : 0,
+            r: String(item.r ?? ''),
+            u: Array.isArray(item.u) ? item.u : []
+        }));
+        const context = String(lyricsText ?? '').slice(0, 6000);
+        return `You align lyric pronunciation to karaoke timing for ivLyrics.
+
+Each item is one sung lyric line. u lists its timed karaoke units in order; each unit is [source text, start ms, end ms]. n is the number of units. r is the pronunciation of that line, already written in the reader's writing system.
+
+Task: split r across the units so that p[k] is exactly the part of r that is sung during unit k.
+
+Rules:
+- Return ONLY valid JSON, no markdown or explanations: {"l":[{"i":0,"p":["..."]}]}
+- Return one entry per input item with the same i.
+- p must contain exactly n strings, one per unit, in unit order. Never merge, drop, add, or reorder slots.
+- Use only the text of r, in its original order. Joining every p of an item must give back r; spaces may only move to unit boundaries. Do not translate, re-romanize, correct, or add anything to r.
+- Put each sound on the unit whose source text produces it: kanji/hanzi readings on their characters, okurigana and particles on their own kana, a word's syllables across that word's units, a whole word on a word unit.
+- If a reading cannot be divided between the units of one word, keep it on the first of those units and use "" for the rest of that word.
+- Units that are only spaces or punctuation get "" unless r has a space there, in which case use " ".
+- Keep the word spaces of r: end a unit's string with a space where r has a space after it.
+- Use the timing only to understand how the line is sung (long notes, held vowels); never change r because of it.
+
+Song lyrics for context only (do not output them):
+${context}
+
+Input source language: ${sourceLang}
+Items:
+${JSON.stringify(payload)}`;
+    }
+
     function buildCharacterPronunciationPrompt({ lines, lang = 'ko', sourceLang = 'auto', unitMode = 'char' } = {}) {
         const safeLines = (Array.isArray(lines) ? lines : []).map(line => String(line ?? ''));
         const langInfo = getProviderPromptLanguageInfo(lang);
@@ -3391,6 +3426,119 @@ ${normalizedText}
             const errorMsg = truncationError?.message || lastError?.message || this._t('aiProviders.allProvidersFailed', 'All AI providers failed to process the request.');
             this.emit('ai:request:error', { type: 'characterPronunciation', error: errorMsg });
             throw new Error(errorMsg);
+        }
+
+        buildTimedPronunciationPrompt(params = {}) {
+            return buildTimedPronunciationPrompt(params);
+        }
+
+        _buildTimedPronunciationChunks(items, { maxUnits = 420, maxItems = 24 } = {}) {
+            const chunks = [];
+            let current = [];
+            let units = 0;
+            for (const item of items) {
+                const count = Array.isArray(item.u) ? item.u.length : 0;
+                if (current.length > 0 && (current.length >= maxItems || units + count > maxUnits)) {
+                    chunks.push(current);
+                    current = [];
+                    units = 0;
+                }
+                current.push(item);
+                units += count;
+            }
+            if (current.length > 0) chunks.push(current);
+            return chunks;
+        }
+
+        _parseTimedPronunciationResult(result, chunk) {
+            const rows = Array.isArray(result?.l) ? result.l : (Array.isArray(result?.lines) ? result.lines : []);
+            const expected = new Map(chunk.map(item => [Number(item.i), item]));
+            const parsed = new Map();
+            for (const row of rows) {
+                const index = Number(row?.i ?? row?.index);
+                const item = expected.get(index);
+                if (!item || !Array.isArray(row?.p) || row.p.length !== item.u.length) continue;
+                const parts = row.p.map(part => (part === null || part === undefined ? '' : String(part)));
+                if (!parts.some(part => part.trim())) continue;
+                parsed.set(index, parts);
+            }
+            return parsed;
+        }
+
+        /**
+         * Splits each karaoke line's pronunciation across its timed units.
+         * @param {Object} params - { items: [{ i, r, u: [[text, startMs, endMs]] }], lyricsText, sourceLang }
+         * @returns {Promise<Map<number, string[]>>} Unit pronunciations for the items AI aligned.
+         */
+        async generateTimedPronunciation({ items = [], lyricsText = '', sourceLang = 'auto' } = {}) {
+            const safeItems = (Array.isArray(items) ? items : [])
+                .filter(item => Number.isInteger(item?.i) && Array.isArray(item?.u) && item.u.length > 0 && String(item?.r ?? '').trim());
+            if (safeItems.length === 0) return new Map();
+            const providers = this.getEnabledProvidersFor('characterPronunciation')
+                .filter(addon => typeof addon.generateCharacterPronunciation === 'function');
+            if (providers.length === 0) {
+                throw new Error(this._t('aiProviders.noEnabledProviders', 'No AI providers enabled. Please enable at least one provider in settings.'));
+            }
+
+            this.emit('ai:request:start', {
+                type: 'timedPronunciation',
+                providers: providers.map(addon => addon.id),
+                params: { sourceLang, itemCount: safeItems.length }
+            });
+
+            let lastError = null;
+            for (const addon of providers) {
+                const aligned = new Map();
+                const runChunk = async (chunk) => {
+                    const prompt = buildTimedPronunciationPrompt({ items: chunk, lyricsText, sourceLang });
+                    const raw = await this._callProvider(addon, 'generateCharacterPronunciation', {
+                        lines: chunk.map(item => String(item.r)),
+                        characterPronunciationPrompt: prompt,
+                        unitMode: 'char',
+                        sourceLang
+                    });
+                    for (const [index, parts] of this._parseTimedPronunciationResult(raw, chunk)) {
+                        aligned.set(index, parts);
+                    }
+                };
+                try {
+                    const chunks = this._buildTimedPronunciationChunks(safeItems);
+                    let next = 0;
+                    const errors = [];
+                    const worker = async () => {
+                        while (next < chunks.length) {
+                            const chunk = chunks[next++];
+                            try {
+                                await runChunk(chunk);
+                            } catch (error) {
+                                errors.push(error);
+                            }
+                        }
+                    };
+                    await Promise.all(Array.from({ length: Math.min(3, chunks.length) }, worker));
+                    // One repair pass for items whose slots did not match.
+                    const missing = safeItems.filter(item => !aligned.has(item.i));
+                    if (missing.length > 0 && aligned.size > 0) {
+                        for (const chunk of this._buildTimedPronunciationChunks(missing, { maxUnits: 200, maxItems: 8 })) {
+                            try {
+                                await runChunk(chunk);
+                            } catch (error) {
+                                errors.push(error);
+                            }
+                        }
+                    }
+                    if (aligned.size === 0) {
+                        throw errors[0] || new Error('Timed pronunciation response had no usable items');
+                    }
+                    this.emit('ai:request:success', { type: 'timedPronunciation', provider: addon.id });
+                    return aligned;
+                } catch (error) {
+                    console.warn(`[AIAddonManager] Provider ${addon.id} failed for timedPronunciation:`, error?.message || error);
+                    lastError = error;
+                }
+            }
+            this.emit('ai:request:error', { type: 'timedPronunciation', error: lastError?.message || 'failed' });
+            throw lastError || new Error(this._t('aiProviders.allProvidersFailed', 'All AI providers failed to process the request.'));
         }
 
         /**

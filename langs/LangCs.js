@@ -826,7 +826,10 @@ window.LANG_CS = {
     "fullscreenScreenHint": "Roztáhne Spotify přes celý monitor a otevře celou obrazovku",
     "localLyricsApplying": "Používá se…",
     "currentTrack": "Aktuální skladba",
-    "more": "Více"
+    "more": "Více",
+    "pronunciationFirst": "Nejdřív výslovnost",
+    "pronunciationFirstTitle": "Režim nejdřív výslovnost",
+    "pronunciationFirstDesc": "Prohodí původní text a výslovnost, aby se dalo snadno zpívat s cizojazyčnými texty"
   },
   "messages": {
     "noLyrics": "Nejsou k dispozici žádné texty",
@@ -2199,7 +2202,11 @@ window.LANG_CS = {
     "culturalAnnotations": "Vysvětlení kulturního kontextu",
     "culturalAnnotationsLoading": "Analyzuje se kulturní kontext...",
     "wordSupplements": "Podrobnosti slov",
-    "wordSupplementsLoading": "Načítání výslovnosti a glos..."
+    "wordSupplementsLoading": "Načítání výslovnosti a glos...",
+    "pronunciationSync": "Časování výslovnosti",
+    "pronunciationSyncLoading": "AI přizpůsobuje výslovnost časování textu...",
+    "pronunciationSyncFailed": "Časování výslovnosti selhalo",
+    "pronunciationSyncFailedDesc": "Výslovnost se nepodařilo načasovat pomocí AI. Zobrazuje se přibližné časování."
   },
   "videoSync": {
     "title": "Časování videa",

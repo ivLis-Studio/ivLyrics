@@ -80,7 +80,7 @@ test('overlap panel rows remain active, unfinished, and visible beyond the usual
   const {context} = helpers();
   const rows = [line('held', 1000, 10000), ...[2,3,4,5,6].map(n => line(`response${n}`, n * 1000, n * 1000 + 500))];
   Object.assign(context, {
-    lyrics: rows, currentIndex: 5, visualIndex: 5, visibleLineCount: 3,
+    lyrics: rows, displayLyrics: rows, currentIndex: 5, visualIndex: 5, visibleLineCount: 3,
     activeTrailingInterludeKey: null, visualTrailingInterludeKey: null,
     singingLineIndices: [0,5], autoInstrumentalBreakEnabled: false,
     panelPlaybackTimeline: context.panel.buildPanelLinePlaybackTimeline(rows),

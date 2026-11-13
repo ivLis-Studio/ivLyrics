@@ -826,7 +826,10 @@ window.LANG_BN = {
     "fullscreenScreenHint": "Spotify-কে পুরো মনিটরে ছড়িয়ে পূর্ণ পর্দা খোলে",
     "localLyricsApplying": "প্রয়োগ হচ্ছে…",
     "currentTrack": "বর্তমান ট্র্যাক",
-    "more": "আরও"
+    "more": "আরও",
+    "pronunciationFirst": "উচ্চারণ আগে",
+    "pronunciationFirstTitle": "উচ্চারণ-আগে মোড",
+    "pronunciationFirstDesc": "মূল গানের কথা আর উচ্চারণের জায়গা বদলে দেয়, যাতে বিদেশি ভাষার গানের সঙ্গে সহজে গাওয়া যায়"
   },
   "messages": {
     "noLyrics": "কোনো লিরিক্স পাওয়া যায়নি",
@@ -2199,7 +2202,11 @@ window.LANG_BN = {
     "culturalAnnotations": "সাংস্কৃতিক প্রেক্ষাপটের ব্যাখ্যা",
     "culturalAnnotationsLoading": "সাংস্কৃতিক প্রেক্ষাপট বিশ্লেষণ করা হচ্ছে...",
     "wordSupplements": "শব্দের বিবরণ",
-    "wordSupplementsLoading": "শব্দ উচ্চারণ ও অর্থ লোড হচ্ছে..."
+    "wordSupplementsLoading": "শব্দ উচ্চারণ ও অর্থ লোড হচ্ছে...",
+    "pronunciationSync": "উচ্চারণের টাইমিং",
+    "pronunciationSyncLoading": "AI উচ্চারণকে গানের কথার টাইমিংয়ের সঙ্গে মেলাচ্ছে...",
+    "pronunciationSyncFailed": "উচ্চারণের টাইমিং ব্যর্থ",
+    "pronunciationSyncFailedDesc": "AI দিয়ে উচ্চারণের টাইমিং তৈরি করা যায়নি। আনুমানিক টাইমিং দেখানো হচ্ছে।"
   },
   "videoSync": {
     "title": "ভিডিও টাইমিং",

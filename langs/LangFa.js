@@ -826,7 +826,10 @@ window.LANG_FA = {
     "fullscreenScreenHint": "Spotify را روی کل نمایشگر می‌برد و حالت تمام‌صفحه را باز می‌کند",
     "localLyricsApplying": "در حال اعمال…",
     "currentTrack": "آهنگ فعلی",
-    "more": "بیشتر"
+    "more": "بیشتر",
+    "pronunciationFirst": "اول تلفظ",
+    "pronunciationFirstTitle": "حالت اول تلفظ",
+    "pronunciationFirstDesc": "جای متن اصلی و تلفظ را عوض می‌کند تا همراه‌خوانی آهنگ‌های خارجی آسان شود"
   },
   "messages": {
     "noLyrics": "متن آهنگی موجود نیست",
@@ -2199,7 +2202,11 @@ window.LANG_FA = {
     "culturalAnnotations": "توضیح زمینه فرهنگی",
     "culturalAnnotationsLoading": "در حال تحلیل زمینه فرهنگی...",
     "wordSupplements": "جزئیات واژه‌ها",
-    "wordSupplementsLoading": "در حال بارگذاری خوانش‌ها و معنی‌ها..."
+    "wordSupplementsLoading": "در حال بارگذاری خوانش‌ها و معنی‌ها...",
+    "pronunciationSync": "زمان‌بندی تلفظ",
+    "pronunciationSyncLoading": "هوش مصنوعی در حال تطبیق تلفظ با زمان‌بندی متن آهنگ است...",
+    "pronunciationSyncFailed": "زمان‌بندی تلفظ ناموفق بود",
+    "pronunciationSyncFailedDesc": "زمان‌بندی تلفظ با هوش مصنوعی انجام نشد. زمان‌بندی تقریبی نمایش داده می‌شود."
   },
   "videoSync": {
     "title": "زمان‌بندی ویدیو",

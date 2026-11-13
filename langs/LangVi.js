@@ -826,7 +826,10 @@ window.LANG_VI = {
     "fullscreenScreenHint": "Cho Spotify phủ kín toàn bộ màn hình rồi mở chế độ toàn màn hình",
     "localLyricsApplying": "Đang áp dụng…",
     "currentTrack": "Bài hát hiện tại",
-    "more": "Thêm"
+    "more": "Thêm",
+    "pronunciationFirst": "Ưu tiên phát âm",
+    "pronunciationFirstTitle": "Chế độ ưu tiên phát âm",
+    "pronunciationFirstDesc": "Đổi chỗ lời gốc và phát âm để dễ hát theo lời bài hát tiếng nước ngoài"
   },
   "messages": {
     "noLyrics": "Không có lời bài hát khả dụng",
@@ -2199,7 +2202,11 @@ window.LANG_VI = {
     "culturalAnnotations": "Giải thích bối cảnh văn hóa",
     "culturalAnnotationsLoading": "Đang phân tích bối cảnh văn hóa...",
     "wordSupplements": "Chi tiết từ",
-    "wordSupplementsLoading": "Đang tải cách đọc & nghĩa..."
+    "wordSupplementsLoading": "Đang tải cách đọc & nghĩa...",
+    "pronunciationSync": "Đồng bộ phát âm",
+    "pronunciationSyncLoading": "AI đang khớp phát âm với thời gian lời bài hát...",
+    "pronunciationSyncFailed": "Đồng bộ phát âm thất bại",
+    "pronunciationSyncFailedDesc": "Không thể đồng bộ phát âm bằng AI. Đang hiển thị thời gian gần đúng."
   },
   "videoSync": {
     "title": "Thời gian video",

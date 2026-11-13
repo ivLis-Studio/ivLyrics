@@ -97,6 +97,7 @@
 		"Addon_Lyrics_OpenLyrics.js",
 		"Addon_Lyrics_Spotify.js",
 		"AIAddonManager.js",
+		"PronunciationFirst.js",
 		"LyricsAddonManager.js",
 		"TranslationModeHelper.js",
 		"OverlayProtocol.js",

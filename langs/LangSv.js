@@ -826,7 +826,10 @@ window.LANG_SV = {
     "fullscreenScreenHint": "Låter Spotify fylla hela skärmen och öppnar helskärm",
     "localLyricsApplying": "Tillämpar…",
     "currentTrack": "Aktuellt spår",
-    "more": "Mer"
+    "more": "Mer",
+    "pronunciationFirst": "Uttal först",
+    "pronunciationFirstTitle": "Läget uttal först",
+    "pronunciationFirstDesc": "Byter plats på originaltext och uttal så att det blir lätt att sjunga med i utländska låttexter"
   },
   "messages": {
     "noLyrics": "Inga texter tillgängliga",
@@ -2199,7 +2202,11 @@ window.LANG_SV = {
     "culturalAnnotations": "Förklaringar av kulturell kontext",
     "culturalAnnotationsLoading": "Analyserar kulturell kontext...",
     "wordSupplements": "Orddetaljer",
-    "wordSupplementsLoading": "Läser in uttal och glosor..."
+    "wordSupplementsLoading": "Läser in uttal och glosor...",
+    "pronunciationSync": "Uttalstiming",
+    "pronunciationSyncLoading": "AI anpassar uttalet till låttextens timing...",
+    "pronunciationSyncFailed": "Uttalstiming misslyckades",
+    "pronunciationSyncFailedDesc": "Kunde inte tajma uttalet med AI. Visar ungefärlig timing."
   },
   "videoSync": {
     "title": "Videotiming",

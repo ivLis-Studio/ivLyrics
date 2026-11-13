@@ -826,7 +826,10 @@ window.LANG_JA = {
     "fullscreenScreenHint": "Spotifyをモニター全体に切り替えて全画面を開きます",
     "localLyricsApplying": "適用中…",
     "currentTrack": "現在の曲",
-    "more": "その他"
+    "more": "その他",
+    "pronunciationFirst": "発音優先",
+    "pronunciationFirstTitle": "発音優先モード",
+    "pronunciationFirstDesc": "原文と発音の位置を入れ替えて、外国語の歌詞を読みながら歌いやすくします"
   },
   "messages": {
     "noLyrics": "利用可能な歌詞がありません",
@@ -2199,7 +2202,11 @@ window.LANG_JA = {
     "culturalAnnotations": "文化的背景の解説",
     "culturalAnnotationsLoading": "文化的背景を分析中...",
     "wordSupplements": "単語詳細",
-    "wordSupplementsLoading": "単語の読みと意味を読み込み中..."
+    "wordSupplementsLoading": "単語の読みと意味を読み込み中...",
+    "pronunciationSync": "発音の同期",
+    "pronunciationSyncLoading": "AIが発音を歌詞のタイミングに合わせています...",
+    "pronunciationSyncFailed": "発音の同期に失敗",
+    "pronunciationSyncFailedDesc": "AIで発音のタイミングを作成できなかったため、おおよそのタイミングで表示します。"
   },
   "videoSync": {
     "title": "動画のタイミング",

@@ -826,7 +826,10 @@ window.LANG_TH = {
     "fullscreenScreenHint": "ขยาย Spotify ให้เต็มทั้งจอภาพแล้วเปิดโหมดเต็มจอ",
     "localLyricsApplying": "กำลังใช้…",
     "currentTrack": "แทร็กปัจจุบัน",
-    "more": "เพิ่มเติม"
+    "more": "เพิ่มเติม",
+    "pronunciationFirst": "เน้นคำอ่าน",
+    "pronunciationFirstTitle": "โหมดเน้นคำอ่าน",
+    "pronunciationFirstDesc": "สลับตำแหน่งเนื้อเพลงต้นฉบับกับคำอ่าน เพื่อให้ร้องตามเพลงภาษาต่างประเทศได้ง่าย"
   },
   "messages": {
     "noLyrics": "ไม่มีเนื้อเพลงที่ใช้ได้",
@@ -2199,7 +2202,11 @@ window.LANG_TH = {
     "culturalAnnotations": "คำอธิบายบริบททางวัฒนธรรม",
     "culturalAnnotationsLoading": "กำลังวิเคราะห์บริบททางวัฒนธรรม...",
     "wordSupplements": "รายละเอียดคำ",
-    "wordSupplementsLoading": "กำลังโหลดคำอ่านและคำแปล..."
+    "wordSupplementsLoading": "กำลังโหลดคำอ่านและคำแปล...",
+    "pronunciationSync": "จังหวะคำอ่าน",
+    "pronunciationSyncLoading": "AI กำลังจัดคำอ่านให้ตรงกับจังหวะเนื้อเพลง...",
+    "pronunciationSyncFailed": "จัดจังหวะคำอ่านไม่สำเร็จ",
+    "pronunciationSyncFailedDesc": "ไม่สามารถจัดจังหวะคำอ่านด้วย AI ได้ จึงแสดงจังหวะโดยประมาณ"
   },
   "videoSync": {
     "title": "จังหวะวิดีโอ",

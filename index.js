@@ -2928,6 +2928,11 @@ const CONFIG = {
       "ivLyrics:visual:prefetch-word-details-enabled",
       true
     ),
+    // Pronunciation-first mode: pronunciation and original swap rows.
+    "pronunciation-first": StorageManager.get(
+      "ivLyrics:visual:pronunciation-first",
+      false
+    ),
     "global-sync-offset":
       Number(StorageManager.getItem("ivLyrics:visual:global-sync-offset")) || 0,
     "quick-sync-controls-enabled": StorageManager.get(
@@ -4775,6 +4780,15 @@ const GENERATION_REQUEST_PILL_CONFIG = Object.freeze({
     loadingDelayMs: 0,
     showFailure: true,
   }),
+  "pronunciation-sync": Object.freeze({
+    tokensKey: "_activePronunciationSyncLoadingTokens",
+    sequenceKey: "_pronunciationSyncLoadingSeq",
+    timerKey: "pronunciationSyncLoadingTimer",
+    failureKey: "_pronunciationSyncLoadingHadFailure",
+    loadingStateKey: null,
+    loadingDelayMs: 0,
+    showFailure: true,
+  }),
 });
 
 // Enhanced FAD container detection - try multiple selectors if main one fails.
@@ -5186,6 +5200,14 @@ class LyricsContainer extends react.Component {
     this._activeWordSyncLoadingTokens = new Set();
     this._wordSyncLoadingHadFailure = false;
     this._wordSyncStatusTokens = new Map();
+    this.pronunciationSyncLoadingTimer = null;
+    this._pronunciationSyncLoadingSeq = 0;
+    this._activePronunciationSyncLoadingTokens = new Set();
+    this._pronunciationSyncLoadingHadFailure = false;
+    this._pronunciationSyncStatusTokens = new Map();
+    this._pronunciationFirstMemo = null;
+    this._pronunciationTimingRequest = null;
+    this._pronunciationTimingTimer = null;
     this._generationPillTimers = new Map();
     this._generationPillRevisions = new Map();
     this._generationRequestDetails = new Map();
@@ -5271,6 +5293,8 @@ class LyricsContainer extends react.Component {
     this.removeLocalLyricsForCurrentTrack = this.removeLocalLyricsForCurrentTrack.bind(this);
     this.handleLyricsProviderAttempt = this.handleLyricsProviderAttempt.bind(this);
     this.handleWordSyncLoading = this.handleWordSyncLoading.bind(this);
+    this.handlePronunciationSyncStatus = this.handlePronunciationSyncStatus.bind(this);
+    this.handlePronunciationFirstUpdate = this.handlePronunciationFirstUpdate.bind(this);
     this.handleVideoBackgroundLoadingChange = this.handleVideoBackgroundLoadingChange.bind(this);
 
     // The floating toolbar gets one stable set of callbacks, so its props stay
@@ -5283,6 +5307,7 @@ class LyricsContainer extends react.Component {
       },
       onSetModeLock: (locked) => this.setCurrentModeLock(locked),
       onToggleModeLock: () => this.toggleCurrentModeLock(),
+      onTogglePronunciationFirst: () => window.ivLyricsPronunciationFirst?.toggle?.(),
       getRegenerateChoices: () => this.getRegenerateTranslationChoices(),
       onRegenerate: (target) => this.runRegenerateTranslationChoice(target),
       onOpenLyricsEditor: () => this.openLyricsEditModal(),
@@ -6509,6 +6534,8 @@ class LyricsContainer extends react.Component {
     this.clearCulturalAnnotationsLoading();
     this.clearWordSyncLoading();
     this.restoreWordSyncLoading();
+    this.clearPronunciationSyncLoading();
+    this.restorePronunciationSyncLoading();
   }
 
   getLyricsLayoutHasLyrics(lyricsState = this.state) {
@@ -6727,6 +6754,96 @@ class LyricsContainer extends react.Component {
     if (!this._activeWordSyncLoadingTokens) return;
     this.clearGenerationRequestLoading("word-sync");
     this._wordSyncStatusTokens.clear();
+  }
+
+  // Pronunciation-first: AI aligns the pronunciation to karaoke units.
+  handlePronunciationSyncStatus(event) {
+    const detail = event?.detail || {};
+    if (!detail.uri || detail.uri !== this.currentTrackUri || !detail.requestId) return;
+    if (detail.phase === "generating") {
+      if (this._pronunciationSyncStatusTokens.has(detail.requestId)) return;
+      this._pronunciationSyncStatusTokens.set(detail.requestId, this.startGenerationRequestLoading("pronunciation-sync"));
+      return;
+    }
+    if (detail.phase !== "complete" && detail.phase !== "failed") return;
+    const token = this._pronunciationSyncStatusTokens.get(detail.requestId);
+    if (token === undefined) return;
+    this._pronunciationSyncStatusTokens.delete(detail.requestId);
+    this.clearGenerationRequestLoading("pronunciation-sync", token, {
+      completed: detail.phase === "complete",
+      failed: detail.phase === "failed",
+    });
+  }
+
+  clearPronunciationSyncLoading() {
+    if (!this._activePronunciationSyncLoadingTokens) return;
+    this.clearGenerationRequestLoading("pronunciation-sync");
+    this._pronunciationSyncStatusTokens.clear();
+  }
+
+  restorePronunciationSyncLoading() {
+    if (!this._isComponentMounted) return;
+    const statuses = window.ivLyricsPronunciationFirst?.getStatuses?.(this.currentTrackUri) || [];
+    statuses.forEach(status => this.handlePronunciationSyncStatus({ detail: status }));
+  }
+
+  handlePronunciationFirstUpdate(event) {
+    const trackUri = event?.detail?.trackUri;
+    if (trackUri && trackUri !== this.state.uri) return;
+    this.forceUpdate?.();
+  }
+
+  /**
+   * Display copy of the lyrics for pronunciation-first mode: the
+   * pronunciation takes the original row and the original takes the
+   * pronunciation row. Stored lyrics and every request keep the original.
+   */
+  getPronunciationFirstLyrics(lyrics, mode, displayMode1, displayMode2) {
+    const api = window.ivLyricsPronunciationFirst;
+    if (!api?.isEnabled?.() || !Array.isArray(lyrics) || lyrics.length === 0) return lyrics;
+    if (!isPronunciationDisplayMode(displayMode1) && !isPronunciationDisplayMode(displayMode2)) return lyrics;
+    const karaoke = isKaraokeRenderMode(mode);
+    // Replacement display already puts the pronunciation first.
+    const lineLevel = CONFIG.visual["translate:display-mode"] !== "replace";
+    if (!karaoke && !lineLevel) return lyrics;
+    const uri = this.state.uri;
+    if (karaoke) this.schedulePronunciationTiming(uri, lyrics);
+    const timed = karaoke ? api.getTimed(uri) : null;
+    const memo = this._pronunciationFirstMemo;
+    if (memo && memo.lyrics === lyrics && memo.timed === timed
+      && memo.karaoke === karaoke && memo.lineLevel === lineLevel) {
+      return memo.result;
+    }
+    const result = api.applyToLines(lyrics, { karaoke, lineLevel, timed });
+    this._pronunciationFirstMemo = { lyrics, timed, karaoke, lineLevel, result };
+    return result;
+  }
+
+  // Waits for the pronunciation stream to settle, then asks AI once for the
+  // unit timing of this pronunciation revision.
+  schedulePronunciationTiming(uri, lyrics) {
+    if (!uri || this.state.isPhoneticLoading || this.state.isLoading) return;
+    const pending = this._pronunciationTimingRequest;
+    if (pending && pending.uri === uri && pending.lyrics === lyrics) return;
+    clearTimeout(this._pronunciationTimingTimer);
+    const request = { uri, lyrics };
+    this._pronunciationTimingRequest = request;
+    this._pronunciationTimingTimer = setTimeout(() => {
+      this._pronunciationTimingTimer = null;
+      if (!this._isComponentMounted || this.state.uri !== uri || this.state.currentLyrics !== lyrics
+        || this.state.isPhoneticLoading) {
+        if (this._pronunciationTimingRequest === request) this._pronunciationTimingRequest = null;
+        return;
+      }
+      window.ivLyricsPronunciationFirst?.ensureTimed?.({
+        trackUri: uri,
+        lines: lyrics,
+        karaokeSource: this.state.karaokeSource,
+        targetLang: this.getTranslationTargetLanguage(),
+        sourceLang: this.provideLanguageCode(lyrics) || "auto",
+        notation: getCurrentLyricsPronunciationNotation(),
+      });
+    }, 700);
   }
 
   restoreWordSyncLoading() {
@@ -10002,6 +10119,9 @@ class LyricsContainer extends react.Component {
       "lyrics:word-sync:status", this.handleWordSyncLoading
     ) || null;
     this.restoreWordSyncLoading();
+    window.addEventListener("ivLyrics:pronunciation-sync:status", this.handlePronunciationSyncStatus);
+    window.addEventListener("ivLyrics:pronunciation-first-updated", this.handlePronunciationFirstUpdate);
+    this.restorePronunciationSyncLoading();
 
     this.handleSyncCreatorVisibility = (event) => {
       const active = event?.detail?.active ?? !!document.getElementById("ivLyrics-sync-creator-overlay");
@@ -10402,6 +10522,9 @@ class LyricsContainer extends react.Component {
         this.reloadLyrics?.(false);
       } else if (event.detail?.name === "pseudo-karaoke-render-advance") {
         this.forceUpdate?.();
+    } else if (event.detail?.name === "pronunciation-first") {
+      this._pronunciationTimingRequest = null;
+      this.forceUpdate?.();
       } else if (
         event.detail?.name === "background-mode" ||
         event.detail?.name === "video-fallback-background" ||
@@ -10500,6 +10623,10 @@ class LyricsContainer extends react.Component {
     this._unsubscribeLyricsProviderAttempt = null;
     this._unsubscribeWordSyncLoading?.();
     this._unsubscribeWordSyncLoading = null;
+    window.removeEventListener("ivLyrics:pronunciation-sync:status", this.handlePronunciationSyncStatus);
+    window.removeEventListener("ivLyrics:pronunciation-first-updated", this.handlePronunciationFirstUpdate);
+    clearTimeout(this._pronunciationTimingTimer);
+    this._pronunciationTimingTimer = null;
     Spicetify.Player?.removeEventListener?.("onplaypause", this.updatePlaybackPausedState);
     Spicetify.Player?.removeEventListener?.("songchange", this.updatePlaybackPausedState);
     Spicetify.Player?.removeEventListener?.("songchange", this.handlePlaybackSongChange);
@@ -10557,8 +10684,9 @@ class LyricsContainer extends react.Component {
     this.clearCulturalAnnotationsLoading();
     this.clearWordSupplementsLoading();
     this.clearWordSyncLoading();
+    this.clearPronunciationSyncLoading();
     this.clearVideoBackgroundLoadingDelay();
-    ["lyrics", "translation", "pronunciation", "cultural-annotations", "word-supplements", "word-sync", "video-background"].forEach((kind) => {
+    ["lyrics", "translation", "pronunciation", "cultural-annotations", "word-supplements", "word-sync", "pronunciation-sync", "video-background"].forEach((kind) => {
       this.clearGenerationPillTimers(kind);
     });
     this._visibleGenerationPills.clear();
@@ -10897,7 +11025,7 @@ class LyricsContainer extends react.Component {
 
     const renderedCurrentLyrics = isSyncCreatorActive && syncCreatorPlainLyrics.length > 0
       ? syncCreatorPlainLyrics
-      : this.state.currentLyrics;
+      : this.getPronunciationFirstLyrics(this.state.currentLyrics, mode, displayMode1, displayMode2);
     const renderedUnsyncedLyrics = isSyncCreatorActive && syncCreatorPlainLyrics.length > 0
       ? syncCreatorPlainLyrics
       : this.state.unsynced;
@@ -11181,6 +11309,13 @@ class LyricsContainer extends react.Component {
           failureDescription: I18n.t("generationStatus.externalWordSyncFailed") || "Could not generate or apply word-level timing. Keeping the current lyrics.",
         },
         {
+          key: "pronunciation-sync",
+          label: I18n.t("generationStatus.pronunciationSync") || "Pronunciation timing",
+          description: I18n.t("generationStatus.pronunciationSyncLoading") || "AI is matching the pronunciation to the lyric timing...",
+          failureLabel: I18n.t("generationStatus.pronunciationSyncFailed") || "Pronunciation timing failed",
+          failureDescription: I18n.t("generationStatus.pronunciationSyncFailedDesc") || "Could not time the pronunciation with AI. Showing approximate timing.",
+        },
+        {
           key: "video-background",
           label: I18n.t("settings.videoBackground.label") || I18n.t("videoBackground.loading"),
           description: I18n.t("videoBackground.loadingMessage"),
@@ -11345,7 +11480,7 @@ class LyricsContainer extends react.Component {
             ),
           activeLyrics: shouldHideFullscreenLyrics || suppressStaleLyricsPage || !Array.isArray(this.state.currentLyrics)
             ? []
-            : this.state.currentLyrics,
+            : renderedCurrentLyrics,
           activeLyricsKaraoke: !shouldHideFullscreenLyrics && !suppressStaleLyricsPage && isKaraokeRenderMode(mode) && !!this.state.karaoke,
           karaokeSource: this.state.karaokeSource,
           lyricsSettingsRevision: this.reRenderLyricsPage,
@@ -11437,6 +11572,8 @@ class LyricsContainer extends react.Component {
           hasSynced: !!this.state.synced,
           hasUnsynced: !!this.state.unsynced,
           showConvert: !!showTranslationButton,
+          showPronunciationFirst: isPronunciationDisplayMode(displayMode1) || isPronunciationDisplayMode(displayMode2),
+          pronunciationFirst: !!window.ivLyricsPronunciationFirst?.isEnabled?.(),
           friendlyLanguage: friendlyLanguage || null,
           detectedLanguage: originalLanguage || null,
           canRegenerate: !!canRegenerateTranslation,

@@ -3907,6 +3907,32 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
             || (Array.isArray(line?.vocals?.lead?.syllables) && line.vocals.lead.syllables.length > 0)
         )), [lyrics]);
         const panelPlaybackTimeline = useMemo(() => buildPanelLinePlaybackTimeline(lyrics), [lyrics]);
+        // Pronunciation-first mode swaps only the displayed values; timing,
+        // indices and every lookup keep using the original lines.
+        const [pronunciationFirstRevision, setPronunciationFirstRevision] = useState(0);
+        useEffect(() => {
+            const api = window.ivLyricsPronunciationFirst;
+            if (!api) return undefined;
+            const refresh = () => setPronunciationFirstRevision((revision) => revision + 1);
+            window.addEventListener(api.CHANGED_EVENT, refresh);
+            window.addEventListener(api.UPDATED_EVENT, refresh);
+            return () => {
+                window.removeEventListener(api.CHANGED_EVENT, refresh);
+                window.removeEventListener(api.UPDATED_EVENT, refresh);
+            };
+        }, []);
+        const displayLyrics = useMemo(() => {
+            const api = window.ivLyricsPronunciationFirst;
+            if (!api?.isEnabled?.() || !Array.isArray(lyrics) || lyrics.length === 0) return lyrics;
+            const lineLevel = window.CONFIG?.visual?.["translate:display-mode"] !== "replace";
+            if (!hasKaraokeTiming && !lineLevel) return lyrics;
+            const trackUri = Spicetify.Player.data?.item?.uri || null;
+            return api.applyToLines(lyrics, {
+                karaoke: hasKaraokeTiming,
+                lineLevel,
+                timed: hasKaraokeTiming && trackUri ? api.getTimed(trackUri) : null,
+            });
+        }, [lyrics, hasKaraokeTiming, pronunciationFirstRevision]);
         const containerRef = useRef(null);
         const scrollRef = useRef(null);
         const previousLyricsLayoutRef = useRef(initialLyrics);
@@ -5068,7 +5094,7 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
             const halfLines = Math.floor(visibleLineCount / 2);
             const displayableLyrics = lyrics
                 .map((line, index) => ({
-                    line,
+                    line: displayLyrics?.[index] ?? line,
                     index,
                     interludeInfo: getInterludeInfo(line, lyrics[index + 1], index, lyrics.length)
                 }))
@@ -5156,7 +5182,7 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
                         || (activeIsInterlude && relativeIndex < 0 && !isVirtualTrailingInterlude))
                 };
             });
-        }, [lyrics, currentIndex, visualIndex, visibleLineCount, activeTrailingInterludeKey, visualTrailingInterludeKey, autoInstrumentalBreakEnabled, singingLineIndices, panelPlaybackTimeline]);
+        }, [lyrics, displayLyrics, currentIndex, visualIndex, visibleLineCount, activeTrailingInterludeKey, visualTrailingInterludeKey, autoInstrumentalBreakEnabled, singingLineIndices, panelPlaybackTimeline]);
 
         // currentTime은 더 이상 상태로 관리하지 않음 (전역 변수 window._ivLyricsPanelCurrentTime 사용)
 

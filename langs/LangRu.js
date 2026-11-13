@@ -826,7 +826,10 @@ window.LANG_RU = {
     "fullscreenScreenHint": "Разворачивает Spotify на весь монитор и открывает полноэкранный режим",
     "localLyricsApplying": "Применение…",
     "currentTrack": "Текущий трек",
-    "more": "Ещё"
+    "more": "Ещё",
+    "pronunciationFirst": "Сначала произношение",
+    "pronunciationFirstTitle": "Режим «сначала произношение»",
+    "pronunciationFirstDesc": "Меняет местами оригинальный текст и произношение, чтобы было легко подпевать песням на иностранных языках"
   },
   "messages": {
     "noLyrics": "Текст отсутствует",
@@ -2199,7 +2202,11 @@ window.LANG_RU = {
     "culturalAnnotations": "Пояснения культурного контекста",
     "culturalAnnotationsLoading": "Анализируется культурный контекст...",
     "wordSupplements": "Детали слов",
-    "wordSupplementsLoading": "Загрузка чтений и глосс..."
+    "wordSupplementsLoading": "Загрузка чтений и глосс...",
+    "pronunciationSync": "Синхронизация произношения",
+    "pronunciationSyncLoading": "ИИ подгоняет произношение под тайминг текста...",
+    "pronunciationSyncFailed": "Не удалось синхронизировать произношение",
+    "pronunciationSyncFailedDesc": "Не удалось синхронизировать произношение с помощью ИИ. Показывается приблизительная синхронизация."
   },
   "videoSync": {
     "title": "Тайминг видео",

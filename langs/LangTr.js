@@ -826,7 +826,10 @@ window.LANG_TR = {
     "fullscreenScreenHint": "Spotify'ı tüm monitörü kaplayacak şekilde açar ve tam ekrana geçer",
     "localLyricsApplying": "Uygulanıyor…",
     "currentTrack": "Mevcut Parça",
-    "more": "Daha Fazla"
+    "more": "Daha Fazla",
+    "pronunciationFirst": "Önce telaffuz",
+    "pronunciationFirstTitle": "Önce telaffuz modu",
+    "pronunciationFirstDesc": "Yabancı dildeki şarkı sözlerine kolayca eşlik edebilmeniz için orijinal sözlerle telaffuzun yerini değiştirir"
   },
   "messages": {
     "noLyrics": "Söz mevcut değil",
@@ -2199,7 +2202,11 @@ window.LANG_TR = {
     "culturalAnnotations": "Kültürel bağlam açıklamaları",
     "culturalAnnotationsLoading": "Kültürel bağlam analiz ediliyor...",
     "wordSupplements": "Kelime ayrıntıları",
-    "wordSupplementsLoading": "Kelime okunuşları ve açıklamalar yükleniyor..."
+    "wordSupplementsLoading": "Kelime okunuşları ve açıklamalar yükleniyor...",
+    "pronunciationSync": "Telaffuz zamanlaması",
+    "pronunciationSyncLoading": "Yapay zekâ telaffuzu söz zamanlamasına uyduruyor...",
+    "pronunciationSyncFailed": "Telaffuz zamanlaması başarısız",
+    "pronunciationSyncFailedDesc": "Telaffuz yapay zekâ ile zamanlanamadı. Yaklaşık zamanlama gösteriliyor."
   },
   "videoSync": {
     "title": "Video zamanlaması",

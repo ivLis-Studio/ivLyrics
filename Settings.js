@@ -7385,6 +7385,7 @@ const SETTINGS_DEFAULT_VALUES = Object.freeze({
   "spotify-fake-karaoke-enabled": false, "pseudo-karaoke-render-advance": 250,
   "prefer-sync-data-provider": true, "prefer-lyrics-type-over-provider-order": true,
   "prefetch-enabled": true, "prefetch-video-enabled": true, "prefetch-word-details-enabled": true,
+  "pronunciation-first": false,
   "quick-sync-controls-enabled": true, "seek-fade-compensation": false, "fullscreen-key": "f12",
   "translate-metadata": false,
   "translate-metadata-mode": "translated", "fullscreen-two-column": true,

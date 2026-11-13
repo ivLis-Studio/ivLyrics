@@ -51,6 +51,7 @@ function setup() {
         },
         clearLyricsLoading() {}, clearPhoneticLoading() {}, clearTranslationLoading() {},
         clearCulturalAnnotationsLoading() {}, clearWordSyncLoading() {}, restoreWordSyncLoading() {},
+        clearPronunciationSyncLoading() {}, restorePronunciationSyncLoading() {},
         publishLyricsPresentation: (...args) => presentations.push(args),
         optimizeTranslations: () => [{ ...display, text2: 'finished translation', translationText: 'finished translation' }],
         provideLanguageCode: () => 'en',

@@ -826,7 +826,10 @@ window.LANG_MS = {
     "fullscreenScreenHint": "Menjadikan Spotify memenuhi seluruh monitor dan membuka skrin penuh",
     "localLyricsApplying": "Sedang digunakan…",
     "currentTrack": "Trek Semasa",
-    "more": "Lagi"
+    "more": "Lagi",
+    "pronunciationFirst": "Sebutan dahulu",
+    "pronunciationFirstTitle": "Mod sebutan dahulu",
+    "pronunciationFirstDesc": "Menukar lirik asal dan sebutan supaya mudah menyanyi bersama lirik bahasa asing"
   },
   "messages": {
     "noLyrics": "Tiada lirik yang tersedia",
@@ -2199,7 +2202,11 @@ window.LANG_MS = {
     "culturalAnnotations": "Penjelasan konteks budaya",
     "culturalAnnotationsLoading": "Menganalisis konteks budaya...",
     "wordSupplements": "Perincian perkataan",
-    "wordSupplementsLoading": "Memuatkan bacaan & glosa..."
+    "wordSupplementsLoading": "Memuatkan bacaan & glosa...",
+    "pronunciationSync": "Penyegerakan sebutan",
+    "pronunciationSyncLoading": "AI sedang menyelaraskan sebutan dengan masa lirik...",
+    "pronunciationSyncFailed": "Penyegerakan sebutan gagal",
+    "pronunciationSyncFailedDesc": "Tidak dapat menyegerakkan sebutan dengan AI. Memaparkan masa anggaran."
   },
   "videoSync": {
     "title": "Pemasaan video",

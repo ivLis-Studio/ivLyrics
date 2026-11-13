@@ -826,7 +826,10 @@ window.LANG_ZH_TW = {
     "fullscreenScreenHint": "將 Spotify 切換為佔滿整個顯示器並開啟全螢幕",
     "localLyricsApplying": "正在套用…",
     "currentTrack": "目前曲目",
-    "more": "更多"
+    "more": "更多",
+    "pronunciationFirst": "發音優先",
+    "pronunciationFirstTitle": "發音優先模式",
+    "pronunciationFirstDesc": "交換原文與發音的位置，方便跟著外語歌詞唱"
   },
   "messages": {
     "noLyrics": "無可用歌詞",
@@ -2199,7 +2202,11 @@ window.LANG_ZH_TW = {
     "culturalAnnotations": "文化背景說明",
     "culturalAnnotationsLoading": "正在分析文化背景...",
     "wordSupplements": "單字詳情",
-    "wordSupplementsLoading": "正在載入單字發音和釋義..."
+    "wordSupplementsLoading": "正在載入單字發音和釋義...",
+    "pronunciationSync": "發音同步",
+    "pronunciationSyncLoading": "AI 正在將發音與歌詞時間對齊...",
+    "pronunciationSyncFailed": "發音同步失敗",
+    "pronunciationSyncFailedDesc": "無法用 AI 產生發音時間，將以近似時間顯示。"
   },
   "videoSync": {
     "title": "影片同步",

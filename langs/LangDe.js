@@ -826,7 +826,10 @@ window.LANG_DE = {
     "fullscreenScreenHint": "Lässt Spotify den ganzen Monitor ausfüllen und öffnet das Vollbild",
     "localLyricsApplying": "Wird angewendet…",
     "currentTrack": "Aktueller Track",
-    "more": "Mehr"
+    "more": "Mehr",
+    "pronunciationFirst": "Aussprache zuerst",
+    "pronunciationFirstTitle": "Aussprache-zuerst-Modus",
+    "pronunciationFirstDesc": "Tauscht Originaltext und Aussprache, damit du fremdsprachige Liedtexte leicht mitsingen kannst"
   },
   "messages": {
     "noLyrics": "Kein Songtext verfügbar",
@@ -2199,7 +2202,11 @@ window.LANG_DE = {
     "culturalAnnotations": "Kulturellen Kontext erklären",
     "culturalAnnotationsLoading": "Kultureller Kontext wird analysiert...",
     "wordSupplements": "Wortdetails",
-    "wordSupplementsLoading": "Wortlesungen & Glossen werden geladen..."
+    "wordSupplementsLoading": "Wortlesungen & Glossen werden geladen...",
+    "pronunciationSync": "Aussprache-Timing",
+    "pronunciationSyncLoading": "KI passt die Aussprache an das Liedtext-Timing an...",
+    "pronunciationSyncFailed": "Aussprache-Timing fehlgeschlagen",
+    "pronunciationSyncFailedDesc": "Die Aussprache konnte nicht per KI getimt werden. Es wird ein ungefähres Timing angezeigt."
   },
   "videoSync": {
     "title": "Video-Timing",

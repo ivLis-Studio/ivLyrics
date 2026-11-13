@@ -826,7 +826,10 @@ window.LANG_HI = {
     "fullscreenScreenHint": "Spotify को पूरे मॉनिटर पर फैलाकर फ़ुलस्क्रीन खोलता है",
     "localLyricsApplying": "लागू हो रहा है…",
     "currentTrack": "वर्तमान ट्रैक",
-    "more": "अधिक"
+    "more": "अधिक",
+    "pronunciationFirst": "उच्चारण पहले",
+    "pronunciationFirstTitle": "उच्चारण-पहले मोड",
+    "pronunciationFirstDesc": "मूल बोल और उच्चारण की जगह बदलता है, ताकि विदेशी भाषा के गानों के साथ आसानी से गा सकें"
   },
   "messages": {
     "noLyrics": "कोई लिरिक्स उपलब्ध नहीं",
@@ -2199,7 +2202,11 @@ window.LANG_HI = {
     "culturalAnnotations": "सांस्कृतिक संदर्भ की व्याख्या",
     "culturalAnnotationsLoading": "सांस्कृतिक संदर्भ का विश्लेषण हो रहा है...",
     "wordSupplements": "शब्द विवरण",
-    "wordSupplementsLoading": "शब्द उच्चारण और अर्थ लोड हो रहे हैं..."
+    "wordSupplementsLoading": "शब्द उच्चारण और अर्थ लोड हो रहे हैं...",
+    "pronunciationSync": "उच्चारण टाइमिंग",
+    "pronunciationSyncLoading": "AI उच्चारण को बोलों की टाइमिंग से मिला रहा है...",
+    "pronunciationSyncFailed": "उच्चारण टाइमिंग विफल",
+    "pronunciationSyncFailedDesc": "AI से उच्चारण की टाइमिंग नहीं बन सकी। अनुमानित टाइमिंग दिखाई जा रही है।"
   },
   "videoSync": {
     "title": "वीडियो टाइमिंग",

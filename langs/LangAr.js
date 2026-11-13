@@ -826,7 +826,10 @@ window.LANG_AR = {
     "fullscreenScreenHint": "يجعل Spotify يملأ الشاشة بالكامل ويفتح وضع ملء الشاشة",
     "localLyricsApplying": "جارٍ التطبيق…",
     "currentTrack": "المسار الحالي",
-    "more": "المزيد"
+    "more": "المزيد",
+    "pronunciationFirst": "النطق أولًا",
+    "pronunciationFirstTitle": "وضع النطق أولًا",
+    "pronunciationFirstDesc": "يبدّل مكان كلمات الأغنية الأصلية والنطق لتسهيل الغناء مع الأغاني الأجنبية"
   },
   "messages": {
     "noLyrics": "لا توجد كلمات متاحة",
@@ -2199,7 +2202,11 @@ window.LANG_AR = {
     "culturalAnnotations": "شرح السياق الثقافي",
     "culturalAnnotationsLoading": "جارٍ تحليل السياق الثقافي...",
     "wordSupplements": "تفاصيل الكلمات",
-    "wordSupplementsLoading": "جارٍ تحميل القراءات والمعاني..."
+    "wordSupplementsLoading": "جارٍ تحميل القراءات والمعاني...",
+    "pronunciationSync": "توقيت النطق",
+    "pronunciationSyncLoading": "يطابق الذكاء الاصطناعي النطق مع توقيت كلمات الأغنية...",
+    "pronunciationSyncFailed": "تعذّر توقيت النطق",
+    "pronunciationSyncFailedDesc": "تعذّر توقيت النطق باستخدام الذكاء الاصطناعي. يُعرض توقيت تقريبي."
   },
   "videoSync": {
     "title": "توقيت الفيديو",
