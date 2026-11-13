@@ -6,12 +6,14 @@
 // moves to the pronunciation row. Lines without a pronunciation are left as
 // they are.
 //
-// Karaoke rows also need timing for the pronunciation. Each sung unit
-// (character or word) of a line, with its timing, is sent to AI together with
-// the line's existing pronunciation; AI returns the part of the pronunciation
-// sung during each unit, which then keeps that unit's timing. Until that
-// arrives (or when no AI provider can do it) the pronunciation is spread over
-// the units in proportion to their length.
+// Karaoke rows also need timing for the pronunciation. Songs with word or
+// character timing get their pronunciation generated per sung unit
+// (PronunciationSlots.js), so the part sung during each karaoke syllable is
+// derived locally and keeps that syllable's timing. Lines without those
+// slots (older caches, timing that arrived after the pronunciation) send
+// their units and existing pronunciation to AI, which returns the part sung
+// during each unit. Until either is known (or when no AI provider can do
+// it) the pronunciation is spread over the units in proportion to length.
 //
 // The same unit timing also drives the optional pronunciation fill: with
 // pronunciation-first off, the pronunciation row under each karaoke line is
@@ -493,12 +495,59 @@
 		}
 	};
 
-	/** AI unit timing for the track, when it was made for the given lines. */
+	// Unit pronunciation from the slots made with the pronunciation.
+	const trackIdOf = (trackUri) => window.LyricsService?.getTranslationCacheId?.(trackUri)
+		|| window.LyricsService?.extractTrackId?.(trackUri)
+		|| trackUri;
+
+	const slotPartsCache = new WeakMap();
+
+	/** Unit pronunciation of every timed group whose line has slots. */
+	const getSlotParts = (trackUri, lines) => {
+		const slots = window.ivLyricsPronunciationSlots;
+		const track = trackUri && Array.isArray(lines) ? slots?.getTrack?.(trackIdOf(trackUri)) : null;
+		if (!track) return null;
+		const cached = slotPartsCache.get(lines);
+		if (cached && cached.track === track) return cached.parts;
+		const parts = new Map();
+		lines.forEach((line, lineIndex) => {
+			for (const group of getUnitGroups(line)) {
+				if (!group.pronunciation) continue;
+				const texts = group.syllables.map((syllable) => String(syllable?.text ?? ""));
+				const entry = track.lines.get(slots.normalizeLine(texts.join("")));
+				if (!entry) continue;
+				const derived = slots.deriveSyllableParts(texts, entry.parts, distribute);
+				// The shown pronunciation may have been edited since.
+				if (!derived || !alignParts(derived, group.pronunciation)) continue;
+				parts.set(lineIndex + ":" + group.key, derived);
+			}
+		});
+		const result = parts.size ? parts : null;
+		slotPartsCache.set(lines, { track, parts: result });
+		return result;
+	};
+
+	const combinedCache = new WeakMap();
+
+	/**
+	 * Unit pronunciation for the track's lines: derived from the slots, and
+	 * AI unit timing made for these lines for the rest. The same lines give
+	 * the same map until either changes.
+	 */
 	const getTimed = (trackUri, lines = null) => {
 		const entry = timedByTrack.get(trackUri);
-		if (entry?.status !== "ready") return null;
-		if (lines && itemsHashOf(lines) !== entry.itemsHash) return null;
-		return entry.parts;
+		const aiParts = entry?.status === "ready" && (!lines || itemsHashOf(lines) === entry.itemsHash)
+			? entry.parts
+			: null;
+		if (!lines) return aiParts;
+		const slotParts = getSlotParts(trackUri, lines);
+		if (!slotParts || !aiParts) return slotParts || aiParts;
+		const cached = combinedCache.get(lines);
+		if (cached && cached.aiParts === aiParts && cached.slotParts === slotParts) return cached.result;
+		const result = new Map(aiParts);
+		slotParts.forEach((value, key) => result.set(key, value));
+		combinedCache.set(lines, { aiParts, slotParts, result });
+		return result;
 	};
 
 	const emitStatus = (trackUri, requestId, phase) => {
@@ -531,16 +580,20 @@
 	};
 
 	/**
-	 * Requests AI unit timing for karaoke lines once per pronunciation
-	 * revision. Lines keep their proportional timing until it arrives.
+	 * Requests AI unit timing once per pronunciation revision for karaoke
+	 * lines whose pronunciation has no slots. Lines keep their proportional
+	 * timing until it arrives.
 	 */
 	const ensureTimed = ({ trackUri, lines, karaokeSource = null, targetLang = "", sourceLang = "auto", notation = "" } = {}) => {
 		if (!trackUri || !needsTiming() || PSEUDO_KARAOKE_SOURCES.has(karaokeSource)) return null;
-		const items = buildTimingItems(lines);
+		const allItems = buildTimingItems(lines);
+		if (allItems.length === 0) return null;
+		const itemsHash = itemsHashOf(lines, allItems);
+		const slotParts = getSlotParts(trackUri, lines);
+		const items = slotParts ? allItems.filter((item) => !slotParts.has(item.key)) : allItems;
 		if (items.length === 0) return null;
 		const signature = hashText(JSON.stringify([CACHE_KIND, targetLang, notation, items]));
 		const existing = timedByTrack.get(trackUri);
-		const itemsHash = itemsHashOf(lines, items);
 		if (existing?.signature === signature) return existing;
 
 		requestSequence += 1;

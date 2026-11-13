@@ -4355,7 +4355,8 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
                         title: trackInfo.title,
                         text: lyricsText,
                         wantSmartPhonetic: true,
-                        provider
+                        provider,
+                        pronunciationSlots: !!window.ivLyricsPronunciationSlots?.hasRealTiming?.(lyricsData, karaokeSource)
                     });
                     if (!isActiveLoad(loadSeq, trackInfo.uri)) {
                         return;

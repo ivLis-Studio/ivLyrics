@@ -2000,7 +2000,7 @@
             return wantSmartPhonetic ? { phonetic: lines } : { translation: lines };
         },
 
-        async generateCharacterPronunciation({ lines, characterPronunciationPrompt }) {
+        async generateCharacterPronunciation({ lines, characterPronunciationPrompt, endpointCapability }) {
             if (!Array.isArray(lines) || lines.length === 0) {
                 throw new Error('No lines provided');
             }
@@ -2009,7 +2009,8 @@
             if (!prompt) {
                 throw new Error('[OpenAI ChatGPT] Central character pronunciation prompt is unavailable.');
             }
-            const result = await callChatGPTAPI(prompt, undefined, undefined, 'characterPronunciation');
+            // Lyric pronunciation split by unit runs on the pronunciation endpoints.
+            const result = await callChatGPTAPI(prompt, undefined, undefined, endpointCapability || 'characterPronunciation');
             if (!result || !(Array.isArray(result.l) || Array.isArray(result.lines))) {
                 throw new Error('Invalid character pronunciation response');
             }

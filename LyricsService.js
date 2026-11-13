@@ -8901,7 +8901,9 @@
                             text: lyricsText,
                             wantSmartPhonetic: targetField === 'phonetic',
                             sourceLang: detectedLanguage || 'auto',
-                            provider
+                            provider,
+                            pronunciationSlots: targetField === 'phonetic'
+                                && !!window.ivLyricsPronunciationSlots?.hasRealTiming?.(lyrics, lyricsResult.karaokeSource)
                         });
                         if (!isCurrentRequest()) return { stale: true };
                         output = targetField === 'phonetic'
@@ -9690,6 +9692,8 @@
             onStreamReset = null,
             pronunciationNotation = null,
             sourceLang = null,
+            // Karaoke songs: request the pronunciation split by sung unit.
+            pronunciationSlots = false,
         }) {
             if (!text?.trim()) throw new Error("No text provided for translation");
             const sourceTextHash = getLyricsTextCacheHash(text);
@@ -9739,6 +9743,9 @@
                         return _translatorInflightRequests.get(requestKey);
                     }
                     if (localCached && isCachedTranslationStructurallyValid(localCached, text, wantSmartPhonetic)) {
+                        if (wantSmartPhonetic) {
+                            window.ivLyricsPronunciationSlots?.remember?.(finalTrackId, text, localCached);
+                        }
                         if (window.ApiTracker) {
                             window.ApiTracker.logCacheHit(
                                 wantSmartPhonetic ? 'phonetic' : 'translation',
@@ -9766,7 +9773,7 @@
 
                 const addonPromise = (async () => {
                     try {
-                        const result = await window.AIAddonManager.translateLyrics({
+                        const request = {
                             trackId: finalTrackId,
                             artist,
                             title,
@@ -9778,7 +9785,11 @@
                             provider,
                             onLine,
                             onStreamReset
-                        });
+                        };
+                        const slotsApi = window.ivLyricsPronunciationSlots;
+                        const result = wantSmartPhonetic && pronunciationSlots && slotsApi
+                            ? await slotsApi.requestPronunciation(window.AIAddonManager, request)
+                            : await window.AIAddonManager.translateLyrics(request);
 
                         if (result && _translatorInflightRequests.get(requestKey) === addonPromise) {
                             await LyricsCache.setTranslation(
@@ -9789,6 +9800,7 @@
                                 provider,
                                 sourceHash
                             ).catch(() => { });
+                            if (wantSmartPhonetic) slotsApi?.remember?.(finalTrackId, text, result);
                         }
                         return result || null;
                     } catch (e) {

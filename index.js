@@ -559,6 +559,9 @@ const getCachedTranslationForText = async ({
       resultLines.some((line) => line.trim()) &&
       resultLines.every((line, index) => !sourceLines[index].trim() || !!line.trim());
 
+    if (structurallyValid && isPhonetic) {
+      window.ivLyricsPronunciationSlots?.remember?.(trackId, text, cached);
+    }
     return structurallyValid ? cached : null;
   } catch (error) {
     return null;
@@ -582,10 +585,13 @@ const normalizeTranslationOutputLines = (outText) => {
   return null;
 };
 
-const buildTranslationCachePayload = (outText, isPhonetic = false) => {
+const buildTranslationCachePayload = (outText, isPhonetic = false, slots = null) => {
   const field = isPhonetic ? "phonetic" : "translation";
   const lines = normalizeTranslationOutputLines(outText);
-  return { [field]: lines || outText };
+  const payload = { [field]: lines || outText };
+  // Unit pronunciation of karaoke songs is stored with its line pronunciation.
+  if (isPhonetic && slots) payload.slots = slots;
+  return payload;
 };
 
 const setCachedTranslationForText = async ({
@@ -595,6 +601,7 @@ const setCachedTranslationForText = async ({
   provider = null,
   text,
   outText,
+  slots = null,
 }) => {
   const cacheApi = window.LyricsCache || (typeof LyricsCache !== "undefined" ? LyricsCache : null);
   if (
@@ -613,7 +620,7 @@ const setCachedTranslationForText = async ({
       trackId,
       lang,
       isPhonetic,
-      buildTranslationCachePayload(outText, isPhonetic),
+      buildTranslationCachePayload(outText, isPhonetic, slots),
       provider,
       sourceHash
     );
@@ -4037,6 +4044,7 @@ const Prefetcher = {
                 sourceLang: detectedLanguage || "auto",
                 provider: lyrics.provider,
                 ignoreCache: false,
+                pronunciationSlots: !!window.ivLyricsPronunciationSlots?.hasRealTiming?.(lyricsArray, lyrics.karaokeSource),
               });
 
               if (phoneticResponse.phonetic) {
@@ -7609,6 +7617,7 @@ class LyricsContainer extends react.Component {
           ignoreCache: true,
           onLine: handlePhoneticStreamLine,
           onStreamReset: handlePhoneticStreamReset,
+          pronunciationSlots: !!window.ivLyricsPronunciationSlots?.hasRealTiming?.(originalLyrics, lyricsState.karaokeSource),
         });
       }
 
@@ -7664,6 +7673,7 @@ class LyricsContainer extends react.Component {
             provider: lyricsState.provider,
             text,
             outText: phoneticOutput,
+            slots: phoneticResponse?.slots || null,
           })
           : null,
         needTranslation && translationOutput
@@ -9285,6 +9295,8 @@ class LyricsContainer extends react.Component {
             provider: lyricsState.provider,
             onLine: handleStreamLine,
             onStreamReset: handleStreamReset,
+            pronunciationSlots: wantSmartPhonetic
+              && !!window.ivLyricsPronunciationSlots?.hasRealTiming?.(lyrics, lyricsState.karaokeSource),
           });
 
           if (wantSmartPhonetic) {
