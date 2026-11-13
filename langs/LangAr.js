@@ -642,7 +642,7 @@ window.LANG_AR = {
       "customModel": "نموذج مخصص",
       "getFreeApiKey": "احصل على مفتاح مجاني",
       "groqDesc": "يوفّر Groq استدلالًا فائق السرعة مجانًا.",
-      "sonarWebSearch": "تتضمن نماذج Sonar البحث على الويب في الوقت الفعلي.",
+      "perplexityAgentModels": "تُحمَّل النماذج تلقائيًا من Perplexity Agent API باستخدام مفتاحك. ويستخدم البحث الموسيقي أيضًا البحث على الويب.",
       "geminiBaseUrlDesc": "غيّر هذا العنوان لاستخدام API متوافقة مع Gemini.",
       "modelsAvailable": "النماذج المتاحة: {count}",
       "requestBodyMerge": "JSON لدمجه في نص الطلب",

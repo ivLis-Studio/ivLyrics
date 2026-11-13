@@ -642,7 +642,7 @@ window.LANG_FA = {
       "customModel": "مدل سفارشی",
       "getFreeApiKey": "دریافت کلید رایگان",
       "groqDesc": "Groq استنتاج بسیار سریع را رایگان ارائه می‌دهد.",
-      "sonarWebSearch": "مدل‌های Sonar جست‌وجوی هم‌زمان در وب را دارند.",
+      "perplexityAgentModels": "مدل‌ها با کلید شما به‌طور خودکار از Perplexity Agent API بارگیری می‌شوند. پژوهش موسیقی از جست‌وجوی وب هم استفاده می‌کند.",
       "geminiBaseUrlDesc": "برای استفاده از API سازگار با Gemini، این نشانی را تغییر دهید.",
       "modelsAvailable": "مدل‌های در دسترس: {count}",
       "requestBodyMerge": "JSON برای ادغام با بدنه درخواست",

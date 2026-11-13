@@ -642,7 +642,7 @@ window.LANG_ZH_CN = {
       "customModel": "自定义模型",
       "getFreeApiKey": "获取免费密钥",
       "groqDesc": "Groq 免费提供超高速推理。",
-      "sonarWebSearch": "Sonar 模型内置实时网页搜索。",
+      "perplexityAgentModels": "使用 API 密钥自动加载 Perplexity Agent API 的模型列表。音乐研究还会使用网页搜索。",
       "geminiBaseUrlDesc": "如需使用兼容 Gemini 的 API，请修改此地址。",
       "modelsAvailable": "可用模型：{count} 个",
       "requestBodyMerge": "请求体合并 JSON",

@@ -642,7 +642,7 @@ window.LANG_VI = {
       "customModel": "Mô hình tùy chỉnh",
       "getFreeApiKey": "Nhận khóa miễn phí",
       "groqDesc": "Groq cung cấp suy luận siêu nhanh miễn phí.",
-      "sonarWebSearch": "Các mô hình Sonar có sẵn tính năng tìm kiếm web theo thời gian thực.",
+      "perplexityAgentModels": "Danh sách mô hình được tải tự động từ Perplexity Agent API bằng khóa của bạn. Nghiên cứu âm nhạc cũng dùng tìm kiếm web.",
       "geminiBaseUrlDesc": "Thay đổi địa chỉ này để dùng API tương thích với Gemini.",
       "modelsAvailable": "Mô hình khả dụng: {count}",
       "requestBodyMerge": "JSON hợp nhất vào nội dung yêu cầu",

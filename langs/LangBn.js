@@ -642,7 +642,7 @@ window.LANG_BN = {
       "customModel": "কাস্টম মডেল",
       "getFreeApiKey": "বিনামূল্যে কী নিন",
       "groqDesc": "Groq বিনামূল্যে অত্যন্ত দ্রুত ইনফারেন্স দেয়।",
-      "sonarWebSearch": "Sonar মডেলে রিয়েল-টাইম ওয়েব সার্চ অন্তর্ভুক্ত।",
+      "perplexityAgentModels": "আপনার কী দিয়ে Perplexity Agent API থেকে মডেলগুলো স্বয়ংক্রিয়ভাবে লোড হয়। সঙ্গীত গবেষণায় ওয়েব সার্চও ব্যবহার হয়।",
       "geminiBaseUrlDesc": "Gemini-সামঞ্জস্যপূর্ণ API ব্যবহার করতে এটি বদলান।",
       "modelsAvailable": "উপলভ্য মডেল: {count}",
       "requestBodyMerge": "অনুরোধের বডিতে মার্জ করার JSON",

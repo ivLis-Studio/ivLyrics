@@ -3,7 +3,7 @@
  * Perplexity AI를 사용한 번역, 발음, Research 생성
  *
  * @author default
- * @version 1.0.1
+ * @version 2.0.0
  */
 
 (() => {
@@ -41,7 +41,7 @@
             ms: 'Terjemahan, sebutan dan penyelidikan muzik menggunakan Perplexity AI (dengan carian web masa nyata)',
             tr: 'Perplexity AI ile çeviri, telaffuz ve müzik araştırması (gerçek zamanlı web araması desteğiyle)',
         },
-        version: '1.0.1',
+        version: '2.0.0',
         apiKeyUrl: 'https://www.perplexity.ai/settings/api',
         supports: {
             translate: true,
@@ -57,18 +57,47 @@
     };
 
     const BASE_URL = 'https://api.perplexity.ai';
+    // Sonar Chat Completions support ended on September 27, 2026. Requests go to the Agent
+    // API, whose model ids carry a provider prefix (perplexity/sonar, openai/...) and which
+    // has no sonar-pro. GET /models is a 404; the model list is GET /v1/models.
+    // https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview
+    const AGENT_URL = BASE_URL + '/v1/agent';
+    const MODELS_URL = BASE_URL + '/v1/models';
+    // The migration guide's successor for sonar and sonar-pro when the contract is a model id.
+    const DEFAULT_MODEL = 'perplexity/sonar';
+    // Grounded answers cite as [web:1][web:2]; nothing in ivLyrics resolves those markers.
+    const WEB_CITATION_MARKER = /\[web:\d+\]/g;
 
     /**
-     * Fetch available models from Perplexity API
+     * Bare Sonar names (sonar, sonar-pro, sonar-reasoning-pro, ...) do not exist on the Agent
+     * API, so a saved id without a provider prefix falls back to the default model.
+     */
+    function normalizeModelId(model) {
+        const id = String(model ?? '').trim();
+        return id.includes('/') ? id : DEFAULT_MODEL;
+    }
+
+    function compareModels(a, b) {
+        if (a.id === DEFAULT_MODEL || b.id === DEFAULT_MODEL) {
+            return a.id === DEFAULT_MODEL ? (b.id === DEFAULT_MODEL ? 0 : -1) : 1;
+        }
+        const aPerplexity = a.id.startsWith('perplexity/');
+        const bPerplexity = b.id.startsWith('perplexity/');
+        if (aPerplexity !== bPerplexity) return aPerplexity ? -1 : 1;
+        return a.id.localeCompare(b.id);
+    }
+
+    /**
+     * Fetch the models the Agent API serves for this key.
      */
     async function fetchAvailableModels(apiKey) {
         if (!apiKey) return [];
 
         try {
-            const response = await window.ivLyricsFetch(`${BASE_URL}/models`, {
+            const response = await window.ivLyricsFetch(MODELS_URL, {
                 method: 'GET',
                 headers: {
-                    'Authorization': `Bearer ${apiKey}`,
+                    'Authorization': 'Bearer ' + apiKey,
                     'Accept': 'application/json'
                 }
             });
@@ -79,24 +108,16 @@
             }
 
             const data = await response.json();
-            const models = (data.data || [])
-                .map(m => ({
-                    id: m.id,
-                    name: m.name || m.id,
-                    context_window: m.context_window
-                }))
-                // Sort by preference
-                .sort((a, b) => {
-                    const priority = ['start-pro', 'sonar-reasoning-pro', 'sonar-pro', 'sonar-reasoning', 'sonar'];
-                    const aIdx = priority.findIndex(p => a.id.includes(p));
-                    const bIdx = priority.findIndex(p => b.id.includes(p));
-
-                    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
-                    if (aIdx !== -1) return -1;
-                    if (bIdx !== -1) return 1;
-
-                    return a.id.localeCompare(b.id);
-                });
+            const seen = new Set();
+            const models = [];
+            for (const row of Array.isArray(data?.data) ? data.data : []) {
+                const id = String(row?.id ?? '').trim();
+                if (!id.includes('/') || seen.has(id)) continue;
+                seen.add(id);
+                const name = String(row?.display_name || row?.name || '').trim();
+                models.push({ id, name: name || id, context_window: row?.context_window });
+            }
+            models.sort(compareModels);
 
             if (models.length > 0) {
                 models[0].default = true;
@@ -162,7 +183,15 @@
     }
 
     function getSelectedModel() {
-        return getSetting('model', 'sonar-pro');
+        return normalizeModelId(getSetting('model', DEFAULT_MODEL));
+    }
+
+    /** Rewrites a saved Sonar model id once, so the settings screen shows what is sent. */
+    function migrateLegacyModelSetting() {
+        const saved = getSetting('model', '');
+        if (saved && normalizeModelId(saved) !== saved) {
+            setSetting('model', normalizeModelId(saved));
+        }
     }
 
 
@@ -170,7 +199,7 @@
         const params = {};
         const useMaxTokens = getSetting('adv-maxTokens-enabled', true);
         if (useMaxTokens) {
-            params.max_tokens = parseInt(getSetting('adv-maxTokens-value', 16000)) || 16000;
+            params.max_output_tokens = parseInt(getSetting('adv-maxTokens-value', 16000)) || 16000;
         }
         const useTemperature = getSetting('adv-temperature-enabled', true);
         if (useTemperature) {
@@ -189,12 +218,22 @@
         return { systemPrompt: '', userPrompt: String(prompt ?? '') };
     }
 
-    function buildPromptMessages(prompt) {
+    /**
+     * The Agent API rejects any field it does not know with a 400, so the body carries only
+     * mapped fields. It searches only when offered a tool, which lyrics tasks never need.
+     */
+    function buildAgentRequestBody(prompt, { stream = false, webSearch = false } = {}) {
         const { systemPrompt, userPrompt } = normalizePromptRequest(prompt);
-        return [
-            ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
-            { role: 'user', content: userPrompt }
-        ];
+        const body = {
+            model: getSelectedModel(),
+            input: userPrompt,
+            ...getAdvancedRequestParams(),
+            store: false
+        };
+        if (systemPrompt) body.instructions = systemPrompt;
+        if (webSearch) body.tools = [{ type: 'web_search' }];
+        if (stream) body.stream = true;
+        return body;
     }
 
     // ============================================
@@ -210,53 +249,123 @@
         return error;
     }
 
-    function readPerplexityResponseText(data, streaming = false, requireStop = false) {
-        const choice = data?.choices?.[0];
-        const responseError = data?.error || choice?.error;
-        if (responseError) {
-            const message = typeof responseError === 'string'
-                ? responseError
-                : responseError.message || responseError.type || data?.message || 'API response error';
-            throw new Error(`[Perplexity] ${message}`);
-        }
-
-        const finishReason = String(choice?.finish_reason ?? '').trim().toLowerCase();
-        if (finishReason && finishReason !== 'stop') {
-            throw createPerplexityResponseError(finishReason);
-        }
-        if (requireStop && finishReason !== 'stop') {
-            throw createPerplexityResponseError('missing_finish_reason');
-        }
-
-        const responsePart = streaming ? choice?.delta : choice?.message;
-        const refusal = responsePart?.refusal;
-        if ((typeof refusal === 'string' && refusal.trim()) || (refusal && typeof refusal !== 'string')) {
-            throw createPerplexityResponseError('refusal', typeof refusal === 'string' ? refusal : 'Request refused');
-        }
-
-        const content = responsePart?.content;
-        return typeof content === 'string' ? content : '';
+    function agentErrorMessage(error, fallback) {
+        if (!error) return fallback;
+        if (typeof error === 'string') return error.trim() || fallback;
+        return String(error.message || error.type || error.code || fallback);
     }
 
-    // Shared 401 / non-OK handling for the request loop. On 401 it throws the
-    // permission message; otherwise it reports the HTTP status. Either branch
-    // reads the JSON body at most once, matching the inline versions.
-    async function throwPerplexityApiResponseError(response) {
-        if (response.status === 401) {
-            let errorMessage = 'Invalid API key or permission denied.';
-            try {
-                const errorData = await response.json();
-                if (errorData.error?.message) errorMessage = errorData.error.message;
-            } catch (parseError) { }
-            throw new Error(`[Perplexity] ${errorMessage}`);
+    /**
+     * Reads a Response object. Failed and cancelled runs arrive as HTTP 200, so the status
+     * decides; incomplete_details.reason replaces Sonar's finish_reason.
+     */
+    function readAgentResponseText(data) {
+        const status = String(data?.status ?? '').trim().toLowerCase();
+        if (!status && data?.error) {
+            throw new Error('[Perplexity] ' + agentErrorMessage(data.error, 'API response error'));
+        }
+        if (status === 'failed' || status === 'cancelled') {
+            throw new Error('[Perplexity] ' + agentErrorMessage(data?.error, 'Response ' + status));
+        }
+        if (status === 'incomplete') {
+            throw createPerplexityResponseError(data?.incomplete_details?.reason || 'incomplete');
+        }
+        if (status !== 'completed') {
+            throw createPerplexityResponseError(status || 'missing_status');
         }
 
-        let errorMessage = `HTTP ${response.status}`;
+        let text = '';
+        for (const item of Array.isArray(data?.output) ? data.output : []) {
+            if (item?.type !== 'message' || !Array.isArray(item.content)) continue;
+            for (const part of item.content) {
+                if (part?.type === 'refusal') {
+                    throw createPerplexityResponseError('refusal', part.refusal || 'Request refused');
+                }
+                if (part?.type === 'output_text' && typeof part.text === 'string') text += part.text;
+            }
+        }
+        if (!text && typeof data?.output_text === 'string') text = data.output_text;
+        return text;
+    }
+
+    /**
+     * Streams typed events. Exactly one terminal arrives (completed, failed, incomplete,
+     * cancelled), or a bare error event; there is no [DONE] sentinel.
+     */
+    function createAgentStreamState() {
+        const state = { receivedDelta: false, completed: false };
+        state.consume = (event) => {
+            const type = String(event?.type || '');
+            if (type === 'response.output_text.delta') {
+                const delta = typeof event.delta === 'string' ? event.delta : '';
+                if (delta) state.receivedDelta = true;
+                return delta;
+            }
+            if (type === 'response.output_text.done') {
+                if (state.receivedDelta || typeof event.text !== 'string' || !event.text) return '';
+                state.receivedDelta = true;
+                return event.text;
+            }
+            if (type === 'response.refusal.done') {
+                throw createPerplexityResponseError('refusal', event.refusal || 'Request refused');
+            }
+            if (type === 'response.completed') {
+                state.completed = true;
+                return state.receivedDelta || !event.response ? '' : readAgentResponseText(event.response);
+            }
+            if (type === 'response.failed' || type === 'response.incomplete' || type === 'response.cancelled') {
+                const status = type.slice('response.'.length);
+                readAgentResponseText(event.response?.status ? event.response : { ...event.response, status });
+                throw createPerplexityResponseError(status);
+            }
+            if (type === 'error') {
+                throw new Error('[Perplexity] ' + agentErrorMessage(event.error || event.message, 'Stream error'));
+            }
+            return '';
+        };
+        return state;
+    }
+
+    // 401 and request errors (400, 404, 413) will not change on retry; 403 and 429 belong to
+    // the key, so the next key gets a try. Each error keeps the server's message.
+    const PERMANENT_HTTP_STATUSES = new Set([400, 401, 404, 413]);
+    const KEY_LIMIT_HTTP_STATUSES = new Set([403, 429]);
+
+    async function createPerplexityHttpError(response) {
+        let message = '';
         try {
-            const errorData = await response.json();
-            if (errorData.error?.message) errorMessage = errorData.error.message;
+            const data = await response.json();
+            message = String(data?.error?.message || data?.message || '').trim();
         } catch (parseError) { }
-        throw new Error(`[Perplexity] ${errorMessage}`);
+        if (!message && response.status === 401) message = 'Invalid API key or permission denied.';
+        const error = new Error('[Perplexity] ' + (message ? message + ' (HTTP ' + response.status + ')' : 'HTTP ' + response.status));
+        error.status = response.status;
+        return error;
+    }
+
+    /**
+     * Some served models reject sampling parameters; their 400 names temperature, and the
+     * request is sent once more without it.
+     */
+    async function postAgentRequest(apiKey, body, timeoutMs) {
+        const send = requestBody => window.ivLyricsFetch(AGENT_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + apiKey
+            },
+            body: JSON.stringify(requestBody)
+        }, timeoutMs);
+
+        let response = await send(body);
+        if (response.status === 400 && 'temperature' in body) {
+            const error = await createPerplexityHttpError(response);
+            if (!/temperature/i.test(error.message)) throw error;
+            const { temperature, ...withoutTemperature } = body;
+            response = await send(withoutTemperature);
+        }
+        if (!response.ok) throw await createPerplexityHttpError(response);
+        return response;
     }
 
     async function callPerplexityAPIRaw(prompt, maxRetries = window.AIAddonManager?.getProviderRequestAttempts?.() ?? 3, transformResult = null) {
@@ -265,7 +374,6 @@
             throw new Error('[Perplexity] API key is required. Please configure your API key in settings.');
         }
 
-        const model = getSelectedModel();
         let lastError = null;
 
         for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
@@ -273,30 +381,8 @@
 
             for (let attempt = 0; attempt < maxRetries; attempt++) {
                 try {
-                    const response = await window.ivLyricsFetch(`${BASE_URL}/chat/completions`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${apiKey}`
-                        },
-                        body: JSON.stringify({
-                            model,
-                            messages: buildPromptMessages(prompt),
-                            ...getAdvancedRequestParams()
-                        })
-                    });
-
-                    if (response.status === 429 || response.status === 403) {
-                        window.__ivLyricsDebugLog?.(`[Perplexity Addon] API key ${keyIndex + 1} failed (${response.status}), trying next...`);
-                        break; // Try next key
-                    }
-
-                    if (response.status === 401 || !response.ok) {
-                        await throwPerplexityApiResponseError(response);
-                    }
-
-                    const data = await response.json();
-                    const rawText = readPerplexityResponseText(data, false, true);
+                    const response = await postAgentRequest(apiKey, buildAgentRequestBody(prompt));
+                    const rawText = readAgentResponseText(await response.json());
 
                     if (!rawText.trim()) {
                         throw new Error('[Perplexity] Empty response from API');
@@ -308,11 +394,10 @@
 
                 } catch (e) {
                     lastError = e;
-                    window.__ivLyricsDebugLog?.(`[Perplexity Addon] Attempt ${attempt + 1} failed:`, e.message);
+                    window.__ivLyricsDebugLog?.(`[Perplexity Addon] Key ${keyIndex + 1}, attempt ${attempt + 1} failed:`, e.message);
 
-                    if (e.message.includes('Invalid API key') || e.message.includes('permission denied')) {
-                        throw e;
-                    }
+                    if (PERMANENT_HTTP_STATUSES.has(e.status)) throw e;
+                    if (KEY_LIMIT_HTTP_STATUSES.has(e.status)) break; // Try next key
 
                     if (attempt < maxRetries - 1) {
                         await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
@@ -362,11 +447,10 @@
         transformResult = null,
         requestTimeoutMs = window.ivLyricsFetch?.DEFAULT_TIMEOUT_MS || 90_000,
         onRawChunk = null,
-        requestOverrides = {}
+        { webSearch = false } = {}
     ) {
         const apiKeys = getApiKeys();
         if (apiKeys.length === 0) throw new Error('[Perplexity] API key is required.');
-        const model = getSelectedModel();
         let lastError = null;
 
         for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
@@ -396,74 +480,70 @@
                 };
 
                 try {
-                    const response = await window.ivLyricsFetch(`${BASE_URL}/chat/completions`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-                        body: JSON.stringify({ model, messages: buildPromptMessages(prompt), ...getAdvancedRequestParams(), ...requestOverrides, stream: true })
-                    }, requestTimeoutMs);
-                    if (response.status === 429 || response.status === 403) { break; }
-                    if (!response.ok) {
-                        let msg = `HTTP ${response.status}`;
-                        try { const d = await response.json(); if (d.error?.message) msg = d.error.message; } catch (e) { }
-                        throw new Error(`[Perplexity] ${msg}`);
-                    }
+                    const response = await postAgentRequest(
+                        apiKey,
+                        buildAgentRequestBody(prompt, { stream: true, webSearch }),
+                        requestTimeoutMs
+                    );
                     const consumePerplexityStream = async () => {
-                    const reader = response.body.getReader();
-                    const decoder = new TextDecoder();
-                    let sseBuffer = '', accumulated = '';
-                    let sawStop = false;
+                    let accumulated = '';
+                    const streamState = createAgentStreamState();
                     const lineState = { index: 0, offset: 0 };
-                    const consumeSSELine = (rawLine) => {
-                        const line = String(rawLine || '').trim();
-                        if (!line.startsWith('data:')) return;
-
-                        const payload = line.slice(5).trimStart();
-                        if (!payload || payload === '[DONE]') return;
-
-                        const parsed = JSON.parse(payload);
-                        const chunk = readPerplexityResponseText(parsed, true);
-                        if (String(parsed?.choices?.[0]?.finish_reason ?? '').trim().toLowerCase() === 'stop') {
-                            sawStop = true;
-                        }
-                        if (chunk) {
-                            accumulated += chunk;
-                            receivedStreamText = true;
-                            if (typeof onRawChunk === 'function') onRawChunk(chunk);
-                        }
+                    const appendText = (chunk) => {
+                        if (!chunk) return;
+                        accumulated += chunk;
+                        receivedStreamText = true;
+                        if (typeof onRawChunk === 'function') onRawChunk(chunk);
                     };
-
-                    while (true) {
-                        const { value, done } = await reader.read();
-                        if (done) break;
-                        sseBuffer += decoder.decode(value, { stream: true });
-                        const parts = sseBuffer.split(/\r?\n/);
-                        sseBuffer = parts.pop() || '';
-                        for (const line of parts) consumeSSELine(line);
-
+                    const emitCompletedLines = (flush) => {
                         const beforeEmitCount = lineState.index;
-                        emitStreamingLines(accumulated, onLine, lineState);
+                        emitStreamingLines(accumulated, onLine, lineState, flush);
                         if (lineState.index > beforeEmitCount) {
                             emittedProvisionalOutput = true;
                             emittedLineCount = Math.max(emittedLineCount, lineState.index);
                         }
+                    };
+
+                    const contentType = String(response.headers?.get?.('content-type') || '');
+                    if (/json/i.test(contentType) && !/event-stream/i.test(contentType)) {
+                        // ivLyricsFetch's CORS fallback buffers a stream into one Response object.
+                        appendText(readAgentResponseText(await response.json()));
+                        streamState.completed = true;
+                    } else {
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder();
+                        let sseBuffer = '';
+                        const consumeSSELine = (rawLine) => {
+                            const line = String(rawLine || '').trim();
+                            if (!line.startsWith('data:')) return;
+                            const payload = line.slice(5).trimStart();
+                            if (!payload || payload === '[DONE]') return;
+                            appendText(streamState.consume(JSON.parse(payload)));
+                        };
+
+                        while (true) {
+                            const { value, done } = await reader.read();
+                            if (done) break;
+                            sseBuffer += decoder.decode(value, { stream: true });
+                            const parts = sseBuffer.split(/\r?\n/);
+                            sseBuffer = parts.pop() || '';
+                            for (const line of parts) consumeSSELine(line);
+                            emitCompletedLines(false);
+                        }
+
+                        sseBuffer += decoder.decode();
+                        if (sseBuffer.trim()) consumeSSELine(sseBuffer);
                     }
+                    if (!streamState.completed) throw createPerplexityResponseError('missing_completion');
 
-                    sseBuffer += decoder.decode();
-                    if (sseBuffer.trim()) consumeSSELine(sseBuffer);
-                    if (!sawStop) throw createPerplexityResponseError('missing_finish_reason');
+                    emitCompletedLines(true);
 
-                    const beforeFlushCount = lineState.index;
-                    emitStreamingLines(accumulated, onLine, lineState, true);
-                    if (lineState.index > beforeFlushCount) {
-                        emittedProvisionalOutput = true;
-                        emittedLineCount = Math.max(emittedLineCount, lineState.index);
-                    }
-
-                    if (!accumulated.trim()) throw new Error('[Perplexity] Empty response from streaming API');
+                    const finalText = webSearch ? accumulated.replace(WEB_CITATION_MARKER, '') : accumulated;
+                    if (!finalText.trim()) throw new Error('[Perplexity] Empty response from streaming API');
 
                     const transformed = typeof transformResult === 'function'
-                        ? transformResult(accumulated)
-                        : accumulated;
+                        ? transformResult(finalText)
+                        : finalText;
 
                     if (Array.isArray(transformed) && typeof onLine === 'function') {
                         const provisionalLines = accumulated.split('\n');
@@ -481,9 +561,10 @@
                     return await consumePerplexityStream();
                 } catch (e) {
                     lastError = e;
-                    const isPermanentError = /invalid api key|permission denied/i.test(e.message);
+                    const isPermanentError = PERMANENT_HTTP_STATUSES.has(e.status);
                     resetProvisionalOutput(isPermanentError || attempt >= maxRetries - 1 ? 'failed' : 'retry', e);
                     if (isPermanentError) throw e;
+                    if (KEY_LIMIT_HTTP_STATUSES.has(e.status)) break; // Try next key
                     if (attempt < maxRetries - 1) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
                 }
             }
@@ -587,7 +668,7 @@
                 const [apiKeys, setApiKeys] = useState(
                     Array.isArray(initialApiKeys) ? JSON.stringify(initialApiKeys) : initialApiKeys
                 );
-                const [selectedModel, setSelectedModel] = useState(getSetting('model', 'sonar-pro'));
+                const [selectedModel, setSelectedModel] = useState(getSelectedModel());
                 const [testStatus, setTestStatus] = useState('');
 
                 const handleApiKeyChange = (e) => {
@@ -629,6 +710,13 @@
                         setAvailableModels(models);
                         if (models.length > 0) {
                             ADDON_INFO.models = models;
+                            // A retired or unknown saved id would otherwise stay selected unseen.
+                            const current = getSelectedModel();
+                            if (!models.some(model => model.id === current)) {
+                                const next = (models.find(model => model.id === DEFAULT_MODEL) || models[0]).id;
+                                setSelectedModel(next);
+                                setSetting('model', next);
+                            }
                         }
                     } catch (e) {
                         console.error('[Perplexity Addon] Failed to load models:', e);
@@ -690,7 +778,7 @@
                                 title: aiText('refreshModels', 'Refresh model list')
                             }, modelsLoading ? '...' : '↻')
                         ),
-                        React.createElement('small', null, aiText('sonarWebSearch', 'Sonar models include real-time web search'))
+                        React.createElement('small', null, aiText('perplexityAgentModels', 'Models load automatically from the Perplexity Agent API with your key. Music research also searches the web.'))
                     );
                 const renderTestRow = () => React.createElement('div', { className: 'ai-addon-setting' },
                         React.createElement('button', { type: 'button', onClick: handleTest, className: 'ai-addon-btn ai-addon-btn-primary' }, aiText('testConnection', 'Test Connection')),
@@ -833,14 +921,7 @@
                 extractJSON,
                 requestTimeoutMs,
                 progressParser ? chunk => progressParser.push(chunk) : null,
-                webSearch === false
-                    ? { disable_search: true, return_images: false }
-                    : {
-                        disable_search: false,
-                        search_mode: 'web',
-                        return_images: true,
-                        web_search_options: { search_context_size: 'high' }
-                    }
+                { webSearch: webSearch !== false }
             );
         },
 
@@ -874,6 +955,7 @@
 
     const registerAddon = () => {
         if (window.AIAddonManager) {
+            migrateLegacyModelSetting();
             window.AIAddonManager.register(PerplexityAddon);
         } else {
             setTimeout(registerAddon, 100);

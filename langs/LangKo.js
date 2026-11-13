@@ -642,7 +642,7 @@ window.LANG_KO = {
       "customModel": "직접 입력",
       "getFreeApiKey": "무료 키 받기",
       "groqDesc": "Groq는 매우 빠른 추론을 무료로 제공합니다.",
-      "sonarWebSearch": "Sonar 모델은 실시간 웹 검색을 함께 사용합니다.",
+      "perplexityAgentModels": "API 키로 Perplexity Agent API의 모델 목록을 자동으로 불러옵니다. 음악 리서치에는 웹 검색이 함께 사용됩니다.",
       "geminiBaseUrlDesc": "Gemini 호환 API를 사용하려면 이 주소를 바꾸세요.",
       "modelsAvailable": "사용 가능한 모델 {count}개",
       "requestBodyMerge": "요청 본문 병합 JSON",

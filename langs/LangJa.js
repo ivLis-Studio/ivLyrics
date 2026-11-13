@@ -642,7 +642,7 @@ window.LANG_JA = {
       "customModel": "カスタムモデル",
       "getFreeApiKey": "無料キーを取得",
       "groqDesc": "Groqは超高速な推論を無料で提供しています。",
-      "sonarWebSearch": "Sonarモデルはリアルタイムのウェブ検索に対応しています。",
+      "perplexityAgentModels": "APIキーでPerplexity Agent APIのモデル一覧を自動で読み込みます。音楽リサーチではウェブ検索も使用します。",
       "geminiBaseUrlDesc": "Gemini互換APIを使う場合はこのURLを変更してください。",
       "modelsAvailable": "利用可能なモデル: {count}",
       "requestBodyMerge": "リクエスト本文にマージするJSON",

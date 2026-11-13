@@ -642,7 +642,7 @@ window.LANG_RU = {
       "customModel": "Своя модель",
       "getFreeApiKey": "Получить бесплатный ключ",
       "groqDesc": "Groq бесплатно предоставляет сверхбыстрый инференс.",
-      "sonarWebSearch": "Модели Sonar включают веб-поиск в реальном времени.",
+      "perplexityAgentModels": "Модели автоматически загружаются из Perplexity Agent API по вашему ключу. Музыкальное исследование также использует веб-поиск.",
       "geminiBaseUrlDesc": "Измените адрес, чтобы использовать API, совместимый с Gemini.",
       "modelsAvailable": "Доступно моделей: {count}",
       "requestBodyMerge": "JSON для объединения с телом запроса",

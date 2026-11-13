@@ -642,7 +642,7 @@ window.LANG_DE = {
       "customModel": "Eigenes Modell",
       "getFreeApiKey": "Kostenlosen Schlüssel abrufen",
       "groqDesc": "Groq bietet kostenlose, extrem schnelle Inferenz.",
-      "sonarWebSearch": "Sonar-Modelle enthalten eine Websuche in Echtzeit.",
+      "perplexityAgentModels": "Modelle werden mit deinem Schlüssel automatisch aus der Perplexity Agent API geladen. Die Musikrecherche nutzt zusätzlich die Websuche.",
       "geminiBaseUrlDesc": "Ändere sie, um eine Gemini-kompatible API zu verwenden.",
       "modelsAvailable": "Verfügbare Modelle: {count}",
       "requestBodyMerge": "JSON zum Zusammenführen mit dem Request-Body",

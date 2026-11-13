@@ -642,7 +642,7 @@ window.LANG_TH = {
       "customModel": "โมเดลที่กำหนดเอง",
       "getFreeApiKey": "รับคีย์ฟรี",
       "groqDesc": "Groq ให้บริการประมวลผลโมเดลที่เร็วมากโดยไม่มีค่าใช้จ่าย",
-      "sonarWebSearch": "โมเดล Sonar มีการค้นหาเว็บแบบเรียลไทม์ในตัว",
+      "perplexityAgentModels": "โหลดรายการโมเดลจาก Perplexity Agent API โดยอัตโนมัติด้วยคีย์ของคุณ การวิจัยเพลงจะใช้การค้นหาเว็บด้วย",
       "geminiBaseUrlDesc": "เปลี่ยนที่อยู่นี้หากต้องการใช้ API ที่เข้ากันได้กับ Gemini",
       "modelsAvailable": "โมเดลที่ใช้ได้: {count}",
       "requestBodyMerge": "JSON ที่จะรวมเข้ากับเนื้อหาคำขอ",

@@ -642,7 +642,7 @@ window.LANG_EN = {
       "customModel": "Custom model",
       "getFreeApiKey": "Get Free Key",
       "groqDesc": "Groq offers free, ultra-fast inference.",
-      "sonarWebSearch": "Sonar models include real-time web search.",
+      "perplexityAgentModels": "Models load automatically from the Perplexity Agent API with your key. Music research also searches the web.",
       "geminiBaseUrlDesc": "Change this to use a Gemini-compatible API.",
       "modelsAvailable": "Models available: {count}",
       "requestBodyMerge": "Request body merge JSON",

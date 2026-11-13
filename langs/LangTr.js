@@ -642,7 +642,7 @@ window.LANG_TR = {
       "customModel": "Özel model",
       "getFreeApiKey": "Ücretsiz Anahtar Al",
       "groqDesc": "Groq ücretsiz ve son derece hızlı çıkarım sunar.",
-      "sonarWebSearch": "Sonar modelleri gerçek zamanlı web aramasını içerir.",
+      "perplexityAgentModels": "Modeller anahtarınızla Perplexity Agent API'den otomatik olarak yüklenir. Müzik araştırması web aramasını da kullanır.",
       "geminiBaseUrlDesc": "Gemini uyumlu bir API kullanmak için bunu değiştirin.",
       "modelsAvailable": "Kullanılabilir model sayısı: {count}",
       "requestBodyMerge": "İstek gövdesiyle birleştirilecek JSON",

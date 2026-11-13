@@ -642,7 +642,7 @@ window.LANG_CS = {
       "customModel": "Vlastní model",
       "getFreeApiKey": "Získat klíč zdarma",
       "groqDesc": "Groq nabízí bezplatnou a extrémně rychlou inferenci.",
-      "sonarWebSearch": "Modely Sonar zahrnují vyhledávání na webu v reálném čase.",
+      "perplexityAgentModels": "Modely se automaticky načítají z Perplexity Agent API pomocí vašeho klíče. Hudební výzkum navíc vyhledává na webu.",
       "geminiBaseUrlDesc": "Změňte ji, pokud chcete použít API kompatibilní s Gemini.",
       "modelsAvailable": "Dostupné modely: {count}",
       "requestBodyMerge": "JSON ke sloučení s tělem požadavku",

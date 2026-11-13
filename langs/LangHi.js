@@ -642,7 +642,7 @@ window.LANG_HI = {
       "customModel": "कस्टम मॉडल",
       "getFreeApiKey": "मुफ़्त कुंजी पाएँ",
       "groqDesc": "Groq बेहद तेज़ इन्फ़रेंस मुफ़्त में देता है।",
-      "sonarWebSearch": "Sonar मॉडल में रीयल-टाइम वेब खोज शामिल है।",
+      "perplexityAgentModels": "आपकी कुंजी से Perplexity Agent API के मॉडल अपने आप लोड होते हैं। संगीत अनुसंधान में वेब खोज भी इस्तेमाल होती है।",
       "geminiBaseUrlDesc": "Gemini-संगत API इस्तेमाल करने के लिए इसे बदलें।",
       "modelsAvailable": "उपलब्ध मॉडल: {count}",
       "requestBodyMerge": "अनुरोध बॉडी में मर्ज होने वाला JSON",

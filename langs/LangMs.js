@@ -642,7 +642,7 @@ window.LANG_MS = {
       "customModel": "Model tersuai",
       "getFreeApiKey": "Dapatkan Kunci Percuma",
       "groqDesc": "Groq menyediakan inferens yang sangat pantas secara percuma.",
-      "sonarWebSearch": "Model Sonar disertakan dengan carian web masa nyata.",
+      "perplexityAgentModels": "Model dimuatkan secara automatik daripada Perplexity Agent API dengan kunci anda. Penyelidikan muzik juga menggunakan carian web.",
       "geminiBaseUrlDesc": "Tukar alamat ini untuk menggunakan API yang serasi dengan Gemini.",
       "modelsAvailable": "Model tersedia: {count}",
       "requestBodyMerge": "JSON untuk digabungkan ke dalam badan permintaan",
