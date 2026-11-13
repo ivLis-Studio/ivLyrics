@@ -3453,6 +3453,8 @@ ${normalizedText}
         _parseTimedPronunciationResult(result, chunk) {
             const rows = Array.isArray(result?.l) ? result.l : (Array.isArray(result?.lines) ? result.lines : []);
             const expected = new Map(chunk.map(item => [Number(item.i), item]));
+            // A split must spell the pronunciation; only spaces may move.
+            const letters = value => String(value ?? '').normalize('NFC').replace(/\s+/gu, '');
             const parsed = new Map();
             for (const row of rows) {
                 const index = Number(row?.i ?? row?.index);
@@ -3460,6 +3462,7 @@ ${normalizedText}
                 if (!item || !Array.isArray(row?.p) || row.p.length !== item.u.length) continue;
                 const parts = row.p.map(part => (part === null || part === undefined ? '' : String(part)));
                 if (!parts.some(part => part.trim())) continue;
+                if (letters(parts.join('')) !== letters(item.r)) continue;
                 parsed.set(index, parts);
             }
             return parsed;

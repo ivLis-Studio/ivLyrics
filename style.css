@@ -19216,6 +19216,49 @@ body.ivlyrics-sync-creator-covering > #main {
     var(--lyrics-text-shadow, 0 0 0 transparent);
 }
 
+/* Pronunciation fill (Settings > Karaoke mode). Only the singing row's
+   pronunciation has unit states. The active unit draws an active-colored copy
+   of its text over itself and reveals it up to the fill edge, so the row keeps
+   its own color, shadow, outline and line breaks. The copy is centered on the
+   unit's content box, which puts its baseline exactly on the unit's baseline. */
+.lyrics-phonetic-fill-unit--pending,
+.lyrics-phonetic-fill-unit--active {
+  color: var(--lyrics-color-inactive);
+}
+
+.lyrics-phonetic-fill-unit--done {
+  color: var(--lyrics-color-active);
+}
+
+.lyrics-phonetic-fill-unit--active {
+  position: relative;
+}
+
+.lyrics-phonetic-fill-unit--active::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  white-space: pre;
+  color: var(--lyrics-color-active);
+  -webkit-text-fill-color: var(--lyrics-color-active);
+  text-shadow: none;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(var(--phonetic-fill-direction, to right),
+      #000 var(--karaoke-char-fill-soft-start, var(--karaoke-char-fill, 0%)),
+      transparent var(--karaoke-char-fill-soft-end, var(--karaoke-char-fill, 0%)));
+  mask-image: linear-gradient(var(--phonetic-fill-direction, to right),
+      #000 var(--karaoke-char-fill-soft-start, var(--karaoke-char-fill, 0%)),
+      transparent var(--karaoke-char-fill-soft-end, var(--karaoke-char-fill, 0%)));
+}
+
+.lyrics-phonetic-fill-unit--active:dir(rtl)::after {
+  --phonetic-fill-direction: to left;
+  justify-content: flex-end;
+}
+
 .lyrics-lyricsContainer-LyricsLine > .lyrics-lyricsContainer-LyricsLine-translation,
 .lyrics-lyricsContainer-LyricsLine > .lyrics-lyricsContainer-LyricsLine-sub,
 .lyrics-lyricsContainer-LyricsLine-translation,

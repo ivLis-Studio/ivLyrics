@@ -12,12 +12,17 @@
 // sung during each unit, which then keeps that unit's timing. Until that
 // arrives (or when no AI provider can do it) the pronunciation is spread over
 // the units in proportion to their length.
+//
+// The same unit timing also drives the optional pronunciation fill: with
+// pronunciation-first off, the pronunciation row under each karaoke line is
+// filled along these units (no bounce, glow or other karaoke effects).
 (function IvLyricsPronunciationFirst() {
 	"use strict";
 
 	if (window.ivLyricsPronunciationFirst?.initialized) return;
 
 	const SETTING = "pronunciation-first";
+	const FILL_SETTING = "pronunciation-karaoke-fill";
 	const STORAGE_KEY = "ivLyrics:visual:" + SETTING;
 	const CACHE_KIND = "timed-pronunciation-v1";
 	const CHANGED_EVENT = "ivLyrics:pronunciation-first-changed";
@@ -28,21 +33,30 @@
 
 	const getConfig = () => (typeof CONFIG !== "undefined" ? CONFIG : window.CONFIG);
 
-	const readStoredSetting = () => {
+	const readStoredSetting = (setting = SETTING) => {
 		try {
-			const value = window.ivLyricsStoragePersistence?.getItem?.(STORAGE_KEY)
-				?? localStorage.getItem(STORAGE_KEY);
+			const key = "ivLyrics:visual:" + setting;
+			const value = window.ivLyricsStoragePersistence?.getItem?.(key)
+				?? localStorage.getItem(key);
 			return value === true || value === "true";
 		} catch {
 			return false;
 		}
 	};
 
-	const isEnabled = () => {
+	const readSetting = (setting) => {
 		const visual = getConfig()?.visual;
-		if (visual && Object.prototype.hasOwnProperty.call(visual, SETTING)) return visual[SETTING] === true;
-		return readStoredSetting();
+		if (visual && Object.prototype.hasOwnProperty.call(visual, setting)) return visual[setting] === true;
+		return readStoredSetting(setting);
 	};
+
+	const isEnabled = () => readSetting(SETTING);
+
+	/** Pronunciation fill along karaoke timing while pronunciation-first is off. */
+	const isFillEnabled = () => !isEnabled() && readSetting(FILL_SETTING);
+
+	/** Whether either display needs AI unit timing for the pronunciation. */
+	const needsTiming = () => isEnabled() || readSetting(FILL_SETTING);
 
 	const setEnabled = (enabled) => {
 		const value = enabled === true;
@@ -201,6 +215,40 @@
 		&& parts.every((part) => typeof part === "string")
 		&& parts.some((part) => part.trim());
 
+	// Lays an AI split back onto the pronunciation itself: each unit keeps the
+	// letters AI gave it, and the pronunciation's own spaces return after the
+	// letter they follow. AI sometimes drops or moves word spaces; the shown
+	// pronunciation must not change. Null when the letters differ.
+	const alignParts = (parts, pronunciation) => {
+		const letters = (value) => splitGraphemes(String(value ?? "").normalize("NFC"))
+			.filter((character) => !WHITESPACE.test(character));
+		const counts = parts.map((part) => letters(part).length);
+		const expected = parts.flatMap(letters);
+		const source = splitGraphemes(String(pronunciation ?? "").normalize("NFC").trim());
+		const visible = source.filter((character) => !WHITESPACE.test(character));
+		if (expected.length !== visible.length || expected.some((character, index) => character !== visible[index])) {
+			return null;
+		}
+		const aligned = parts.map(() => "");
+		let unit = 0;
+		let used = 0;
+		let last = -1;
+		for (const character of source) {
+			if (WHITESPACE.test(character)) {
+				if (last >= 0) aligned[last] += character;
+				continue;
+			}
+			while (unit < counts.length - 1 && used >= counts[unit]) {
+				unit += 1;
+				used = 0;
+			}
+			aligned[unit] += character;
+			used += 1;
+			last = unit;
+		}
+		return aligned;
+	};
+
 	// ---------------------------------------------------------------------
 	// Swapping
 	// ---------------------------------------------------------------------
@@ -213,9 +261,8 @@
 	const getGroupParts = (timed, lineIndex, group) => {
 		const stored = timed?.get?.(lineIndex + ":" + group.key);
 		const length = group.syllables.length;
-		const parts = isValidParts(stored, length)
-			? stored
-			: distribute(group.syllables.map((syllable) => syllable?.text), group.pronunciation);
+		const aligned = isValidParts(stored, length) ? alignParts(stored, group.pronunciation) : null;
+		const parts = aligned || distribute(group.syllables.map((syllable) => syllable?.text), group.pronunciation);
 		return normalizeParts(parts, length);
 	};
 
@@ -320,6 +367,75 @@
 	};
 
 	// ---------------------------------------------------------------------
+	// Pronunciation fill
+	// ---------------------------------------------------------------------
+
+	// Units of one pronunciation row: the part of the pronunciation sung
+	// during each karaoke unit, with that unit's timing. Empty parts are
+	// left out; joined, the units give the row's pronunciation.
+	const buildFillUnits = (syllables, parts) => {
+		const units = [];
+		syllables.forEach((syllable, index) => {
+			const text = parts[index] || "";
+			if (!text) return;
+			const startTime = Number(syllable?.startTime);
+			const endTime = Number(syllable?.endTime ?? syllable?.startTime);
+			if (!Number.isFinite(startTime)) return;
+			units.push({ text, startTime, endTime: Number.isFinite(endTime) ? Math.max(startTime, endTime) : startTime });
+		});
+		return units;
+	};
+
+	const fillLine = (line, lineIndex, timed) => {
+		if (!line || typeof line !== "object") return line;
+		const groups = getUnitGroups(line);
+		// A lead without timed background voices is drawn as the line itself.
+		const parallel = groups.some((group) => group.key.startsWith("bg:"));
+		let next = null;
+		for (const group of groups) {
+			if (!group.pronunciation) continue;
+			const units = buildFillUnits(group.syllables, getGroupParts(timed, lineIndex, group));
+			if (!units.length) continue;
+			next ??= { ...line };
+			if (group.key === "line" || (group.key === "lead" && !parallel)) {
+				next.phoneticUnits = units;
+			} else if (group.key === "lead") {
+				next.vocals = { ...(next.vocals || line.vocals) };
+				next.vocals.lead = { ...line.vocals.lead, phoneticUnits: units };
+			} else {
+				const index = Number(group.key.slice(3));
+				next.vocals = { ...(next.vocals || line.vocals) };
+				const background = (next.vocals.background || []).slice();
+				background[index] = { ...line.vocals.background[index], phoneticUnits: units };
+				next.vocals.background = background;
+			}
+		}
+		return next || line;
+	};
+
+	const fillArrayCache = new WeakMap();
+
+	/**
+	 * Display copy of karaoke lines whose pronunciation rows carry timed
+	 * units ("phoneticUnits"); the text shown is unchanged.
+	 */
+	const applyFillToLines = (lines, options = {}) => {
+		if (!Array.isArray(lines) || lines.length === 0) return lines;
+		const timed = options.timed || null;
+		const cached = fillArrayCache.get(lines);
+		if (cached && cached.timed === timed) return cached.result;
+		let changed = false;
+		const result = lines.map((line, index) => {
+			const value = fillLine(line, index, timed);
+			if (value !== line) changed = true;
+			return value;
+		});
+		const output = changed ? result : lines;
+		fillArrayCache.set(lines, { timed, result: output });
+		return output;
+	};
+
+	// ---------------------------------------------------------------------
 	// AI timing
 	// ---------------------------------------------------------------------
 
@@ -355,6 +471,20 @@
 	const timedByTrack = new Map();
 	let requestSequence = 0;
 
+	// Content hash of the timing items of a lines array. A stored split is
+	// only used for lines with the same units and pronunciation, so a new
+	// pronunciation or new timing never shows a split made for older lines.
+	const itemsHashCache = new WeakMap();
+	const itemsHashOf = (lines, items = null) => {
+		if (!Array.isArray(lines)) return "";
+		let hash = itemsHashCache.get(lines);
+		if (hash === undefined) {
+			hash = hashText(JSON.stringify(items || buildTimingItems(lines)));
+			itemsHashCache.set(lines, hash);
+		}
+		return hash;
+	};
+
 	const rememberTrack = (trackUri, entry) => {
 		timedByTrack.delete(trackUri);
 		timedByTrack.set(trackUri, entry);
@@ -363,10 +493,12 @@
 		}
 	};
 
-	/** AI unit timing for the track, when it matches the given lines. */
-	const getTimed = (trackUri) => {
+	/** AI unit timing for the track, when it was made for the given lines. */
+	const getTimed = (trackUri, lines = null) => {
 		const entry = timedByTrack.get(trackUri);
-		return entry?.status === "ready" ? entry.parts : null;
+		if (entry?.status !== "ready") return null;
+		if (lines && itemsHashOf(lines) !== entry.itemsHash) return null;
+		return entry.parts;
 	};
 
 	const emitStatus = (trackUri, requestId, phase) => {
@@ -403,16 +535,18 @@
 	 * revision. Lines keep their proportional timing until it arrives.
 	 */
 	const ensureTimed = ({ trackUri, lines, karaokeSource = null, targetLang = "", sourceLang = "auto", notation = "" } = {}) => {
-		if (!trackUri || !isEnabled() || PSEUDO_KARAOKE_SOURCES.has(karaokeSource)) return null;
+		if (!trackUri || !needsTiming() || PSEUDO_KARAOKE_SOURCES.has(karaokeSource)) return null;
 		const items = buildTimingItems(lines);
 		if (items.length === 0) return null;
 		const signature = hashText(JSON.stringify([CACHE_KIND, targetLang, notation, items]));
 		const existing = timedByTrack.get(trackUri);
+		const itemsHash = itemsHashOf(lines, items);
 		if (existing?.signature === signature) return existing;
 
 		requestSequence += 1;
 		const entry = {
 			signature,
+			itemsHash,
 			requestId: "pronunciation-sync-" + requestSequence,
 			status: "pending",
 			announced: false,
@@ -478,17 +612,22 @@
 	window.ivLyricsPronunciationFirst = Object.freeze({
 		initialized: true,
 		SETTING,
+		FILL_SETTING,
 		CHANGED_EVENT,
 		UPDATED_EVENT,
 		STATUS_EVENT,
 		isEnabled,
+		isFillEnabled,
+		needsTiming,
 		setEnabled,
 		toggle,
 		getUnitGroups,
 		distribute,
 		normalizeParts,
+		alignParts,
 		swapLine,
 		applyToLines,
+		applyFillToLines,
 		buildTimingItems,
 		ensureTimed,
 		getTimed,

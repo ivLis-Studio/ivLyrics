@@ -1585,6 +1585,10 @@ window.LANG_PT = {
           "classic": "Clássico",
           "expressive": "Expressivo"
         }
+      },
+      "pronunciationFill": {
+        "label": "Preencher a pronúncia como karaokê",
+        "desc": "Mesmo com o modo pronúncia primeiro desativado, a linha de pronúncia é preenchida no ritmo do canto. A IA divide a pronúncia conforme o tempo de cada palavra ou caractere. Outros efeitos, como salto e brilho, não são aplicados."
       }
     },
     "prefetch": {

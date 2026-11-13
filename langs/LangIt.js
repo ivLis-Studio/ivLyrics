@@ -1585,6 +1585,10 @@ window.LANG_IT = {
           "classic": "Classico",
           "expressive": "Espressivo"
         }
+      },
+      "pronunciationFill": {
+        "label": "Riempi la pronuncia come nel karaoke",
+        "desc": "Anche con la modalità prima la pronuncia disattivata, la riga della pronuncia si riempie a tempo con il canto. L'IA suddivide la pronuncia secondo i tempi di parole o caratteri. Altri effetti come rimbalzo e bagliore non vengono applicati."
       }
     },
     "prefetch": {

@@ -1585,6 +1585,10 @@ window.LANG_EN = {
           "classic": "Classic",
           "expressive": "Expressive"
         }
+      },
+      "pronunciationFill": {
+        "label": "Fill pronunciation like karaoke",
+        "desc": "Even with pronunciation-first mode off, the pronunciation row fills in time with the singing. AI splits the pronunciation across the word or character timing. Other effects such as bounce and glow are not applied."
       }
     },
     "prefetch": {

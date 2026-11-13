@@ -1585,6 +1585,10 @@ window.LANG_ZH_TW = {
           "classic": "經典",
           "expressive": "表現力"
         }
+      },
+      "pronunciationFill": {
+        "label": "發音卡拉OK填色",
+        "desc": "即使關閉發音優先模式，原文下方的發音也會隨演唱時間像卡拉OK一樣填色。AI 會依單字或字元的時間拆分發音。不會套用彈跳、發光等其他效果。"
       }
     },
     "prefetch": {

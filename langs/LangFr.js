@@ -1585,6 +1585,10 @@ window.LANG_FR = {
           "classic": "Classique",
           "expressive": "Expressif"
         }
+      },
+      "pronunciationFill": {
+        "label": "Remplir la prononciation comme au karaoké",
+        "desc": "Même lorsque le mode prononciation d'abord est désactivé, la ligne de prononciation se remplit au rythme du chant. L'IA répartit la prononciation selon le minutage des mots ou des caractères. Les autres effets, comme le rebond et la lueur, ne sont pas appliqués."
       }
     },
     "prefetch": {

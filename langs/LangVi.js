@@ -1585,6 +1585,10 @@ window.LANG_VI = {
           "classic": "Cổ điển",
           "expressive": "Biểu cảm"
         }
+      },
+      "pronunciationFill": {
+        "label": "Tô phát âm như karaoke",
+        "desc": "Ngay cả khi chế độ ưu tiên phát âm đang tắt, dòng phát âm vẫn được tô theo nhịp hát. AI chia phát âm theo thời gian của từng từ hoặc ký tự. Không áp dụng các hiệu ứng khác như nảy và phát sáng."
       }
     },
     "prefetch": {

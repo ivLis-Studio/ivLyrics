@@ -1585,6 +1585,10 @@ window.LANG_TR = {
         "classic": "Klasik",
         "expressive": "Etkileyici"
       }
+    },
+    "pronunciationFill": {
+      "label": "Telaffuzu karaoke gibi doldur",
+      "desc": "Önce telaffuz modu kapalıyken bile telaffuz satırı şarkının zamanlamasıyla dolar. Yapay zekâ telaffuzu kelime veya karakter zamanlamasına göre böler. Zıplama ve parlama gibi diğer efektler uygulanmaz."
     }
   },
   "prefetch": {

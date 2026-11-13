@@ -1585,6 +1585,10 @@ window.LANG_DE = {
           "classic": "Klassisch",
           "expressive": "Ausdrucksstark"
         }
+      },
+      "pronunciationFill": {
+        "label": "Aussprache wie Karaoke füllen",
+        "desc": "Auch wenn der Aussprache-zuerst-Modus aus ist, füllt sich die Aussprachezeile im Takt des Gesangs. Die KI verteilt die Aussprache auf das Wort- oder Zeichentiming. Andere Effekte wie Hüpfen und Leuchten werden nicht angewendet."
       }
     },
     "prefetch": {

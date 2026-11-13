@@ -162,13 +162,17 @@ test("AIAddonManager parses only slot-exact unit pronunciations", () => {
 	assert.ok(start > 0 && end > start);
 	const context = vm.createContext({});
 	vm.runInContext("globalThis.manager = { " + managerSource.slice(start, end) + " };", context);
-	const chunk = [{ i: 0, u: [["a", 0, 1], ["b", 1, 2]] }, { i: 1, u: [["c", 0, 1]] }];
+	const chunk = [{ i: 0, r: "x", u: [["a", 0, 1], ["b", 1, 2]] }, { i: 1, r: "y z", u: [["c", 0, 1]] },
+		{ i: 2, r: "사난 테", u: [["さ", 0, 1], ["な", 1, 2]] }, { i: 3, r: "지분 라시", u: [["自分", 0, 1], ["らし", 1, 2]] }];
 	const parsed = context.manager._parseTimedPronunciationResult({ l: [
 		{ i: 0, p: ["x", null] },
 		{ i: 1, p: ["y", "z"] },
 		{ i: 7, p: ["w"] },
+		{ i: 2, p: ["사나", "은테"] },
+		{ i: 3, p: ["지분", "라시"] },
 	] }, chunk);
-	assert.deepEqual(plain([...parsed]), [[0, ["x", ""]]]);
+	assert.deepEqual(plain([...parsed]), [[0, ["x", ""]], [3, ["지분", "라시"]]],
+		"a split that changes letters is dropped (and repaired); a dropped space is accepted");
 });
 
 test("the timing prompt carries the full lyrics, units and pronunciation", () => {

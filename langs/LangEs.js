@@ -1585,6 +1585,10 @@ window.LANG_ES = {
           "classic": "Clásico",
           "expressive": "Expresivo"
         }
+      },
+      "pronunciationFill": {
+        "label": "Rellenar la pronunciación como karaoke",
+        "desc": "Aunque el modo pronunciación primero esté desactivado, la fila de pronunciación se rellena al ritmo del canto. La IA reparte la pronunciación según el tiempo de cada palabra o carácter. No se aplican otros efectos como el rebote o el brillo."
       }
     },
     "prefetch": {

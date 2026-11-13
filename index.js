@@ -2933,6 +2933,11 @@ const CONFIG = {
       "ivLyrics:visual:pronunciation-first",
       false
     ),
+    // Karaoke rows fill their pronunciation row along the sung units.
+    "pronunciation-karaoke-fill": StorageManager.get(
+      "ivLyrics:visual:pronunciation-karaoke-fill",
+      false
+    ),
     "global-sync-offset":
       Number(StorageManager.getItem("ivLyrics:visual:global-sync-offset")) || 0,
     "quick-sync-controls-enabled": StorageManager.get(
@@ -6796,26 +6801,31 @@ class LyricsContainer extends react.Component {
   /**
    * Display copy of the lyrics for pronunciation-first mode: the
    * pronunciation takes the original row and the original takes the
-   * pronunciation row. Stored lyrics and every request keep the original.
+   * pronunciation row. With the pronunciation fill instead, karaoke lines
+   * carry the timed units of their pronunciation row. Stored lyrics and
+   * every request keep the original.
    */
   getPronunciationFirstLyrics(lyrics, mode, displayMode1, displayMode2) {
     const api = window.ivLyricsPronunciationFirst;
-    if (!api?.isEnabled?.() || !Array.isArray(lyrics) || lyrics.length === 0) return lyrics;
+    if (!api?.needsTiming?.() || !Array.isArray(lyrics) || lyrics.length === 0) return lyrics;
     if (!isPronunciationDisplayMode(displayMode1) && !isPronunciationDisplayMode(displayMode2)) return lyrics;
     const karaoke = isKaraokeRenderMode(mode);
+    const fill = api.isFillEnabled();
     // Replacement display already puts the pronunciation first.
     const lineLevel = CONFIG.visual["translate:display-mode"] !== "replace";
-    if (!karaoke && !lineLevel) return lyrics;
+    if (!karaoke && (fill || !lineLevel)) return lyrics;
     const uri = this.state.uri;
     if (karaoke) this.schedulePronunciationTiming(uri, lyrics);
-    const timed = karaoke ? api.getTimed(uri) : null;
+    const timed = karaoke ? api.getTimed(uri, lyrics) : null;
     const memo = this._pronunciationFirstMemo;
     if (memo && memo.lyrics === lyrics && memo.timed === timed
-      && memo.karaoke === karaoke && memo.lineLevel === lineLevel) {
+      && memo.karaoke === karaoke && memo.lineLevel === lineLevel && memo.fill === fill) {
       return memo.result;
     }
-    const result = api.applyToLines(lyrics, { karaoke, lineLevel, timed });
-    this._pronunciationFirstMemo = { lyrics, timed, karaoke, lineLevel, result };
+    const result = fill
+      ? api.applyFillToLines(lyrics, { timed })
+      : api.applyToLines(lyrics, { karaoke, lineLevel, timed });
+    this._pronunciationFirstMemo = { lyrics, timed, karaoke, lineLevel, fill, result };
     return result;
   }
 
@@ -10522,7 +10532,8 @@ class LyricsContainer extends react.Component {
         this.reloadLyrics?.(false);
       } else if (event.detail?.name === "pseudo-karaoke-render-advance") {
         this.forceUpdate?.();
-    } else if (event.detail?.name === "pronunciation-first") {
+    } else if (event.detail?.name === "pronunciation-first"
+      || event.detail?.name === "pronunciation-karaoke-fill") {
       this._pronunciationTimingRequest = null;
       this.forceUpdate?.();
       } else if (

@@ -1585,6 +1585,10 @@ window.LANG_SV = {
           "classic": "Klassisk",
           "expressive": "Uttrycksfull"
         }
+      },
+      "pronunciationFill": {
+        "label": "Fyll uttalet som karaoke",
+        "desc": "Även när läget uttal först är av fylls uttalsraden i takt med sången. AI delar upp uttalet efter ord- eller teckentimingen. Andra effekter som studs och glöd används inte."
       }
     },
     "prefetch": {

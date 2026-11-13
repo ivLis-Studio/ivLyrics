@@ -1585,6 +1585,10 @@ window.LANG_ID = {
           "classic": "Klasik",
           "expressive": "Ekspresif"
         }
+      },
+      "pronunciationFill": {
+        "label": "Isi pelafalan seperti karaoke",
+        "desc": "Meski mode pelafalan dulu nonaktif, baris pelafalan terisi mengikuti waktu nyanyian. AI membagi pelafalan sesuai waktu tiap kata atau karakter. Efek lain seperti pantulan dan kilau tidak diterapkan."
       }
     },
     "prefetch": {

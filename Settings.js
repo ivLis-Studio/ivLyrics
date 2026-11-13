@@ -7386,6 +7386,7 @@ const SETTINGS_DEFAULT_VALUES = Object.freeze({
   "prefer-sync-data-provider": true, "prefer-lyrics-type-over-provider-order": true,
   "prefetch-enabled": true, "prefetch-video-enabled": true, "prefetch-word-details-enabled": true,
   "pronunciation-first": false,
+  "pronunciation-karaoke-fill": false,
   "quick-sync-controls-enabled": true, "seek-fade-compensation": false, "fullscreen-key": "f12",
   "translate-metadata": false,
   "translate-metadata-mode": "translated", "fullscreen-two-column": true,
@@ -12544,6 +12545,12 @@ const ConfigModal = ({
               },
               // Expressive motion is a style of the bounce, so it needs the bounce on.
               when: () => CONFIG.visual["karaoke-bounce"] !== false,
+            },
+            {
+              desc: I18n.t("settingsAdvanced.karaokeMode.pronunciationFill.label"),
+              info: I18n.t("settingsAdvanced.karaokeMode.pronunciationFill.desc"),
+              key: "pronunciation-karaoke-fill",
+              type: ConfigSlider,
             },
             {
               desc: I18n.t("settingsAdvanced.karaokeMode.spotifyFakeKaraoke.label"),

@@ -1585,6 +1585,10 @@ window.LANG_CS = {
           "classic": "Klasický",
           "expressive": "Expresivní"
         }
+      },
+      "pronunciationFill": {
+        "label": "Vyplňovat výslovnost jako karaoke",
+        "desc": "I když je režim nejdřív výslovnost vypnutý, řádek výslovnosti se vyplňuje v rytmu zpěvu. AI rozdělí výslovnost podle časování slov nebo znaků. Další efekty, jako poskakování a záře, se nepoužijí."
       }
     },
     "prefetch": {

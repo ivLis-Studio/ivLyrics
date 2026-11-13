@@ -3930,7 +3930,7 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
             return api.applyToLines(lyrics, {
                 karaoke: hasKaraokeTiming,
                 lineLevel,
-                timed: hasKaraokeTiming && trackUri ? api.getTimed(trackUri) : null,
+                timed: hasKaraokeTiming && trackUri ? api.getTimed(trackUri, lyrics) : null,
             });
         }, [lyrics, hasKaraokeTiming, pronunciationFirstRevision]);
         const containerRef = useRef(null);

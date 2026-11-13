@@ -3653,6 +3653,7 @@ const getKaraokeVocalRows = (line) => {
 		speakerClass: normalizeKaraokeSpeakerClass(line.vocals.lead.speaker, line.vocals.lead['speaker-color'], line.vocals.lead['speaker-fallback']),
 		speakerStyle: getKaraokeSpeakerStyle(line.vocals.lead.speaker, line.vocals.lead['speaker-color'], line.vocals.lead['speaker-fallback']),
 		phonetic: line.vocals.lead.phonetic || "",
+		phoneticUnits: line.vocals.lead.phoneticUnits || null,
 		translation: line.vocals.lead.translation || "",
 		text: line.vocals.lead.text || "",
 		syllables: splitRenderableKaraokeSyllables(line.vocals.lead.syllables),
@@ -3674,6 +3675,7 @@ const getKaraokeVocalRows = (line) => {
 				speakerClass: normalizeKaraokeSpeakerClass(part.speaker, part['speaker-color'], part['speaker-fallback']),
 				speakerStyle: getKaraokeSpeakerStyle(part.speaker, part['speaker-color'], part['speaker-fallback']),
 				phonetic: part.phonetic || "",
+				phoneticUnits: part.phoneticUnits || null,
 				translation: part.translation || "",
 				text: part.text || "",
 				syllables: splitRenderableKaraokeSyllables(part.syllables),
@@ -6080,6 +6082,14 @@ const LyricsLineBlock = react.memo(({
 		return targets;
 	}, [displayedCulturalAnnotations, isKara, mainText, subText, subText2]);
 	const hasParallelKaraokeRows = useMemo(() => isKara && hasKaraokeVocalRows(mainLine), [isKara, mainLine, settingsRevision]);
+	// Pronunciation fill: timed units for this row's pronunciation, only when
+	// they spell exactly the pronunciation shown.
+	const phoneticFillUnits = useMemo(() => isKara && !hasParallelKaraokeRows && mainLine?.phoneticUnits
+		? getPhoneticFillUnits(mainLine?.phoneticUnits, mainLine?.phoneticText || mainLine?.phonetic)
+		: null, [isKara, hasParallelKaraokeRows, mainLine]);
+	const phoneticFillPosition = phoneticFillUnits ? position : 0;
+	const phoneticFillClock = phoneticFillUnits ? liveClock : null;
+	const phoneticFillActive = phoneticFillUnits ? isActive : false;
 	const interludeInfo = useMemo(() => mainLine?.interludeInfo || getInterludeInfo(mainLine), [mainLine, settingsRevision]);
 	const shouldRenderInterlude = interludeInfo.isInterlude;
 	const shouldShowInterlude = shouldRenderInterlude && isCurrentLine;
@@ -6175,11 +6185,15 @@ const LyricsLineBlock = react.memo(({
 	const paragraph = useMemo(() => react.createElement("p", paragraphProps, renderedMainContent),
 		[paragraphProps, renderedMainContent]);
 	const supplements = useMemo(() => [
-		!shouldRenderInterlude && !hasParallelKaraokeRows && renderLyricSubLine(
+		!shouldRenderInterlude && !hasParallelKaraokeRows && (phoneticFillUnits ? renderPhoneticFillSubLine(
+			phoneticFillUnits, phoneticFillPosition, phoneticFillActive, phoneticFillClock,
+			subCopyText ? createCopyHandler(subCopyText, subCopySuccessKey, subCopyFailureKey) : null,
+			singleLineScroll
+		) : renderLyricSubLine(
 			"lyrics-lyricsContainer-LyricsLine-phonetic", subText,
 			subCopyText ? createCopyHandler(subCopyText, subCopySuccessKey, subCopyFailureKey) : null,
 			singleLineScroll, culturalAnnotationsByTarget.sub
-		),
+		)),
 		!shouldRenderInterlude && !hasParallelKaraokeRows && renderLyricSubLine(
 			"lyrics-lyricsContainer-LyricsLine-translation", subText2,
 			subText2CopyText ? createCopyHandler(subText2CopyText, subText2CopySuccessKey, subText2CopyFailureKey) : null,
@@ -6194,6 +6208,7 @@ const LyricsLineBlock = react.memo(({
 			);
 		}),
 	], [shouldRenderInterlude, hasParallelKaraokeRows, subText, subText2,
+		phoneticFillUnits, phoneticFillPosition, phoneticFillActive, phoneticFillClock,
 		subCopyText, subCopySuccessKey, subCopyFailureKey, subText2CopyText,
 		subText2CopySuccessKey, subText2CopyFailureKey, singleLineScroll,
 		culturalAnnotationsByTarget, displayedCulturalAnnotations, settingsRevision]);
@@ -8921,6 +8936,8 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 			const rowActiveGlobalCharIndex = rowActiveCharIndex >= 0 ? currentOffset + rowActiveCharIndex : -1;
 			const rowPhonetic = row.phonetic || rowPhonetics[rowIndex] || "";
 			const rowTranslation = row.translation || rowTranslations[rowIndex] || "";
+			const rowPhoneticUnits = row.phoneticUnits ? getPhoneticFillUnits(row.phoneticUnits, rowPhonetic) : null;
+			const rowPosition = getKaraokeVocalRowRenderPosition(rowRenderData, position);
 
 			return react.createElement(
                           "span",
@@ -8932,7 +8949,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
                           },
                           react.createElement("span", { className: "lyrics-vocal-main" }, react.createElement(KaraokeLine, {
                                   line: rowLine,
-                                  position: getKaraokeVocalRowRenderPosition(rowRenderData, position),
+                                  position: rowPosition,
 					isActive,
 					isEffectFocused,
 					isEffectLive,
@@ -8946,7 +8963,12 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 				rowPhonetic && react.createElement(
 					"span",
 					{ className: "lyrics-lyricsContainer-LyricsLine-phonetic lyrics-karaoke-part-subline" },
-					rowPhonetic
+					rowPhoneticUnits ? react.createElement(PhoneticFillText, {
+						units: rowPhoneticUnits,
+						position: rowPosition,
+						active: isActive,
+						...(vocalRowLivePositionMaps ? { liveClock, livePositionMap: vocalRowLivePositionMaps[rowIndex] } : {}),
+					}) : rowPhonetic
 				),
 				rowTranslation && react.createElement(
 					"span",
@@ -9692,6 +9714,115 @@ const useKaraokeLivePainting = (liveClock, livePositionMap, rootRef, dataRef) =>
 		if (entryRef.current) KaraokeLivePainter.release(entryRef.current);
 		entryRef.current = null;
 	}, []);
+};
+
+// Pronunciation fill (Settings > Karaoke mode). With pronunciation-first off,
+// the pronunciation row of a karaoke line fills along its timed units (the
+// part of the pronunciation sung during each karaoke unit). React owns each
+// unit's pending/active/done state on the singing row; KaraokeLivePainter
+// writes the active unit's fill edge every frame from the same clock as the
+// lyric. No bounce, glow or other karaoke effect applies, and rows that are
+// not singing keep their usual color.
+const PHONETIC_FILL_ATTRIBUTE = "data-phonetic-fill";
+const normalizePhoneticFillText = (value) => String(value ?? "").replace(/\s+/gu, " ").trim();
+
+/** The units, if they spell exactly the pronunciation shown in the row. */
+const getPhoneticFillUnits = (units, text) => {
+	if (!Array.isArray(units) || units.length === 0 || typeof text !== "string" || !text.trim()) return null;
+	const joined = normalizePhoneticFillText(units.map((unit) => unit?.text ?? "").join(""));
+	return joined === normalizePhoneticFillText(text) ? units : null;
+};
+
+const usePhoneticFillPainting = (liveClock, livePositionMap, rootRef, units) => {
+	const entryRef = useRef(null);
+	(react.useLayoutEffect || useEffect)(() => {
+		const root = rootRef.current;
+		if (!liveClock || !root || !Array.isArray(units) || units.length === 0) {
+			if (entryRef.current) KaraokeLivePainter.release(entryRef.current);
+			entryRef.current = null;
+			return;
+		}
+		const entry = entryRef.current ??= { units: new Map(), data: null, lastPosition: NaN };
+		entry.clock = liveClock;
+		entry.mapPosition = livePositionMap;
+		const next = new Map();
+		for (const element of root.querySelectorAll("[" + PHONETIC_FILL_ATTRIBUTE + "]")) {
+			const key = element.getAttribute(PHONETIC_FILL_ATTRIBUTE);
+			const source = units[Number(key)];
+			if (!source) continue;
+			const previous = entry.units.get(key);
+			next.set(key, previous && previous.elements[0] === element
+				&& previous.fill.startTime === source.startTime && previous.fill.endTime === source.endTime
+				? previous
+				: {
+					key, elements: [element], values: new Map(), profile: null, expressive: null,
+					fill: { startTime: source.startTime, endTime: source.endTime, softEdge: 10 },
+				});
+		}
+		entry.units = next;
+		entry.lastPosition = NaN;
+		KaraokeLivePainter.attach(entry);
+		paintKaraokeLiveEntry(entry, performance.now());
+	});
+	useEffect(() => () => {
+		if (entryRef.current) KaraokeLivePainter.release(entryRef.current);
+		entryRef.current = null;
+	}, []);
+};
+
+const PhoneticFillText = react.memo(({ units, position = 0, active = false, liveClock = null, livePositionMap = null }) => {
+	const rootRef = useRef(null);
+	const live = active && liveClock ? liveClock : null;
+	usePhoneticFillPainting(live, livePositionMap, rootRef, units);
+	return react.createElement(
+		"span",
+		{ ref: rootRef, className: "lyrics-phonetic-fill" },
+		units.map((unit, index) => {
+			let state = "";
+			let style = null;
+			if (active) {
+				if (position >= unit.endTime) {
+					state = "done";
+				} else if (position > unit.startTime) {
+					state = "active";
+					if (!live) {
+						const fill = getKaraokeLiveFill(position, unit.startTime, unit.endTime) ?? 0;
+						const softEdge = getKaraokeFillSoftEdge(fill, 10);
+						style = {
+							"--karaoke-char-fill": fill.toFixed(2) + "%",
+							"--karaoke-char-fill-soft-start": Math.max(0, fill - softEdge).toFixed(2) + "%",
+							"--karaoke-char-fill-soft-end": Math.min(100, fill + softEdge).toFixed(2) + "%",
+						};
+					}
+				} else {
+					state = "pending";
+				}
+			}
+			return react.createElement("span", {
+				key: index,
+				className: state ? "lyrics-phonetic-fill-unit lyrics-phonetic-fill-unit--" + state : "lyrics-phonetic-fill-unit",
+				[PHONETIC_FILL_ATTRIBUTE]: index,
+				"data-text": state === "active" ? unit.text : undefined,
+				style,
+			}, unit.text);
+		})
+	);
+});
+
+const renderPhoneticFillSubLine = (units, position, active, liveClock, onContextMenu = null, singleLineScroll = false) => {
+	const props = {
+		className: "lyrics-lyricsContainer-LyricsLine-phonetic" + (singleLineScroll ? " ivlyrics-vinyl-lyric-scroll-viewport" : ""),
+		style: { "--sub-lyric-color": CONFIG.visual["inactive-color"] },
+	};
+	if (onContextMenu) props.onContextMenu = onContextMenu;
+	const content = react.createElement(PhoneticFillText, { units, position, active, liveClock });
+	return react.createElement(
+		"p",
+		props,
+		singleLineScroll
+			? react.createElement("span", { className: "ivlyrics-vinyl-lyric-scroll-content" }, content)
+			: content
+	);
 };
 
 // Reveal is a bounded visual effect on existing rows. Never remount the page

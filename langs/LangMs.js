@@ -1585,6 +1585,10 @@ window.LANG_MS = {
           "classic": "Klasik",
           "expressive": "Ekspresif"
         }
+      },
+      "pronunciationFill": {
+        "label": "Isi sebutan seperti karaoke",
+        "desc": "Walaupun mod sebutan dahulu dimatikan, baris sebutan diisi mengikut masa nyanyian. AI membahagikan sebutan mengikut masa setiap perkataan atau aksara. Kesan lain seperti lantunan dan cahaya tidak digunakan."
       }
     },
     "prefetch": {
