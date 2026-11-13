@@ -173,52 +173,57 @@ const loadManager = async () => {
 	return window.AIAddonManager;
 };
 
-test("the slot prompt carries the units, counts and notation", async () => {
+test("the slot prompt sends units as | fields and keeps the notation", async () => {
 	const manager = await loadManager();
 	const prompt = manager.buildPronunciationSlotPrompt({
-		lines: [{ i: 4, u: ["夢", "な", "ら", "ば"] }],
+		lines: [["夢", "な", "ら", "ば"], ["hold", "me"]],
 		lang: "ko",
 		pronunciationNotation: "latin",
 		sourceLang: "ja",
 	});
-	assert.match(prompt, /\{"i":4,"n":4,"u":\["夢","な","ら","ば"\]\}/);
-	assert.match(prompt, /p must contain exactly n strings/);
-	assert.match(prompt, /standard Latin alphabet/);
-	assert.match(prompt, /yume naraba/);
+	assert.equal(prompt.lineCount, 2);
+	assert.match(prompt.userPrompt, /<lyrics>\n夢\|な\|ら\|ば\nhold\|me\n<\/lyrics>/);
+	assert.match(prompt.systemPrompt, /exactly the same number of \| separators/);
+	assert.match(prompt.systemPrompt, /standard Latin alphabet/);
+	assert.match(prompt.systemPrompt, /yume naraba/);
+	assert.match(manager.buildPronunciationSlotPrompt({ lines: [["a"]], repair: true }).userPrompt, /wrong number of \| fields/);
 });
 
-test("AI answers keep only lines with exact slots in the right script", async () => {
+test("answered rows keep only exact fields in the right script", async () => {
 	const manager = await loadManager();
-	const chunk = [{ i: 0, u: ["a", "b"] }, { i: 1, u: ["c"] }, { i: 2, u: ["夢"] }, { i: 3, u: ["d", "e"] }];
-	const parsed = manager._parsePronunciationSlotResult({ l: [
-		{ i: 0, p: ["x", null] },
-		{ i: 1, p: ["y", "z"] },
-		{ i: 2, p: ["유메"] },
-		{ i: 3, p: ["", ""] },
-	] }, chunk, "latin");
-	assert.deepEqual(plain([...parsed]), [[0, ["x", ""]]]);
+	const row = (value, expected, notation = "translation") => plain(manager.parsePronunciationSlotRow(value, expected, notation));
+	assert.deepEqual(row("유메|나|라|바 |도", 5), ["유메", "나", "라", "바 ", "도"]);
+	assert.deepEqual(row("쿄오||모", 3), ["쿄오", "", "모"]);
+	assert.deepEqual(row("|a|b|", 2), ["a", "b"], "outer pipes");
+	assert.deepEqual(row("yume | na | ra", 3, "latin"), ["yume", "na", "ra"], "padded separators carry no word breaks");
+	assert.deepEqual(row("유메｜나", 2), ["유메", "나"], "full-width separator");
+	assert.equal(row("a|b", 3), null, "field count");
+	assert.equal(row("||", 3), null, "no sound");
+	assert.equal(row("라|ㄴ", 2), null, "a lone Hangul letter is asked again");
+	assert.equal(row("유메|나", 2, "latin"), null, "wrong writing system for Latin notation");
 });
 
-test("unit pronunciation runs on pronunciation providers and repairs misses", async () => {
+test("unit pronunciation streams through the lyric request and repairs misses", async () => {
 	const manager = await loadManager();
-	const prompts = [];
+	const requests = [];
 	const addon = {
 		id: "fake",
-		generateCharacterPronunciation: async ({ characterPronunciationPrompt, endpointCapability }) => {
-			prompts.push({ repair: /previous answer/.test(characterPronunciationPrompt), endpointCapability });
-			return prompts.length === 1
-				? { l: [{ i: 0, p: ["a"] }, { i: 1, p: ["b", "c"] }] }
-				: { l: [{ i: 1, p: ["b"] }] };
+		generateCharacterPronunciation: async () => { throw new Error("not used"); },
+		translateLyrics: async (params) => {
+			requests.push({ text: params.text, phonetic: params.wantSmartPhonetic, repair: /earlier answer/.test(params.phoneticPrompt.userPrompt) });
+			const answer = requests.length === 1 ? ["A", "B|C"] : ["B"];
+			answer.forEach((line, index) => params.onLine(index, line));
+			return { phonetic: answer };
 		},
 	};
 	manager.getEnabledProvidersFor = (capability) => (capability === "pronunciation" ? [addon] : []);
 	const seen = [];
 	const result = await manager.generatePronunciationSlots({
-		lines: [{ i: 0, u: ["x"] }, { i: 1, u: ["y"] }],
+		lines: [{ i: 0, u: ["x"] }, { i: 3, u: ["y"] }],
 		lang: "en",
 		onSlots: (index, parts) => seen.push([index, parts]),
 	});
-	assert.deepEqual(plain([...result]), [[0, ["a"]], [1, ["b"]]]);
-	assert.deepEqual(plain(prompts), [{ repair: false, endpointCapability: "pronunciation" }, { repair: true, endpointCapability: "pronunciation" }]);
-	assert.deepEqual(plain(seen), [[0, ["a"]], [1, ["b"]]]);
+	assert.deepEqual(plain([...result]), [[0, ["A"]], [3, ["B"]]]);
+	assert.deepEqual(plain(requests), [{ text: "x\ny", phonetic: true, repair: false }, { text: "y", phonetic: true, repair: true }]);
+	assert.deepEqual(plain(seen), [[0, ["A"]], [0, ["A"]], [3, ["B"]], [3, ["B"]]]);
 });
