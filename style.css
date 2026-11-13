@@ -14591,9 +14591,18 @@ body.ivlyrics-sync-creator-covering > #main {
 
 .ivlyrics-cache-edit-item-fields {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Pronunciation (by unit or as a line) beside the translation. */
+.ivlyrics-cache-edit-item-pair {
+  min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
   gap: 12px;
+  align-items: start;
 }
 
 .ivlyrics-cache-edit-field {
@@ -14620,6 +14629,116 @@ body.ivlyrics-sync-creator-covering > #main {
   color: rgba(255, 255, 255, 0.7);
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ivlyrics-cache-edit-field-title,
+.ivlyrics-cache-edit-field-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ivlyrics-cache-edit-field-actions {
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ivlyrics-cache-edit-text-button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ivlyrics-cache-edit-text-button:hover:not(:disabled) {
+  color: var(--spice-text);
+  border-color: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.42);
+  background: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.12);
+}
+
+.ivlyrics-cache-edit-text-button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+/* One cell per sung unit: the original unit above its pronunciation. */
+.ivlyrics-cache-edit-units {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 4px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ivlyrics-cache-edit-unit {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ivlyrics-cache-edit-unit.has-gap {
+  margin-left: 10px;
+}
+
+.ivlyrics-cache-edit-unit-source {
+  padding: 0 2px;
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: pre;
+  color: rgba(255, 255, 255, 0.64);
+}
+
+.ivlyrics-cache-edit-unit-input {
+  box-sizing: border-box;
+  min-width: 3ch;
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  color: var(--spice-text);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  text-align: center;
+}
+
+.ivlyrics-cache-edit-unit-input:focus {
+  outline: none;
+  border-color: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.52);
+  box-shadow: 0 0 0 2px rgba(var(--spice-rgb-accent, 30, 215, 96), 0.14);
+}
+
+.ivlyrics-cache-edit-unit-preview {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.ivlyrics-cache-edit-unit-preview-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.ivlyrics-cache-edit-unit-preview-text {
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .ivlyrics-cache-edit-shift-button {
@@ -14663,6 +14782,12 @@ body.ivlyrics-sync-creator-covering > #main {
   word-break: break-word;
   color: rgba(255, 255, 255, 0.78);
   background: rgba(255, 255, 255, 0.04);
+}
+
+.ivlyrics-cache-edit-field--original .ivlyrics-cache-edit-original-line {
+  min-height: 0;
+  padding: 10px 14px;
+  font-size: 14px;
 }
 
 .ivlyrics-cache-edit-line-input {
@@ -14749,6 +14874,10 @@ body.ivlyrics-sync-creator-covering > #main {
   }
 
   .ivlyrics-cache-edit-item-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ivlyrics-cache-edit-item-pair {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -18913,18 +19042,21 @@ body.ivlyrics-sync-creator-covering > #main {
 }
 
 .ivlyrics-cache-edit-original-line,
-.ivlyrics-cache-edit-line-input {
+.ivlyrics-cache-edit-line-input,
+.ivlyrics-cache-edit-units {
   border-radius: var(--iv-radius-input);
 }
 
 .ivlyrics-cache-edit-shift-button,
-.ivlyrics-cache-edit-button {
+.ivlyrics-cache-edit-button,
+.ivlyrics-cache-edit-text-button {
   border-radius: var(--iv-radius-pill);
 }
 
 .ivlyrics-cache-edit-close:focus-visible,
 .ivlyrics-cache-edit-button:focus-visible,
 .ivlyrics-cache-edit-shift-button:focus-visible,
+.ivlyrics-cache-edit-text-button:focus-visible,
 .ivlyrics-cache-edit-line-input:focus-visible,
 .ivlyrics-marketplace-confirm-btn:focus-visible {
   outline: none;
@@ -23195,6 +23327,62 @@ a.research-media-item:hover {
 
 .ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-loading {
   color: var(--ivl-tb-text-3);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-units {
+  padding: 8px;
+  border: 1px solid var(--ivl-tb-line-2);
+  border-radius: var(--ivl-tb-r-sm);
+  background: var(--ivl-tb-surface-2);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-unit-source {
+  color: var(--ivl-tb-text-3);
+  font-family: var(--ivl-tb-font);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-unit-input {
+  height: 28px;
+  border: 1px solid var(--ivl-tb-line-2);
+  border-radius: var(--ivl-tb-r-xs);
+  background: var(--ivl-tb-surface);
+  color: var(--ivl-tb-text);
+  font: 13px/1.2 var(--ivl-tb-font);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-unit-input:focus {
+  border-color: var(--ivl-tb-accent-line);
+  box-shadow: 0 0 0 3px var(--ivl-tb-accent-soft);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-unit-preview {
+  color: var(--ivl-tb-text-2);
+  font-family: var(--ivl-tb-font);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-unit-preview-label {
+  color: var(--ivl-tb-text-3);
+  font-weight: 500;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-text-button {
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--ivl-tb-r-sm);
+  background: transparent;
+  color: var(--ivl-tb-text-3);
+  font: 500 11.5px var(--ivl-tb-font);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-text-button:hover:not(:disabled) {
+  background: var(--ivl-tb-surface-3);
+  color: var(--ivl-tb-text);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-text-button:focus-visible {
+  outline: none;
+  box-shadow: var(--ivl-tb-focus);
 }
 
 

@@ -4426,6 +4426,7 @@ const LyricsCacheEditModal = ({
   isSaving,
   originalLines,
   pronunciationText,
+  pronunciationSlots,
   translationText,
   expectedLineCount,
   hasPronunciationCache,
@@ -4471,7 +4472,7 @@ const LyricsCacheEditModal = ({
     onChange(nextLines.join("\n"));
   };
 
-  const shiftLinesDownFrom = (lines, index, onChange) => {
+  const shiftLinesDownFrom = (lines, index, onChange, slotsAfterShift) => {
     const nextLines = Array.from({ length: expectedLineCount }, (_, lineIndex) =>
       String(lines[lineIndex] ?? "")
     );
@@ -4479,13 +4480,51 @@ const LyricsCacheEditModal = ({
       nextLines[lineIndex] = nextLines[lineIndex - 1] ?? "";
     }
     nextLines[index] = "";
-    onChange(nextLines.join("\n"));
+    onChange(nextLines.join("\n"), slotsAfterShift);
+  };
+
+  // Unit pronunciation of karaoke lines: one cell per sung unit of the
+  // original. The line pronunciation is always the joined cells; shifted or
+  // released lines continue as plain line text.
+  const slotsApi = window.ivLyricsPronunciationSlots;
+  const slotEntries = Array.from({ length: expectedLineCount }, (_, index) => {
+    const entry = Array.isArray(pronunciationSlots) ? pronunciationSlots[index] : null;
+    return entry && Array.isArray(entry.units) && Array.isArray(entry.parts) ? entry : null;
+  });
+  const slotLineCount = slotEntries.filter(Boolean).length;
+  const withSlot = (index, entry) => {
+    const nextSlots = [...slotEntries];
+    nextSlots[index] = entry;
+    return nextSlots;
+  };
+  const updateUnit = (index, unitIndex, value) => {
+    const entry = slotEntries[index];
+    if (!entry || !slotsApi) return;
+    const parts = [...entry.parts];
+    parts[unitIndex] = String(value ?? "").replace(/[\r\n]+/g, " ");
+    const nextEntry = { ...entry, parts };
+    const nextLines = [...pronunciationLines];
+    nextLines[index] = slotsApi.join(entry.units, parts);
+    onPronunciationChange(nextLines.join("\n"), withSlot(index, nextEntry));
+  };
+  const releaseUnits = (index) => {
+    onPronunciationChange(pronunciationLines.join("\n"), withSlot(index, null));
+  };
+  const slotsWithoutLinesFrom = (index) =>
+    slotEntries.map((entry, lineIndex) => (lineIndex >= index ? null : entry));
+  // Wide (CJK, Hangul) characters take about two columns of "ch".
+  const unitInputWidth = (value) => {
+    let columns = 0;
+    for (const character of String(value ?? "")) {
+      columns += /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/u.test(character) ? 2 : 1;
+    }
+    return `${Math.max(3, Math.min(24, columns + 1.5))}ch`;
   };
 
   // The pronunciation and translation columns render the identical editable
   // field (header label + shift-down button + textarea); only the label,
   // backing line array, change handler, spellCheck flag and placeholder differ.
-  const renderCacheEditField = (index, { label, lines, onChange, spellCheck, placeholder }) =>
+  const renderCacheEditField = (index, { label, lines, onChange, spellCheck, placeholder, slotsAfterShift }) =>
     react.createElement(
       "div",
       { className: "ivlyrics-cache-edit-field" },
@@ -4498,7 +4537,7 @@ const LyricsCacheEditModal = ({
           {
             type: "button",
             className: "ivlyrics-cache-edit-shift-button",
-            onClick: () => shiftLinesDownFrom(lines, index, onChange),
+            onClick: () => shiftLinesDownFrom(lines, index, onChange, slotsAfterShift),
             disabled: isSaving || index >= expectedLineCount - 1,
             title: I18n.t("lyricsCacheEditor.shiftDown"),
             "aria-label": I18n.t("lyricsCacheEditor.shiftDown"),
@@ -4520,6 +4559,95 @@ const LyricsCacheEditModal = ({
         spellCheck,
         placeholder,
       })
+    );
+
+  const renderUnitPronunciationField = (index, entry) =>
+    react.createElement(
+      "div",
+      { className: "ivlyrics-cache-edit-field ivlyrics-cache-edit-field--units" },
+      react.createElement(
+        "div",
+        { className: "ivlyrics-cache-edit-field-header" },
+        react.createElement(
+          "span",
+          { className: "ivlyrics-cache-edit-field-title" },
+          I18n.t("menu.pronunciation"),
+          react.createElement(
+            "span",
+            { className: "ivlyrics-cache-edit-badge" },
+            I18n.t("lyricsCacheEditor.byUnit")
+          )
+        ),
+        react.createElement(
+          "div",
+          { className: "ivlyrics-cache-edit-field-actions" },
+          react.createElement(
+            "button",
+            {
+              type: "button",
+              className: "ivlyrics-cache-edit-text-button",
+              onClick: () => releaseUnits(index),
+              disabled: isSaving,
+              title: I18n.t("lyricsCacheEditor.editAsLineHint"),
+            },
+            I18n.t("lyricsCacheEditor.editAsLine")
+          ),
+          react.createElement(
+            "button",
+            {
+              type: "button",
+              className: "ivlyrics-cache-edit-shift-button",
+              onClick: () => shiftLinesDownFrom(pronunciationLines, index, onPronunciationChange, slotsWithoutLinesFrom(index)),
+              disabled: isSaving || index >= expectedLineCount - 1,
+              title: I18n.t("lyricsCacheEditor.shiftDown"),
+              "aria-label": I18n.t("lyricsCacheEditor.shiftDown"),
+            },
+            "↓"
+          )
+        )
+      ),
+      react.createElement(
+        "div",
+        { className: "ivlyrics-cache-edit-units" },
+        ...entry.units.map((unit, unitIndex) =>
+          react.createElement(
+            "label",
+            {
+              key: `unit-${index}-${unitIndex}`,
+              className: `ivlyrics-cache-edit-unit${unit.gapBefore ? " has-gap" : ""}`,
+            },
+            react.createElement(
+              "span",
+              { className: "ivlyrics-cache-edit-unit-source" },
+              unit.text
+            ),
+            react.createElement("input", {
+              type: "text",
+              className: "ivlyrics-cache-edit-unit-input",
+              value: entry.parts[unitIndex] ?? "",
+              style: { width: unitInputWidth(entry.parts[unitIndex] || unit.text) },
+              onChange: (event) => updateUnit(index, unitIndex, event.target.value),
+              disabled: isSaving,
+              spellCheck: false,
+              "aria-label": `${I18n.t("menu.pronunciation")} ${unit.text}`,
+            })
+          )
+        )
+      ),
+      react.createElement(
+        "div",
+        { className: "ivlyrics-cache-edit-unit-preview" },
+        react.createElement(
+          "span",
+          { className: "ivlyrics-cache-edit-unit-preview-label" },
+          I18n.t("lyricsCacheEditor.joined")
+        ),
+        react.createElement(
+          "span",
+          { className: "ivlyrics-cache-edit-unit-preview-text" },
+          pronunciationLines[index] || " "
+        )
+      )
     );
 
   const handleOverlayClick = (event) => {
@@ -4593,7 +4721,9 @@ const LyricsCacheEditModal = ({
                   "span",
                   { className: "ivlyrics-cache-edit-badge" },
                   hasPronunciationCache
-                    ? I18n.t("lyricsCacheEditor.cached")
+                    ? (slotLineCount > 0
+                      ? I18n.t("lyricsCacheEditor.cachedByUnit", { count: slotLineCount })
+                      : I18n.t("lyricsCacheEditor.cached"))
                     : I18n.t("lyricsCacheEditor.empty")
                 )
               ),
@@ -4634,7 +4764,7 @@ const LyricsCacheEditModal = ({
                     { className: "ivlyrics-cache-edit-item-fields" },
                     react.createElement(
                       "div",
-                      { className: "ivlyrics-cache-edit-field" },
+                      { className: "ivlyrics-cache-edit-field ivlyrics-cache-edit-field--original" },
                       react.createElement(
                         "div",
                         { className: "ivlyrics-cache-edit-field-header" },
@@ -4655,24 +4785,31 @@ const LyricsCacheEditModal = ({
                         originalLine || " "
                       )
                     ),
-                    renderCacheEditField(index, {
-                      label: I18n.t("menu.pronunciation"),
-                      lines: pronunciationLines,
-                      onChange: onPronunciationChange,
-                      spellCheck: false,
-                      placeholder: I18n.t(
-                        "lyricsCacheEditor.pronunciationPlaceholder"
-                      ),
-                    }),
-                    renderCacheEditField(index, {
-                      label: I18n.t("menu.translationLabel"),
-                      lines: translationLines,
-                      onChange: onTranslationChange,
-                      spellCheck: true,
-                      placeholder: I18n.t(
-                        "lyricsCacheEditor.translationPlaceholder"
-                      ),
-                    })
+                    react.createElement(
+                      "div",
+                      { className: "ivlyrics-cache-edit-item-pair" },
+                      slotEntries[index]
+                        ? renderUnitPronunciationField(index, slotEntries[index])
+                        : renderCacheEditField(index, {
+                          label: I18n.t("menu.pronunciation"),
+                          lines: pronunciationLines,
+                          onChange: onPronunciationChange,
+                          spellCheck: false,
+                          placeholder: I18n.t(
+                            "lyricsCacheEditor.pronunciationPlaceholder"
+                          ),
+                          slotsAfterShift: slotsWithoutLinesFrom(index),
+                        }),
+                      renderCacheEditField(index, {
+                        label: I18n.t("menu.translationLabel"),
+                        lines: translationLines,
+                        onChange: onTranslationChange,
+                        spellCheck: true,
+                        placeholder: I18n.t(
+                          "lyricsCacheEditor.translationPlaceholder"
+                        ),
+                      })
+                    )
                   )
                 )
               )
@@ -5061,6 +5198,7 @@ const createInitialLyricsContainerState = () => ({
   isLyricsEditSaving: false,
   lyricsEditOriginalLines: [],
   lyricsEditPronunciationText: "",
+  lyricsEditPronunciationSlots: [],
   lyricsEditTranslationText: "",
   lyricsEditPronunciationSourceHash: "",
   lyricsEditTranslationSourceHash: "",
@@ -6104,7 +6242,10 @@ class LyricsContainer extends react.Component {
 
       if (candidate.splitVocalParts) {
         if (cacheLines.length === sourceRequests.length) {
-          return cacheLines;
+          return {
+            lines: cacheLines,
+            slots: isPhonetic ? this.getCacheEditorSlots(sourceText, cache, cacheLines) : [],
+          };
         }
         continue;
       }
@@ -6115,11 +6256,23 @@ class LyricsContainer extends react.Component {
         sourceRequests
       );
       if (mappedLines) {
-        return mappedLines;
+        return { lines: mappedLines, slots: [] };
       }
     }
 
-    return [];
+    return { lines: [], slots: [] };
+  }
+
+  // Unit pronunciation stored with the line pronunciation, for lines whose
+  // stored line is still exactly the joined units.
+  getCacheEditorSlots(sourceText, cache, lines) {
+    const slotsApi = window.ivLyricsPronunciationSlots;
+    if (!slotsApi || !cache?.slots) return [];
+    return slotsApi.readRecordLines(sourceText, cache).map((entry, index) =>
+      entry && slotsApi.join(entry.units, entry.parts) === String(lines[index] ?? "")
+        ? entry
+        : null
+    );
   }
 
   buildCacheEditorText(lines, expectedCount) {
@@ -6184,6 +6337,7 @@ class LyricsContainer extends react.Component {
       isLyricsEditSaving: false,
       lyricsEditOriginalLines: sourceLines,
       lyricsEditPronunciationText: "",
+      lyricsEditPronunciationSlots: [],
       lyricsEditTranslationText: "",
       lyricsEditPronunciationSourceHash: getTranslationResultCacheHash(
         sourceText,
@@ -6202,7 +6356,7 @@ class LyricsContainer extends react.Component {
     });
 
     try {
-      const [phoneticLines, translationLines] = await Promise.all([
+      const [phoneticCache, translationCache] = await Promise.all([
         this.getCacheEditorTranslation({
           trackId,
           targetLanguage: userLang,
@@ -6220,6 +6374,8 @@ class LyricsContainer extends react.Component {
           sourceRequests,
         }),
       ]);
+      const phoneticLines = phoneticCache.lines;
+      const translationLines = translationCache.lines;
 
       if (
         !this._isComponentMounted ||
@@ -6236,6 +6392,7 @@ class LyricsContainer extends react.Component {
           phoneticLines,
           sourceLines.length
         ),
+        lyricsEditPronunciationSlots: phoneticCache.slots,
         lyricsEditTranslationText: this.buildCacheEditorText(
           translationLines,
           sourceLines.length
@@ -6339,6 +6496,24 @@ class LyricsContainer extends react.Component {
         false
       );
     const requestSeq = this._lyricsEditRequestSeq;
+    // Unit pronunciation is kept for lines that still are its joined text.
+    const slotsApi = window.ivLyricsPronunciationSlots;
+    const editorSlots = Array.isArray(this.state.lyricsEditPronunciationSlots)
+      ? this.state.lyricsEditPronunciationSlots
+      : [];
+    const slotsByLine = new Map();
+    editorSlots.forEach((entry, index) => {
+      if (
+        entry &&
+        slotsApi &&
+        index < expectedLineCount &&
+        slotsApi.join(entry.units, entry.parts) === pronunciationLines[index]
+      ) {
+        slotsByLine.set(index, entry.parts);
+      }
+    });
+    const pronunciationSlots =
+      slotsApi?.buildRecordSlots?.(expectedLineCount, slotsByLine) || null;
 
     this.setState({
       isLyricsEditSaving: true,
@@ -6351,7 +6526,9 @@ class LyricsContainer extends react.Component {
           trackId,
           userLang,
           true,
-          { phonetic: pronunciationLines },
+          pronunciationSlots
+            ? { phonetic: pronunciationLines, slots: pronunciationSlots }
+            : { phonetic: pronunciationLines },
           provider,
           pronunciationSourceHash
         ),
@@ -6364,6 +6541,8 @@ class LyricsContainer extends react.Component {
           translationSourceHash
         ),
       ]);
+      // Lines re-register their stored units when the lyrics reload.
+      slotsApi?.forget?.(trackId);
 
       if (
         !this._isComponentMounted ||
@@ -11029,6 +11208,7 @@ class LyricsContainer extends react.Component {
         isSaving: this.state.isLyricsEditSaving,
         originalLines: this.state.lyricsEditOriginalLines,
         pronunciationText: this.state.lyricsEditPronunciationText,
+        pronunciationSlots: this.state.lyricsEditPronunciationSlots,
         translationText: this.state.lyricsEditTranslationText,
         expectedLineCount: this.state.lyricsEditOriginalLines.length,
         hasPronunciationCache: this.state.lyricsEditHasPronunciationCache,
@@ -11039,8 +11219,12 @@ class LyricsContainer extends react.Component {
         error: this.state.lyricsEditError,
         onClose: () => this.closeLyricsEditModal(),
         onSave: () => this.saveLyricsEditModal(),
-        onPronunciationChange: (value) =>
-          this.setState({ lyricsEditPronunciationText: value, lyricsEditError: "" }),
+        onPronunciationChange: (value, slots) =>
+          this.setState({
+            lyricsEditPronunciationText: value,
+            ...(Array.isArray(slots) ? { lyricsEditPronunciationSlots: slots } : null),
+            lyricsEditError: "",
+          }),
         onTranslationChange: (value) =>
           this.setState({ lyricsEditTranslationText: value, lyricsEditError: "" }),
       });
