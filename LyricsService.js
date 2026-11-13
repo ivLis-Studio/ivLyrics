@@ -11204,6 +11204,12 @@
             // heartbeat, while sending pause, seek, queue and track changes now.
             if (!payload.isPlaying && key === this._lastProgressPayloadKey
                 && now - this._lastProgressSentAt < 2000) return;
+            if (payload.isPlaying) {
+                this._pausedSince = null;
+            } else {
+                if (!this._pausedSince) this._pausedSince = now;
+                if (now - this._pausedSince > 3000) return;
+            }
             if (await this.sendToEndpoint(endpoint, payload)
                 && runtimeGeneration === this._runtimeGeneration && worker === this._worker) {
                 this._lastProgressPayloadKey = key;
