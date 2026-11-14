@@ -2641,7 +2641,11 @@ window.LANG_ID = {
       "compactLabel": "Mode CD",
       "compactDescription": "Tampilkan sampul album bundar dengan lubang tengah dan visualisator di sekelilingnya.",
       "videoLabel": "Panggung video",
-      "videoDescription": "Tampilkan video YouTube tersinkron dengan lirik aktif besar di bagian bawah."
+      "videoDescription": "Tampilkan video YouTube tersinkron dengan lirik aktif besar di bagian bawah.",
+      "motionLabel": "Gerak",
+      "motionDescription": "Kata-kata melayang masuk saat dinyanyikan sementara kamera bergerak di antara baris di atas video. Berfungsi untuk lagu dengan sinkronisasi per kata atau karakter.",
+      "motionUnavailable": "Lirik gerak berfungsi untuk lagu dengan sinkronisasi per kata atau karakter. Lagu ini menampilkan lirik panggung video.",
+      "motionReducedMotion": "Kurangi gerakan aktif, jadi lirik panggung video ditampilkan sebagai ganti lirik gerak."
     },
     "settings": {
       "subtitle": "Sesuaikan ukuran, animasi, dan tipografi lirik bawah pada mode vinil.",

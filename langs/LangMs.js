@@ -2641,7 +2641,11 @@ window.LANG_MS = {
       "compactLabel": "Mod CD",
       "compactDescription": "Paparkan kulit album bulat dengan lubang tengah dan visualisasi di sekelilingnya.",
       "videoLabel": "Pentas video",
-      "videoDescription": "Paparkan video YouTube yang disegerakkan dengan lirik aktif besar di bahagian bawah."
+      "videoDescription": "Paparkan video YouTube yang disegerakkan dengan lirik aktif besar di bahagian bawah.",
+      "motionLabel": "Gerakan",
+      "motionDescription": "Perkataan terbang masuk ketika dinyanyikan sambil kamera bergerak antara baris di atas video. Berfungsi untuk lagu dengan penyegerakan perkataan atau aksara.",
+      "motionUnavailable": "Lirik gerakan berfungsi untuk lagu dengan penyegerakan perkataan atau aksara. Lagu ini memaparkan lirik pentas video.",
+      "motionReducedMotion": "Kurangkan gerakan dihidupkan, jadi lirik pentas video dipaparkan dan bukan lirik gerakan."
     },
     "settings": {
       "subtitle": "Sesuaikan saiz, animasi dan tipografi lirik bawah bagi mod vinil.",

@@ -2641,7 +2641,11 @@ window.LANG_CS = {
       "compactLabel": "Režim CD",
       "compactDescription": "Zobrazí kruhový obal alba se středovým otvorem a vizualizací kolem něj.",
       "videoLabel": "Videorežim",
-      "videoDescription": "Zobrazí synchronizované video YouTube a velký aktivní řádek dole."
+      "videoDescription": "Zobrazí synchronizované video YouTube a velký aktivní řádek dole.",
+      "motionLabel": "Pohyb",
+      "motionDescription": "Zpívaná slova přilétají nad videem a kamera se pohybuje mezi řádky. Funguje u skladeb se synchronizací po slovech nebo znacích.",
+      "motionUnavailable": "Pohyblivé texty fungují u skladeb se synchronizací po slovech nebo znacích. U této skladby se zobrazí text video scény.",
+      "motionReducedMotion": "Je zapnuté omezení pohybu, takže se místo pohyblivých textů zobrazí text video scény."
     },
     "settings": {
       "subtitle": "Přizpůsobte velikost, animace a typografii spodního textu ve vinylovém režimu.",

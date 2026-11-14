@@ -2641,7 +2641,11 @@ window.LANG_DE = {
       "compactLabel": "CD-Modus",
       "compactDescription": "Zeigt ein rundes Albumcover mit Mittelloch und einer Visualisierung rundherum.",
       "videoLabel": "Videobühne",
-      "videoDescription": "Zeigt das synchronisierte YouTube-Video und die große aktive Textzeile unten."
+      "videoDescription": "Zeigt das synchronisierte YouTube-Video und die große aktive Textzeile unten.",
+      "motionLabel": "Bewegung",
+      "motionDescription": "Gesungene Wörter fliegen über dem Video herein, während sich die Kamera zwischen den Zeilen bewegt. Funktioniert bei Songs mit Wort- oder Zeichen-Timing.",
+      "motionUnavailable": "Bewegte Songtexte funktionieren bei Songs mit Wort- oder Zeichen-Timing. Dieser Song zeigt den Songtext der Videobühne.",
+      "motionReducedMotion": "„Bewegung reduzieren“ ist aktiv, daher wird statt der bewegten Songtexte der Songtext der Videobühne angezeigt."
     },
     "settings": {
       "subtitle": "Passe Größe, Animationen und die untere Liedtext-Typografie des Vinylmodus an.",

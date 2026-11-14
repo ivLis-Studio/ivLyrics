@@ -2641,7 +2641,11 @@ window.LANG_EN = {
       "compactLabel": "CD mode",
       "compactDescription": "Show a circular album cover with a centre hole and a surrounding visualizer.",
       "videoLabel": "Video stage",
-      "videoDescription": "Show the synchronized YouTube video with the focused lyric at the bottom."
+      "videoDescription": "Show the synchronized YouTube video with the focused lyric at the bottom.",
+      "motionLabel": "Motion",
+      "motionDescription": "Words fly in as they are sung while the camera moves between lines over the video. Plays songs with word or character timing.",
+      "motionUnavailable": "Motion lyrics play songs with word or character timing. This song shows the video stage lyric instead.",
+      "motionReducedMotion": "Motion is reduced, so the video stage lyric is shown instead of motion lyrics."
     },
     "settings": {
       "subtitle": "Customize the LP mode size, motion, and bottom lyric typography.",

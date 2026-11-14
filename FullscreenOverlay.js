@@ -107,7 +107,8 @@ const FullscreenOverlay = (() => {
     const FOCUSED_PRESENTATION_IDS = new Set([
         "vinyl",
         "compact-vinyl",
-        "video"
+        "video",
+        "motion"
     ]);
     const normalizeFocusedPresentation = (value, fallback = "standard") => {
         const normalized = String(value || "").trim();
@@ -1821,7 +1822,8 @@ const FullscreenOverlay = (() => {
             normalizedPresentationMode !== "standard";
         const focusModeActive =
             normalizedPresentationMode === "vinyl"
-            || normalizedPresentationMode === "video";
+            || normalizedPresentationMode === "video"
+            || normalizedPresentationMode === "motion";
         const compactPresentationActive =
             normalizedPresentationMode === "compact-vinyl";
         const cdAlbumActive = compactPresentationActive && CONFIG?.visual?.["fullscreen-tv-mode"] !== true;

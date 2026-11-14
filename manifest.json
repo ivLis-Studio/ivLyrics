@@ -48,6 +48,7 @@
 		"Pages.js",
 		"VinylActiveLyricRenderer.js",
 		"CdVisualizer.js",
+		"MotionLyrics.js",
 		"VinylPlayerMode.js",
 		"SettingsStyles.js",
 		"Settings.js",

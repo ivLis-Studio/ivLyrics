@@ -2641,7 +2641,11 @@ window.LANG_KO = {
       "compactLabel": "CD 모드",
       "compactDescription": "앨범 커버를 중앙에 구멍이 있는 원형 CD로 표시하고, 주변에 비주얼라이저를 배치합니다.",
       "videoLabel": "비디오 스테이지",
-      "videoDescription": "동기화된 YouTube 영상과 하단의 큰 활성 가사만 표시합니다."
+      "videoDescription": "동기화된 YouTube 영상과 하단의 큰 활성 가사만 표시합니다.",
+      "motionLabel": "모션",
+      "motionDescription": "영상 위로 부르는 단어가 날아들고 카메라가 줄 사이를 움직입니다. 단어·글자 싱크가 있는 곡에서 재생됩니다.",
+      "motionUnavailable": "모션 가사는 단어·글자 싱크가 있는 곡에서 재생돼요. 이 곡은 비디오 스테이지 가사로 보여드려요.",
+      "motionReducedMotion": "동작 줄이기가 켜져 있어 모션 가사 대신 비디오 스테이지 가사로 보여드려요."
     },
     "settings": {
       "subtitle": "LP 모드의 크기, 모션, 하단 가사 글꼴을 조정합니다.",

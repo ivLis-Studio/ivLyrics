@@ -34,14 +34,17 @@
         "2": "compact-vinyl",
         "3": "vinyl",
         "4": "video",
+        "5": "motion",
         Digit1: "standard",
         Digit2: "compact-vinyl",
         Digit3: "vinyl",
         Digit4: "video",
+        Digit5: "motion",
         Numpad1: "standard",
         Numpad2: "compact-vinyl",
         Numpad3: "vinyl",
-        Numpad4: "video"
+        Numpad4: "video",
+        Numpad5: "motion"
     });
 
     const getStoredValue = (key) => window.ivLyricsStoragePersistence

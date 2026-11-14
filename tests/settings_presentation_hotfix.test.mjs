@@ -40,7 +40,7 @@ function harness() {
     },
     event(key) {
       return { key, preventDefault() {}, currentTarget: { closest: () => ({
-        querySelectorAll: () => [0, 1, 2].map(index => ({ focus: () => focused.push(index) })),
+        querySelectorAll: () => [0, 1, 2, 3].map(index => ({ focus: () => focused.push(index) })),
       }) } };
     },
   };
@@ -57,17 +57,17 @@ test("changed settings use blue labels and fields instead of dot markup", () => 
 test("LP presentation cards keep a single tab stop and support arrow/Home/End selection", () => {
   const h = harness();
   let cards = h.render();
-  assert.deepEqual(cards.map(card => card.props.tabIndex), [-1, 0, -1]);
+  assert.deepEqual(cards.map(card => card.props.tabIndex), [-1, 0, -1, -1]);
   cards[1].props.onKeyDown(h.event("ArrowRight"));
   cards = h.render();
   assert.deepEqual(h.changes.at(-1), ["fullscreen-focus-presentation", "video"]);
-  assert.deepEqual(cards.map(card => card.props["aria-checked"]), [false, false, true]);
+  assert.deepEqual(cards.map(card => card.props["aria-checked"]), [false, false, true, false]);
   cards[2].props.onKeyDown(h.event("Home"));
   cards = h.render();
   assert.deepEqual(h.changes.at(-1), ["fullscreen-focus-presentation", "compact-vinyl"]);
   cards[0].props.onKeyDown(h.event("End"));
-  assert.deepEqual(h.changes.at(-1), ["fullscreen-focus-presentation", "video"]);
-  assert.deepEqual(h.focused, [2, 0, 2]);
+  assert.deepEqual(h.changes.at(-1), ["fullscreen-focus-presentation", "motion"]);
+  assert.deepEqual(h.focused, [2, 0, 3]);
 });
 
 test("LP cards reflect an external default reset without saving it again", () => {
@@ -77,6 +77,6 @@ test("LP cards reflect an external default reset without saving it again", () =>
   assert.equal(h.render("video")[2].props["aria-checked"], true);
   h.render("compact-vinyl");
   const cards = h.render("compact-vinyl");
-  assert.deepEqual(cards.map(card => card.props["aria-checked"]), [true, false, false]);
+  assert.deepEqual(cards.map(card => card.props["aria-checked"]), [true, false, false, false]);
   assert.equal(h.changes.length, 1, "only the explicit click invokes the save callback");
 });

@@ -46,7 +46,8 @@ const VinylPlayerMode = (() => {
         "standard",
         "vinyl",
         "compact-vinyl",
-        "video"
+        "video",
+        "motion"
     ]);
     const normalizePresentationMode = (value) => {
         const normalized = String(value || "").trim();
@@ -246,6 +247,12 @@ const VinylPlayerMode = (() => {
             labelKey: "vinyl.presentation.videoLabel",
             fallback: "Video stage",
             icon: "video"
+        },
+        {
+            id: "motion",
+            labelKey: "vinyl.presentation.motionLabel",
+            fallback: "Motion",
+            icon: "motion"
         }
     ]);
 
@@ -290,6 +297,9 @@ const VinylPlayerMode = (() => {
                 react.createElement("circle", { cx: 12, cy: 12, r: 8 }),
                 react.createElement("circle", { cx: 12, cy: 12, r: 2 })
             );
+        }
+        if (name === "motion") {
+            return renderFramedPresentationIcon("M7 15.5 10 9l2.5 4.5L17 8.5M14.5 8.5H17v2.5");
         }
         return renderFramedPresentationIcon("m10 9 5 3-5 3z");
     };
@@ -1277,11 +1287,21 @@ const VinylPlayerMode = (() => {
             normalizedPresentationMode === "compact-vinyl";
         const isVideoPresentation =
             normalizedPresentationMode === "video";
+        const isMotionPresentation =
+            normalizedPresentationMode === "motion";
         const animationsEnabled = vinylSettings.animations !== false;
         const trackChangeEnabled = vinylSettings.trackChangeAnimation !== false;
         const rotationSpeed = normalizeRotationSpeed(vinylSettings.rotationSpeed);
         const systemReducedMotion = useReducedMotion();
         const reducedMotion = vinylSettings.reducedMotion === true || systemReducedMotion;
+        // Motion lyrics play songs with real word or character timing. Other
+        // songs, and reduced motion, get the video stage's focused lyric.
+        const MotionLyrics = window.ivLyricsMotionLyrics;
+        const motionTimingAvailable = isMotionPresentation
+            && !!MotionLyrics?.Stage
+            && MotionLyrics.hasRealTiming(activeLyrics, activeLyricsKaraoke, karaokeSource);
+        const motionPlayable = motionTimingAvailable && animationsEnabled && !reducedMotion;
+        const isVideoStageLayout = isVideoPresentation || (isMotionPresentation && !motionPlayable);
         const centerRotationEnabled = vinylSettings.centerRotation !== false;
         const lyricsEnabled = vinylSettings.lyricsEnabled !== false;
         const albumScale = Math.min(1.4, Math.max(0.7, (Number(vinylSettings.albumSize) || 100) / 100));
@@ -1568,7 +1588,7 @@ const VinylPlayerMode = (() => {
                     positionOverride: null,
                     motionEnabled: animationsEnabled && !reducedMotion,
                     durationMs: duration,
-                    singleLineScroll: !isVideoPresentation && renderableLyrics === snapshot.lyrics
+                    singleLineScroll: !isVideoStageLayout && renderableLyrics === snapshot.lyrics
                 })
                 : snapshot.plainText);
         };
@@ -1629,7 +1649,10 @@ const VinylPlayerMode = (() => {
                 `is-presentation-${normalizedPresentationMode}`,
                 isFullVinylPresentation ? "has-full-vinyl-stage" : "",
                 isCompactVinylPresentation ? "has-compact-vinyl-stage" : "",
-                isVideoPresentation ? "has-video-stage" : "",
+                isVideoStageLayout ? "has-video-stage" : "",
+                // Without motion the motion presentation uses the video stage layout.
+                isMotionPresentation && !motionPlayable ? "is-presentation-video" : "",
+                motionPlayable ? "has-motion-stage" : "",
                 animationsEnabled && !reducedMotion ? "" : "is-motion-disabled",
                 transitionClass,
                 lyricsEnabled ? "has-lyric-slot" : "",
@@ -1643,10 +1666,29 @@ const VinylPlayerMode = (() => {
                     ? "vinyl.presentation.compactLabel"
                     : normalizedPresentationMode === "video"
                         ? "vinyl.presentation.videoLabel"
-                        : "vinyl.presentation.vinylLabel"
+                        : normalizedPresentationMode === "motion"
+                            ? "vinyl.presentation.motionLabel"
+                            : "vinyl.presentation.vinylLabel"
             ) || I18n.t("vinyl.mode") || "LP",
             style: vinylOverlayStyle
         },
+            motionPlayable ? react.createElement(MotionLyrics.Stage, {
+                lyrics: activeLyrics,
+                trackUri: String(lyricsTrackUri || "").trim() || liveTrack.uri,
+                accent: displayedTrack.accent,
+                isPlaying
+            }) : null,
+            isMotionPresentation && !motionPlayable && Array.isArray(activeLyrics) && activeLyrics.length > 0
+                ? react.createElement("div", {
+                    key: `motion-notice-${liveTrack.uri}:${motionTimingAvailable ? "motion" : "timing"}`,
+                    className: "fullscreen-motion-notice",
+                    role: "status"
+                }, motionTimingAvailable
+                    ? (I18n.t("vinyl.presentation.motionReducedMotion")
+                        || "Motion lyrics are off while motion is reduced. Showing the video stage lyric instead.")
+                    : (I18n.t("vinyl.presentation.motionUnavailable")
+                        || "Motion lyrics play songs with word or character timing. Showing the video stage lyric instead."))
+                : null,
             isFullVinylPresentation ? react.createElement(VinylPlayer, {
                 className: [
                     "ivlyrics-vinyl-player--immersive",
@@ -1713,7 +1755,7 @@ const VinylPlayerMode = (() => {
                 visible: true,
                 onChange: onPresentationModeChange
             }),
-            (isFullVinylPresentation || isVideoPresentation) && react.createElement(StagePlaybackControls, {
+            (isFullVinylPresentation || isVideoPresentation || isMotionPresentation) && react.createElement(StagePlaybackControls, {
                 isPlaying,
                 position,
                 duration,
@@ -1724,7 +1766,7 @@ const VinylPlayerMode = (() => {
                 onNext,
                 onSeek
             }),
-            lyricsEnabled ? react.createElement("div", {
+            lyricsEnabled && !motionPlayable ? react.createElement("div", {
                 className: `fullscreen-vinyl-lyric-stage${hasVisibleLyric ? "" : " is-empty"}`,
                 "aria-live": "polite",
                 "aria-atomic": "true",

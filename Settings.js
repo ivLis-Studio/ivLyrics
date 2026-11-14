@@ -9356,6 +9356,16 @@ const FULLSCREEN_PRESENTATION_PRESETS = Object.freeze([
     icon:
       '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3z"/>',
   },
+  {
+    id: "motion",
+    labelKey: "vinyl.presentation.motionLabel",
+    fallbackLabel: "Motion",
+    descriptionKey: "vinyl.presentation.motionDescription",
+    fallbackDescription:
+      "Words fly in as they are sung while the camera moves over the video. Plays songs with word or character timing.",
+    icon:
+      '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 15.5 10 9l2.5 4.5L17 8.5M14.5 8.5H17v2.5"/>',
+  },
 ]);
 
 const normalizeFullscreenPresentationPreset = (value) => {

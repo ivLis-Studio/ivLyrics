@@ -2641,7 +2641,11 @@ window.LANG_VI = {
       "compactLabel": "Chế độ CD",
       "compactDescription": "Hiển thị bìa album tròn có lỗ ở giữa và hiệu ứng trực quan xung quanh.",
       "videoLabel": "Sân khấu video",
-      "videoDescription": "Hiển thị video YouTube đồng bộ và dòng lời đang phát cỡ lớn ở phía dưới."
+      "videoDescription": "Hiển thị video YouTube đồng bộ và dòng lời đang phát cỡ lớn ở phía dưới.",
+      "motionLabel": "Chuyển động",
+      "motionDescription": "Các từ bay vào khi được hát trong lúc máy quay di chuyển giữa các dòng trên nền video. Hoạt động với bài hát có đồng bộ theo từ hoặc ký tự.",
+      "motionUnavailable": "Lời chuyển động hoạt động với bài hát có đồng bộ theo từ hoặc ký tự. Bài này hiển thị lời của sân khấu video.",
+      "motionReducedMotion": "Giảm chuyển động đang bật nên lời của sân khấu video được hiển thị thay cho lời chuyển động."
     },
     "settings": {
       "subtitle": "Tùy chỉnh kích thước, chuyển động và phông lời bên dưới của chế độ đĩa than.",

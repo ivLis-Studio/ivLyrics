@@ -2641,7 +2641,11 @@ window.LANG_SV = {
       "compactLabel": "CD-läge",
       "compactDescription": "Visar ett runt albumomslag med mitthål och visualisering runtom.",
       "videoLabel": "Videoscen",
-      "videoDescription": "Visar den synkroniserade YouTube-videon och den stora aktiva textraden längst ned."
+      "videoDescription": "Visar den synkroniserade YouTube-videon och den stora aktiva textraden längst ned.",
+      "motionLabel": "Rörelse",
+      "motionDescription": "Orden flyger in när de sjungs medan kameran rör sig mellan raderna över videon. Fungerar med låtar som har ord- eller teckensynk.",
+      "motionUnavailable": "Rörliga låttexter fungerar med låtar som har ord- eller teckensynk. Den här låten visar videoscenens låttext.",
+      "motionReducedMotion": "Minska rörelse är på, så videoscenens låttext visas i stället för rörliga låttexter."
     },
     "settings": {
       "subtitle": "Anpassa storlek, animationer och typografi för den nedre textraden i vinylläget.",

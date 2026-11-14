@@ -2641,7 +2641,11 @@ window.LANG_IT = {
       "compactLabel": "Modalità CD",
       "compactDescription": "Mostra la copertina circolare con un foro centrale e un visualizzatore intorno.",
       "videoLabel": "Scena video",
-      "videoDescription": "Mostra il video YouTube sincronizzato e il testo attivo grande in basso."
+      "videoDescription": "Mostra il video YouTube sincronizzato e il testo attivo grande in basso.",
+      "motionLabel": "Movimento",
+      "motionDescription": "Le parole arrivano in volo mentre vengono cantate e la telecamera si muove tra le righe sopra il video. Funziona con brani sincronizzati per parola o carattere.",
+      "motionUnavailable": "I testi in movimento funzionano con brani sincronizzati per parola o carattere. Questo brano mostra il testo del palco video.",
+      "motionReducedMotion": "Riduci movimento è attivo, quindi viene mostrato il testo del palco video al posto dei testi in movimento."
     },
     "settings": {
       "subtitle": "Personalizza dimensioni, animazioni e tipografia inferiore della modalità vinile.",

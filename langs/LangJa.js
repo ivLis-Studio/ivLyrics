@@ -2641,7 +2641,11 @@ window.LANG_JA = {
       "compactLabel": "CDモード",
       "compactDescription": "アルバムカバーを中央に穴のある丸いCDとして表示し、周りにビジュアライザーを配置します。",
       "videoLabel": "ビデオステージ",
-      "videoDescription": "同期されたYouTube動画と画面下部の大きなアクティブ歌詞を表示します。"
+      "videoDescription": "同期されたYouTube動画と画面下部の大きなアクティブ歌詞を表示します。",
+      "motionLabel": "モーション",
+      "motionDescription": "映像の上に歌う単語が飛び込み、カメラが行の間を動きます。単語・文字単位の同期がある曲で再生されます。",
+      "motionUnavailable": "モーション歌詞は単語・文字単位の同期がある曲で再生されます。この曲はビデオステージの歌詞で表示します。",
+      "motionReducedMotion": "動きを減らす設定がオンのため、モーション歌詞の代わりにビデオステージの歌詞を表示します。"
     },
     "settings": {
       "subtitle": "LP モードのサイズ、アニメーション、下部歌詞のフォントを調整します。",

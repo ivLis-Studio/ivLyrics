@@ -9535,7 +9535,7 @@ html.is-lp-view-switch::view-transition-new(root) {
   position: absolute;
   top: max(68px, calc(env(safe-area-inset-top) + 36px));
   left: 50%;
-  width: min(360px, 100%);
+  width: min(440px, 100%);
   height: 66px;
   pointer-events: auto;
   transform: translateX(-50%);
@@ -11369,6 +11369,156 @@ html.is-lp-view-switch::view-transition-new(root) {
 
 @keyframes ivlyrics-cd-spin {
   to { transform: rotate(1turn); }
+}
+
+/* Motion lyrics (MotionLyrics.js): words are placed in a 3D world and the
+   camera element moves through it. Every frame writes only transforms and
+   opacity; nothing here may flatten the 3D context (no opacity, filter or
+   overflow on the camera or line elements). */
+.ivlyrics-motion-stage {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  perspective: var(--iv-motion-perspective, 1100px);
+  perspective-origin: 50% 46%;
+  contain: strict;
+}
+
+.ivlyrics-motion-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 46%, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.5)),
+    rgba(0, 0, 0, 0.16);
+}
+
+.ivlyrics-motion-camera,
+.ivlyrics-motion-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+
+.ivlyrics-motion-camera {
+  top: 46%;
+  left: 50%;
+}
+
+.ivlyrics-motion-word {
+  position: absolute;
+  top: 0;
+  left: 0;
+  color: rgba(255, 255, 255, 0.42);
+  font-family: var(--iv-video-stage-original-font-family, "Pretendard Variable"), "Pretendard Variable", Pretendard, sans-serif;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  white-space: pre;
+  visibility: hidden;
+  opacity: 0;
+  transform-origin: 0 0;
+  backface-visibility: hidden;
+}
+
+.ivlyrics-motion-word-base {
+  display: inline-block;
+  text-shadow: 0 6px 28px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+.ivlyrics-motion-word-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  color: #fff;
+  clip-path: inset(-30% calc(100% - var(--iv-motion-fill, 0%)) -30% -10%);
+}
+
+.ivlyrics-motion-word.is-active .ivlyrics-motion-word-fill {
+  text-shadow: 0 0 26px color-mix(in srgb, var(--iv-motion-accent, #fff) 65%, transparent);
+}
+
+.ivlyrics-motion-word.is-sung {
+  color: #fff;
+}
+
+.ivlyrics-motion-word.is-sung .ivlyrics-motion-word-fill {
+  display: none;
+}
+
+/* Character-timed lines drop in letter by letter: letters are white once in. */
+.ivlyrics-motion-line.is-cascade .ivlyrics-motion-word {
+  color: #fff;
+}
+
+.ivlyrics-motion-char {
+  display: inline-block;
+  opacity: 0;
+}
+
+.ivlyrics-motion-char.is-active {
+  text-shadow: 0 0 26px color-mix(in srgb, var(--iv-motion-accent, #fff) 70%, transparent), 0 6px 28px rgba(0, 0, 0, 0.45);
+}
+
+.ivlyrics-motion-subtitle {
+  position: absolute;
+  bottom: clamp(36px, 7svh, 72px);
+  left: 50%;
+  max-width: min(80vw, 980px);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: var(--iv-video-stage-translation-font-family, "Pretendard Variable"), "Pretendard Variable", Pretendard, sans-serif;
+  font-size: clamp(16px, 1.6vw, 24px);
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: center;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.65);
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity 260ms ease;
+}
+
+.ivlyrics-motion-subtitle.has-text {
+  opacity: 1;
+}
+
+.ivlyrics-motion-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.fullscreen-motion-notice {
+  position: absolute;
+  z-index: 2;
+  top: max(24px, calc(env(safe-area-inset-top) + 12px));
+  left: 50%;
+  max-width: min(560px, calc(100vw - 48px));
+  padding: 9px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(14, 14, 18, 0.68);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transform: translateX(-50%);
+  animation: fullscreen-motion-notice 5200ms ease both;
+}
+
+@keyframes fullscreen-motion-notice {
+  0% { opacity: 0; transform: translate(-50%, -8px); }
+  6%, 82% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, 0); }
 }
 
 .fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-lyric-stage {

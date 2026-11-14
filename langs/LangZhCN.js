@@ -2641,7 +2641,11 @@ window.LANG_ZH_CN = {
       "compactLabel": "CD 模式",
       "compactDescription": "将专辑封面显示为中心带孔的圆形 CD，并在周围显示可视化效果。",
       "videoLabel": "视频舞台",
-      "videoDescription": "显示同步的 YouTube 视频，并在底部显示大号当前歌词。"
+      "videoDescription": "显示同步的 YouTube 视频，并在底部显示大号当前歌词。",
+      "motionLabel": "动效",
+      "motionDescription": "演唱的词语飞入视频画面，镜头在各行之间移动。适用于带有逐词或逐字同步的歌曲。",
+      "motionUnavailable": "动效歌词仅适用于带有逐词或逐字同步的歌曲。这首歌将显示视频舞台歌词。",
+      "motionReducedMotion": "已开启减少动态效果，因此显示视频舞台歌词，而不是动效歌词。"
     },
     "settings": {
       "subtitle": "调整黑胶模式的尺寸、动效和底部歌词字体。",

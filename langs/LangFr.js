@@ -2641,7 +2641,11 @@ window.LANG_FR = {
       "compactLabel": "Mode CD",
       "compactDescription": "Affiche la pochette ronde avec un trou central et une visualisation tout autour.",
       "videoLabel": "Scène vidéo",
-      "videoDescription": "Affiche la vidéo YouTube synchronisée et la grande ligne active en bas."
+      "videoDescription": "Affiche la vidéo YouTube synchronisée et la grande ligne active en bas.",
+      "motionLabel": "Mouvement",
+      "motionDescription": "Les mots arrivent en volant au moment où ils sont chantés tandis que la caméra se déplace entre les lignes au-dessus de la vidéo. Fonctionne avec les chansons synchronisées au mot ou au caractère.",
+      "motionUnavailable": "Les paroles en mouvement fonctionnent avec les chansons synchronisées au mot ou au caractère. Cette chanson affiche les paroles de la scène vidéo.",
+      "motionReducedMotion": "La réduction des animations est activée : les paroles de la scène vidéo remplacent les paroles en mouvement."
     },
     "settings": {
       "subtitle": "Personnalisez la taille, les animations et la typographie inférieure du mode vinyle.",

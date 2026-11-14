@@ -2641,7 +2641,11 @@ window.LANG_PT = {
       "compactLabel": "Modo CD",
       "compactDescription": "Mostra a capa circular com um furo central e um visualizador ao redor.",
       "videoLabel": "Palco de vídeo",
-      "videoDescription": "Mostra o vídeo sincronizado do YouTube e a letra ativa grande na parte inferior."
+      "videoDescription": "Mostra o vídeo sincronizado do YouTube e a letra ativa grande na parte inferior.",
+      "motionLabel": "Movimento",
+      "motionDescription": "As palavras entram voando enquanto são cantadas e a câmera se move entre as linhas sobre o vídeo. Funciona com músicas sincronizadas por palavra ou caractere.",
+      "motionUnavailable": "As letras em movimento funcionam com músicas sincronizadas por palavra ou caractere. Esta música mostra a letra do palco de vídeo.",
+      "motionReducedMotion": "Reduzir movimento está ativado, então a letra do palco de vídeo é exibida no lugar das letras em movimento."
     },
     "settings": {
       "subtitle": "Personalize o tamanho, as animações e a tipografia inferior do modo vinil.",
