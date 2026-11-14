@@ -1591,6 +1591,10 @@ window.LANG_VI = {
           "expressive": "Biểu cảm"
         }
       },
+      "syncedPronunciation": {
+        "label": "Dùng phát âm đồng bộ",
+        "desc": "Lấy phát âm của lời karaoke được chia theo thời điểm của từng từ hoặc ký tự được hát. Khi bật, có thể dùng chế độ ưu tiên phát âm và tô phát âm như karaoke. Khi tắt, phát âm được lấy nhanh hơn dưới dạng văn bản thường theo từng dòng."
+      },
       "pronunciationFill": {
         "label": "Tô phát âm như karaoke",
         "desc": "Ngay cả khi chế độ ưu tiên phát âm đang tắt, dòng phát âm vẫn được tô theo nhịp hát. AI chia phát âm theo thời gian của từng từ hoặc ký tự. Không áp dụng các hiệu ứng khác như nảy và phát sáng."

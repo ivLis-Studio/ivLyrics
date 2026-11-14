@@ -1591,6 +1591,10 @@ window.LANG_FR = {
           "expressive": "Expressif"
         }
       },
+      "syncedPronunciation": {
+        "label": "Prononciation synchronisée",
+        "desc": "Récupère la prononciation des paroles karaoké découpée selon le minutage de chaque mot ou caractère chanté. Activée, elle rend disponibles le mode Prononciation d'abord et le remplissage de la prononciation comme au karaoké. Désactivée, la prononciation arrive plus vite en texte simple par ligne."
+      },
       "pronunciationFill": {
         "label": "Remplir la prononciation comme au karaoké",
         "desc": "Même lorsque le mode prononciation d'abord est désactivé, la ligne de prononciation se remplit au rythme du chant. L'IA répartit la prononciation selon le minutage des mots ou des caractères. Les autres effets, comme le rebond et la lueur, ne sont pas appliqués."

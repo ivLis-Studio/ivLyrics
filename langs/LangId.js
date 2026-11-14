@@ -1591,6 +1591,10 @@ window.LANG_ID = {
           "expressive": "Ekspresif"
         }
       },
+      "syncedPronunciation": {
+        "label": "Gunakan pelafalan tersinkron",
+        "desc": "Mengambil pelafalan lirik karaoke yang dibagi sesuai waktu setiap kata atau karakter yang dinyanyikan. Jika aktif, mode pelafalan dulu dan isi pelafalan seperti karaoke dapat digunakan. Jika nonaktif, pelafalan diambil lebih cepat sebagai teks biasa per baris."
+      },
       "pronunciationFill": {
         "label": "Isi pelafalan seperti karaoke",
         "desc": "Meski mode pelafalan dulu nonaktif, baris pelafalan terisi mengikuti waktu nyanyian. AI membagi pelafalan sesuai waktu tiap kata atau karakter. Efek lain seperti pantulan dan kilau tidak diterapkan."

@@ -4360,7 +4360,7 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
                         text: lyricsText,
                         wantSmartPhonetic: true,
                         provider,
-                        pronunciationSlots: !!window.ivLyricsPronunciationSlots?.hasRealTiming?.(lyricsData, karaokeSource)
+                        pronunciationSlots: !!window.ivLyricsPronunciationSlots?.isRequested?.(lyricsData, karaokeSource)
                     });
                     if (!isActiveLoad(loadSeq, trackInfo.uri)) {
                         return;

@@ -8903,7 +8903,7 @@
                             sourceLang: detectedLanguage || 'auto',
                             provider,
                             pronunciationSlots: targetField === 'phonetic'
-                                && !!window.ivLyricsPronunciationSlots?.hasRealTiming?.(lyrics, lyricsResult.karaokeSource)
+                                && !!window.ivLyricsPronunciationSlots?.isRequested?.(lyrics, lyricsResult.karaokeSource)
                         });
                         if (!isCurrentRequest()) return { stale: true };
                         output = targetField === 'phonetic'

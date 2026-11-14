@@ -7386,6 +7386,7 @@ const SETTINGS_DEFAULT_VALUES = Object.freeze({
   "prefer-sync-data-provider": true, "prefer-lyrics-type-over-provider-order": true,
   "prefetch-enabled": true, "prefetch-video-enabled": true, "prefetch-word-details-enabled": true,
   "pronunciation-first": false,
+  "synced-pronunciation": false,
   "pronunciation-karaoke-fill": false,
   "quick-sync-controls-enabled": true, "seek-fade-compensation": false, "fullscreen-key": "f12",
   "translate-metadata": false,
@@ -12547,10 +12548,18 @@ const ConfigModal = ({
               when: () => CONFIG.visual["karaoke-bounce"] !== false,
             },
             {
+              desc: I18n.t("settingsAdvanced.karaokeMode.syncedPronunciation.label"),
+              info: I18n.t("settingsAdvanced.karaokeMode.syncedPronunciation.desc"),
+              key: "synced-pronunciation",
+              type: ConfigSlider,
+            },
+            {
               desc: I18n.t("settingsAdvanced.karaokeMode.pronunciationFill.label"),
               info: I18n.t("settingsAdvanced.karaokeMode.pronunciationFill.desc"),
               key: "pronunciation-karaoke-fill",
               type: ConfigSlider,
+              // The fill splits the pronunciation by sung unit.
+              when: () => CONFIG.visual["synced-pronunciation"] === true,
             },
             {
               desc: I18n.t("settingsAdvanced.karaokeMode.spotifyFakeKaraoke.label"),

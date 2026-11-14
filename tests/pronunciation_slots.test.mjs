@@ -8,10 +8,10 @@ const firstSource = readFileSync(new URL("../PronunciationFirst.js", import.meta
 const managerSource = readFileSync(new URL("../AIAddonManager.js", import.meta.url), "utf8");
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
-const load = ({ manager = null, enabled = true } = {}) => {
+const load = ({ manager = null, enabled = true, synced = true } = {}) => {
 	const events = [];
 	const window = {
-		CONFIG: { visual: { "pronunciation-first": enabled } },
+		CONFIG: { visual: { "pronunciation-first": enabled, "synced-pronunciation": synced } },
 		dispatchEvent: (event) => events.push(event),
 		AIAddonManager: manager,
 		LyricsService: {
@@ -231,4 +231,17 @@ test("unit pronunciation streams through the lyric request and repairs misses", 
 		{ text: "y", phonetic: true, repair: true },
 	]);
 	assert.deepEqual(plain(seen), [[0, ["A"]], [0, ["A"]], [3, ["B"]], [3, ["B"]]]);
+});
+
+test("unit pronunciation is requested only with synced pronunciation and real timing", () => {
+	const karaoke = [{ syllables: [syllable("a", 0, 1)] }];
+	assert.equal(load({ synced: true }).slots.isRequested(karaoke), true);
+	assert.equal(load({ synced: false }).slots.isRequested(karaoke), false, "plain pronunciation by default");
+	assert.equal(load({ synced: true }).slots.isRequested([{ text: "a" }]), false);
+	assert.equal(load({ synced: true }).slots.isRequested(karaoke, "line-timing-pseudo"), false);
+	for (const name of ["index.js", "LyricsService.js", "NowPlayingPanelLyrics.js"]) {
+		const source = readFileSync(new URL("../" + name, import.meta.url), "utf8");
+		assert.doesNotMatch(source, /ivLyricsPronunciationSlots\?\.hasRealTiming/, name + " asks isRequested");
+		assert.match(source, /ivLyricsPronunciationSlots\?\.isRequested\?\./, name);
+	}
 });

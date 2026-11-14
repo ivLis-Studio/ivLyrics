@@ -1591,6 +1591,10 @@ window.LANG_ES = {
           "expressive": "Expresivo"
         }
       },
+      "syncedPronunciation": {
+        "label": "Pronunciación sincronizada",
+        "desc": "Obtiene la pronunciación de las letras de karaoke dividida según el tiempo de cada palabra o carácter cantado. Al activarla, están disponibles el modo de pronunciación primero y el relleno de la pronunciación como karaoke. Desactivada, la pronunciación llega más rápido como texto por líneas."
+      },
       "pronunciationFill": {
         "label": "Rellenar la pronunciación como karaoke",
         "desc": "Aunque el modo pronunciación primero esté desactivado, la fila de pronunciación se rellena al ritmo del canto. La IA reparte la pronunciación según el tiempo de cada palabra o carácter. No se aplican otros efectos como el rebote o el brillo."

@@ -1591,6 +1591,10 @@ window.LANG_TR = {
         "expressive": "Etkileyici"
       }
     },
+    "syncedPronunciation": {
+      "label": "Senkronize telaffuz kullan",
+      "desc": "Karaoke sözlerinin telaffuzunu, söylenen her kelimenin veya karakterin zamanlamasına göre bölünmüş olarak alır. Açıkken önce telaffuz modu ve telaffuzu karaoke gibi doldurma kullanılabilir. Kapalıyken telaffuz satır satır düz metin olarak daha hızlı gelir."
+    },
     "pronunciationFill": {
       "label": "Telaffuzu karaoke gibi doldur",
       "desc": "Önce telaffuz modu kapalıyken bile telaffuz satırı şarkının zamanlamasıyla dolar. Yapay zekâ telaffuzu kelime veya karakter zamanlamasına göre böler. Zıplama ve parlama gibi diğer efektler uygulanmaz."

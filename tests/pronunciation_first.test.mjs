@@ -7,12 +7,17 @@ const source = readFileSync(new URL("../PronunciationFirst.js", import.meta.url)
 const managerSource = readFileSync(new URL("../AIAddonManager.js", import.meta.url), "utf8");
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
-const load = ({ enabled = true, manager = null, cache = new Map() } = {}) => {
+const load = ({ enabled = true, synced = true, manager = null, cache = new Map() } = {}) => {
 	const events = [];
 	const storage = new Map();
+	const listeners = new Map();
 	const window = {
-		CONFIG: { visual: { "pronunciation-first": enabled } },
-		dispatchEvent: (event) => events.push(event),
+		CONFIG: { visual: { "pronunciation-first": enabled, "synced-pronunciation": synced } },
+		addEventListener: (type, listener) => listeners.set(type, [...(listeners.get(type) || []), listener]),
+		dispatchEvent: (event) => {
+			events.push(event);
+			(listeners.get(event.type) || []).forEach((listener) => listener(event));
+		},
 		AIAddonManager: manager,
 		LyricsService: {
 			extractTrackId: (uri) => String(uri).split(":").pop(),
@@ -32,6 +37,38 @@ const load = ({ enabled = true, manager = null, cache = new Map() } = {}) => {
 };
 
 const syllable = (text, startTime, endTime) => ({ text, startTime, endTime });
+
+test("pronunciation-first, its lead and AI timing belong to synced pronunciation", async () => {
+	let requests = 0;
+	const manager = { generateTimedPronunciation: async () => { requests += 1; return new Map(); } };
+	const { api, window, events } = load({ enabled: true, synced: false, manager });
+	assert.equal(api.isSyncedEnabled(), false);
+	assert.equal(api.isEnabled(), false, "a stored pronunciation-first stays off without synced pronunciation");
+	assert.equal(api.needsTiming(), false);
+	api.setDisplayed(true);
+	assert.equal(api.getLeadMs(), 0);
+	const lines = [{ originalText: "忘れて", phoneticText: "와스레테", syllables: [syllable("忘", 0, 1), syllable("れ", 1, 2), syllable("て", 2, 3)] }];
+	assert.equal(api.ensureTimed({ trackUri: "spotify:track:abc", lines }), null);
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	assert.equal(requests, 0);
+
+	window.CONFIG.visual["synced-pronunciation"] = true;
+	window.dispatchEvent({ type: "ivLyrics", detail: { type: "config", name: "synced-pronunciation", value: true } });
+	assert.equal(api.isEnabled(), true, "the stored choice returns with synced pronunciation");
+	assert.equal(api.getLeadMs(), api.LEAD_MS);
+	assert.equal(events.filter((event) => event.type === api.CHANGED_EVENT).at(-1)?.detail.enabled, true,
+		"the settings change refreshes the displays");
+});
+
+test("the lyrics toolbar shows pronunciation-first only with synced pronunciation", () => {
+	const index = readFileSync(new URL("../index.js", import.meta.url), "utf8");
+	const settings = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
+	assert.match(index, /showPronunciationFirst: !!window\.ivLyricsPronunciationFirst\?\.isSyncedEnabled\?\.\(\)\s*&& \(isPronunciationDisplayMode\(displayMode1\) \|\| isPronunciationDisplayMode\(displayMode2\)\)/);
+	assert.match(index, /"synced-pronunciation": StorageManager\.get\(\s*"ivLyrics:visual:synced-pronunciation",\s*false/);
+	assert.match(settings, /"synced-pronunciation": false/);
+	assert.match(settings, /key: "synced-pronunciation",\s*type: ConfigSlider/);
+	assert.match(settings, /key: "pronunciation-karaoke-fill",\s*type: ConfigSlider,[^}]*when: \(\) => CONFIG\.visual\["synced-pronunciation"\] === true/);
+});
 
 test("non-karaoke lines swap the original and pronunciation values only", () => {
 	const { api } = load();

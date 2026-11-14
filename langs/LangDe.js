@@ -1591,6 +1591,10 @@ window.LANG_DE = {
           "expressive": "Ausdrucksstark"
         }
       },
+      "syncedPronunciation": {
+        "label": "Synchronisierte Aussprache",
+        "desc": "Lädt die Aussprache von Karaoke-Texten aufgeteilt nach dem Timing jedes gesungenen Worts oder Zeichens. Eingeschaltet stehen der Modus „Aussprache zuerst“ und das Füllen der Aussprache wie Karaoke zur Verfügung. Ausgeschaltet kommt die Aussprache schneller als einfacher Zeilentext."
+      },
       "pronunciationFill": {
         "label": "Aussprache wie Karaoke füllen",
         "desc": "Auch wenn der Aussprache-zuerst-Modus aus ist, füllt sich die Aussprachezeile im Takt des Gesangs. Die KI verteilt die Aussprache auf das Wort- oder Zeichentiming. Andere Effekte wie Hüpfen und Leuchten werden nicht angewendet."

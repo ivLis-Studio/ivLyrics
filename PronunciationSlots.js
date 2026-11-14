@@ -281,6 +281,14 @@
 		return Array.isArray(lines) && lines.some((line) => hasSyllables(line?.syllables) || hasSyllables(line?.vocals?.lead?.syllables));
 	};
 
+	/**
+	 * Whether the pronunciation of these lyrics is requested by sung unit:
+	 * synced pronunciation is on and the lyrics carry real unit timing.
+	 * Otherwise the pronunciation is plain line text.
+	 */
+	const isRequested = (lines, karaokeSource = null) => window.ivLyricsPronunciationFirst?.isSyncedEnabled?.() === true
+		&& hasRealTiming(lines, karaokeSource);
+
 	// ---------------------------------------------------------------------
 	// Request
 	// ---------------------------------------------------------------------
@@ -381,6 +389,7 @@
 		lookup,
 		forget,
 		hasRealTiming,
+		isRequested,
 		requestPronunciation,
 	});
 })();

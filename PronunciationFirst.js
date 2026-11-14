@@ -25,6 +25,10 @@
 
 	const SETTING = "pronunciation-first";
 	const FILL_SETTING = "pronunciation-karaoke-fill";
+	// Synced pronunciation (Settings > Karaoke mode). Off by default: the
+	// pronunciation is plain line text. On, karaoke pronunciation is requested
+	// with unit timing, and pronunciation-first and the fill become available.
+	const SYNC_SETTING = "synced-pronunciation";
 	const STORAGE_KEY = "ivLyrics:visual:" + SETTING;
 	const CACHE_KIND = "timed-pronunciation-v1";
 	const CHANGED_EVENT = "ivLyrics:pronunciation-first-changed";
@@ -52,13 +56,16 @@
 		return readStoredSetting(setting);
 	};
 
-	const isEnabled = () => readSetting(SETTING);
+	/** Whether synced pronunciation is on. */
+	const isSyncedEnabled = () => readSetting(SYNC_SETTING);
+
+	const isEnabled = () => isSyncedEnabled() && readSetting(SETTING);
 
 	/** Pronunciation fill along karaoke timing while pronunciation-first is off. */
-	const isFillEnabled = () => !isEnabled() && readSetting(FILL_SETTING);
+	const isFillEnabled = () => isSyncedEnabled() && !readSetting(SETTING) && readSetting(FILL_SETTING);
 
 	/** Whether either display needs AI unit timing for the pronunciation. */
-	const needsTiming = () => isEnabled() || readSetting(FILL_SETTING);
+	const needsTiming = () => isSyncedEnabled() && (readSetting(SETTING) || readSetting(FILL_SETTING));
 
 	const setEnabled = (enabled) => {
 		const value = enabled === true;
@@ -81,6 +88,14 @@
 	};
 
 	const toggle = () => setEnabled(!isEnabled());
+
+	// The settings page changes these through the shared config event; the
+	// displays listening for this module's change event refresh with them.
+	window.addEventListener?.("ivLyrics", (event) => {
+		const detail = event?.detail;
+		if (detail?.type !== "config" || (detail.name !== SYNC_SETTING && detail.name !== FILL_SETTING)) return;
+		window.dispatchEvent(new CustomEvent(CHANGED_EVENT, { detail: { enabled: isEnabled() } }));
+	});
 
 	// Singing along reads slightly ahead of the voice: while pronunciation
 	// first is shown, the lyric clock runs this much earlier. It is not a
@@ -678,9 +693,11 @@
 		initialized: true,
 		SETTING,
 		FILL_SETTING,
+		SYNC_SETTING,
 		CHANGED_EVENT,
 		UPDATED_EVENT,
 		STATUS_EVENT,
+		isSyncedEnabled,
 		isEnabled,
 		isFillEnabled,
 		needsTiming,

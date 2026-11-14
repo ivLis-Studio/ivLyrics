@@ -1591,6 +1591,10 @@ window.LANG_MS = {
           "expressive": "Ekspresif"
         }
       },
+      "syncedPronunciation": {
+        "label": "Guna sebutan disegerakkan",
+        "desc": "Mendapatkan sebutan lirik karaoke yang dibahagikan mengikut masa setiap perkataan atau aksara yang dinyanyikan. Apabila dihidupkan, mod sebutan dahulu dan isi sebutan seperti karaoke boleh digunakan. Apabila dimatikan, sebutan diperoleh lebih cepat sebagai teks biasa mengikut baris."
+      },
       "pronunciationFill": {
         "label": "Isi sebutan seperti karaoke",
         "desc": "Walaupun mod sebutan dahulu dimatikan, baris sebutan diisi mengikut masa nyanyian. AI membahagikan sebutan mengikut masa setiap perkataan atau aksara. Kesan lain seperti lantunan dan cahaya tidak digunakan."

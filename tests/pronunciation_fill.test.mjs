@@ -14,9 +14,9 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
 const syllable = (text, startTime, endTime) => ({ text, startTime, endTime });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-const load = ({ first = false, fill = true, manager = null } = {}) => {
+const load = ({ first = false, fill = true, synced = true, manager = null } = {}) => {
 	const window = {
-		CONFIG: { visual: { "pronunciation-first": first, "pronunciation-karaoke-fill": fill } },
+		CONFIG: { visual: { "pronunciation-first": first, "pronunciation-karaoke-fill": fill, "synced-pronunciation": synced } },
 		dispatchEvent: () => {},
 		AIAddonManager: manager,
 		LyricsService: {
@@ -48,6 +48,8 @@ test("the fill applies only while pronunciation-first is off, and either asks fo
 	assert.equal(load({ first: true, fill: true }).api.isFillEnabled(), false, "pronunciation-first takes precedence");
 	assert.equal(load({ first: false, fill: false }).api.needsTiming(), false);
 	assert.equal(load({ first: true, fill: false }).api.needsTiming(), true);
+	assert.equal(load({ fill: true, synced: false }).api.isFillEnabled(), false, "the fill needs synced pronunciation");
+	assert.equal(load({ fill: true, synced: false }).api.needsTiming(), false);
 	assert.equal(load({ first: false, fill: true }).api.needsTiming(), true);
 });
 

@@ -1591,6 +1591,10 @@ window.LANG_EN = {
           "expressive": "Expressive"
         }
       },
+      "syncedPronunciation": {
+        "label": "Synced pronunciation",
+        "desc": "Gets karaoke pronunciation split along the timing of each sung word or character. On, pronunciation-first mode and pronunciation fill become available. Off, pronunciation comes faster as plain line text."
+      },
       "pronunciationFill": {
         "label": "Fill pronunciation like karaoke",
         "desc": "Even with pronunciation-first mode off, the pronunciation row fills in time with the singing. AI splits the pronunciation across the word or character timing. Other effects such as bounce and glow are not applied."

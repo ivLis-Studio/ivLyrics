@@ -2940,6 +2940,12 @@ const CONFIG = {
       "ivLyrics:visual:pronunciation-first",
       false
     ),
+    // Synced pronunciation: karaoke pronunciation is requested by sung unit,
+    // and pronunciation-first and the fill become available. Off: plain text.
+    "synced-pronunciation": StorageManager.get(
+      "ivLyrics:visual:synced-pronunciation",
+      false
+    ),
     // Karaoke rows fill their pronunciation row along the sung units.
     "pronunciation-karaoke-fill": StorageManager.get(
       "ivLyrics:visual:pronunciation-karaoke-fill",
@@ -4046,7 +4052,7 @@ const Prefetcher = {
                 sourceLang: detectedLanguage || "auto",
                 provider: lyrics.provider,
                 ignoreCache: false,
-                pronunciationSlots: !!window.ivLyricsPronunciationSlots?.hasRealTiming?.(lyricsArray, lyrics.karaokeSource),
+                pronunciationSlots: !!window.ivLyricsPronunciationSlots?.isRequested?.(lyricsArray, lyrics.karaokeSource),
               });
 
               if (phoneticResponse.phonetic) {
@@ -7800,7 +7806,7 @@ class LyricsContainer extends react.Component {
           ignoreCache: true,
           onLine: handlePhoneticStreamLine,
           onStreamReset: handlePhoneticStreamReset,
-          pronunciationSlots: !!window.ivLyricsPronunciationSlots?.hasRealTiming?.(originalLyrics, lyricsState.karaokeSource),
+          pronunciationSlots: !!window.ivLyricsPronunciationSlots?.isRequested?.(originalLyrics, lyricsState.karaokeSource),
         })
         : null;
       const translationRequest = needTranslation
@@ -9481,7 +9487,7 @@ class LyricsContainer extends react.Component {
             onLine: handleStreamLine,
             onStreamReset: handleStreamReset,
             pronunciationSlots: wantSmartPhonetic
-              && !!window.ivLyricsPronunciationSlots?.hasRealTiming?.(lyrics, lyricsState.karaokeSource),
+              && !!window.ivLyricsPronunciationSlots?.isRequested?.(lyrics, lyricsState.karaokeSource),
           });
 
           if (wantSmartPhonetic) {
@@ -10730,7 +10736,8 @@ class LyricsContainer extends react.Component {
       } else if (event.detail?.name === "pseudo-karaoke-render-advance") {
         this.forceUpdate?.();
     } else if (event.detail?.name === "pronunciation-first"
-      || event.detail?.name === "pronunciation-karaoke-fill") {
+      || event.detail?.name === "pronunciation-karaoke-fill"
+      || event.detail?.name === "synced-pronunciation") {
       this._pronunciationTimingRequest = null;
       this.forceUpdate?.();
       } else if (
@@ -11788,7 +11795,9 @@ class LyricsContainer extends react.Component {
           hasSynced: !!this.state.synced,
           hasUnsynced: !!this.state.unsynced,
           showConvert: !!showTranslationButton,
-          showPronunciationFirst: isPronunciationDisplayMode(displayMode1) || isPronunciationDisplayMode(displayMode2),
+          // Pronunciation-first belongs to synced pronunciation (Settings > Karaoke mode).
+          showPronunciationFirst: !!window.ivLyricsPronunciationFirst?.isSyncedEnabled?.()
+            && (isPronunciationDisplayMode(displayMode1) || isPronunciationDisplayMode(displayMode2)),
           pronunciationFirst: !!window.ivLyricsPronunciationFirst?.isEnabled?.(),
           friendlyLanguage: friendlyLanguage || null,
           detectedLanguage: originalLanguage || null,
