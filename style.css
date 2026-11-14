@@ -1975,6 +1975,11 @@ body.ivlyrics-page-active .main-topBar-container {
 
 .lyrics-lyricsContainer-SyncedLyrics {
   --lyrics-line-height: calc(4px + var(--lyrics-font-size));
+  /* Page-level lyric colours, captured before any row applies its speaker
+     colour. A NORMAL lyric range resets to these so it cannot inherit the
+     line speaker's colour (see .ivlyrics-karaoke-range-style.speaker-normal). */
+  --iv-page-lyrics-color-active: var(--lyrics-color-active);
+  --iv-page-lyrics-color-inactive: var(--lyrics-color-inactive);
   grid-area: 1 / 1 / -2 / -1;
   height: 0;
 }
@@ -1984,7 +1989,7 @@ body.ivlyrics-page-active .main-topBar-container {
    Fill only its hit area behind the rows, using the positioned page's bounds;
    keep row geometry, text selection and click targets unchanged. */
 .lyrics-lyricsContainer-SyncedLyricsPage:not(.scrolling-active)
-  > .lyrics-lyricsContainer-SyncedLyrics:not(.settings-live-preview-line)::before {
+  > .lyrics-lyricsContainer-SyncedLyrics:not(.settings-live-preview-line):not(.sync-creator-live-preview-rows)::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -2917,6 +2922,15 @@ div.lyrics-tabBar-headerItemLink {
   --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-range-speaker-color) 50%, transparent);
 }
 
+/* A range that explicitly selects NORMAL falls back to the page's lyric
+   colours. The row carries the line speaker's colour (e.g. DUET 4), and without
+   this reset the NORMAL range would silently inherit it, so the editor and the
+   rendered lyrics would disagree. */
+.ivlyrics-karaoke-range-style.speaker-normal {
+  --lyrics-color-active: var(--iv-page-lyrics-color-active);
+  --lyrics-color-inactive: var(--iv-page-lyrics-color-inactive);
+}
+
 @keyframes ivlyrics-kind-effect-tremble {
   0%, 100% { translate: 0 0; }
   25% { translate: calc(-0.5px * var(--ivlyrics-effect-strength)) calc(0.25px * var(--ivlyrics-effect-strength)); }
@@ -3290,6 +3304,17 @@ div.lyrics-tabBar-headerItemLink {
 .ivlyrics-karaoke-range-style.echo,
 .ivlyrics-karaoke-range-style.pop {
   animation-delay: calc(var(--ivlyrics-range-index, 0) * -70ms);
+}
+
+/* Shadow-based word effects animate text-shadow on the range wrapper, but the
+   glyphs inside it reset text-shadow to none (they normally inherit the row's
+   shadow through a filter instead). Without this hand-off the effect's glow
+   only shows where the range class sits directly on a glyph, as in the sync
+   editor's own stage, and never in the app or the sync preview. Motion,
+   filter and opacity effects do not need it. */
+.lyrics-karaoke-line .ivlyrics-karaoke-range-style:not(.text-effects-disabled):is(.sparkle, .echo, .glow, .glitch) .lyrics-karaoke-char,
+.lyrics-karaoke-line .ivlyrics-karaoke-range-style:not(.text-effects-disabled):is(.sparkle, .echo, .glow, .glitch) .lyrics-karaoke-text-run-segment {
+  text-shadow: inherit;
 }
 
 .lyrics-karaoke-part.text-effects-disabled,
@@ -5472,6 +5497,39 @@ ruby rt {
 
 .sync-creator-live-preview-exact .lyrics-karaoke-line.has-char-readings {
   padding-bottom: 14px;
+}
+
+/* The sync preview renders the production synced-page markup so page-scoped
+   lyric rules apply identically. These declarations reset only the page
+   layout those borrowed classes carry; every lyric rule stays untouched. */
+.sync-creator-live-preview-stage.lyrics-lyricsContainer-SyncedLyricsPage {
+  display: block;
+  grid-area: auto;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  text-align: var(--lyrics-align-text, inherit);
+  user-select: text;
+}
+
+.sync-creator-live-preview-rows.lyrics-lyricsContainer-SyncedLyrics {
+  display: block;
+  grid-area: auto;
+  height: auto;
+  min-height: 0;
+  text-align: inherit;
+}
+
+.sync-creator-live-preview-rows .lyrics-lyricsContainer-LyricsLine {
+  margin: 0 !important;
+  opacity: 1;
+  transform: none !important;
+  pointer-events: none;
+  text-align: inherit;
+}
+
+.sync-creator-live-preview-rows .lyrics-lyricsContainer-LyricsLine > p:first-child {
+  margin: 0;
 }
 
 /* Furigana (Ruby) Styling */
