@@ -4,13 +4,15 @@
 // A director (MotionLyricsDirector.js, written by AI when a provider is
 // available) groups the lines into shots and paces them to the song's tempo;
 // each shot becomes a board, a composition of several lines in 3D space
-// (sixteen kinds: flat ones like columns, posters, stairs, strips and spokes,
-// and ones in depth like tunnels, drums the lines wrap around and a tilted
-// crawl), set in the faces of its script (MotionLyricsType.js). A camera
+// (twenty-three kinds: flat ones like columns, stairs, strips and spokes,
+// ones in depth like tunnels, drums the lines wrap around and a tilted
+// crawl, and ones after typography edits that show one thought at a time on
+// bands, colour cards and colour fields, bend type round a circle or stand
+// it upright), set in the faces of its script (MotionLyricsType.js). A camera
 // flies, rolls, orbits and dollies across the boards and turns to face the
 // lines on drums: upcoming lines wait as faint outlines, each word lands as
 // solid type with its effect as it is sung (emphasised words in one of
-// twelve accents), and
+// eighteen accents), and
 // sung lines stay as dim echoes until their board drifts out of view. Motifs,
 // a giant background word, colour panels and letterbox bars animate with each
 // board, and the video background turns and zooms with the camera. Other
@@ -511,6 +513,12 @@
 		return [first, hslToHex([(hue + 0.42) % 1, Math.max(0.62, saturation), 0.66])];
 	};
 
+	/** A palette colour deepened into a ground (cards, colour fields) that white type reads on. */
+	const deepOf = (color) => {
+		const [hue, saturation] = rgbToHsl(parseColor(color) || [255, 92, 160]);
+		return hslToHex([hue, Math.max(0.74, saturation), 0.44]);
+	};
+
 	// ---------------------------------------------------------------------
 	// Type: faces per script (MotionLyricsType.js) and the fonts a song needs
 	// ---------------------------------------------------------------------
@@ -532,8 +540,10 @@
 		};
 	};
 	const casedText = (text, script, upper) => typeLib()?.casedText?.(text, script, upper) ?? String(text);
-	/** The face of a word: a shot's emphasised words may switch to the serif. */
-	const faceOf = (type, serif, isEmph) => (isEmph && serif ? "serif" : type);
+	/** The face of a word: a shot's emphasised words may switch to handwriting (the script accent) or the serif. */
+	const faceOf = (type, serif, isEmph, accent) => (isEmph && accent === "script" ? "hand" : isEmph && serif ? "serif" : type);
+	// How much larger than its line an emphasised word is set, for accents that work by size.
+	const ACCENT_SCALE = Object.freeze({ giant: 1.7, script: 1.14 });
 
 	/**
 	 * The faces a direction will set, each with the characters it sets, so
@@ -559,7 +569,7 @@
 				line.words.forEach((word, wordIndex) => {
 					const script = info.words[wordIndex] || info.script;
 					const text = cased(word.text, script);
-					add(font(script, faceOf(type, shot.serif, emph.has(wordIndex)), "display"), text);
+					add(font(script, faceOf(type, shot.serif, emph.has(wordIndex), shot.accent), "display"), text);
 					add(font(script, type, "light"), text);
 				});
 				(line.backing || []).forEach((voice, voiceIndex) => voice.words.forEach((word, position) => {
@@ -580,15 +590,15 @@
 
 	/** A line's words with the face, cased text and natural width each is set in. */
 	const itemsOf = (line, ctx, options) => {
-		const { size, emph = EMPTY_SET, emphScale = 1.3, light = false, type = "impact", serif = false, upper = false } = options;
+		const { size, emph = EMPTY_SET, emphScale = 1.3, light = false, type = "impact", serif = false, upper = false, accent = "" } = options;
 		const info = ctx.typography[line.n] || DEFAULT_INFO;
 		return line.words.map((word, index) => {
 			const isEmph = emph.has(index);
 			const script = info.words[index] || info.script;
 			const role = light && !isEmph ? "light" : "display";
-			const spec = ctx.font(script, faceOf(type, serif, isEmph), role);
+			const spec = ctx.font(script, faceOf(type, serif, isEmph, accent), role);
 			const text = casedText(word.text, script, upper && spec.kind === "impact");
-			const wordSize = size * spec.scale * (isEmph ? emphScale : 1) * (role === "light" ? 0.94 : 1);
+			const wordSize = size * spec.scale * (isEmph ? emphScale * (ACCENT_SCALE[accent] || 1) : 1) * (role === "light" ? 0.94 : 1);
 			return {
 				index,
 				spec,
@@ -795,7 +805,7 @@
 	};
 	/** The companion face sets off the emphasised words, so a line uses it only when it has some. */
 	const lightFor = (look, line) => look.light && look.emph(line).size > 0;
-	const blockOptions = (look, line, extra) => ({ emph: look.emph(line), type: look.type, serif: look.serif, upper: look.upper, light: lightFor(look, line), ...extra });
+	const blockOptions = (look, line, extra) => ({ emph: look.emph(line), type: look.type, serif: look.serif, upper: look.upper, accent: look.accent, light: lightFor(look, line), ...extra });
 	/** Short lines are set larger. */
 	const boostOf = (line) => (line.chars <= 4 ? 1.36 : line.chars <= 8 ? 1.16 : 1);
 	/** The camera follows a line part of the way from the board's centre, keeping all of it in frame. */
@@ -1247,6 +1257,302 @@
 		return { places, frames, drift: { z: 120, roll: 0.6 } };
 	};
 
+	// ---- Compositions after kinetic-typography edits: one thought at a time, flat colour, type as an object ----
+
+	// Colours of plates and floods: two deep palette colours and ink. Type stays white on all three.
+	const GROUNDS = Object.freeze(["deep", "ink", "deep2"]);
+	const groundOf = (index, offset) => GROUNDS[(index + offset) % GROUNDS.length];
+
+	// One line at a time in the same place, inside a band drawn across the screen: each line replaces the last.
+	const layoutSlot = (lines, ctx, random, look) => {
+		const blocks = lines.map((line) => layoutBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 1.02 * boostOf(line), maxLength: ctx.W * 0.62 })));
+		const tallest = Math.max(...blocks.map((block) => block.height));
+		const widest = Math.max(...blocks.map((block) => block.width));
+		const places = blocks.map((block) => ({ x: 0, y: 0, z: 0, rot: 0, block }));
+		const frames = places.map(() => ({ x: 0, y: 0, z: 0, roll: 0 }));
+		const band = { kind: "band", color: "ink", x: 0, y: 0, z: -8, w: ctx.W * 4, h: tallest + ctx.F * 0.8, rot: 0, radius: 0, line: 0 };
+		const tick = (side) => ({
+			x: side * (widest / 2 + ctx.F * 0.55),
+			y: -(tallest / 2 + ctx.F * 0.14),
+			z: 0,
+			length: tallest + ctx.F * 0.28,
+			rot: 90,
+			stops: places.map(() => 1),
+		});
+		return { places, frames, drift: { z: 60, roll: 0.5 }, solo: true, plates: [band], strokes: [tick(-1), tick(1)] };
+	};
+
+	// Each line on its own colour card, dealt one over another; a card lands as its line starts.
+	const layoutCards = (lines, ctx, random, look) => {
+		const offset = Math.floor(random() * GROUNDS.length);
+		let side = random() < 0.5 ? 1 : -1;
+		const places = [];
+		lines.forEach((line, index) => {
+			const block = layoutBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 0.86 * boostOf(line), maxLength: ctx.W * 0.5 }));
+			const card = { w: block.width + ctx.F * 1.4, h: block.height + ctx.F * 1.1 };
+			const previous = places[index - 1];
+			let x = 0;
+			let y = 0;
+			if (previous) {
+				side = -side;
+				x = previous.x + side * between(random, 0.1, 0.2) * ctx.W;
+				y = previous.y + previous.card.h / 2 + card.h * between(random, 0.12, 0.3);
+			}
+			const color = groundOf(index, offset);
+			places.push({
+				x, y, z: index * 46,
+				rot: index ? between(random, 3, 8) * side : between(random, -3, 3),
+				block, card, color,
+				// Nothing waits on the table: the line shows once its card has landed.
+				cover: true,
+				ground: color === "ink" ? "dark" : "color",
+			});
+		});
+		centerPlaces(places);
+		const plates = places.map((place, index) => ({
+			kind: "card", color: place.color, x: place.x, y: place.y, z: place.z - 10, w: place.card.w, h: place.card.h, rot: place.rot, radius: ctx.F * 0.22, line: index,
+		}));
+		const frames = places.map((place) => ({ x: place.x, y: place.y, z: place.z, roll: place.rot }));
+		return { places, frames, drift: { z: 70, roll: 1 }, plates };
+	};
+
+	// One line at a time, as large as the screen allows, on a flat colour field that changes with every line.
+	const layoutPoster = (lines, ctx, random, look) => {
+		const offset = Math.floor(random() * GROUNDS.length);
+		const places = lines.map((line, index) => {
+			const options = blockOptions(look, line, { emphScale: 1.2, light: false });
+			const natural = layoutBlock(line, ctx, { ...options, size: 100, maxLength: Infinity }).leadWidth / 100;
+			const size = clamp((ctx.W * 0.86) / Math.max(1, natural), ctx.F * 0.95, ctx.F * 2.6);
+			let block = layoutBlock(line, ctx, { ...options, size, maxLength: ctx.W * 0.86 });
+			if (block.height > ctx.H * 0.6) block = layoutBlock(line, ctx, { ...options, size: (size * ctx.H * 0.6) / block.height, maxLength: ctx.W * 0.86 });
+			const color = groundOf(index, offset);
+			return { x: 0, y: 0, z: 0, rot: 0, block, flood: color, ground: color === "ink" ? "dark" : "color" };
+		});
+		const frames = places.map(() => ({ x: 0, y: 0, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 120, roll: 0.6 }, solo: true };
+	};
+
+	// The shot's lines repeated across the whole screen as outlines, a little askew; each fills in where it is sung.
+	const layoutWordwall = (lines, ctx, random, look) => {
+		const width = ctx.W * 0.62;
+		const places = [];
+		const rows = [];
+		let y = 0;
+		lines.forEach((line, index) => {
+			const options = blockOptions(look, line, { emphScale: 1.1, light: false });
+			const natural = layoutBlock(line, ctx, { ...options, size: 100, maxLength: Infinity }).leadWidth / 100;
+			const size = clamp(width / Math.max(1, natural), ctx.F * 0.5, ctx.F * 1.5);
+			const block = layoutBlock(line, ctx, { ...options, size, maxLength: Infinity });
+			const info = ctx.typography[line.n] || DEFAULT_INFO;
+			const spec = ctx.font(info.script, look.type, "display");
+			const text = block.words.slice(0, line.words.length).map((word) => word.text).join(" ");
+			if (index) y += block.size * 0.16;
+			const place = { x: (index % 2 ? 1 : -1) * ctx.W * 0.07, y: y + block.height / 2, z: 0, rot: 0, block };
+			places.push(place);
+			rows.push({ place, text, spec, size: block.size, copy: ctx.measure(text, block.size, spec) });
+			y += block.height;
+		});
+		places.forEach((place) => { place.y -= y / 2; });
+		const fills = [];
+		const tile = (row, cx, cy, from, to) => {
+			const step = row.copy + row.size * 0.55;
+			for (let k = from; k <= to; k += 1) {
+				if (k) fills.push({ text: row.text, spec: row.spec, size: row.size, x: cx + k * step + Math.sign(k) * (row.place.block.width - row.copy) / 2, y: cy, z: 0, rot: 0 });
+			}
+		};
+		rows.forEach((row) => tile(row, row.place.x, row.place.y, -2, 2));
+		// A row of outlines above the first line and below the last, set like bricks.
+		const first = rows[0];
+		const last = rows[rows.length - 1];
+		const over = { ...last, place: { ...last.place, block: { width: last.copy } } };
+		const under = { ...first, place: { ...first.place, block: { width: first.copy } } };
+		for (const [row, cy] of [[over, first.place.y - first.place.block.height / 2 - last.size * 0.62], [under, last.place.y + last.place.block.height / 2 + first.size * 0.62]]) {
+			const shift = row.copy * 0.5;
+			fills.push({ text: row.text, spec: row.spec, size: row.size, x: shift, y: cy, z: 0, rot: 0 });
+			tile(row, shift, cy, -2, 2);
+		}
+		const frames = places.map((place) => ({ x: place.x, y: place.y, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 90, roll: 0.8 }, fills, tilt: (random() < 0.5 ? 1 : -1) * between(random, 7, 12) };
+	};
+
+	// A line may cover this much of the great circle it is set round (radians).
+	const ARCH_SPAN = 1.1;
+
+	/** A line's words in one row bent round a circle: each word stands on the curve. */
+	const archBlock = (line, ctx, options, radius) => {
+		const info = ctx.typography[line.n] || DEFAULT_INFO;
+		const items = itemsOf(line, ctx, options);
+		const natural = rowWidth(items);
+		const scale = Math.min(1, (radius * ARCH_SPAN) / Math.max(1, natural));
+		const length = natural * scale;
+		const side = info.rtl ? -1 : 1;
+		const words = [];
+		let along = -length / 2;
+		let tallest = 0;
+		items.forEach((item, position) => {
+			if (position) along += item.gap * scale;
+			const width = item.width * scale;
+			const size = item.size * scale;
+			const angle = (side * (along + width / 2)) / radius;
+			words[item.index] = {
+				x: radius * Math.sin(angle),
+				y: radius * (1 - Math.cos(angle)),
+				rot: (angle * 180) / Math.PI,
+				size, width, role: item.role, emph: item.emph, voice: 0, spec: item.spec, text: item.text, letters: item.letters,
+			};
+			tallest = Math.max(tallest, size);
+			along += width;
+		});
+		const half = Math.min(Math.PI / 2, length / 2 / radius);
+		return {
+			words,
+			width: 2 * radius * Math.sin(half),
+			height: tallest * 1.1 + radius * (1 - Math.cos(half)),
+			rows: 1,
+			size: options.size * scale,
+			rtl: info.rtl,
+			leadWidth: length,
+		};
+	};
+
+	// Lines set round a great circle like the lettering on a seal: the screen turns as the song goes round it.
+	const layoutArch = (lines, ctx, random, look) => {
+		const direction = (ctx.typography[lines[0].n] || DEFAULT_INFO).rtl ? -1 : 1;
+		const radius = ctx.W * between(random, 0.5, 0.62);
+		const blocks = lines.map((line) => (line.backing.length
+			// Other voices need rows of their own: such a line stays straight.
+			? layoutBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 0.8 * boostOf(line), maxLength: ctx.W * 0.56 }))
+			: archBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 0.92 * boostOf(line) }), radius)));
+		const places = [];
+		const frames = [];
+		let angle = 0;
+		let before = 0;
+		blocks.forEach((block, index) => {
+			const span = (block.leadWidth || block.width) / radius;
+			if (index) angle += direction * ((before + span) / 2 + (ctx.F * 0.9) / radius);
+			before = span;
+			const degrees = (angle * 180) / Math.PI;
+			const out = rotate2d(0, -1, degrees);
+			places.push({ x: out.x * radius, y: out.y * radius, z: 0, rot: degrees, block });
+			// From a little inside the circle, so the arc rises over the middle of the screen.
+			const view = radius - ctx.H * 0.1;
+			frames.push({ x: out.x * view, y: out.y * view, z: 0, roll: degrees });
+		});
+		const inner = radius - ctx.F * 1.15;
+		const ring = { kind: "ring", color: "line", x: 0, y: 0, z: -6, w: inner * 2, h: inner * 2, rot: 0, radius: inner, line: 0 };
+		return { places, frames, drift: { z: 70, roll: 1.4 * direction }, plates: [ring] };
+	};
+
+	/** A line's words set apart like stepping stones across the screen, one higher, the next lower. */
+	const spreadBlock = (line, ctx, options, random) => {
+		const info = ctx.typography[line.n] || DEFAULT_INFO;
+		const items = itemsOf(line, ctx, options);
+		const rows = items.length > 5 ? splitRows(items, 2, rowWidth(items)) : [items];
+		const side = info.rtl ? -1 : 1;
+		const words = [];
+		let span = 0;
+		rows.forEach((row, rowIndex) => {
+			const total = row.reduce((sum, item) => sum + item.width, 0);
+			const room = ctx.W * 0.82;
+			const scale = Math.min(1, (room * 0.84) / Math.max(1, total));
+			const gap = row.length > 1 ? Math.min((room - total * scale) / (row.length - 1), ctx.W * 0.2) : 0;
+			const width = total * scale + gap * (row.length - 1);
+			span = Math.max(span, width);
+			const middle = (rowIndex - (rows.length - 1) / 2) * ctx.H * 0.3;
+			let x = -width / 2;
+			row.forEach((item, position) => {
+				const itemWidth = item.width * scale;
+				const lift = row.length > 1 ? (position % 2 ? 1 : -1) * ctx.H * between(random, 0.035, 0.1) : 0;
+				words[item.index] = {
+					x: side * (x + itemWidth / 2),
+					y: middle + lift,
+					rot: row.length > 1 ? between(random, -4, 4) : 0,
+					size: item.size * scale, width: itemWidth, role: item.role, emph: item.emph, voice: 0, spec: item.spec, text: item.text, letters: item.letters,
+				};
+				x += itemWidth + gap;
+			});
+		});
+		const height = (rows.length - 1) * ctx.H * 0.3 + ctx.H * 0.2 + options.size * 1.3;
+		return { words, width: span, height, rows: rows.length, size: options.size, rtl: info.rtl, leadWidth: span };
+	};
+
+	// One line at a time, its words scattered across the width; each word lands on its beat.
+	const layoutSpread = (lines, ctx, random, look) => {
+		const places = lines.map((line) => ({
+			x: 0, y: 0, z: 0, rot: 0,
+			block: line.backing.length
+				? layoutBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 1.05 * boostOf(line), maxLength: ctx.W * 0.74 }))
+				: spreadBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 1.08 * boostOf(line), light: false }), random),
+		}));
+		const frames = places.map(() => ({ x: 0, y: 0, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 110, roll: 1 }, solo: true };
+	};
+
+	// Lines that can stand upright: Korean, Japanese and Chinese without Latin words or other voices.
+	const UPRIGHT_RE = /^[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{P}\p{N}\s\u30fc]+$/u;
+	const standsUpright = (line) => UPRIGHT_RE.test(line.text) && !line.backing.length;
+
+	/** A line set top to bottom, in more columns (right to left) when it is long. */
+	const pillarBlock = (line, ctx, options) => {
+		const items = itemsOf(line, ctx, options);
+		const lengthOf = (item) => graphemesOf(item.text).length * item.size * 1.02;
+		const gap = options.size * 0.3;
+		const most = ctx.H * 0.64;
+		const columns = [[]];
+		let used = 0;
+		for (const item of items) {
+			const length = lengthOf(item);
+			if (used && used + gap + length > most) {
+				columns.push([]);
+				used = 0;
+			}
+			columns[columns.length - 1].push(item);
+			used += (used ? gap : 0) + length;
+		}
+		const heights = columns.map((column) => column.reduce((sum, item, index) => sum + lengthOf(item) + (index ? gap : 0), 0));
+		const scale = Math.min(1, most / Math.max(...heights));
+		const pitch = options.size * 1.34 * scale;
+		const width = columns.length * pitch;
+		const height = Math.max(...heights) * scale;
+		const words = [];
+		columns.forEach((column, index) => {
+			let top = -height / 2;
+			column.forEach((item, position) => {
+				if (position) top += gap * scale;
+				const length = lengthOf(item) * scale;
+				words[item.index] = {
+					x: width / 2 - pitch * (index + 0.5),
+					y: top + length / 2,
+					vertical: true,
+					size: item.size * scale, width: item.size * scale, height: length, role: item.role, emph: item.emph, voice: 0, spec: item.spec, text: item.text, letters: item.letters,
+				};
+				top += length;
+			});
+		});
+		return { words, width, height, rows: columns.length, size: options.size * scale, rtl: false, leadWidth: width };
+	};
+
+	// Lines set upright like banners, read right to left (Korean, Japanese and Chinese).
+	const layoutPillar = (lines, ctx, random, look) => {
+		const blocks = lines.map((line) => pillarBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 0.98 * boostOf(line), light: false })));
+		const gap = ctx.F * 1.5;
+		const places = [];
+		let x = 0;
+		blocks.forEach((block, index) => {
+			if (index) x -= blocks[index - 1].width / 2 + gap + block.width / 2;
+			// Every line hangs from the same height, the next a little lower.
+			places.push({ x, y: block.height / 2 + index * ctx.F * 0.5, z: 0, rot: 0, block, upright: true });
+		});
+		centerPlaces(places);
+		const frames = places.map((place) => ({ x: place.x * 0.7, y: place.y * 0.5, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 90, roll: 0.6 } };
+	};
+
+	// Compositions that show one line at a time: lines sung over each other cannot share them.
+	const SOLO_LAYOUTS = new Set(["slot", "poster", "spread"]);
+	// Accents that still read on upright type.
+	const UPRIGHT_ACCENTS = new Set(["color", "outline", "glow", "gradient", "extrude", "sticker", "giant", "script", "spark"]);
+
 	const LAYOUT_FNS = Object.freeze({
 		column: layoutColumn,
 		zigzag: layoutZigzag,
@@ -1264,6 +1570,13 @@
 		carousel: layoutCarousel,
 		reel: layoutReel,
 		crawl: layoutCrawl,
+		slot: layoutSlot,
+		cards: layoutCards,
+		poster: layoutPoster,
+		wordwall: layoutWordwall,
+		arch: layoutArch,
+		spread: layoutSpread,
+		pillar: layoutPillar,
 	});
 	const BIG_MOTIFS = new Set(["ring", "halo", "sunburst", "spiral", "moon", "sun", "disc", "square", "flower", "star", "frame"]);
 	const CALM_MOTIFS = new Set(["ring", "dot", "disc", "halo", "moon", "sun"]);
@@ -1657,6 +1970,17 @@
 		});
 		plan.flashes = [];
 		plan.panels = [];
+		// Colour fields (posters): one per line, opening from a band and cutting from colour to colour.
+		plan.floods = [];
+		lines.forEach((line) => {
+			if (!line.place.flood) return;
+			const board = boards[line.board];
+			const next = lines[line.n + 1];
+			const start = line.local ? line.arrive - 40 : Math.max(board.appear + 60, line.arrive - 260);
+			let end = next && next.board === line.board ? next.arrive - 40 : Number.isFinite(line.leave) ? line.leave + 80 : line.end + 2600;
+			if (line.rest) end = Math.min(end, line.rest.start + 320);
+			if (end > start) plan.floods.push({ start, end, color: line.place.flood });
+		});
 		lines.forEach((line) => {
 			const type = line.move?.type;
 			if (type === "cut") plan.flashes.push({ time: line.move.cutAt, strength: 0.6 });
@@ -1716,8 +2040,13 @@
 			// Repeated sections are composed the same way every time they come back.
 			const random = createRandom(seed ^ hashString(shot.layout + "\u0001" + members.map((line) => line.text).join("\u0002")));
 			const type = shot.type || "impact";
-			const look = { emph: (line) => line.emph, light: random() < 0.4, type, serif: shot.serif === true, upper: shot.upper === true };
-			const layout = (LAYOUT_FNS[shot.layout] || layoutColumn)(members, ctx, random, look);
+			// One-at-a-time compositions cannot hold lines sung over each other, and only some scripts stand upright.
+			let name = LAYOUT_FNS[shot.layout] ? shot.layout : "column";
+			if (SOLO_LAYOUTS.has(name) && members.some((line, offset) => offset > 0 && line.start < members[offset - 1].end - 150)) name = "split";
+			if (name === "pillar" && !members.every(standsUpright)) name = "column";
+			const accent = name === "pillar" && !UPRIGHT_ACCENTS.has(shot.accent) ? "color" : shot.accent || "color";
+			const look = { emph: (line) => line.emph, light: random() < 0.4, type, serif: shot.serif === true, upper: shot.upper === true, accent };
+			const layout = LAYOUT_FNS[name](members, ctx, random, look);
 			members.forEach((line) => {
 				const fx = line.fx || shot.fx || "pop";
 				line.fx = line.info.joined ? JOINED_FX[fx] || fx : fx;
@@ -1725,21 +2054,25 @@
 			});
 			const board = {
 				index,
-				layout: shot.layout,
+				layout: name,
 				enter: index ? shot.enter : "push",
-				accent: shot.accent || "color",
+				accent,
 				type,
 				serif: shot.serif === true,
 				upper: shot.upper === true,
 				bars: shot.bars === true,
 				rule: shot.rule === true,
-				dutch: Number(shot.dutch) || 0,
+				// A composition that sets its own slant (a word wall) keeps it.
+				dutch: layout.tilt ?? (Number(shot.dutch) || 0),
 				first: shot.from,
 				last: shot.to,
 				places: layout.places,
 				frames: layout.frames,
 				drift: layout.drift,
 				strokes: layout.strokes || [],
+				plates: layout.plates || [],
+				fills: layout.fills || [],
+				solo: layout.solo === true,
 				color: index % 2,
 				rests: [],
 			};
@@ -2286,6 +2619,48 @@
 		return level;
 	};
 
+	/**
+	 * The colour field on screen at a time (posters): its colour and how far
+	 * it has opened (0 to 1). Fields that follow each other cut straight
+	 * from colour to colour; the first opens from a band and the last closes
+	 * into one.
+	 */
+	const floodAt = (plan, time) => {
+		const floods = plan?.floods || [];
+		for (let index = floods.length - 1; index >= 0; index -= 1) {
+			const flood = floods[index];
+			if (time < flood.start) continue;
+			if (time > flood.end) return null;
+			const previous = floods[index - 1];
+			const next = floods[index + 1];
+			const open = previous && flood.start - previous.end < 90 ? 1 : easeOutExpo(clamp01((time - flood.start) / 240));
+			const close = next && next.start - flood.end < 90 ? 1 : 1 - easeInOutCubic(clamp01((time - (flood.end - 220)) / 220));
+			return { color: flood.color, level: Math.min(open, close) };
+		}
+		return null;
+	};
+
+	/** A plate (a card, a slot's band, an arch's ring) arriving with its line: 0 before, 1 once it has landed. */
+	const plateLevel = (plan, board, plate, time) => {
+		const since = time - (plan.lines[board.first + plate.line].start - 240);
+		if (since <= 0) return 0;
+		const amount = clamp01(since / (280 * fxPaceOf(plan.pace)));
+		return plate.kind === "card" ? Math.max(0.001, easeOutBack(amount)) : Math.max(0.001, easeOutExpo(amount));
+	};
+
+	/**
+	 * Outline and solid opacity of a line on its board. One-at-a-time
+	 * compositions show only the current line; a line on a card shows once
+	 * the card has landed.
+	 */
+	const levelsOn = (board, line, distance, time) => {
+		if (board.solo) return { ghost: 0, solid: distance <= 0 ? 1 : 1 - clamp01(distance / 0.4) };
+		// A line still being sung (overlapping the next one: a duet, an echo) stays bright.
+		const singing = distance > 0 && time >= line.start && time < line.end + 150;
+		const levels = lineLevels(singing ? Math.min(distance, 0.2) : distance);
+		return line.place.cover && time < line.start - 220 ? { ghost: 0, solid: levels.solid } : levels;
+	};
+
 	const pure = Object.freeze({
 		PERSPECTIVE_PX,
 		hashString,
@@ -2315,6 +2690,10 @@
 		panelAt,
 		strokeLevel,
 		facingOf,
+		floodAt,
+		plateLevel,
+		levelsOn,
+		deepOf,
 	});
 
 	// ---------------------------------------------------------------------
@@ -2394,7 +2773,7 @@
 		if (spec.spacing) element.style.letterSpacing = spec.spacing + "em";
 	};
 	// Accents drawn with an extra element behind or around the emphasised word.
-	const BOX_ACCENTS = new Set(["box", "underline", "mark", "stamp"]);
+	const BOX_ACCENTS = new Set(["box", "underline", "mark", "stamp", "bubble", "bracket"]);
 	const SVG_NS = "http://www.w3.org/2000/svg";
 	// A hand-drawn loop around a word, in a unit box: it overshoots its start like a pen stroke.
 	const LOOP_PATH = [
@@ -2419,7 +2798,30 @@
 		return svg;
 	};
 
-	const createEngine = ({ stage, viewport, camera, scrim, wash, flash, panel, bars, subtitle, live, hudShot, hudTime }) => {
+	/** The squiggle of the "scribble" accent: a pen line wobbling under a word. */
+	const createScribble = (document, width, height, stroke) => {
+		const waves = Math.max(3, Math.round(width / (height * 1.5)));
+		const step = width / waves;
+		let d = "M0 " + round(height * 0.5);
+		for (let index = 0; index < waves; index += 1) {
+			d += " Q" + round(step * (index + 0.5)) + " " + round(index % 2 ? height * 1.05 : -height * 0.05) + " " + round(step * (index + 1)) + " " + round(height * 0.5);
+		}
+		const svg = document.createElementNS(SVG_NS, "svg");
+		svg.setAttribute("class", "ivlyrics-motion-loop is-scribble");
+		svg.setAttribute("viewBox", "0 0 " + round(width) + " " + round(height));
+		svg.setAttribute("aria-hidden", "true");
+		svg.setAttribute("focusable", "false");
+		svg.style.width = round(width) + "px";
+		svg.style.height = round(height) + "px";
+		const path = document.createElementNS(SVG_NS, "path");
+		path.setAttribute("d", d);
+		path.setAttribute("pathLength", "1");
+		path.setAttribute("stroke-width", String(round(stroke, 2)));
+		svg.appendChild(path);
+		return svg;
+	};
+
+	const createEngine = ({ stage, viewport, camera, scrim, wash, flood, flash, panel, bars, subtitle, live, hudShot, hudTime }) => {
 		const document = root.document;
 		const shapes = root.ivLyricsMotionShapes;
 		let plan = null;
@@ -2440,7 +2842,7 @@
 		let lastFrameAt = 0;
 		let swapFlashAt = -Infinity;
 		const mounted = new Map();
-		const cache = { camera: {}, viewport: {}, flash: {}, wash: {}, background: {}, hud: {}, panel: {}, bars: {}, rest: {} };
+		const cache = { camera: {}, viewport: {}, flash: {}, wash: {}, background: {}, hud: {}, panel: {}, bars: {}, rest: {}, flood: {} };
 		const write = (store, key, value, apply) => {
 			if (store[key] === value) return;
 			store[key] = value;
@@ -2496,9 +2898,12 @@
 			wordEl.className = "ivlyrics-motion-word"
 				+ (kind === "light" ? " is-light" : kind === "serif" ? " is-serif" : "")
 				+ (spot.emph ? " is-emph" : "")
-				+ (voice ? " is-voice is-" + voice.role : "");
+				+ (voice ? " is-voice is-" + voice.role : "")
+				+ (spot.vertical ? " is-upright" : "");
 			wordEl.style.fontSize = round(spot.size) + "px";
-			wordEl.style.transform = "translate3d(" + round(spot.x) + "px," + round(spot.y) + "px,0) translate(-50%,-56%)";
+			wordEl.style.transform = "translate3d(" + round(spot.x) + "px," + round(spot.y) + "px,0)"
+				+ (spot.rot ? " rotate(" + round(spot.rot, 2) + "deg)" : "")
+				+ (spot.vertical ? " translate(-50%,-50%)" : " translate(-50%,-56%)");
 			applyFont(wordEl, spot.spec || FALLBACK_SPEC);
 			if (line.info.rtl) wordEl.dir = "rtl";
 			const ghost = document.createElement("span");
@@ -2516,6 +2921,23 @@
 				box = createLoop(document, spot.width + spot.size * 0.56, spot.size * 1.3, Math.max(2, spot.size * 0.055));
 				box.style.left = round(-spot.size * 0.28) + "px";
 				box.style.top = round(-spot.size * 0.13) + "px";
+				wordEl.appendChild(box);
+			} else if (spot.emph && board.accent === "scribble") {
+				box = createScribble(document, spot.width + spot.size * 0.2, spot.size * 0.26, Math.max(2, spot.size * 0.055));
+				box.style.left = round(-spot.size * 0.1) + "px";
+				box.style.top = round(spot.size * 0.94) + "px";
+				wordEl.appendChild(box);
+			} else if (spot.emph && board.accent === "trail") {
+				// Outlined copies that step out from behind the word as it is sung.
+				box = document.createElement("span");
+				box.className = "ivlyrics-motion-trails";
+				for (let copy = 3; copy >= 1; copy -= 1) {
+					const trail = document.createElement("span");
+					trail.className = "ivlyrics-motion-trail";
+					trail.style.setProperty("--k", String(copy));
+					trail.textContent = spot.text || word.text;
+					box.appendChild(trail);
+				}
 				wordEl.appendChild(box);
 			}
 			const solid = document.createElement("span");
@@ -2578,10 +3000,28 @@
 				el.appendChild(strokeEl);
 				return { el: strokeEl, stroke, cache: {} };
 			});
+			const plates = board.plates.map((plate) => {
+				const plateEl = document.createElement("div");
+				plateEl.className = "ivlyrics-motion-plate is-" + plate.kind + " is-" + plate.color;
+				plateEl.style.width = round(plate.w) + "px";
+				plateEl.style.height = round(plate.h) + "px";
+				if (plate.radius) plateEl.style.borderRadius = round(plate.radius) + "px";
+				el.appendChild(plateEl);
+				return { el: plateEl, plate, cache: {} };
+			});
+			for (const fill of board.fills) {
+				const fillEl = document.createElement("div");
+				fillEl.className = "ivlyrics-motion-fill";
+				fillEl.textContent = fill.text;
+				fillEl.style.fontSize = round(fill.size) + "px";
+				fillEl.style.transform = "translate3d(" + round(fill.x) + "px," + round(fill.y) + "px," + round(fill.z) + "px) rotateZ(" + round(fill.rot, 2) + "deg) translate(-50%,-56%)";
+				applyFont(fillEl, fill.spec || FALLBACK_SPEC);
+				el.appendChild(fillEl);
+			}
 			const lines = board.places.map((place, local) => {
 				const line = plan.lines[board.first + local];
 				const lineEl = document.createElement("div");
-				lineEl.className = "ivlyrics-motion-line";
+				lineEl.className = "ivlyrics-motion-line" + (place.ground === "color" ? " on-color" : "");
 				if (line.info.lang) lineEl.lang = line.info.lang;
 				lineEl.style.transform = "translate3d(" + round(place.x) + "px," + round(place.y) + "px," + round(place.z) + "px) rotateZ(" + round(place.rot, 2) + "deg)"
 					+ (place.tiltY ? " rotateY(" + round(place.tiltY, 2) + "deg)" : "")
@@ -2601,7 +3041,7 @@
 				return { el: lineEl, line, words, rule, cache: {}, settled: null };
 			});
 			camera.appendChild(el);
-			return { el, board, lines, motifs, strokes, echo };
+			return { el, board, lines, motifs, strokes, plates, echo, cache: {} };
 		};
 
 		const writeSolid = (word, frameState) => {
@@ -2689,9 +3129,7 @@
 				const line = lineEntry.line;
 				const distance = progress - line.n;
 				const closeness = closenessOf(viewDepth(pose, line.center), near);
-				// A line still being sung (overlapping the next one: a duet, an echo) stays bright.
-				const singing = distance > 0 && time >= line.start && time < line.end + 150;
-				const levels = lineLevels(singing ? Math.min(distance, 0.2) : distance);
+				const levels = levelsOn(board, line, distance, time);
 				const ghost = round(levels.ghost * visibility * closeness, 3);
 				const solid = round(levels.solid * visibility * closeness, 3);
 				write(lineEntry.cache, "ghost", ghost, (value) => lineEntry.el.style.setProperty("--lg", String(value)));
@@ -2730,6 +3168,16 @@
 				write(item.cache, "opacity", round(level > 0 ? 0.62 * visibility : 0, 3), (value) => { item.el.style.opacity = String(value); });
 				write(item.cache, "transform",
 					"translate3d(" + round(stroke.x) + "px," + round(stroke.y) + "px," + round(stroke.z) + "px) rotateZ(" + stroke.rot + "deg) scaleX(" + level + ")",
+					(value) => { item.el.style.transform = value; });
+			}
+			write(entry.cache, "fills", round(0.2 * visibility, 3), (value) => entry.el.style.setProperty("--fl", String(value)));
+			for (const item of entry.plates) {
+				const plate = item.plate;
+				const level = round(plateLevel(plan, board, plate, time), 3);
+				write(item.cache, "opacity", round(level > 0 ? visibility : 0, 3), (value) => { item.el.style.opacity = String(value); });
+				write(item.cache, "transform",
+					"translate3d(" + round(plate.x) + "px," + round(plate.y) + "px," + round(plate.z) + "px) translate(-50%,-50%) rotateZ(" + round(plate.rot, 2) + "deg) "
+						+ (plate.kind === "band" ? "scaleY(" + level + ")" : "scale(" + round(0.7 + 0.3 * level, 3) + ")"),
 					(value) => { item.el.style.transform = value; });
 			}
 			if (entry.echo) {
@@ -2858,6 +3306,14 @@
 				bars.style.visibility = value > 0.001 ? "visible" : "hidden";
 				for (const bar of bars.children) bar.style.transform = "scaleY(" + value + ")";
 			});
+			if (flood) {
+				const field = floodAt(plan, time);
+				write(cache.flood, "color", field ? field.color : "", (value) => { flood.className = "ivlyrics-motion-flood" + (value ? " is-" + value : ""); });
+				write(cache.flood, "level", field ? round(field.level, 3) : 0, (value) => {
+					flood.style.visibility = value > 0.001 ? "visible" : "hidden";
+					flood.style.transform = "scaleY(" + value + ")";
+				});
+			}
 
 			let flashLevel = 0;
 			const cut = recentEvent(plan.flashes, time, 320);
@@ -2949,6 +3405,7 @@
 			const cameraRef = useRef(null);
 			const scrimRef = useRef(null);
 			const washRef = useRef(null);
+			const floodRef = useRef(null);
 			const flashRef = useRef(null);
 			const panelRef = useRef(null);
 			const barsRef = useRef(null);
@@ -3002,6 +3459,7 @@
 					camera: cameraRef.current,
 					scrim: scrimRef.current,
 					wash: washRef.current,
+					flood: floodRef.current,
 					flash: flashRef.current,
 					panel: panelRef.current,
 					bars: barsRef.current,
@@ -3140,12 +3598,15 @@
 				style: {
 					"--iv-motion-accent": palette[0],
 					"--iv-motion-accent-2": palette[1],
+					"--iv-motion-deep": deepOf(palette[0]),
+					"--iv-motion-deep-2": deepOf(palette[1]),
 					"--iv-motion-perspective": PERSPECTIVE_PX + "px",
 					"--iv-motion-ui": UI_FONT,
 				},
 			},
 				e("div", { ref: scrimRef, className: "ivlyrics-motion-scrim", "aria-hidden": "true" }),
 				e("div", { ref: washRef, className: "ivlyrics-motion-wash", "aria-hidden": "true" }),
+				e("div", { ref: floodRef, className: "ivlyrics-motion-flood", "aria-hidden": "true" }),
 				e("div", { ref: viewportRef, className: "ivlyrics-motion-viewport", "aria-hidden": "true" },
 					e("div", { ref: cameraRef, className: "ivlyrics-motion-camera" })),
 				e("div", { ref: panelRef, className: "ivlyrics-motion-panel", "aria-hidden": "true" }),

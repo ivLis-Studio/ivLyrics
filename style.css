@@ -11426,6 +11426,24 @@ html.is-lp-view-switch::view-transition-new(root) {
   background: var(--iv-motion-accent-2, #5cd6ff);
 }
 
+/* A flat colour field over the video (posters): it opens from a band and cuts from colour to colour. */
+.ivlyrics-motion-flood {
+  position: absolute;
+  inset: 0;
+  background: var(--iv-motion-deep, #d01a5b);
+  opacity: 0.97;
+  visibility: hidden;
+  transform: scaleY(0);
+}
+
+.ivlyrics-motion-flood.is-deep2 {
+  background: var(--iv-motion-deep-2, #1a6fd0);
+}
+
+.ivlyrics-motion-flood.is-ink {
+  background: #0b0b10;
+}
+
 .ivlyrics-motion-viewport {
   position: absolute;
   inset: 0;
@@ -11492,6 +11510,19 @@ html.is-lp-view-switch::view-transition-new(root) {
   left: auto;
 }
 
+/* Upright type (pillars): letters stand one under another. */
+.ivlyrics-motion-word.is-upright {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+}
+
+/* On a colour ground (a card, a colour field) type stays white and accents turn to ink. */
+.ivlyrics-motion-line.on-color {
+  --iv-motion-accent: #0d0d12;
+  --iv-motion-accent-2: #f6f2ea;
+  --iv-motion-on-accent: #fff;
+}
+
 .ivlyrics-motion-char {
   display: inline-block;
   opacity: 0;
@@ -11516,8 +11547,25 @@ html.is-lp-view-switch::view-transition-new(root) {
 .accent-color .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
 .accent-underline .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
 .accent-spark .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
-.accent-stamp .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+.accent-stamp .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
+.accent-giant .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
+.accent-bubble .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
   color: var(--iv-motion-accent, #ff5ca0);
+}
+
+/* A word in handwriting against the heavy type, in the accent colour, a little askew. */
+.accent-script .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+  color: var(--iv-motion-accent, #ff5ca0);
+  rotate: -4deg;
+}
+
+.accent-script .ivlyrics-motion-word.is-emph .ivlyrics-motion-ghost {
+  rotate: -4deg;
+}
+
+/* On a colour ground a speech bubble is ink, so its word turns white. */
+.accent-bubble .ivlyrics-motion-line.on-color .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+  color: #fff;
 }
 
 .accent-outline .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
@@ -11619,12 +11667,106 @@ html.is-lp-view-switch::view-transition-new(root) {
   fill: none;
   stroke: var(--iv-motion-accent, #ff5ca0);
   stroke-linecap: round;
+  stroke-linejoin: round;
   stroke-dasharray: 1;
   stroke-dashoffset: calc(1 - var(--b, 0));
 }
 
+/* A speech bubble: an ink label with a tail, popping up behind the word. */
+.ivlyrics-motion-box.is-bubble,
+.ivlyrics-motion-word[dir="rtl"] .ivlyrics-motion-box.is-bubble {
+  inset: -0.06em -0.26em -0.04em;
+  border-radius: 0.3em;
+  background: #0d0d12;
+  transform: scale(var(--b, 0));
+  transform-origin: 18% 100%;
+}
+
+.ivlyrics-motion-box.is-bubble::after {
+  content: "";
+  position: absolute;
+  top: calc(100% - 0.02em);
+  left: 0.34em;
+  border: 0.14em solid transparent;
+  border-top: 0.2em solid #0d0d12;
+  border-left-color: #0d0d12;
+}
+
+/* Brackets: a rule either side of the word closing in on it. */
+.ivlyrics-motion-box.is-bracket,
+.ivlyrics-motion-word[dir="rtl"] .ivlyrics-motion-box.is-bracket {
+  inset: -0.04em -0.24em -0.02em;
+  border: solid var(--iv-motion-accent, #ff5ca0);
+  border-width: 0 max(2px, 0.06em);
+  background: none;
+  opacity: calc(var(--ls, 1) * var(--b, 0));
+  transform: scaleX(calc(1.6 - 0.6 * var(--b, 0)));
+  transform-origin: 50% 50%;
+}
+
+/* Outlined copies stepping out from behind the word. */
+.ivlyrics-motion-trail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  color: transparent;
+  -webkit-text-stroke: max(1px, 0.028em) var(--iv-motion-accent, #ff5ca0);
+  opacity: calc(var(--ls, 1) * var(--b, 0) * (1.1 - var(--k, 1) * 0.26));
+  transform: translate(calc(var(--b, 0) * var(--k, 1) * 0.085em), calc(var(--b, 0) * var(--k, 1) * 0.11em));
+}
+
+/* Cards, a slot's band and an arch's ring: flat shapes the type sits on or round. */
+.ivlyrics-motion-plate {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  backface-visibility: hidden;
+}
+
+.ivlyrics-motion-plate.is-deep {
+  background: var(--iv-motion-deep, #d01a5b);
+}
+
+.ivlyrics-motion-plate.is-deep2 {
+  background: var(--iv-motion-deep-2, #1a6fd0);
+}
+
+.ivlyrics-motion-plate.is-ink {
+  background: rgba(11, 11, 16, 0.92);
+}
+
+.ivlyrics-motion-plate.is-card {
+  box-shadow: 0 0.6em 1.8em rgba(0, 0, 0, 0.34);
+}
+
+.ivlyrics-motion-plate.is-band {
+  background: rgba(9, 9, 14, 0.88);
+}
+
+.ivlyrics-motion-plate.is-ring {
+  border: max(1.5px, 0.14vh) solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  background: none;
+}
+
+/* Outlined copies of a line tiling a word wall. */
+.ivlyrics-motion-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-synthesis: none;
+  line-height: 1;
+  white-space: pre;
+  color: transparent;
+  -webkit-text-stroke: max(1px, 0.02em) rgba(255, 255, 255, 0.9);
+  opacity: var(--fl, 0);
+  transform-origin: 0 0;
+  backface-visibility: hidden;
+}
+
 .accent-box .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
-  color: #0d0d12;
+  color: var(--iv-motion-on-accent, #0d0d12);
   text-shadow: none;
 }
 

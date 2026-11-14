@@ -699,10 +699,10 @@ const seenFrom = (motion, pose, point) => {
 	return { x: p.x * scale, y: p.y * scale, depth: p.z };
 };
 
-test("each of the sixteen compositions sets its lines where the camera reads them", () => {
+test("every composition sets its lines where the camera reads them", () => {
 	const { motion, director, type } = load();
-	assert.equal(director.LAYOUTS.length, 16);
-	assert.equal(new Set(director.LAYOUTS).size, 16);
+	assert.equal(director.LAYOUTS.length, 23);
+	assert.equal(new Set(director.LAYOUTS).size, 23);
 	assert.deepEqual(Object.keys(director.MAX_LINES).sort(), [...director.LAYOUTS].sort());
 	const model = motion.buildModel(song());
 	for (const layout of director.LAYOUTS) {
@@ -760,11 +760,11 @@ test("each of the sixteen compositions sets its lines where the camera reads the
 				assert.ok(Math.abs(turns[1] - turns[0]) >= 50 && Math.abs(Math.abs(turns[1] - turns[0]) - 90) > 1, "spokes, not a square: " + turns);
 			}
 			for (const board of plan.boards) {
-				assert.equal(board.strokes.length, (layout === "strip" || layout === "split") ? 1 : 0, layout + " strokes");
+				assert.equal(board.strokes.length, { strip: 1, split: 1, slot: 2 }[board.layout] || 0, board.layout + " strokes");
 				for (const stroke of board.strokes) {
 					assert.equal(stroke.stops.length, board.places.length);
 					assert.ok(stroke.stops.every((stop, index) => stop > 0 && stop <= 1 && (!index || stop >= stroke.stops[index - 1] - 1e-9)), layout + " stops: " + stroke.stops);
-					assert.equal(stroke.rot, layout === "split" ? 90 : 0);
+					assert.equal(stroke.rot, board.layout === "strip" ? 0 : 90);
 					const first = plan.lines[board.first];
 					const last = plan.lines[board.last];
 					assert.equal(motion.strokeLevel(plan, board, stroke, first.start - 400), 0, "nothing drawn before the first line");
@@ -828,8 +828,13 @@ test("the local director moves through many compositions and accents", () => {
 			assert.ok(emphasised, "seed " + seed + " shot " + index + " shows its accent on a word");
 		});
 	}
-	assert.deepEqual([...layouts].sort(), [...director.LAYOUTS].sort(), "every composition is reached");
-	assert.equal(director.ACCENTS.length, 12);
+	// Upright type needs Korean, Japanese or Chinese lines; every other composition is reached here.
+	assert.deepEqual([...layouts].sort(), [...director.LAYOUTS].filter((name) => name !== "pillar").sort(), "every composition is reached");
+	const japanese = motion.buildModel([[..."夢ならばどれほど"], [..."未だにあなたを"], [..."忘れた物を取りに"], [..."古びた思い出の"], [..."戻らない幸せが"], [..."最後にあなたが"]].map((parts, index) => line(parts, 1000 + index * 4200, { step: 300 })));
+	let pillars = 0;
+	for (let seed = 1; seed <= 30; seed += 1) pillars += director.localDirection(japanese, { seed, tempo: { tempo: "slow", pace: 1.4 } }).shots.filter((shot) => shot.layout === "pillar").length;
+	assert.ok(pillars > 0, "Japanese lines can stand upright");
+	assert.equal(director.ACCENTS.length, 18);
 	assert.deepEqual([...accents].sort(), [...director.ACCENTS].sort(), "every accent is reached");
 	// Voices facing each other and the build before a chorus steer the choice.
 	const tally = (make, name) => {
@@ -851,13 +856,19 @@ test("every accent has its look, and the AI is told about every composition and 
 	const looks = {
 		color: ".accent-color ", box: ".accent-box ", outline: ".accent-outline ", underline: ".ivlyrics-motion-box.is-underline", mark: ".ivlyrics-motion-box.is-mark",
 		spark: ".ivlyrics-motion-spark", glow: ".accent-glow ", gradient: ".accent-gradient ", stamp: ".ivlyrics-motion-box.is-stamp", circle: ".ivlyrics-motion-loop path",
-		extrude: ".accent-extrude ", sticker: ".accent-sticker ",
+		extrude: ".accent-extrude ", sticker: ".accent-sticker ", script: ".accent-script ", giant: ".accent-giant ", trail: ".ivlyrics-motion-trail",
+		scribble: ".ivlyrics-motion-loop path", bubble: ".ivlyrics-motion-box.is-bubble", bracket: ".ivlyrics-motion-box.is-bracket",
 	};
 	assert.deepEqual(Object.keys(looks).sort(), [...director.ACCENTS].sort());
 	for (const [name, selector] of Object.entries(looks)) assert.ok(css.includes(selector), name + " is styled by " + selector);
 	assert.ok(css.includes(".ivlyrics-motion-stroke"));
 	const source = read("MotionLyrics.js");
-	assert.match(source, /BOX_ACCENTS = new Set\(\["box", "underline", "mark", "stamp"\]\)/);
+	assert.match(source, /BOX_ACCENTS = new Set\(\["box", "underline", "mark", "stamp", "bubble", "bracket"\]\)/);
+	assert.match(source, /board\.accent === "scribble"/);
+	assert.match(source, /board\.accent === "trail"/);
+	for (const selector of [".ivlyrics-motion-flood", ".ivlyrics-motion-plate.is-card", ".ivlyrics-motion-plate.is-band", ".ivlyrics-motion-plate.is-ring", ".ivlyrics-motion-fill", ".ivlyrics-motion-word.is-upright", ".ivlyrics-motion-line.on-color"]) {
+		assert.ok(css.includes(selector), selector + " is styled");
+	}
 	assert.match(source, /board\.accent === "circle"/);
 	assert.match(source, /board\.accent === "glow"/);
 	assert.match(source, /rotateY\(" \+ round\(place\.tiltY, 2\)/);
@@ -875,8 +886,107 @@ test("every accent has its look, and the AI is told about every composition and 
 		assert.ok(prompt.includes("(" + director.ACCENTS.join("|") + ")"));
 		for (const [name, most] of Object.entries(director.MAX_LINES)) if (most < 6) assert.ok(prompt.includes(name + " at most " + most), name + " limit");
 	}
-	assert.equal(director.VERSION, 3, "older cached directions are asked for again");
+	assert.equal(director.VERSION, 4, "older cached directions are asked for again");
 	assert.equal(typeof motion.strokeLevel, "function");
+});
+
+test("compositions after typography edits: one line at a time, colour grounds, type as an object", () => {
+	const { motion, director, type } = load();
+	const model = motion.buildModel(song());
+	const stage = (layout, extra = {}) => {
+		const direction = director.normalizeDirection({ shots: [{ from: 0, to: 9, layout, enter: "pan", ...extra }], lines: [{ n: 0, emph: [1] }] }, model, { seed: 3 });
+		return compose(motion, type, model, direction, 3);
+	};
+	for (const layout of ["slot", "poster", "spread"]) {
+		const plan = stage(layout);
+		const board = plan.boards[0];
+		assert.equal(board.solo, true, layout + " shows one line at a time");
+		assert.ok(board.places.every((place) => place.x === 0 && place.y === 0), layout + " keeps its lines in one place");
+		const [first, second] = plan.lines;
+		assert.deepEqual(plain(motion.levelsOn(board, second, -1, first.start)), { ghost: 0, solid: 1 }, "nothing waits on screen");
+		assert.equal(motion.levelsOn(board, first, 0, first.start).solid, 1);
+		assert.equal(motion.levelsOn(board, first, 1, second.start).solid, 0, "the last line is gone when the next starts");
+	}
+	// Lines sung over each other cannot take turns in one place.
+	const duet = motion.buildModel([line(["one", "two", "three"], 0), line(["four", "five"], 900), line(["six", "seven"], 3000)]);
+	const together = compose(motion, type, duet, director.normalizeDirection({ shots: [{ from: 0, to: 2, layout: "slot" }] }, duet, { seed: 1 }), 1);
+	assert.equal(together.boards[0].layout, "split");
+	assert.equal(together.boards[0].solo, false);
+
+	const slot = stage("slot").boards[0];
+	assert.deepEqual(plain(slot.plates.map((plate) => plate.kind)), ["band"]);
+	const poster = stage("poster");
+	assert.equal(poster.floods.length, poster.lines.length, "a colour field for every line");
+	assert.ok(poster.floods.every((flood, index) => !index || flood.start >= poster.floods[index - 1].end - 1), "one at a time");
+	const sung = poster.lines[1];
+	const field = motion.floodAt(poster, sung.start + 200);
+	assert.equal(field.level, 1);
+	assert.equal(field.color, sung.place.flood);
+	assert.notEqual(poster.lines[0].place.flood, sung.place.flood, "the colour changes with the line");
+	assert.equal(motion.floodAt(poster, poster.lines[0].arrive - 5000), null);
+	assert.ok(motion.floodAt(poster, poster.floods[0].start + 30).level < 1, "the first field opens from a band");
+	assert.equal(sung.place.ground, sung.place.flood === "ink" ? "dark" : "color");
+	assert.equal(motion.floodAt(stage("column"), 3000), null);
+
+	const cards = stage("cards");
+	const deck = cards.boards[0];
+	assert.equal(deck.plates.length, deck.places.length);
+	assert.ok(deck.plates.every((plate, index) => plate.kind === "card" && plate.line === index && plate.w > deck.places[index].block.width && Math.abs(plate.x - deck.places[index].x) < 0.01));
+	assert.ok(deck.places.every((place, index) => place.cover && (!index || place.z > deck.places[index - 1].z)), "each card lands on the last");
+	const dealt = cards.lines[1];
+	assert.equal(motion.plateLevel(cards, deck, deck.plates[1], dealt.start - 400), 0);
+	assert.ok(Math.abs(motion.plateLevel(cards, deck, deck.plates[1], dealt.start + 600) - 1) < 0.01);
+	assert.equal(motion.levelsOn(deck, dealt, -1, dealt.start - 400).ghost, 0, "a line waits unseen until its card lands");
+	assert.ok(motion.levelsOn(deck, dealt, -0.2, dealt.start - 100).ghost > 0);
+
+	const wall = stage("wordwall").boards[0];
+	assert.ok(wall.fills.length >= 8 && wall.fills.every((fill) => fill.text && fill.size > 0 && [fill.x, fill.y].every(Number.isFinite)), "outlined copies tile the wall");
+	assert.ok(Math.abs(wall.dutch) >= 7 && Math.abs(wall.dutch) <= 12, "set askew: " + wall.dutch);
+	assert.ok(wall.fills.some((fill) => fill.text === model[0].text));
+
+	const arch = stage("arch").boards[0];
+	const bent = arch.places[0].block.words;
+	assert.ok(bent[0].rot < 0 && bent[bent.length - 1].rot > 0 && bent[0].y > 0, "words stand on the curve: " + bent.map((word) => Math.round(word.rot)));
+	assert.ok(arch.places[1].rot > arch.places[0].rot, "the next line goes on round the circle");
+	assert.deepEqual(plain(arch.plates.map((plate) => plate.kind)), ["ring"]);
+
+	const spread = stage("spread").boards[0].places[0].block;
+	assert.ok(spread.width > 1440 * 0.5, "words reach across the screen: " + spread.width);
+	assert.ok(new Set(spread.words.map((word) => Math.sign(word.y))).size === 2, "one higher, the next lower");
+
+	const pillars = stage("pillar");
+	const upright = pillars.boards.filter((board) => board.layout === "pillar");
+	assert.ok(upright.length > 0 && upright.length < pillars.boards.length, "only Korean, Japanese and Chinese lines stand upright");
+	for (const board of upright) {
+		for (const place of board.places) assert.ok(place.block.words.every((word) => word.vertical && word.height >= word.width), "letters stand one under another");
+	}
+	assert.ok(pillars.boards.filter((board) => board.layout !== "pillar").every((board) => board.places.every((place) => place.block.words.every((word) => !word.vertical))));
+	assert.equal(stage("pillar", { accent: "underline" }).boards.find((board) => board.layout === "pillar").accent, "color", "accents that need a baseline give way");
+});
+
+test("accents after typography edits: handwriting, a giant word and drawn marks", () => {
+	const { motion, director, type } = load();
+	assert.ok(type.fontSpec("ko", "hand").family.startsWith('"Nanum Brush Script"'));
+	assert.ok(type.fontSpec("latin", "hand").family.startsWith('"Kaushan Script"'));
+	assert.equal(type.fontSpec("ja", "hand").kind, "hand");
+	assert.equal(type.fontSpec("greek", "hand").kind, "impact", "a script without a handwriting face keeps its heavy one");
+	assert.equal(type.fontSpec("ko", "hand", "light").kind, "light");
+	const model = motion.buildModel(song());
+	const staged = (accent) => {
+		const direction = director.normalizeDirection({ shots: [{ from: 0, to: 1, layout: "column", accent, upper: true }], lines: [{ n: 0, emph: [1] }] }, model, { seed: 2 });
+		return { direction, words: compose(motion, type, model, direction, 2).lines[0].place.block.words };
+	};
+	const plainWords = staged("color").words;
+	const script = staged("script");
+	assert.equal(script.words[1].spec.kind, "hand", "the emphasised word is handwritten");
+	assert.equal(script.words[1].text, "road", "and keeps its case");
+	assert.equal(script.words[0].spec.kind, "impact");
+	assert.ok([...motion.fontNeeds(model, script.direction, type.typographyOf(model, "")).keys()].some((key) => key.includes("|hand|")), "its face loads");
+	const giant = staged("giant").words;
+	assert.ok(giant[1].size / giant[0].size > (plainWords[1].size / plainWords[0].size) * 1.5, "a giant word towers over its line");
+	assert.deepEqual(plain(motion.deepOf("#ff9ec4")).length, 7);
+	const [, , light] = [0, 0, parseInt(motion.deepOf("#ff9ec4").slice(1, 3), 16) + parseInt(motion.deepOf("#ff9ec4").slice(3, 5), 16) + parseInt(motion.deepOf("#ff9ec4").slice(5, 7), 16)];
+	assert.ok(light < 440, "a ground is deep enough for white type");
 });
 
 

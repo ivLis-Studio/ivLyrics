@@ -41,6 +41,20 @@
 
 	const face = (family, weight = 400, extra = {}) => ({ family, weight, style: "normal", spacing: 0, lineHeight: 1.04, scale: 1, ...extra });
 	const pretendard = face("Pretendard Variable", 640, { external: true, spacing: -0.012, lineHeight: 1.14 });
+	// Handwriting and brush faces for the "script" accent: one emphasised word against the heavy type.
+	const HAND = Object.freeze({
+		latin: face("Kaushan Script", 400, { lineHeight: 1.1, scale: 1.08 }),
+		cyrillic: face("Caveat", 700, { lineHeight: 1.08, scale: 1.22 }),
+		ko: face("Nanum Brush Script", 400, { lineHeight: 1.08, scale: 1.42 }),
+		ja: face("Yusei Magic", 400, { lineHeight: 1.12, scale: 1.02 }),
+		"zh-hans": face("Ma Shan Zheng", 400, { lineHeight: 1.1, scale: 1.12 }),
+		"zh-hant": face("LXGW WenKai TC", 700, { lineHeight: 1.12 }),
+		arabic: face("Aref Ruqaa", 700, { lineHeight: 1.5 }),
+		hebrew: face("Amatic SC", 700, { lineHeight: 1.1, scale: 1.25 }),
+		thai: face("Itim", 400, { lineHeight: 1.4 }),
+		devanagari: face("Kalam", 700, { lineHeight: 1.4 }),
+		bengali: face("Galada", 400, { lineHeight: 1.4 }),
+	});
 
 	/** Faces per script: impact (heavy display), serif (emphasised words), round and light (semi-bold companion). */
 	const FACES = Object.freeze({
@@ -127,8 +141,10 @@
 	 */
 	const fontSpec = (script, personality = "impact", role = "display") => {
 		const faces = FACES[script] || FACES.latin;
-		const kind = role === "light" ? "light" : PERSONALITIES.includes(personality) ? personality : "impact";
-		const base = faces[kind];
+		// A script without a handwriting face keeps its heavy one.
+		const hand = role !== "light" && personality === "hand" ? HAND[FACES[script] ? script : "latin"] : null;
+		const kind = hand ? "hand" : role === "light" ? "light" : PERSONALITIES.includes(personality) ? personality : "impact";
+		const base = hand || faces[kind];
 		const stack = [quote(base.family), quote(faces.light.family), BASE_FALLBACK].join(", ");
 		const key = [script, kind, base.family, base.weight, base.style].join("|");
 		return {

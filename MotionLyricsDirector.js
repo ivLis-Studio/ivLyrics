@@ -1,9 +1,9 @@
 // Motion lyrics director: decides how a song is staged.
 //
 // A direction groups consecutive lyric lines into shots and picks, per shot,
-// a composition (layout, one of sixteen), how the camera reaches it (enter),
-// how sung words appear (fx), how emphasised words stand out (accent, one of
-// twelve), the type personality
+// a composition (layout, one of twenty-three), how the camera reaches it
+// (enter), how sung words appear (fx), how emphasised words stand out
+// (accent, one of eighteen), the type personality
 // (impact nearly always; a serif shot now and then, never two in a row and
 // at most about one in seven; round for playful shots), whether its
 // emphasised words switch to a serif, a camera tilt, letterbox bars, line
@@ -19,19 +19,24 @@
 
 	if (root.ivLyricsMotionDirector?.initialized) return;
 
-	const VERSION = 3;
+	const VERSION = 4;
 	const MOODS = Object.freeze(["calm", "dreamy", "melancholic", "warm", "playful", "energetic", "intense", "dark"]);
 	const TEMPOS = Object.freeze(["slow", "mid", "fast", "rap"]);
 	// Flat compositions, then three that sit in depth: carousel and reel wrap the lines round a drum, crawl lays them on a tilted plane.
 	const LAYOUTS = Object.freeze([
 		"column", "zigzag", "spiral", "wall", "tunnel", "collage", "hero", "tower",
 		"stairs", "strip", "split", "swell", "radial", "carousel", "reel", "crawl",
+		// After kinetic-typography edits: one thought at a time, flat colour, type as an object.
+		"slot", "cards", "poster", "wordwall", "arch", "spread", "pillar",
 	]);
 	const ENTERS = Object.freeze(["pan", "drop", "rise", "roll", "flip", "push", "pull", "cut", "whip", "spin", "orbit", "tumble", "fade", "through", "panel"]);
 	const FX = Object.freeze(["pop", "slide", "rise", "slam", "stretch", "flip", "type", "assemble", "drop", "wave", "blur", "wipe", "glitch", "spin", "zoom", "track", "bounce", "flicker"]);
 	// Effects that move single letters; joined scripts get a word-level equivalent.
 	const LETTER_FX = Object.freeze(["type", "assemble", "drop", "wave", "track", "bounce", "flicker"]);
-	const ACCENTS = Object.freeze(["color", "box", "outline", "underline", "mark", "spark", "glow", "gradient", "stamp", "circle", "extrude", "sticker"]);
+	const ACCENTS = Object.freeze([
+		"color", "box", "outline", "underline", "mark", "spark", "glow", "gradient", "stamp", "circle", "extrude", "sticker",
+		"script", "giant", "trail", "scribble", "bubble", "bracket",
+	]);
 	// Shot faces. Serif shots are rare (SERIF_SHARE); shot.serif sets only a shot's emphasised words in serif.
 	const TYPES = Object.freeze(["impact", "serif", "round"]);
 	const SERIF_SHARE = 0.15;
@@ -39,6 +44,7 @@
 	const MAX_LINES = Object.freeze({
 		column: 6, zigzag: 5, spiral: 4, wall: 6, tunnel: 6, collage: 5, hero: 2, tower: 3,
 		stairs: 5, strip: 4, split: 6, swell: 4, radial: 6, carousel: 5, reel: 6, crawl: 6,
+		slot: 4, cards: 4, poster: 3, wordwall: 4, arch: 4, spread: 3, pillar: 3,
 	});
 	const PACE = Object.freeze({ slow: 1.4, mid: 1, fast: 0.82, rap: 0.72 });
 	const MAX_PROMPT_LINES = 140;
@@ -123,6 +129,8 @@
 
 	const wordsPerSecond = (line) => line.words.length / Math.max(0.4, (line.end - line.start) / 1000);
 	const JOINED_RE = /[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Devanagari}\p{Script=Bengali}]/u;
+	// Lines that can be set upright (the pillar composition): Korean, Japanese and Chinese without Latin words.
+	const UPRIGHT_RE = /^[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{P}\p{N}\s\u30fc]+$/u;
 	const SYLLABIC_RE = /[\p{Script=Han}\p{Script=Hangul}\p{Script=Hiragana}\p{Script=Katakana}]/gu;
 	const VOWELS_RE = /[aeiouyàáâãäåæèéêëìíîïòóôõöøùúûüýÿœăâđêôơưаеёиоуыэюяαεηιουωάέήίόύώ]+/giu;
 
@@ -295,18 +303,22 @@
 		slow: {
 			hero: 2.2, column: 1.2, wall: 0.3, tunnel: 0.7, spiral: 0.6, zigzag: 0.4, collage: 0, tower: 0,
 			stairs: 0.9, strip: 0.7, split: 0.6, swell: 0.9, radial: 0.3, carousel: 0.9, reel: 0.8, crawl: 1.1,
+			slot: 0.9, cards: 0.4, poster: 0.6, wordwall: 0.3, arch: 1, spread: 0.8, pillar: 1.1,
 		},
 		mid: {
 			hero: 2, column: 0.7, wall: 0.6, tunnel: 0.8, spiral: 0.8, zigzag: 1, collage: 0.8, tower: 0.5,
 			stairs: 0.9, strip: 0.8, split: 0.7, swell: 0.9, radial: 0.8, carousel: 1, reel: 0.9, crawl: 0.8,
+			slot: 1, cards: 0.9, poster: 1, wordwall: 0.7, arch: 0.9, spread: 0.9, pillar: 0.9,
 		},
 		fast: {
 			hero: 0.8, column: 0.4, wall: 0.6, tunnel: 0.9, spiral: 0.8, zigzag: 1.1, collage: 1.2, tower: 1.1,
 			stairs: 0.9, strip: 1, split: 0.8, swell: 0.9, radial: 1, carousel: 1, reel: 1.1, crawl: 0.5,
+			slot: 1.1, cards: 1.1, poster: 1.2, wordwall: 1, arch: 0.6, spread: 0.9, pillar: 0.6,
 		},
 		rap: {
 			hero: 0.3, column: 0.8, wall: 0.6, tunnel: 1.1, spiral: 0.5, zigzag: 0.9, collage: 1.4, tower: 1.5,
 			stairs: 1, strip: 0.8, split: 1, swell: 0.6, radial: 0.6, carousel: 0.7, reel: 1.2, crawl: 0.6,
+			slot: 1.3, cards: 1, poster: 0.8, wordwall: 1.2, arch: 0.4, spread: 0.6, pillar: 0.3,
 		},
 	});
 	// A composition never follows itself (a returning chorus poster aside), the two before it are
@@ -341,6 +353,15 @@
 			carousel: within("carousel") ? base.carousel : 0,
 			reel: within("reel", 3) ? base.reel : 0,
 			crawl: within("crawl", 3) ? base.crawl * (1.3 - 0.6 * energy) : 0,
+			// One line at a time: not for voices singing over each other.
+			slot: within("slot") && !shot.voices ? base.slot : 0,
+			cards: within("cards") ? base.cards : 0,
+			poster: count <= MAX_LINES.poster && chars / count <= 16 && !shot.voices ? base.poster * (shot.chorus || shot.repeated ? 1.6 : 1) : 0,
+			wordwall: within("wordwall") && chars / count <= 22 ? base.wordwall * (shot.chorus || shot.repeated ? 1.5 : 1) : 0,
+			arch: within("arch") && chars / count <= 20 ? base.arch : 0,
+			spread: count <= MAX_LINES.spread && longest >= 2 && longest <= 6 && !shot.voices ? base.spread : 0,
+			// Upright type suits Korean, Japanese and Chinese lines without Latin words.
+			pillar: count <= MAX_LINES.pillar && chars / count <= 14 && lines.every((line) => UPRIGHT_RE.test(line.text) && !(line.backing || []).length) ? base.pillar : 0,
 		};
 		const open = { ...weights };
 		history.slice(-RECENT_PENALTY.length).reverse().forEach((name, back) => {
@@ -402,9 +423,18 @@
 	// ... and how often a heavy shot sets just its emphasised words in serif.
 	const SERIF_CHANCE = Object.freeze({ slow: 0.4, mid: 0.25, fast: 0.1, rap: 0.05 });
 	const ACCENT_WEIGHTS = Object.freeze({
-		slow: { color: 1, underline: 1, outline: 0.6, mark: 0.5, glow: 0.9, gradient: 0.9, circle: 0.7, extrude: 0.2 },
-		mid: { color: 1, box: 0.7, underline: 0.6, mark: 0.6, outline: 0.4, spark: 0.5, glow: 0.6, gradient: 0.7, stamp: 0.5, circle: 0.6, extrude: 0.6, sticker: 0.5 },
-		fast: { box: 1, spark: 1.2, color: 0.8, mark: 0.6, outline: 0.5, glow: 0.8, gradient: 0.6, stamp: 0.9, circle: 0.4, extrude: 0.9, sticker: 0.8 },
+		slow: {
+			color: 1, underline: 1, outline: 0.6, mark: 0.5, glow: 0.9, gradient: 0.9, circle: 0.7, extrude: 0.2,
+			script: 1, scribble: 0.6, bracket: 0.5, giant: 0.3,
+		},
+		mid: {
+			color: 1, box: 0.7, underline: 0.6, mark: 0.6, outline: 0.4, spark: 0.5, glow: 0.6, gradient: 0.7, stamp: 0.5, circle: 0.6, extrude: 0.6, sticker: 0.5,
+			script: 0.8, giant: 0.7, trail: 0.5, scribble: 0.6, bubble: 0.5, bracket: 0.5,
+		},
+		fast: {
+			box: 1, spark: 1.2, color: 0.8, mark: 0.6, outline: 0.5, glow: 0.8, gradient: 0.6, stamp: 0.9, circle: 0.4, extrude: 0.9, sticker: 0.8,
+			giant: 1, trail: 0.9, bubble: 0.7, bracket: 0.6, script: 0.5, scribble: 0.4,
+		},
 	});
 
 	/** A shot's accent: never the one just used, more often one the song has not shown yet. */
@@ -532,11 +562,11 @@
 				type,
 				serif,
 				upper: type === "impact" && random() < UPPER_CHANCE[tempo.tempo],
-				bars: ["hero", "wall", "crawl", "swell"].includes(layout) && random() < (quiet ? 0.45 : 0.2),
+				bars: ["hero", "wall", "crawl", "swell", "pillar"].includes(layout) && random() < (quiet ? 0.45 : 0.2),
 				rule: (quiet || serif) && ["column", "hero", "tower", "stairs"].includes(layout) && random() < 0.5,
 				dutch: Math.round((random() * 2 - 1) * tilt),
 				motifs: motifsFor(members.map((line) => line.text + " " + (line.translation || "")).join(" "), mood, random, motifCount),
-				echo: ["wall", "hero", "column", "tunnel", "tower", "stairs", "split", "swell", "carousel"].includes(layout) && random() < 0.65 ? echoFor(members) : null,
+				echo: ["wall", "hero", "column", "tunnel", "tower", "stairs", "split", "swell", "carousel", "slot", "poster", "spread", "pillar"].includes(layout) && random() < 0.65 ? echoFor(members) : null,
 				source: "local",
 			};
 			layoutHistory.push(layout);
