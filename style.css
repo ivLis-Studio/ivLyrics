@@ -19391,6 +19391,13 @@ body.ivlyrics-sync-creator-covering > #main {
   justify-content: flex-end;
 }
 
+/* A unit sung on a coloured range borrows the range's speaker class for its
+   colour variables only. Keep the row's inline layout instead of the range's
+   inline-block box. */
+.lyrics-phonetic-fill-unit.ivlyrics-karaoke-range-style {
+  display: inline;
+}
+
 .lyrics-lyricsContainer-LyricsLine > .lyrics-lyricsContainer-LyricsLine-translation,
 .lyrics-lyricsContainer-LyricsLine > .lyrics-lyricsContainer-LyricsLine-sub,
 .lyrics-lyricsContainer-LyricsLine-translation,
