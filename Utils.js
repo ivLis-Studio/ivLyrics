@@ -1390,7 +1390,7 @@ const Utils = {
   /**
    * Current version of the ivLyrics app
    */
-  currentVersion: "7.1.10",
+  currentVersion: "7.1.11",
 
   /**
    * Check for updates from remote repository
