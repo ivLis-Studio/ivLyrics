@@ -534,7 +534,8 @@ window.LANG_ZH_TW = {
         "lyricsStudy": "學習",
         "characterPronunciation": "逐字發音",
         "culturalAnnotations": "文化背景",
-        "wordSupplements": "單字詳情"
+        "wordSupplements": "單字詳情",
+        "motionDirection": "動態演出"
       },
       "noEnabledProviders": "未啟用 AI 提供商。請在設置中至少啟用一個提供商。",
       "noPronunciationProviders": "沒有已啟用的 AI 提供者可以產生發音。請在 AI 提供者設定中為某個提供者開啟「發音」。",
@@ -2643,9 +2644,11 @@ window.LANG_ZH_TW = {
       "videoLabel": "影片舞台",
       "videoDescription": "顯示同步的 YouTube 影片，並在底部顯示大型目前歌詞。",
       "motionLabel": "動態",
-      "motionDescription": "演唱的字詞飛入影片畫面，鏡頭在各行之間移動。適用於有逐詞或逐字同步的歌曲。",
+      "motionDescription": "由 AI 編排的動態文字排版：多行歌詞同畫面排布，每個詞在唱出的瞬間出現，鏡頭隨影片飛行與旋轉。適用於帶有逐詞或逐字時間軸的歌曲。",
       "motionUnavailable": "動態歌詞僅適用於有逐詞或逐字同步的歌曲。這首歌會顯示影片舞台歌詞。",
-      "motionReducedMotion": "已開啟減少動態效果，因此顯示影片舞台歌詞，而非動態歌詞。"
+      "motionReducedMotion": "已開啟減少動態效果，因此顯示影片舞台歌詞，而非動態歌詞。",
+      "motionDirecting": "AI 正在編排動態演出…",
+      "motionDirectFailed": "AI 演出生成失敗，已改用內建演出。"
     },
     "settings": {
       "subtitle": "調整黑膠模式的大小、動效與底部歌詞字型。",

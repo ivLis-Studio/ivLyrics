@@ -66,7 +66,8 @@
         TMI: 'tmi',                // 기존 Addon 설정 호환용 별칭
         LYRICS_STUDY: 'lyricsStudy', // 가사 기반 학습 모드 생성
         CHARACTER_PRONUNCIATION: 'characterPronunciation', // 문자별 발음
-        CULTURAL_ANNOTATIONS: 'culturalAnnotations' // 번역만으로 전달되지 않는 문화적 배경 설명
+        CULTURAL_ANNOTATIONS: 'culturalAnnotations', // 번역만으로 전달되지 않는 문화적 배경 설명
+        MOTION_DIRECTION: 'motionDirection' // 모션 가사 연출
     };
 
     const TRANSLATION_STYLES = Object.freeze({
@@ -1868,6 +1869,57 @@ Input lines:
 ${JSON.stringify(payload)}`;
     }
 
+    const MOTION_DEFAULT_VOCABULARY = Object.freeze({
+        moods: ['calm', 'dreamy', 'melancholic', 'warm', 'playful', 'energetic', 'intense', 'dark'],
+        layouts: ['column', 'zigzag', 'spiral', 'wall', 'tunnel', 'collage', 'hero'],
+        enters: ['pan', 'drop', 'rise', 'roll', 'flip', 'push', 'pull', 'cut'],
+        fx: ['pop', 'slide', 'rise', 'slam', 'stretch', 'flip', 'type', 'assemble', 'drop', 'wave'],
+        accents: ['color', 'box', 'outline'],
+        motifs: ['ring', 'disc', 'dot', 'dots', 'halo', 'sparkle', 'star', 'cross', 'plus', 'burst', 'sunburst', 'arc', 'wave', 'zigzag', 'scribble', 'square', 'triangle', 'frame', 'bars', 'heart', 'moon', 'sun', 'flower', 'drop', 'cloud', 'bolt', 'note', 'eye', 'flame', 'leaf', 'snow', 'arrow', 'crown', 'spiral'],
+        maxLines: { column: 6, zigzag: 5, spiral: 4, wall: 6, tunnel: 6, collage: 5, hero: 2 }
+    });
+
+    /**
+     * Motion lyrics direction: the AI directs a kinetic-typography edit of the
+     * song (MotionLyricsDirector.js validates the answer).
+     */
+    function buildMotionDirectionPrompt({ title = '', artist = '', lines = [], vocabulary = null } = {}) {
+        const vocab = { ...MOTION_DEFAULT_VOCABULARY, ...(vocabulary && typeof vocabulary === 'object' ? vocabulary : {}) };
+        const list = (values) => (Array.isArray(values) ? values : []).join('|');
+        const formatted = (Array.isArray(lines) ? lines : []).map((line) => {
+            const words = (Array.isArray(line?.words) ? line.words : []).map((word) => String(word ?? '').replace(/\s+/g, ' ').trim()).join(' | ');
+            const pause = Number(line?.pause) >= 2.5 ? ' (pause ' + Number(line.pause).toFixed(1) + 's)' : '';
+            const translation = line?.translation ? ' -> ' + String(line.translation).replace(/\s+/g, ' ').trim() : '';
+            return '#' + line.n + ' [' + Number(line.start || 0).toFixed(1) + 's ' + Number(line.duration || 0).toFixed(1) + 's]' + pause + ' ' + words + translation;
+        }).join('\n');
+        const max = vocab.maxLines || MOTION_DEFAULT_VOCABULARY.maxLines;
+
+        return 'You are a motion-graphics director with thirty years of experience cutting kinetic-typography lyric videos (the best After Effects and Alight Motion typography edits). Direct a full edit of this song.\n\n'
+            + 'How the renderer works: consecutive lyric lines are grouped into SHOTS. Each shot is one composition of its lines in 3D space over the music video, and the camera flies, tilts and rolls from line to line. Lines that are coming wait on screen as faint outlines; each word appears as solid type the moment it is sung; sung lines stay as dim echoes until the camera moves on. You decide the grouping, the composition, the camera moves, the word animation, emphasis and the motifs; the renderer does the layout and timing.\n\n'
+            + 'Song: "' + String(title || '').trim() + '"' + (artist ? ' by ' + String(artist).trim() : '') + '\n'
+            + 'Lines (#n [start, length] words separated by " | ", then the translation after "->" when known):\n'
+            + formatted + '\n\n'
+            + 'Return ONLY one JSON object, no markdown:\n'
+            + '{"mood": "' + list(vocab.moods) + '",\n'
+            + ' "palette": ["#rrggbb", "#rrggbb"],\n'
+            + ' "shots": [{"from": 0, "to": 2, "layout": "...", "enter": "...", "fx": "...", "accent": "...", "dutch": 0, "motifs": ["..."], "echo": "..."}],\n'
+            + ' "lines": [{"n": 0, "emph": [1], "fx": "..."}],\n'
+            + ' "shapes": {"name": {"d": "M10 10 L90 50 L10 90 Z", "style": "fill"}}}\n\n'
+            + 'Rules:\n'
+            + '- shots: cover every line exactly once, in order, without gaps. 1 to ' + Math.max(...Object.values(max)) + ' lines each (spiral at most ' + max.spiral + ', hero at most ' + max.hero + '). Cut where the song changes section (verse, pre-chorus, chorus, bridge), after long pauses and where the meaning turns; keep lines that answer each other together. Most shots hold 2 to 4 lines.\n'
+            + '- layout: column = stacked lines the camera glides down (verses, storytelling); zigzag = lines alternate horizontal and vertical like a staircase and the screen turns 90 degrees each line (flowing, playful); spiral = up to 4 lines around a square while the screen turns a full circle (building, hypnotic); wall = a justified poster where short lines become huge (choruses, hooks, repeated phrases); tunnel = lines one behind another and the camera flies forward through them (driving, urgent); collage = lines scattered with tilts and different sizes (busy, chaotic, rap); hero = one or two short lines filling the screen (titles, punchlines, the biggest moments). Every return of a section uses the same layout as its first time; neighbouring shots use different layouts.\n'
+            + '- enter (' + list(vocab.enters) + '): how the camera reaches the shot. pan = sideways, drop / rise = down / up, roll = the screen turns 90 degrees, flip = turns 180 degrees, push = dolly forward through the previous shot, pull = dolly back out, cut = hard cut with a flash (only at big section changes or after long pauses). Use roll and flip at section changes; calm songs mostly pan, drop, rise and push.\n'
+            + '- fx (' + list(vocab.fx) + '): how sung words appear. Match the vocal: fast rap = type or slide; shouts and drops = slam; ballads = rise or wave; playful = drop or pop; long held notes = stretch; flip = 3D flip-up; assemble = scattered letters fly together. Set fx per shot and override it in "lines" only where a line differs.\n'
+            + '- accent (' + list(vocab.accents) + '): how emphasised words stand out (accent colour, a highlight box, or an outline).\n'
+            + '- lines: list only lines that need emphasis or their own fx. emph = 0 to 2 word indexes (0-based, in " | " order) that carry the meaning or are held long; they are set larger.\n'
+            + '- dutch: camera tilt in degrees, 0 for calm shots, up to 12 or -12 for energetic ones.\n'
+            + '- motifs: 0 to 4 shapes animated around the shot. Prefer concrete images from the words (moon for moon or 月, drop for tears or rain, heart for love, flame for fire) over decoration. Library: ' + list(vocab.motifs) + '.\n'
+            + '- shapes: optional, at most 3 custom motifs when the library lacks an image the lyrics need: one SVG path "d" drawn in a 100x100 box with only M L H V C S Q T A Z commands and under 600 characters, style "fill" or "stroke"; use the name in a shot\'s motifs.\n'
+            + '- echo: optional key word or short phrase (at most 12 characters) copied exactly from the shot\'s lyrics, shown as a giant outline behind the shot. Use it for the words people remember.\n'
+            + '- palette: two vivid accent colours that fit the song and read well on dark video.\n'
+            + '- Keep it varied but intentional, like a real edit: build energy into the choruses, give the biggest moments hero or wall shots, and let quiet parts breathe.';
+    }
+
     function buildCulturalAnnotationsPrompt({ sourceLang = 'auto', targetLang = 'ko', lines = [] } = {}) {
         const targetLangInfo = getProviderPromptLanguageInfo(targetLang || 'ko');
         const payload = (Array.isArray(lines) ? lines : [])
@@ -2251,6 +2303,43 @@ ${normalizedText}
             return buildLyricsStudyPrompt(params);
         }
 
+        buildMotionDirectionPrompt(params = {}) {
+            return buildMotionDirectionPrompt(params);
+        }
+
+        /**
+         * Motion lyrics direction (활성화된 Provider 순서대로 시도). Returns the
+         * provider's JSON direction; MotionLyricsDirector validates it.
+         * @param {{title: string, artist: string, lines: Object[], vocabulary?: Object}} params
+         */
+        async generateMotionDirection(params = {}) {
+            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
+                throw new Error('No lyrics lines provided');
+            }
+            const providers = this.getEnabledProvidersFor('motionDirection');
+            if (providers.length === 0) {
+                throw new Error(this._t('aiProviders.noEnabledProviders', 'No AI providers enabled. Please enable at least one provider in settings.'));
+            }
+            this.emit('ai:request:start', {
+                type: 'motionDirection',
+                providers: providers.map((provider) => provider.id),
+                params: { title: params.title, artist: params.artist, lineCount: params.lines.length }
+            });
+            const motionDirectionPrompt = this.buildMotionDirectionPrompt(params);
+            return this._runProviderFallback(providers, 'generateMotionDirection', 'motionDirection', async (addon) => {
+                window.__ivLyricsDebugLog?.('[AIAddonManager] Trying motion direction provider: ' + addon.id);
+                const result = await this._callProvider(addon, 'generateMotionDirection', { ...params, motionDirectionPrompt });
+                const direction = result && typeof result === 'object' && result.direction && typeof result.direction === 'object'
+                    ? result.direction
+                    : result;
+                if (!direction || typeof direction !== 'object' || !Array.isArray(direction.shots) || direction.shots.length === 0) {
+                    throw new Error('[AIAddonManager] Provider ' + addon.id + ' returned a motion direction without shots');
+                }
+                this.emit('ai:request:success', { type: 'motionDirection', provider: addon.id });
+                return direction;
+            });
+        }
+
         buildCulturalAnnotationsPrompt(params = {}) {
             return buildCulturalAnnotationsPrompt(params);
         }
@@ -2402,8 +2491,14 @@ ${normalizedText}
                     tmi: typeof addon.generateResearch === 'function' || typeof addon.generateTMI === 'function',
                     lyricsStudy: typeof addon.generateLyricsStudy === 'function',
                     characterPronunciation: typeof addon.generateCharacterPronunciation === 'function',
-                    culturalAnnotations: typeof addon.generateCulturalAnnotations === 'function'
+                    culturalAnnotations: typeof addon.generateCulturalAnnotations === 'function',
+                    motionDirection: typeof addon.generateMotionDirection === 'function'
                 };
+            }
+            // Addons written before motion direction keep their supports map;
+            // the method alone is enough to opt in.
+            if (addon.supports.motionDirection === undefined) {
+                addon.supports.motionDirection = typeof addon.generateMotionDirection === 'function';
             }
             // Line pronunciation used to share the translate capability. Addons
             // written before it became its own capability keep generating it

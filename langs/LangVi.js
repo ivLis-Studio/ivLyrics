@@ -534,7 +534,8 @@ window.LANG_VI = {
         "lyricsStudy": "Học tập",
         "characterPronunciation": "Phát âm từng ký tự",
         "culturalAnnotations": "Bối cảnh văn hóa",
-        "wordSupplements": "Chi tiết từ"
+        "wordSupplements": "Chi tiết từ",
+        "motionDirection": "Đạo diễn chuyển động"
       },
       "noEnabledProviders": "Không có nhà cung cấp AI nào được bật. Vui lòng bật ít nhất một nhà cung cấp trong cài đặt.",
       "noPronunciationProviders": "Không có nhà cung cấp AI nào đang bật có thể tạo phát âm. Hãy bật “Phát âm” cho một nhà cung cấp trong cài đặt Nhà cung cấp AI.",
@@ -2643,9 +2644,11 @@ window.LANG_VI = {
       "videoLabel": "Sân khấu video",
       "videoDescription": "Hiển thị video YouTube đồng bộ và dòng lời đang phát cỡ lớn ở phía dưới.",
       "motionLabel": "Chuyển động",
-      "motionDescription": "Các từ bay vào khi được hát trong lúc máy quay di chuyển giữa các dòng trên nền video. Hoạt động với bài hát có đồng bộ theo từ hoặc ký tự.",
+      "motionDescription": "Bản dựng chữ chuyển động do AI đạo diễn khi có thể: nhiều dòng cùng chia sẻ màn hình, mỗi từ xuất hiện đúng lúc được hát, và máy quay bay, xoay theo video. Dành cho bài hát có đồng bộ theo từ hoặc ký tự.",
       "motionUnavailable": "Lời chuyển động hoạt động với bài hát có đồng bộ theo từ hoặc ký tự. Bài này hiển thị lời của sân khấu video.",
-      "motionReducedMotion": "Giảm chuyển động đang bật nên lời của sân khấu video được hiển thị thay cho lời chuyển động."
+      "motionReducedMotion": "Giảm chuyển động đang bật nên lời của sân khấu video được hiển thị thay cho lời chuyển động.",
+      "motionDirecting": "AI đang dàn dựng chuyển động…",
+      "motionDirectFailed": "AI dàn dựng thất bại. Đang dùng phần dàn dựng tích hợp."
     },
     "settings": {
       "subtitle": "Tùy chỉnh kích thước, chuyển động và phông lời bên dưới của chế độ đĩa than.",

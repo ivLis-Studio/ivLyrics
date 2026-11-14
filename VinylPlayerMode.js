@@ -1676,7 +1676,9 @@ const VinylPlayerMode = (() => {
                 lyrics: activeLyrics,
                 trackUri: String(lyricsTrackUri || "").trim() || liveTrack.uri,
                 accent: displayedTrack.accent,
-                isPlaying
+                isPlaying,
+                title: liveTrack.title,
+                artist: liveTrack.artist
             }) : null,
             isMotionPresentation && !motionPlayable && Array.isArray(activeLyrics) && activeLyrics.length > 0
                 ? react.createElement("div", {

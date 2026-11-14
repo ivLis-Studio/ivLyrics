@@ -534,7 +534,8 @@ window.LANG_ES = {
         "lyricsStudy": "Aprendizaje",
         "characterPronunciation": "Pronunciación por carácter",
         "culturalAnnotations": "Contexto cultural",
-        "wordSupplements": "Detalles de palabras"
+        "wordSupplements": "Detalles de palabras",
+        "motionDirection": "Dirección de movimiento"
       },
       "noEnabledProviders": "No hay proveedores de IA habilitados. Por favor, habilite al menos uno en la configuración.",
       "noPronunciationProviders": "Ningún proveedor de IA habilitado puede generar la pronunciación. Activa «Pronunciación» en un proveedor desde los ajustes de Proveedores de IA.",
@@ -2643,9 +2644,11 @@ window.LANG_ES = {
       "videoLabel": "Escenario de vídeo",
       "videoDescription": "Muestra el vídeo de YouTube sincronizado y la letra activa grande en la parte inferior.",
       "motionLabel": "Movimiento",
-      "motionDescription": "Las palabras entran volando al cantarse mientras la cámara se mueve entre las líneas sobre el video. Funciona con canciones sincronizadas por palabra o carácter.",
+      "motionDescription": "Una edición de tipografía cinética dirigida por IA cuando está disponible: las líneas comparten la pantalla, cada palabra aparece al cantarse y la cámara vuela y gira con el video. Para canciones con sincronización por palabra o carácter.",
       "motionUnavailable": "Las letras en movimiento funcionan con canciones sincronizadas por palabra o carácter. Esta canción muestra la letra del escenario de video.",
-      "motionReducedMotion": "Reducir movimiento está activado, así que se muestra la letra del escenario de video en lugar de las letras en movimiento."
+      "motionReducedMotion": "Reducir movimiento está activado, así que se muestra la letra del escenario de video en lugar de las letras en movimiento.",
+      "motionDirecting": "La IA está dirigiendo la animación…",
+      "motionDirectFailed": "La dirección con IA falló. Se usa la dirección integrada."
     },
     "settings": {
       "subtitle": "Personaliza el tamaño, las animaciones y la tipografía inferior del modo vinilo.",

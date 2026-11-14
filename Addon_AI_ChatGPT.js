@@ -53,7 +53,8 @@
             researchWebSearch: true,
             lyricsStudy: true,  // 학습 모드 생성
             characterPronunciation: true,
-            culturalAnnotations: true
+            culturalAnnotations: true,
+            motionDirection: true
         },
         // Capabilities are toggled per endpoint inside this addon's settings UI;
         // the provider-level toggle in the Settings row stays clickable and acts
@@ -263,7 +264,7 @@
      * support flag: endpoints without web search serve Research through
      * plain chat completions instead of the Responses API.
      */
-    const ENDPOINT_CAPABILITIES = ['pronunciation', 'translate', 'metadata', 'tmi', 'researchWebSearch', 'lyricsStudy', 'characterPronunciation', 'culturalAnnotations', 'wordSupplements'];
+    const ENDPOINT_CAPABILITIES = ['pronunciation', 'translate', 'metadata', 'tmi', 'researchWebSearch', 'lyricsStudy', 'characterPronunciation', 'culturalAnnotations', 'wordSupplements', 'motionDirection'];
     const ENDPOINT_CAPABILITY_FALLBACKS = {
         pronunciation: 'Pronunciation',
         translate: 'Translation',
@@ -273,7 +274,8 @@
         lyricsStudy: 'Learning',
         characterPronunciation: 'Character pronunciation',
         culturalAnnotations: 'Cultural context',
-        wordSupplements: 'Word details'
+        wordSupplements: 'Word details',
+        motionDirection: 'Motion direction'
     };
 
     function isEndpointCapabilityEnabled(capabilities, capability) {
@@ -2136,6 +2138,17 @@
                 'tmi',
                 plainTargets.length > 0 ? plainTargets : tmiTargets
             );
+        },
+
+        async generateMotionDirection(params) {
+            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
+                throw new Error('No lyrics lines provided');
+            }
+            const prompt = params.motionDirectionPrompt;
+            if (!prompt) {
+                throw new Error('[OpenAI ChatGPT] Central motion direction prompt is unavailable.');
+            }
+            return await callChatGPTAPI(prompt, undefined, undefined, 'motionDirection');
         },
 
         async generateLyricsStudy(params) {

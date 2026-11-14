@@ -534,7 +534,8 @@ window.LANG_MS = {
         "lyricsStudy": "Pembelajaran",
         "characterPronunciation": "Sebutan Huruf",
         "culturalAnnotations": "Konteks budaya",
-        "wordSupplements": "Perincian perkataan"
+        "wordSupplements": "Perincian perkataan",
+        "motionDirection": "Arahan gerakan"
       },
       "noEnabledProviders": "Tiada penyedia AI yang aktif. Sila aktifkan sekurang-kurangnya satu penyedia dalam tetapan.",
       "noPronunciationProviders": "Tiada penyedia AI aktif yang boleh menjana sebutan. Hidupkan “Sebutan” untuk salah satu penyedia dalam tetapan Penyedia AI.",
@@ -2643,9 +2644,11 @@ window.LANG_MS = {
       "videoLabel": "Pentas video",
       "videoDescription": "Paparkan video YouTube yang disegerakkan dengan lirik aktif besar di bahagian bawah.",
       "motionLabel": "Gerakan",
-      "motionDescription": "Perkataan terbang masuk ketika dinyanyikan sambil kamera bergerak antara baris di atas video. Berfungsi untuk lagu dengan penyegerakan perkataan atau aksara.",
+      "motionDescription": "Suntingan tipografi kinetik yang diarahkan oleh AI jika ada: baris-baris berkongsi skrin, setiap perkataan muncul ketika dinyanyikan, dan kamera terbang serta berputar bersama video. Untuk lagu dengan penyegerakan perkataan atau aksara.",
       "motionUnavailable": "Lirik gerakan berfungsi untuk lagu dengan penyegerakan perkataan atau aksara. Lagu ini memaparkan lirik pentas video.",
-      "motionReducedMotion": "Kurangkan gerakan dihidupkan, jadi lirik pentas video dipaparkan dan bukan lirik gerakan."
+      "motionReducedMotion": "Kurangkan gerakan dihidupkan, jadi lirik pentas video dipaparkan dan bukan lirik gerakan.",
+      "motionDirecting": "AI sedang mengarahkan animasi…",
+      "motionDirectFailed": "Arahan AI gagal. Menggunakan arahan terbina dalam."
     },
     "settings": {
       "subtitle": "Sesuaikan saiz, animasi dan tipografi lirik bawah bagi mod vinil.",

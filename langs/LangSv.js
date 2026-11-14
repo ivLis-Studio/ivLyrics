@@ -534,7 +534,8 @@ window.LANG_SV = {
         "lyricsStudy": "Inlärning",
         "characterPronunciation": "Teckenuttal",
         "culturalAnnotations": "Kulturell kontext",
-        "wordSupplements": "Orddetaljer"
+        "wordSupplements": "Orddetaljer",
+        "motionDirection": "Rörelseregi"
       },
       "noEnabledProviders": "Inga AI-leverantörer aktiverade. Aktivera minst en leverantör i inställningarna.",
       "noPronunciationProviders": "Ingen aktiverad AI-leverantör kan skapa uttal. Slå på Uttal för en leverantör under inställningarna för AI-leverantörer.",
@@ -2643,9 +2644,11 @@ window.LANG_SV = {
       "videoLabel": "Videoscen",
       "videoDescription": "Visar den synkroniserade YouTube-videon och den stora aktiva textraden längst ned.",
       "motionLabel": "Rörelse",
-      "motionDescription": "Orden flyger in när de sjungs medan kameran rör sig mellan raderna över videon. Fungerar med låtar som har ord- eller teckensynk.",
+      "motionDescription": "En kinetisk typografi-klipp som regisseras av AI när det går: raderna delar skärmen, varje ord dyker upp när det sjungs och kameran flyger och vrids med videon. För låtar med ord- eller teckentiming.",
       "motionUnavailable": "Rörliga låttexter fungerar med låtar som har ord- eller teckensynk. Den här låten visar videoscenens låttext.",
-      "motionReducedMotion": "Minska rörelse är på, så videoscenens låttext visas i stället för rörliga låttexter."
+      "motionReducedMotion": "Minska rörelse är på, så videoscenens låttext visas i stället för rörliga låttexter.",
+      "motionDirecting": "AI regisserar animationen …",
+      "motionDirectFailed": "AI-regin misslyckades. Den inbyggda regin används."
     },
     "settings": {
       "subtitle": "Anpassa storlek, animationer och typografi för den nedre textraden i vinylläget.",

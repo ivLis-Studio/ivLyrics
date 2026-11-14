@@ -538,7 +538,8 @@ window.LANG_EN = {
         "lyricsStudy": "Learning",
         "characterPronunciation": "Character pronunciation",
         "culturalAnnotations": "Cultural context",
-        "wordSupplements": "Word details"
+        "wordSupplements": "Word details",
+        "motionDirection": "Motion direction"
       },
       "noEnabledProviders": "No AI providers enabled. Please enable at least one provider in settings.",
       "noPronunciationProviders": "No enabled AI provider can generate pronunciation. Turn on Pronunciation for an AI provider in AI Providers settings.",
@@ -2643,9 +2644,11 @@ window.LANG_EN = {
       "videoLabel": "Video stage",
       "videoDescription": "Show the synchronized YouTube video with the focused lyric at the bottom.",
       "motionLabel": "Motion",
-      "motionDescription": "Words fly in as they are sung while the camera moves between lines over the video. Plays songs with word or character timing.",
+      "motionDescription": "A kinetic-typography edit, directed by AI when available: lines share the screen, each word lands as it is sung, and the camera flies and turns with the video. Plays songs with word or character timing.",
       "motionUnavailable": "Motion lyrics play songs with word or character timing. This song shows the video stage lyric instead.",
-      "motionReducedMotion": "Motion is reduced, so the video stage lyric is shown instead of motion lyrics."
+      "motionReducedMotion": "Motion is reduced, so the video stage lyric is shown instead of motion lyrics.",
+      "motionDirecting": "AI is directing the motion…",
+      "motionDirectFailed": "AI direction failed. Using the built-in direction."
     },
     "settings": {
       "subtitle": "Customize the LP mode size, motion, and bottom lyric typography.",

@@ -534,7 +534,8 @@ window.LANG_ZH_CN = {
         "lyricsStudy": "学习",
         "characterPronunciation": "逐字发音",
         "culturalAnnotations": "文化背景",
-        "wordSupplements": "单词详情"
+        "wordSupplements": "单词详情",
+        "motionDirection": "动态演出"
       },
       "noEnabledProviders": "未启用 AI 提供商。请在设置中至少启用一个提供商。",
       "noPronunciationProviders": "没有已启用的 AI 提供商可以生成发音。请在 AI 提供商设置中为某个提供商开启“发音”。",
@@ -2643,9 +2644,11 @@ window.LANG_ZH_CN = {
       "videoLabel": "视频舞台",
       "videoDescription": "显示同步的 YouTube 视频，并在底部显示大号当前歌词。",
       "motionLabel": "动效",
-      "motionDescription": "演唱的词语飞入视频画面，镜头在各行之间移动。适用于带有逐词或逐字同步的歌曲。",
+      "motionDescription": "由 AI 编排的动态文字排版：多行歌词同屏排布，每个词在唱出的瞬间出现，镜头随视频飞行与旋转。适用于带有逐词或逐字时间轴的歌曲。",
       "motionUnavailable": "动效歌词仅适用于带有逐词或逐字同步的歌曲。这首歌将显示视频舞台歌词。",
-      "motionReducedMotion": "已开启减少动态效果，因此显示视频舞台歌词，而不是动效歌词。"
+      "motionReducedMotion": "已开启减少动态效果，因此显示视频舞台歌词，而不是动效歌词。",
+      "motionDirecting": "AI 正在编排动态演出…",
+      "motionDirectFailed": "AI 演出生成失败，已改用内置演出。"
     },
     "settings": {
       "subtitle": "调整黑胶模式的尺寸、动效和底部歌词字体。",

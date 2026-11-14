@@ -52,7 +52,8 @@
             researchWebSearch: true,
             lyricsStudy: true,  // 학습 모드 생성
             characterPronunciation: true,
-            culturalAnnotations: true
+            culturalAnnotations: true,
+            motionDirection: true
         },
         // 하드코딩된 모델 목록 (fallback용)
         // models: [
@@ -1036,6 +1037,17 @@
             } catch (error) {
                 throw webSearch === false ? error : markGeminiWebSearchFailure(error);
             }
+        },
+
+        async generateMotionDirection(params) {
+            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
+                throw new Error('No lyrics lines provided');
+            }
+            const prompt = params.motionDirectionPrompt;
+            if (!prompt) {
+                throw new Error('[Gemini] Central motion direction prompt is unavailable.');
+            }
+            return await callGeminiAPI(prompt);
         },
 
         async generateLyricsStudy(params) {

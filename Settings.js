@@ -115,6 +115,7 @@ const SETTINGS_OUTLINE_ICONS = Object.freeze({
   characterPronunciation: "M5 9v6M9 6v12M13 9v6M17 4v16M21 8v8",
   wordSupplements: "M3 6h4l2 12h2l3-12h4l3 12M4.5 13h3M14.5 13h5M4 20h16",
   culturalAnnotations: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-20c3 3 4.5 6.3 4.5 10S15 19 12 22M12 2C9 5 7.5 8.3 7.5 12S9 19 12 22M2 12h20",
+  motionDirection: "M3 7h12v10H3V7Zm12 4 6-3v8l-6-3",
 });
 
 const SettingsOutlineIcon = ({ name, className = "", size = 16 }) =>
@@ -1215,7 +1216,7 @@ react.createElement(
 // then the remaining features; unknown capabilities keep their declared order.
 const AI_ADDON_CAPABILITY_ORDER = Object.freeze([
   "pronunciation", "translate", "metadata", "tmi", "researchWebSearch",
-  "lyricsStudy", "characterPronunciation", "culturalAnnotations", "wordSupplements",
+  "lyricsStudy", "characterPronunciation", "culturalAnnotations", "wordSupplements", "motionDirection",
 ]);
 
 const getOrderedAddonCapabilities = (supports) => {
@@ -1650,6 +1651,7 @@ const SETTINGS_AI_CAPABILITY_LABELS = Object.freeze({
   characterPronunciation: ["settings.aiProviders.supports.characterPronunciation", "Character pronunciation"],
   culturalAnnotations: ["settings.aiProviders.supports.culturalAnnotations", "Cultural context"],
   wordSupplements: ["settings.aiProviders.supports.wordSupplements", "Word details"],
+  motionDirection: ["settings.aiProviders.supports.motionDirection", "Motion direction"],
 });
 
 const getSettingsAiCapabilityLabel = (capability) => {
@@ -1686,6 +1688,7 @@ const SETTINGS_PROVIDER_GLYPHS = Object.freeze({
   characterPronunciation: "M5 9v6M9 6v12M13 9v6M17 4v16M21 8v8",
   culturalAnnotations: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-20c3 3 4.5 6.3 4.5 10S15 19 12 22M12 2C9 5 7.5 8.3 7.5 12S9 19 12 22M2 12h20",
   wordSupplements: "M3 6h4l2 12h2l3-12h4l3 12M4.5 13h3M14.5 13h5M4 20h16",
+  motionDirection: "M3 7h12v10H3V7Zm12 4 6-3v8l-6-3",
   arrow: "m9 6 6 6-6 6",
 });
 

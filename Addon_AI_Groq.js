@@ -51,7 +51,8 @@
             researchWebSearch: true,
             lyricsStudy: true,
             characterPronunciation: true,
-            culturalAnnotations: true
+            culturalAnnotations: true,
+            motionDirection: true
         },
         models: []
     };
@@ -952,6 +953,17 @@
                     body: requestBody
                 }
             );
+        },
+
+        async generateMotionDirection(params) {
+            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
+                throw new Error('No lyrics lines provided');
+            }
+            const prompt = params.motionDirectionPrompt;
+            if (!prompt) {
+                throw new Error('[Groq] Central motion direction prompt is unavailable.');
+            }
+            return await callGroqAPI(prompt);
         },
 
         async generateLyricsStudy(params) {

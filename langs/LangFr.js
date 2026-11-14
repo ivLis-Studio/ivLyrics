@@ -534,7 +534,8 @@ window.LANG_FR = {
         "lyricsStudy": "Apprentissage",
         "characterPronunciation": "Prononciation par caractère",
         "culturalAnnotations": "Contexte culturel",
-        "wordSupplements": "Détails des mots"
+        "wordSupplements": "Détails des mots",
+        "motionDirection": "Réalisation motion"
       },
       "noEnabledProviders": "Aucun fournisseur d'IA activé. Veuillez en activer au moins un dans les paramètres.",
       "noPronunciationProviders": "Aucun fournisseur d'IA activé ne peut générer la prononciation. Activez « Prononciation » pour un fournisseur dans les paramètres Fournisseurs d'IA.",
@@ -2643,9 +2644,11 @@ window.LANG_FR = {
       "videoLabel": "Scène vidéo",
       "videoDescription": "Affiche la vidéo YouTube synchronisée et la grande ligne active en bas.",
       "motionLabel": "Mouvement",
-      "motionDescription": "Les mots arrivent en volant au moment où ils sont chantés tandis que la caméra se déplace entre les lignes au-dessus de la vidéo. Fonctionne avec les chansons synchronisées au mot ou au caractère.",
+      "motionDescription": "Un montage en typographie cinétique, réalisé par l’IA quand c’est possible : les lignes partagent l’écran, chaque mot apparaît au moment où il est chanté et la caméra vole et pivote avec la vidéo. Pour les morceaux synchronisés au mot ou au caractère.",
       "motionUnavailable": "Les paroles en mouvement fonctionnent avec les chansons synchronisées au mot ou au caractère. Cette chanson affiche les paroles de la scène vidéo.",
-      "motionReducedMotion": "La réduction des animations est activée : les paroles de la scène vidéo remplacent les paroles en mouvement."
+      "motionReducedMotion": "La réduction des animations est activée : les paroles de la scène vidéo remplacent les paroles en mouvement.",
+      "motionDirecting": "L’IA réalise l’animation…",
+      "motionDirectFailed": "La réalisation par IA a échoué. La réalisation intégrée est utilisée."
     },
     "settings": {
       "subtitle": "Personnalisez la taille, les animations et la typographie inférieure du mode vinyle.",

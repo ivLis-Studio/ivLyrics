@@ -538,7 +538,8 @@ window.LANG_KO = {
         "lyricsStudy": "학습",
         "characterPronunciation": "글자 발음",
         "culturalAnnotations": "문화적 배경",
-        "wordSupplements": "단어 상세"
+        "wordSupplements": "단어 상세",
+        "motionDirection": "모션 연출"
       },
       "noEnabledProviders": "활성화된 AI 제공자가 없습니다. 설정에서 최소 하나 이상의 제공자를 활성화해주세요.",
       "noPronunciationProviders": "발음을 생성할 수 있는 AI 제공자가 켜져 있지 않습니다. AI 제공자 설정에서 제공자의 '발음' 기능을 켜 주세요.",
@@ -2643,9 +2644,11 @@ window.LANG_KO = {
       "videoLabel": "비디오 스테이지",
       "videoDescription": "동기화된 YouTube 영상과 하단의 큰 활성 가사만 표시합니다.",
       "motionLabel": "모션",
-      "motionDescription": "영상 위로 부르는 단어가 날아들고 카메라가 줄 사이를 움직입니다. 단어·글자 싱크가 있는 곡에서 재생됩니다.",
+      "motionDescription": "AI가 연출하는 키네틱 타이포그래피입니다. 여러 줄이 한 화면에 함께 배치되고, 부르는 순간 단어가 등장하며, 카메라가 영상과 함께 날아다니고 회전합니다. 단어·글자 싱크가 있는 곡에서 재생됩니다.",
       "motionUnavailable": "모션 가사는 단어·글자 싱크가 있는 곡에서 재생돼요. 이 곡은 비디오 스테이지 가사로 보여드려요.",
-      "motionReducedMotion": "동작 줄이기가 켜져 있어 모션 가사 대신 비디오 스테이지 가사로 보여드려요."
+      "motionReducedMotion": "동작 줄이기가 켜져 있어 모션 가사 대신 비디오 스테이지 가사로 보여드려요.",
+      "motionDirecting": "AI가 모션 연출을 만드는 중…",
+      "motionDirectFailed": "AI 연출을 만들지 못해 기본 연출로 보여드려요."
     },
     "settings": {
       "subtitle": "LP 모드의 크기, 모션, 하단 가사 글꼴을 조정합니다.",
