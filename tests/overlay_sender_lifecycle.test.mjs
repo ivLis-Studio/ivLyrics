@@ -44,7 +44,10 @@ function load(text) {
     Utils: {getPlayerPlaybackSnapshot: () => ({uri: player.data.item.uri})},
     // Keep connection probes pending: no external transport or asynchronous
     // recovery changes interfere with the lifecycle scheduling assertions.
-    fetch: (url, options) => { trace.push(['fetch', url, JSON.parse(options.body)]); return new Promise((resolve, reject) => pendingFetches.push({resolve, reject})); },
+    fetch: (url, options) => {
+      trace.push(['fetch', url, options.body ? JSON.parse(options.body) : options.method]);
+      return new Promise((resolve, reject) => pendingFetches.push({resolve, reject}));
+    },
     AbortSignal: {timeout: ms => ({timeout: ms})},
     Date: class extends Date { static now() { return clock.now; } },
   });
@@ -199,7 +202,7 @@ test('paused progress is deduplicated without losing heartbeat, seek, track or q
   await h.helper.sendProgressPayload('/lyrics/progress', payload, 'one');
   for (let i = 0; i < 20; i++) await h.helper.sendProgressPayload('/lyrics/progress', payload, 'one');
   assert.equal(sent.length, 1);
-  h.helper._lastProgressSentAt -= 2000;
+  h.helper._lastProgress.sentAt -= 2000;
   await h.helper.sendProgressPayload('/lyrics/progress', payload, 'one');
   assert.equal(sent.length, 2, 'heartbeat arrives before receiver timeout');
   await h.helper.sendProgressPayload('/lyrics/progress', {...payload, position: 5000}, 'one');
@@ -208,7 +211,7 @@ test('paused progress is deduplicated without losing heartbeat, seek, track or q
   assert.equal(sent.length, 5);
   for (let i = 0; i < 4; i++) await h.helper.sendProgressPayload('/lyrics/progress', {...payload, isPlaying: true}, 'two');
   assert.equal(sent.length, 9, 'playing keeps all 250ms anchors');
-  assert.equal(h.overlay._lastProgressPayloadKey, undefined, 'helper dedupe state stays independent');
+  assert.equal(h.overlay._lastProgress, null, 'helper dedupe state stays independent');
   h.helper.stopProgressSync();
   await h.helper.sendProgressPayload('/lyrics/progress', payload, 'one');
   assert.equal(sent.length, 10);
@@ -229,6 +232,110 @@ test('a long pause keeps the overlay heartbeat and still sends paused seeks at o
   assert.equal(sent.length, 7);
   assert.equal(sent.at(-1).position, 20000, 'a seek during a long pause reaches the overlay at once');
 });
+
+test('probes are GET requests that back off while nothing answers and return sooner on focus', async () => {
+  const h = load(source);
+  h.overlay.init();
+  const flushAll = () => new Promise(resolve => setImmediate(resolve));
+  const connectionTimer = () => [...h.state().timers].map(([, ms]) => ms).filter(ms => ms >= 1000 || ms === 0);
+  assert.deepEqual(connectionTimer(), [1000], 'the first probe runs a second after startup');
+  const delays = [];
+  for (const ms of [1000, 5000, 10000, 20000, 40000, 60000]) {
+    h.runTimer(ms);
+    const fetch = h.trace.filter(([kind]) => kind === 'fetch').at(-1);
+    assert.deepEqual(fetch, ['fetch', 'http://localhost:15000/progress', 'GET'], 'a probe never posts fake progress');
+    h.pendingFetches.at(-1).reject(Error('connection refused'));
+    await flushAll();
+    delays.push(...connectionTimer());
+  }
+  assert.deepEqual(delays, [5000, 10000, 20000, 40000, 60000, 60000]);
+  assert.equal(h.trace.filter(([kind, , method]) => kind === 'fetch' && method !== 'GET').length, 0);
+
+  h.window.dispatchEvent({type: 'focus'});
+  assert.deepEqual(connectionTimer(), [60000], 'focus right after a probe waits for the backoff');
+  h.clock.now += 10000;
+  h.window.dispatchEvent({type: 'focus'});
+  assert.deepEqual(connectionTimer(), [0], 'focus probes at once when the last probe is not recent');
+});
+
+test('any HTTP answer connects, and only a status body announces protocol 2', async () => {
+  const flushAll = () => new Promise(resolve => setImmediate(resolve));
+  for (const [response, protocol] of [
+    [{ok: false, status: 405}, 1],
+    [{ok: true, json: async () => 'Lyrics Server OK'}, 1],
+    [{ok: true, json: async () => ({app: 'ivLyrics Overlay', protocol: 2})}, 2],
+  ]) {
+    const h = load(source);
+    h.overlay.init();
+    const probe = h.overlay.checkConnection();
+    h.pendingFetches.at(-1).resolve(response);
+    assert.equal(await probe, true);
+    await flushAll();
+    assert.equal(h.overlay.isConnected, true);
+    assert.equal(h.overlay._receiverProtocol, protocol);
+    assert.ok(h.overlay._worker, 'progress starts once the receiver answers');
+  }
+  const h = load(source);
+  h.helper.init();
+  void h.helper.checkConnection();
+  assert.deepEqual(h.trace.filter(([kind]) => kind === 'fetch').at(-1), ['fetch', 'http://localhost:15123/lyrics/health', 'GET']);
+});
+
+test('protocol 2 overlays get progress on changes, jumps and announced heartbeats only', async () => {
+  const run = async protocol => {
+    const h = load(source), sent = [];
+    h.overlay._receiverProtocol = protocol;
+    Object.defineProperty(h.overlay, 'sendToEndpoint', {value: async (endpoint, payload, options) => {
+      sent.push({payload, receipt: options?.receipt});
+      return options?.receipt ? {ok: true, active: true, hasLyrics: true, lyricsTrackUri: 'one'} : true;
+    }});
+    const start = h.clock.now;
+    const base = {source: 'ivlyrics', trackUri: 'one', isPlaying: true, duration: 180000, currentTrack: null, nextTrack: null};
+    const send = (elapsed, fields) => {
+      h.clock.now = start + elapsed;
+      return h.overlay.sendProgressPayload('/progress', {...base, remaining: 1, ...fields}, 'one');
+    };
+    for (let t = 0; t < 10000; t += 250) await send(t, {position: t});
+    const playing = sent.length;
+    await send(10000, {position: 60000});
+    await send(10250, {position: 60250, isPlaying: false});
+    for (let t = 10500; t <= 35000; t += 250) await send(t, {position: 60250, isPlaying: false});
+    return {playing, sent};
+  };
+  const modern = await run(2);
+  assert.equal(modern.playing, 5, 'ten seconds of playback need a heartbeat every two seconds');
+  assert.deepEqual(modern.sent.slice(5, 7).map(({payload}) => [payload.position, payload.isPlaying, payload.heartbeatMs]),
+    [[60000, true, 2000], [60250, false, 10000]], 'a seek and a pause go out at once');
+  assert.equal(modern.sent.length, 9, 'a long pause repeats every ten seconds');
+  assert.ok(modern.sent.every(({receipt}) => receipt === true));
+
+  const legacy = await run(1);
+  assert.equal(legacy.playing, 40, 'older overlays still get every 250 ms anchor while playing');
+  assert.ok(legacy.sent.every(({payload, receipt}) => !('heartbeatMs' in payload) && !receipt));
+});
+
+test('a receipt without the delivered lyrics resends them, at most every five seconds', () => {
+  const h = load(source), resends = [];
+  Object.defineProperty(h.overlay, 'resendWithNewOffset', {value: reason => { resends.push(reason); }});
+  h.overlay._lastTrackInfo = {uri: 'one'};
+  h.overlay.lastDeliveredUri = 'one';
+  h.overlay.handleReceipt({hasLyrics: true, lyricsTrackUri: 'one'}, 'one');
+  assert.deepEqual(resends, []);
+  h.overlay.handleReceipt({hasLyrics: false, lyricsTrackUri: null}, 'one');
+  assert.deepEqual(resends, ['receiver-missing-lyrics'], 'a restarted overlay gets the lyrics back');
+  assert.equal(h.overlay.lastDeliveredUri, null);
+  h.overlay.lastDeliveredUri = 'one';
+  h.overlay.handleReceipt({hasLyrics: true, lyricsTrackUri: 'zero'}, 'one');
+  assert.equal(resends.length, 1, 'repeated receipts wait for the resend gap');
+  h.clock.now += 5000;
+  h.overlay._lyricsSendActive = true;
+  h.overlay.handleReceipt({hasLyrics: true, lyricsTrackUri: 'zero'}, 'one');
+  assert.equal(resends.length, 1, 'a delivery already in flight is not duplicated');
+  h.overlay._lyricsSendActive = false;
+  h.overlay.handleReceipt({hasLyrics: true, lyricsTrackUri: 'zero'}, 'one');
+  assert.equal(resends.length, 2);
+});
+
 
 test('helper reuses lifecycle methods without changing its own property descriptors or state isolation', () => {
   const after = load(source);

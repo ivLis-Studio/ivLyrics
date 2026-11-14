@@ -72,7 +72,8 @@ function load({ persisted = false, initialValues = [] } = {}) {
 		getOverlayProgressIsPlaying: () => player.isPlaying(),
 		AbortSignal: { timeout: ms => ({ timeout: ms }) },
 		fetch: (url, options) => {
-			const request = { url, endpoint: new URL(url).pathname, port: new URL(url).port, payload: JSON.parse(options.body) };
+			const request = { url, endpoint: new URL(url).pathname, port: new URL(url).port, method: options.method,
+				payload: options.body ? JSON.parse(options.body) : null };
 			requests.push(request);
 			return Promise.resolve(transport(request));
 		},
@@ -91,6 +92,14 @@ function load({ persisted = false, initialValues = [] } = {}) {
 	window.lyricsHelperSender = helper;
 	overlay.init();
 	helper.init();
+	// Both receivers answer their startup probe; senders deliver only then.
+	overlay.isConnected = true;
+	helper.isConnected = true;
+	// Finish the connection recovery they schedule; nothing is cached yet.
+	for (const [id, timer] of [...timers]) {
+		timers.delete(id);
+		timer.fn();
+	}
 	return {
 		overlay, helper, context, window, player, values, workers, requests, timers, metadata, queueMetadata,
 		setTransport: fn => { transport = fn; },
@@ -316,7 +325,7 @@ test('cross-window setting changes refresh only the overlay and invalidate its p
 	await flush();
 	assert.equal(h.packets().at(-1).payload.track.title, 'Song');
 	assert.equal(h.overlay._lastProgressUri, null);
-	assert.equal(h.overlay._lastProgressPayloadKey, null);
+	assert.equal(h.overlay._lastProgress, null);
 	await h.overlay._worker.onmessage();
 	assert.equal(h.packets('/progress').at(-1).payload.nextTrack.title, 'Next');
 	assert.equal(h.packets('/lyrics/sender').length, helperPackets);
@@ -340,6 +349,24 @@ test('reconnect rebuilds display metadata from raw cached inputs with the latest
 	h.dispose();
 });
 
+test('a disconnected overlay keeps lyrics without requests and receives them once it answers', async () => {
+	const h = load();
+	h.overlay.isConnected = false;
+	const before = h.requests.length;
+	await h.overlay.sendLyrics(track(), lyrics(), false, 'normal', presentation);
+	h.window.dispatchEvent({ type: 'focus' });
+	await flush();
+	assert.equal(h.requests.length, before, 'nothing is posted while the overlay is not running');
+	h.overlay.isConnected = true;
+	h.runTimer(100);
+	await flush();
+	assert.equal(h.requests.length, before + 1);
+	assert.equal(h.packets().at(-1).payload.track.title, track().title);
+	assert.equal(h.overlay.lastDeliveredUri, uri);
+	h.dispose();
+});
+
+
 test('changing the option while disabled persists it without starting workers or sending data', async () => {
 	const h = load();
 	h.overlay.enabled = false;
@@ -351,6 +378,7 @@ test('changing the option while disabled persists it without starting workers or
 	assert.equal(h.overlay._worker, null);
 	assert.equal(h.helper._runtimeGeneration, generation);
 	h.overlay.enabled = true;
+	h.overlay.isConnected = true;
 	await h.overlay.sendLyrics(track(), lyrics());
 	assert.equal(h.packets().at(-1).payload.track.title, 'Song');
 	h.dispose();
