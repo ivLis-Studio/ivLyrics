@@ -1,8 +1,9 @@
 // Motion lyrics director: decides how a song is staged.
 //
 // A direction groups consecutive lyric lines into shots and picks, per shot,
-// a composition (layout), how the camera reaches it (enter), how sung words
-// appear (fx), how emphasised words stand out (accent), the type personality
+// a composition (layout, one of sixteen), how the camera reaches it (enter),
+// how sung words appear (fx), how emphasised words stand out (accent, one of
+// twelve), the type personality
 // (impact nearly always; a serif shot now and then, never two in a row and
 // at most about one in seven; round for playful shots), whether its
 // emphasised words switch to a serif, a camera tilt, letterbox bars, line
@@ -18,20 +19,27 @@
 
 	if (root.ivLyricsMotionDirector?.initialized) return;
 
-	const VERSION = 2;
+	const VERSION = 3;
 	const MOODS = Object.freeze(["calm", "dreamy", "melancholic", "warm", "playful", "energetic", "intense", "dark"]);
 	const TEMPOS = Object.freeze(["slow", "mid", "fast", "rap"]);
-	const LAYOUTS = Object.freeze(["column", "zigzag", "spiral", "wall", "tunnel", "collage", "hero", "tower"]);
+	// Flat compositions, then three that sit in depth: carousel and reel wrap the lines round a drum, crawl lays them on a tilted plane.
+	const LAYOUTS = Object.freeze([
+		"column", "zigzag", "spiral", "wall", "tunnel", "collage", "hero", "tower",
+		"stairs", "strip", "split", "swell", "radial", "carousel", "reel", "crawl",
+	]);
 	const ENTERS = Object.freeze(["pan", "drop", "rise", "roll", "flip", "push", "pull", "cut", "whip", "spin", "orbit", "tumble", "fade", "through", "panel"]);
 	const FX = Object.freeze(["pop", "slide", "rise", "slam", "stretch", "flip", "type", "assemble", "drop", "wave", "blur", "wipe", "glitch", "spin", "zoom", "track", "bounce", "flicker"]);
 	// Effects that move single letters; joined scripts get a word-level equivalent.
 	const LETTER_FX = Object.freeze(["type", "assemble", "drop", "wave", "track", "bounce", "flicker"]);
-	const ACCENTS = Object.freeze(["color", "box", "outline", "underline", "mark", "spark"]);
+	const ACCENTS = Object.freeze(["color", "box", "outline", "underline", "mark", "spark", "glow", "gradient", "stamp", "circle", "extrude", "sticker"]);
 	// Shot faces. Serif shots are rare (SERIF_SHARE); shot.serif sets only a shot's emphasised words in serif.
 	const TYPES = Object.freeze(["impact", "serif", "round"]);
 	const SERIF_SHARE = 0.15;
 	const SERIF_LINE_SHARE = 0.18;
-	const MAX_LINES = Object.freeze({ column: 6, zigzag: 5, spiral: 4, wall: 6, tunnel: 6, collage: 5, hero: 2, tower: 3 });
+	const MAX_LINES = Object.freeze({
+		column: 6, zigzag: 5, spiral: 4, wall: 6, tunnel: 6, collage: 5, hero: 2, tower: 3,
+		stairs: 5, strip: 4, split: 6, swell: 4, radial: 6, carousel: 5, reel: 6, crawl: 6,
+	});
 	const PACE = Object.freeze({ slow: 1.4, mid: 1, fast: 0.82, rap: 0.72 });
 	const MAX_PROMPT_LINES = 140;
 	const MAX_SHOT_MOTIFS = 4;
@@ -284,31 +292,63 @@
 	};
 
 	const LAYOUT_WEIGHTS = Object.freeze({
-		slow: { hero: 2.4, column: 1.4, wall: 0.3, tunnel: 0.8, spiral: 0.7, zigzag: 0.4, collage: 0, tower: 0 },
-		mid: { hero: 2.2, column: 0.8, wall: 0.6, tunnel: 0.9, spiral: 0.9, zigzag: 1.2, collage: 0.9, tower: 0.5 },
-		fast: { hero: 0.8, column: 0.5, wall: 0.6, tunnel: 1, spiral: 0.8, zigzag: 1.3, collage: 1.4, tower: 1.2 },
-		rap: { hero: 0.3, column: 1, wall: 0.6, tunnel: 1.2, spiral: 0.5, zigzag: 1, collage: 1.6, tower: 1.6 },
+		slow: {
+			hero: 2.2, column: 1.2, wall: 0.3, tunnel: 0.7, spiral: 0.6, zigzag: 0.4, collage: 0, tower: 0,
+			stairs: 0.9, strip: 0.7, split: 0.6, swell: 0.9, radial: 0.3, carousel: 0.9, reel: 0.8, crawl: 1.1,
+		},
+		mid: {
+			hero: 2, column: 0.7, wall: 0.6, tunnel: 0.8, spiral: 0.8, zigzag: 1, collage: 0.8, tower: 0.5,
+			stairs: 0.9, strip: 0.8, split: 0.7, swell: 0.9, radial: 0.8, carousel: 1, reel: 0.9, crawl: 0.8,
+		},
+		fast: {
+			hero: 0.8, column: 0.4, wall: 0.6, tunnel: 0.9, spiral: 0.8, zigzag: 1.1, collage: 1.2, tower: 1.1,
+			stairs: 0.9, strip: 1, split: 0.8, swell: 0.9, radial: 1, carousel: 1, reel: 1.1, crawl: 0.5,
+		},
+		rap: {
+			hero: 0.3, column: 0.8, wall: 0.6, tunnel: 1.1, spiral: 0.5, zigzag: 0.9, collage: 1.4, tower: 1.5,
+			stairs: 1, strip: 0.8, split: 1, swell: 0.6, radial: 0.6, carousel: 0.7, reel: 1.2, crawl: 0.6,
+		},
 	});
+	// A composition never follows itself (a returning chorus poster aside), the two before it are
+	// unlikely to come straight back, and ones the song has not used yet are favoured.
+	const RECENT_PENALTY = Object.freeze([0, 0.45, 0.7]);
+	const FRESH_BOOST = 1.5;
 
-	const localLayout = (lines, energy, shot, previous, tempo, random) => {
+	const localLayout = (lines, energy, shot, history, tempo, random) => {
 		const count = lines.length;
 		const chars = lines.reduce((sum, line) => sum + line.chars, 0);
 		const seconds = (lines[count - 1].end - lines[0].start) / 1000;
 		const base = LAYOUT_WEIGHTS[tempo.tempo] || LAYOUT_WEIGHTS.mid;
 		const longest = Math.max(...lines.map((line) => line.words.length));
+		const within = (name, least = 2) => count >= least && count <= MAX_LINES[name];
 		const weights = {
 			hero: count <= 2 && (chars <= 16 || seconds / count >= 3.6) ? base.hero : 0,
 			// Choruses are set big, from their first time; other shots leave the poster to them.
-			wall: count <= MAX_LINES.wall ? (shot.chorus || shot.repeated ? 5 : count >= 3 ? base.wall : base.wall * 0.3) : 0,
+			wall: count <= MAX_LINES.wall ? (shot.chorus || shot.repeated ? 7 : count >= 3 ? base.wall : base.wall * 0.3) : 0,
 			column: base.column,
-			zigzag: count >= 2 && count <= MAX_LINES.zigzag ? base.zigzag * (1 + 0.5 * energy) : 0,
-			spiral: count >= 3 && count <= MAX_LINES.spiral ? base.spiral : 0,
+			zigzag: within("zigzag") ? base.zigzag * (1 + 0.5 * energy) : 0,
+			spiral: within("spiral", 3) ? base.spiral : 0,
 			tunnel: count >= 2 ? base.tunnel * (0.6 + energy) : 0,
-			collage: count >= 3 && count <= MAX_LINES.collage && energy > 0.3 ? base.collage : 0,
+			collage: within("collage", 3) && energy > 0.3 ? base.collage : 0,
 			tower: count <= MAX_LINES.tower && longest <= 6 ? base.tower : 0,
+			stairs: within("stairs") ? base.stairs : 0,
+			strip: within("strip") && chars / count <= 22 ? base.strip : 0,
+			// Voices answering each other face each other.
+			split: within("split") ? base.split * (shot.voices ? 3 : 1) : 0,
+			// The shot before a chorus builds into it.
+			swell: within("swell") ? base.swell * (shot.build ? 3 : 1) : 0,
+			radial: within("radial", 3) ? base.radial * (0.7 + 0.6 * energy) : 0,
+			carousel: within("carousel") ? base.carousel : 0,
+			reel: within("reel", 3) ? base.reel : 0,
+			crawl: within("crawl", 3) ? base.crawl * (1.3 - 0.6 * energy) : 0,
 		};
-		if (previous && weights[previous]) weights[previous] *= previous === "wall" && (shot.chorus || shot.repeated) ? 0.5 : 0.12;
-		return weightedPick(random, weights) || "column";
+		const open = { ...weights };
+		history.slice(-RECENT_PENALTY.length).reverse().forEach((name, back) => {
+			if (!weights[name]) return;
+			weights[name] *= !back && name === "wall" && (shot.chorus || shot.repeated) ? 0.5 : RECENT_PENALTY[back];
+		});
+		for (const name of Object.keys(weights)) if (!history.includes(name)) weights[name] *= FRESH_BOOST;
+		return weightedPick(random, weights) || weightedPick(random, open) || "column";
 	};
 
 	const ENTER_WEIGHTS = Object.freeze({
@@ -362,10 +402,21 @@
 	// ... and how often a heavy shot sets just its emphasised words in serif.
 	const SERIF_CHANCE = Object.freeze({ slow: 0.4, mid: 0.25, fast: 0.1, rap: 0.05 });
 	const ACCENT_WEIGHTS = Object.freeze({
-		slow: { color: 1, underline: 1, outline: 0.6, mark: 0.5 },
-		mid: { color: 1, box: 0.7, underline: 0.6, mark: 0.6, outline: 0.4, spark: 0.5 },
-		fast: { box: 1, spark: 1.2, color: 0.8, mark: 0.6, outline: 0.5 },
+		slow: { color: 1, underline: 1, outline: 0.6, mark: 0.5, glow: 0.9, gradient: 0.9, circle: 0.7, extrude: 0.2 },
+		mid: { color: 1, box: 0.7, underline: 0.6, mark: 0.6, outline: 0.4, spark: 0.5, glow: 0.6, gradient: 0.7, stamp: 0.5, circle: 0.6, extrude: 0.6, sticker: 0.5 },
+		fast: { box: 1, spark: 1.2, color: 0.8, mark: 0.6, outline: 0.5, glow: 0.8, gradient: 0.6, stamp: 0.9, circle: 0.4, extrude: 0.9, sticker: 0.8 },
 	});
+
+	/** A shot's accent: never the one just used, more often one the song has not shown yet. */
+	const localAccent = (accents, history, random) => {
+		const weights = { ...accents };
+		[0, 0.6].forEach((penalty, back) => {
+			const name = history[history.length - 1 - back];
+			if (name && weights[name]) weights[name] *= penalty;
+		});
+		for (const name of Object.keys(weights)) if (!history.includes(name)) weights[name] *= 1.4;
+		return weightedPick(random, weights) || "color";
+	};
 	const UPPER_CHANCE = Object.freeze({ slow: 0.15, mid: 0.4, fast: 0.6, rap: 0.6 });
 	const TILT = Object.freeze({ slow: 2, mid: 5, fast: 9, rap: 11 });
 
@@ -430,6 +481,8 @@
 		// Every return of a section gets the look it had the first time.
 		const styleByKey = new Map();
 		const shots = [];
+		const layoutHistory = [];
+		const accentHistory = [];
 		const groups = groupShots(lines);
 		const budget = serifBudget(groups.length, lines.length);
 		let serifShots = 0;
@@ -448,10 +501,18 @@
 					serifShots += 1;
 					serifLines += members.length;
 				}
+				layoutHistory.push(seen.layout);
+				accentHistory.push(seen.accent);
 				shots.push({ ...seen, ...back, from: shot.from, to: shot.to, enter });
 				return;
 			}
-			const layout = localLayout(members, shotEnergy, shot, previous?.layout, tempo, random);
+			const traits = {
+				...shot,
+				build: groups[index + 1]?.chorus === true && !shot.chorus,
+				voices: members.some((line, offset) => (line.backing || []).some((voice) => voice.role === "duet")
+					|| (offset > 0 && line.start < members[offset - 1].end - 200)),
+			};
+			const layout = localLayout(members, shotEnergy, traits, layoutHistory, tempo, random);
 			const serifRoom = previous?.type !== "serif" && serifShots < budget.shots && serifLines + members.length <= budget.lines;
 			const { type, serif } = shotType(mood, tempo, layout, random, serifRoom);
 			if (type === "serif") {
@@ -467,17 +528,19 @@
 				layout,
 				enter,
 				fx: localFx(members, shotEnergy, tempo, random),
-				accent: weightedPick(random, accents) || "color",
+				accent: localAccent(accents, accentHistory, random),
 				type,
 				serif,
 				upper: type === "impact" && random() < UPPER_CHANCE[tempo.tempo],
-				bars: (layout === "hero" || layout === "wall") && random() < (quiet ? 0.45 : 0.2),
-				rule: (quiet || serif) && (layout === "column" || layout === "hero" || layout === "tower") && random() < 0.5,
+				bars: ["hero", "wall", "crawl", "swell"].includes(layout) && random() < (quiet ? 0.45 : 0.2),
+				rule: (quiet || serif) && ["column", "hero", "tower", "stairs"].includes(layout) && random() < 0.5,
 				dutch: Math.round((random() * 2 - 1) * tilt),
 				motifs: motifsFor(members.map((line) => line.text + " " + (line.translation || "")).join(" "), mood, random, motifCount),
-				echo: ["wall", "hero", "column", "tunnel", "tower"].includes(layout) && random() < 0.65 ? echoFor(members) : null,
+				echo: ["wall", "hero", "column", "tunnel", "tower", "stairs", "split", "swell", "carousel"].includes(layout) && random() < 0.65 ? echoFor(members) : null,
 				source: "local",
 			};
+			layoutHistory.push(layout);
+			accentHistory.push(style.accent);
 			styleByKey.set(shot.key, styleByKey.get(shot.key) || style);
 			shots.push(style);
 		});
@@ -486,6 +549,20 @@
 			const held = heldWordIndex(line);
 			if (held >= 0) lineDirections[index] = { emph: [held] };
 		});
+		// Every shot shows its accent: one without a held word emphasises its longest-sung word.
+		for (const shot of shots) {
+			let best = null;
+			let marked = false;
+			for (let index = shot.from; index <= shot.to && !marked; index += 1) {
+				marked = !!lineDirections[index];
+				lines[index].words.forEach((word, position) => {
+					if (graphemeCount(word.text) < 2 || !/[\p{L}\p{N}]/u.test(word.text)) return;
+					const sung = word.end - word.start;
+					if (!best || sung > best.sung) best = { index, position, sung };
+				});
+			}
+			if (!marked && best) lineDirections[best.index] = { emph: [best.position] };
+		}
 		return { version: VERSION, source: "local", coverage: 0, mood, tempo, palette: null, shots, lines: lineDirections, shapes: {} };
 	};
 

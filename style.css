@@ -11515,7 +11515,8 @@ html.is-lp-view-switch::view-transition-new(root) {
 
 .accent-color .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
 .accent-underline .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
-.accent-spark .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+.accent-spark .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
+.accent-stamp .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
   color: var(--iv-motion-accent, #ff5ca0);
 }
 
@@ -11523,6 +11524,50 @@ html.is-lp-view-switch::view-transition-new(root) {
   color: transparent;
   -webkit-text-stroke: max(1.5px, 0.045em) var(--iv-motion-accent, #ff5ca0);
   text-shadow: none;
+}
+
+/* Neon: white letters in a glow of the accent colour (the engine throbs them with the beat). */
+.accent-glow .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+  color: #fff;
+  text-shadow:
+    0 0 0.05em #fff,
+    0 0 0.2em var(--iv-motion-accent, #ff5ca0),
+    0 0 0.5em var(--iv-motion-accent, #ff5ca0);
+}
+
+/* Letters filled with a gradient of the two accent colours (top to bottom, so letters set one by one match). */
+.accent-gradient .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
+.accent-gradient .ivlyrics-motion-word.is-emph .ivlyrics-motion-char {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--iv-motion-accent-2, #5cd6ff) 80%, #fff) 14%, var(--iv-motion-accent, #ff5ca0) 86%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+}
+
+/* Solid block letters: the accent colour stacked behind white faces. */
+.accent-extrude .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+  color: #fff;
+  text-shadow:
+    0.014em 0.014em 0 var(--iv-motion-accent, #ff5ca0),
+    0.028em 0.028em 0 var(--iv-motion-accent, #ff5ca0),
+    0.042em 0.042em 0 var(--iv-motion-accent, #ff5ca0),
+    0.056em 0.056em 0 var(--iv-motion-accent, #ff5ca0),
+    0.07em 0.07em 0 var(--iv-motion-accent, #ff5ca0),
+    0.084em 0.084em 0 var(--iv-motion-accent, #ff5ca0),
+    0.12em 0.14em 0.18em rgba(0, 0, 0, 0.42);
+}
+
+/* A sticker: coloured letters with a thick white edge, a little askew. */
+.accent-sticker .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+  color: var(--iv-motion-accent, #ff5ca0);
+  rotate: -3deg;
+  text-shadow:
+    0.055em 0 0 #fff, 0.048em 0.028em 0 #fff, 0.028em 0.048em 0 #fff,
+    0 0.055em 0 #fff, -0.028em 0.048em 0 #fff, -0.048em 0.028em 0 #fff,
+    -0.055em 0 0 #fff, -0.048em -0.028em 0 #fff, -0.028em -0.048em 0 #fff,
+    0 -0.055em 0 #fff, 0.028em -0.048em 0 #fff, 0.048em -0.028em 0 #fff,
+    0.04em 0.1em 0.14em rgba(0, 0, 0, 0.45);
 }
 
 /* Highlight box, underline and marker sweep in behind emphasised words. */
@@ -11548,6 +11593,34 @@ html.is-lp-view-switch::view-transition-new(root) {
   inset: 42% -0.1em 4%;
   opacity: calc(var(--ls, 1) * 0.82);
   rotate: -1.6deg;
+}
+
+/* A rubber stamp: a tilted outlined frame that slams down around the word. */
+.ivlyrics-motion-box.is-stamp,
+.ivlyrics-motion-word[dir="rtl"] .ivlyrics-motion-box.is-stamp {
+  inset: -0.03em -0.2em -0.01em;
+  border: max(2px, 0.065em) solid var(--iv-motion-accent, #ff5ca0);
+  border-radius: 0.12em;
+  background: none;
+  opacity: calc(var(--ls, 1) * var(--b, 0));
+  rotate: -3.5deg;
+  transform: scale(calc(1.6 - 0.6 * var(--b, 0)));
+  transform-origin: 50% 50%;
+}
+
+/* A pen loop drawn round the word as it is sung. */
+.ivlyrics-motion-loop {
+  position: absolute;
+  overflow: visible;
+  opacity: var(--ls, 1);
+}
+
+.ivlyrics-motion-loop path {
+  fill: none;
+  stroke: var(--iv-motion-accent, #ff5ca0);
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--b, 0));
 }
 
 .accent-box .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
@@ -11586,6 +11659,18 @@ html.is-lp-view-switch::view-transition-new(root) {
 .type-serif .ivlyrics-motion-rule,
 .has-serif .ivlyrics-motion-rule {
   background: color-mix(in srgb, var(--iv-motion-accent, #fff) 70%, #fff);
+}
+
+/* A line a composition draws as it is sung: a strip's track, a split's divider. */
+.ivlyrics-motion-stroke {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: max(2px, 0.18vh);
+  margin-top: calc(max(2px, 0.18vh) / -2);
+  background: rgba(255, 255, 255, 0.92);
+  opacity: 0;
+  transform-origin: 0 50%;
 }
 
 .ivlyrics-motion-motif {

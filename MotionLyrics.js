@@ -3,10 +3,14 @@
 // Songs with real word or character timing play as a motion-graphics edit.
 // A director (MotionLyricsDirector.js, written by AI when a provider is
 // available) groups the lines into shots and paces them to the song's tempo;
-// each shot becomes a board, a composition of several lines in 3D space, set
-// in the faces of its script (MotionLyricsType.js). A camera flies, rolls,
-// orbits and dollies across the boards: upcoming lines wait as faint
-// outlines, each word lands as solid type with its effect as it is sung, and
+// each shot becomes a board, a composition of several lines in 3D space
+// (sixteen kinds: flat ones like columns, posters, stairs, strips and spokes,
+// and ones in depth like tunnels, drums the lines wrap around and a tilted
+// crawl), set in the faces of its script (MotionLyricsType.js). A camera
+// flies, rolls, orbits and dollies across the boards and turns to face the
+// lines on drums: upcoming lines wait as faint outlines, each word lands as
+// solid type with its effect as it is sung (emphasised words in one of
+// twelve accents), and
 // sung lines stay as dim echoes until their board drifts out of view. Motifs,
 // a giant background word, colour panels and letterbox bars animate with each
 // board, and the video background turns and zooms with the camera. Other
@@ -1006,6 +1010,243 @@
 		return { places, frames, drift: { z: 110, roll: 1 } };
 	};
 
+	// Lines step down a diagonal staircase; the camera glides along it.
+	const layoutStairs = (lines, ctx, random, look) => {
+		const side = random() < 0.5 ? 1 : -1;
+		const blocks = lines.map((line) => layoutBlock(line, ctx, blockOptions(look, line, {
+			size: ctx.F * 0.84 * boostOf(line),
+			maxLength: ctx.W * 0.56,
+			align: side > 0 ? "left" : "right",
+		})));
+		const places = [];
+		let edge = 0;
+		let y = 0;
+		blocks.forEach((block, index) => {
+			if (index) {
+				const previous = blocks[index - 1];
+				edge += side * clamp(previous.width * 0.42, ctx.W * 0.1, ctx.W * 0.24);
+				y += Math.max(previous.size, block.size) * 0.34;
+			}
+			places.push({ x: edge + (side * block.width) / 2, y: y + block.height / 2, z: 0, rot: 0, block });
+			y += block.height;
+		});
+		centerPlaces(places);
+		const frames = places.map((place) => ({ x: place.x, y: place.y, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 90, roll: 1.2 } };
+	};
+
+	// Lines side by side on one long strip with a track drawn under them; the camera travels along it.
+	const layoutStrip = (lines, ctx, random, look) => {
+		const side = (ctx.typography[lines[0].n] || DEFAULT_INFO).rtl ? -1 : 1;
+		const lift = (random() < 0.5 ? 1 : -1) * ctx.H * 0.06;
+		const gap = ctx.W * 0.09;
+		const places = [];
+		let x = 0;
+		lines.forEach((line, index) => {
+			const block = layoutBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 0.92 * boostOf(line), maxLength: ctx.W * 0.6 }));
+			if (index) x += side * (places[index - 1].block.width / 2 + gap + block.width / 2);
+			places.push({ x, y: index % 2 ? lift : -lift * 0.4, z: 0, rot: 0, block });
+		});
+		centerPlaces(places);
+		const frames = places.map((place) => ({ x: place.x, y: place.y * 0.5, z: 0, roll: 0 }));
+		const start = places[0].x - (side * places[0].block.width) / 2 - side * ctx.F * 0.4;
+		const last = places[places.length - 1];
+		const length = Math.abs(last.x + (side * last.block.width) / 2 + side * ctx.F * 0.4 - start);
+		const track = {
+			x: start,
+			y: Math.max(...places.map((place) => place.y + place.block.height / 2)) + ctx.F * 0.26,
+			z: 0,
+			length,
+			rot: side > 0 ? 0 : 180,
+			stops: places.map((place) => clamp01((Math.abs(place.x - start) + place.block.width / 2 + ctx.F * 0.2) / length)),
+		};
+		return { places, frames, drift: { z: 100, roll: 0.8 }, strokes: [track] };
+	};
+
+	// Two columns facing each other across a centre line; the lines alternate sides (duets, call and response).
+	const layoutSplit = (lines, ctx, random, look) => {
+		const gutter = ctx.F * 0.42;
+		const first = random() < 0.5 ? -1 : 1;
+		const bottom = { [-1]: -Infinity, 1: -Infinity };
+		const places = [];
+		lines.forEach((line, index) => {
+			const side = index % 2 ? -first : first;
+			const block = layoutBlock(line, ctx, blockOptions(look, line, {
+				size: ctx.F * 0.8 * boostOf(line),
+				maxLength: ctx.W * 0.4,
+				align: side < 0 ? "right" : "left",
+			}));
+			const previous = places[index - 1];
+			// A line starts beside the lower part of the one across from it, below the last one on its own side.
+			const top = previous
+				? Math.max(bottom[side] + ctx.F * 0.3, previous.y + previous.block.height * 0.12)
+				: 0;
+			places.push({ x: side * (gutter + block.width / 2), y: top + block.height / 2, z: 0, rot: 0, block });
+			bottom[side] = top + block.height;
+		});
+		const highest = Math.min(...places.map((place) => place.y - place.block.height / 2));
+		const lowest = Math.max(...places.map((place) => place.y + place.block.height / 2));
+		places.forEach((place) => { place.y -= (highest + lowest) / 2; });
+		const frames = places.map((place) => ({ x: place.x * 0.55, y: place.y, z: 0, roll: 0 }));
+		const length = lowest - highest + ctx.F * 0.7;
+		const top = -(lowest - highest) / 2 - ctx.F * 0.35;
+		// The divider reaches the bottom of each line as it is sung, and never draws back.
+		let reached = 0;
+		const divider = {
+			x: 0,
+			y: top,
+			z: 0,
+			length,
+			rot: 90,
+			stops: places.map((place) => (reached = Math.max(reached, clamp01((place.y + place.block.height / 2 + ctx.F * 0.2 - top) / length)))),
+		};
+		return { places, frames, drift: { z: 80, roll: 1 }, strokes: [divider] };
+	};
+
+	// Every line larger than the last: the shot builds.
+	const layoutSwell = (lines, ctx, random, look) => {
+		const count = lines.length;
+		const align = random() < 0.4 ? "left" : "center";
+		const places = [];
+		let y = 0;
+		lines.forEach((line, index) => {
+			const grow = count > 1 ? index / (count - 1) : 1;
+			const block = layoutBlock(line, ctx, blockOptions(look, line, {
+				size: ctx.F * lerp(0.56, 1.5, grow),
+				maxLength: ctx.W * lerp(0.46, 0.84, grow),
+				emphScale: 1.15,
+				align,
+			}));
+			if (index) y += block.size * 0.12;
+			places.push({ x: 0, y: y + block.height / 2, z: 0, rot: 0, block });
+			y += block.height;
+		});
+		const widest = Math.max(...places.map((place) => place.block.width));
+		places.forEach((place) => {
+			place.y -= y / 2;
+			if (align === "left") place.x = -widest / 2 + place.block.width / 2;
+		});
+		const frames = places.map((place) => ({
+			x: frameX(place, ctx, 0.5),
+			y: place.y,
+			z: Math.max(0, (place.block.height - ctx.H * 0.56) * 0.9),
+			roll: 0,
+		}));
+		return { places, frames, drift: { z: 140, roll: 0.8 } };
+	};
+
+	// Lines radiate from a hub like spokes; the screen turns to read each one.
+	const layoutRadial = (lines, ctx, random, look) => {
+		// Never a quarter turn: four lines sit a fifth of a turn apart, so the spokes do not read as a square.
+		const step = (360 / Math.max(3, lines.length === 4 ? 5 : lines.length)) * (random() < 0.5 ? 1 : -1);
+		const blocks = lines.map((line) => layoutBlock(line, ctx, blockOptions(look, line, {
+			size: ctx.F * 0.78 * boostOf(line),
+			maxLength: ctx.W * 0.5,
+			align: "left",
+		})));
+		const thickest = Math.max(...blocks.map((block) => block.height));
+		// Far enough out that neighbouring spokes clear each other at the hub.
+		const hub = thickest / (2 * Math.tan((Math.abs(step) * Math.PI) / 360)) + ctx.F * 0.5;
+		const frames = [];
+		const places = blocks.map((block, index) => {
+			const angle = step * index;
+			const out = rotate2d(1, 0, angle);
+			const reach = hub + block.width / 2;
+			// The camera sits towards the hub but keeps the whole spoke in frame.
+			const view = clamp(reach * 0.84, hub + block.width - ctx.W * 0.46, hub + ctx.W * 0.46);
+			frames.push({ x: out.x * view, y: out.y * view, z: 0, roll: angle });
+			return { x: out.x * reach, y: out.y * reach, z: 0, rot: angle, block };
+		});
+		return { places, frames, drift: { z: 80, roll: 1.6 * Math.sign(step) } };
+	};
+
+	// Lines around a drum that turns about its upright axis. Seen from outside the
+	// neighbours curve away; from inside they lean in. The camera swings round to face each line.
+	const layoutCarousel = (lines, ctx, random, look) => {
+		const side = (ctx.typography[lines[0].n] || DEFAULT_INFO).rtl ? -1 : 1;
+		const inside = random() < 0.35;
+		const blocks = lines.map((line) => layoutBlock(line, ctx, blockOptions(look, line, {
+			size: ctx.F * 0.88 * boostOf(line),
+			maxLength: ctx.W * 0.5,
+		})));
+		const gap = ctx.W * 0.07;
+		const arcs = [0];
+		for (let index = 1; index < blocks.length; index += 1) arcs.push(arcs[index - 1] + blocks[index - 1].width / 2 + gap + blocks[index].width / 2);
+		const total = arcs[arcs.length - 1];
+		// At most a quarter turn from the first line to the last.
+		const radius = Math.max(ctx.W * 1.25, total / 1.5);
+		const places = blocks.map((block, index) => {
+			const angle = (side * (arcs[index] - total / 2)) / radius;
+			const degrees = (angle * 180) / Math.PI;
+			return {
+				x: radius * Math.sin(angle),
+				y: 0,
+				z: (inside ? 1 : -1) * radius * (1 - Math.cos(angle)),
+				rot: 0,
+				tiltY: inside ? -degrees : degrees,
+				block,
+			};
+		});
+		const frames = places.map((place) => ({ x: place.x, y: place.y, z: place.z, roll: 0, face: true }));
+		return { places, frames, drift: { z: 100, roll: 0.8 } };
+	};
+
+	// Lines on a drum that rolls like a slot-machine reel: sung lines roll away over the top.
+	const layoutReel = (lines, ctx, random, look) => {
+		const align = random() < 0.35 ? "left" : "center";
+		const blocks = lines.map((line) => layoutBlock(line, ctx, blockOptions(look, line, {
+			size: ctx.F * 0.92 * boostOf(line),
+			maxLength: ctx.W * 0.74,
+			align,
+		})));
+		const gap = ctx.F * 0.36;
+		const arcs = [0];
+		for (let index = 1; index < blocks.length; index += 1) arcs.push(arcs[index - 1] + blocks[index - 1].height / 2 + gap + blocks[index].height / 2);
+		const total = arcs[arcs.length - 1];
+		// About 28 degrees between lines, at most a third of a turn in all.
+		const radius = Math.max(ctx.H * 0.42, total / Math.max(1, blocks.length - 1) / 0.5, total / 2.1);
+		const widest = Math.max(...blocks.map((block) => block.width));
+		const places = blocks.map((block, index) => {
+			const angle = (arcs[index] - total / 2) / radius;
+			return {
+				x: align === "left" ? -widest / 2 + block.width / 2 : 0,
+				y: radius * Math.sin(angle),
+				z: -radius * (1 - Math.cos(angle)),
+				rot: 0,
+				tiltX: (-angle * 180) / Math.PI,
+				block,
+			};
+		});
+		const frames = places.map((place) => ({ x: frameX(place, ctx, 0.5), y: place.y, z: place.z, roll: 0, face: true }));
+		return { places, frames, drift: { z: 90, roll: 0.8 } };
+	};
+
+	const CRAWL_TILT = 36;
+
+	// Lines lying on a plane that tilts away like an opening crawl: sung lines
+	// recede into the distance (or, tilted the other way, the coming ones do).
+	const layoutCrawl = (lines, ctx, random, look) => {
+		const tilt = (random() < 0.6 ? 1 : -1) * CRAWL_TILT;
+		const blocks = lines.map((line) => layoutBlock(line, ctx, blockOptions(look, line, {
+			size: ctx.F * 0.96 * boostOf(line),
+			maxLength: ctx.W * 0.7,
+		})));
+		const along = [];
+		let position = 0;
+		blocks.forEach((block, index) => {
+			if (index) position += Math.max(blocks[index - 1].size, block.size) * 0.34;
+			along.push(position + block.height / 2);
+			position += block.height;
+		});
+		const radians = (tilt * Math.PI) / 180;
+		const places = blocks.map((block, index) => {
+			const offset = along[index] - position / 2;
+			return { x: 0, y: offset * Math.cos(radians), z: offset * Math.sin(radians), rot: 0, tiltX: tilt, block };
+		});
+		const frames = places.map((place) => ({ x: 0, y: place.y, z: place.z, roll: 0 }));
+		return { places, frames, drift: { z: 120, roll: 0.6 } };
+	};
+
 	const LAYOUT_FNS = Object.freeze({
 		column: layoutColumn,
 		zigzag: layoutZigzag,
@@ -1015,6 +1256,14 @@
 		collage: layoutCollage,
 		hero: layoutHero,
 		tower: layoutTower,
+		stairs: layoutStairs,
+		strip: layoutStrip,
+		split: layoutSplit,
+		swell: layoutSwell,
+		radial: layoutRadial,
+		carousel: layoutCarousel,
+		reel: layoutReel,
+		crawl: layoutCrawl,
 	});
 	const BIG_MOTIFS = new Set(["ring", "halo", "sunburst", "spiral", "moon", "sun", "disc", "square", "flower", "star", "frame"]);
 	const CALM_MOTIFS = new Set(["ring", "dot", "disc", "halo", "moon", "sun"]);
@@ -1060,7 +1309,8 @@
 				name, parts, line,
 				x: spot.x,
 				y: spot.y,
-				z: between(random, -60, 40),
+				// At the depth of its line (tunnels and drums put lines at different depths).
+				z: (board.places[line].z || 0) + between(random, -60, 40),
 				size,
 				rot: between(random, -30, 30),
 				spin: between(random, -42, 42) * (CALM_MOTIFS.has(name) ? 0.25 : 1) * ctx.spin,
@@ -1128,6 +1378,29 @@
 	const DOWNWARDS = new Set(["drop", "flip", "tumble"]);
 	const IN_DEPTH = { push: -PUSH_DEPTH, through: -PUSH_DEPTH, pull: PULL_DEPTH, fade: -FADE_DEPTH };
 	const HARD_CUTS = new Set(["cut", "panel"]);
+	// Compositions the camera pulls back from at the end, to show them whole.
+	const REVEALED = new Set(["spiral", "radial", "carousel", "strip", "split"]);
+	const FORWARD = Object.freeze({ x: 0, y: 0, z: -1 });
+
+	const toRadians = (degrees) => (degrees * Math.PI) / 180;
+	const toDegrees = (radians) => (radians * 180) / Math.PI;
+
+	/**
+	 * How a line tilted in depth (place.tiltX / tiltY, on drums) faces the
+	 * camera: the direction it looks in the camera's rolled frame, and the
+	 * yaw and pitch that turn the camera to face it squarely.
+	 */
+	const facingOf = (place, turn) => {
+		const tiltX = toRadians(place.tiltX || 0);
+		const tiltY = toRadians(place.tiltY || 0);
+		const normal = rotate2d(Math.cos(tiltX) * Math.sin(tiltY), -Math.sin(tiltX), -turn);
+		const z = Math.cos(tiltX) * Math.cos(tiltY);
+		return {
+			normal: { x: normal.x, y: normal.y, z },
+			yaw: toDegrees(Math.atan2(-normal.x, z)),
+			pitch: toDegrees(Math.asin(clamp(normal.y, -1, 1))),
+		};
+	};
 
 	/** Puts each board next to the last one, out of its way, in the direction its entrance moves. */
 	const placeBoards = (boards, ctx, seed) => {
@@ -1177,11 +1450,23 @@
 				const depth = IN_DEPTH[enter] || 0;
 				board.origin = { x: target.x - firstOffset.x, y: target.y - firstOffset.y, z: last.z - firstFrame.z + depth };
 			}
-			board.cameras = board.frames.map((frame) => {
+			board.cameras = board.frames.map((frame, local) => {
 				const point = toWorld(board, frame.x, frame.y);
 				const roll = nearestRoll(board.roll + frame.roll + board.dutch, previousRoll);
 				previousRoll = roll;
-				return { x: point.x, y: point.y, z: board.origin.z + frame.z, roll };
+				// On drums the camera turns to face the line; push is the way it dollies in (world).
+				const place = board.places[local];
+				const facing = frame.face ? facingOf(place, frame.roll - place.rot + board.dutch) : null;
+				const into = facing ? rotate2d(-facing.normal.x, -facing.normal.y, roll) : { x: 0, y: 0 };
+				return {
+					x: point.x,
+					y: point.y,
+					z: board.origin.z + frame.z,
+					roll,
+					yaw: facing ? facing.yaw : 0,
+					pitch: facing ? facing.pitch : 0,
+					push: { x: into.x, y: into.y, z: facing ? -facing.normal.z : -1 },
+				};
 			});
 			board.corners = board.localCorners.map((corner) => toWorld(board, corner.x, corner.y));
 			board.planeZ = board.origin.z + board.places.reduce((sum, place) => sum + place.z, 0) / board.places.length;
@@ -1250,6 +1535,12 @@
 			line.lastWordStart = Math.max(...line.words.map((word) => word.start));
 			line.drift = { z: board.drift.z * feel.drift, roll: board.drift.roll * feel.drift };
 		});
+		boards.forEach((board) => {
+			for (const motif of board.motifs) {
+				const point = toWorld(board, motif.x, motif.y);
+				motif.center = { x: point.x, y: point.y, z: board.origin.z + motif.z };
+			}
+		});
 		const hardCut = (type) => type === "cut" || type === "panel";
 		lines.forEach((line, index) => {
 			const next = lines[index + 1];
@@ -1308,7 +1599,7 @@
 			const room = line.leave - (line.end + 250);
 			if (gap >= LONG_GAP_MS
 				|| (!sameBoard && board.layout === "wall" && room >= 900)
-				|| (!sameBoard && board.layout === "spiral" && room >= 1200)) {
+				|| (!sameBoard && REVEALED.has(board.layout) && room >= 1200)) {
 				line.reveal = { start: line.end + (gap >= LONG_GAP_MS ? 700 : 250), end: line.leave, pose: revealPose(board, line.camera, ctx) };
 			}
 			if (gap >= REST_GAP_MS) {
@@ -1448,6 +1739,7 @@
 				places: layout.places,
 				frames: layout.frames,
 				drift: layout.drift,
+				strokes: layout.strokes || [],
 				color: index % 2,
 				rests: [],
 			};
@@ -1504,6 +1796,11 @@
 		y: lerp(from.y, to.y, amount),
 		z: lerp(from.z, to.z, amount),
 		roll: lerp(from.roll, to.roll, amount),
+		// The turn that faces a line on a drum (zero on flat boards).
+		yaw: lerp(from.yaw || 0, to.yaw || 0, amount),
+		pitch: lerp(from.pitch || 0, to.pitch || 0, amount),
+		faceYaw: lerp(from.faceYaw || 0, to.faceYaw || 0, amount),
+		facePitch: lerp(from.facePitch || 0, to.facePitch || 0, amount),
 	});
 
 	const holdPose = (plan, index, time) => {
@@ -1512,11 +1809,18 @@
 		const end = Number.isFinite(line.leave) ? line.leave : line.end + 3200;
 		const life = clamp01((time - line.arrive) / Math.max(1, end - line.arrive));
 		const ease = easeInOutSine(life);
+		// While a line is held the camera eases in towards it.
+		const push = (line.drift?.z || 0) * ease;
+		const into = camera.push || FORWARD;
 		let pose = {
-			x: camera.x,
-			y: camera.y,
-			z: camera.z - (line.drift?.z || 0) * ease,
+			x: camera.x + into.x * push,
+			y: camera.y + into.y * push,
+			z: camera.z + into.z * push,
 			roll: camera.roll + (line.drift?.roll || 0) * (life - 0.5),
+			yaw: camera.yaw || 0,
+			pitch: camera.pitch || 0,
+			faceYaw: camera.yaw || 0,
+			facePitch: camera.pitch || 0,
 		};
 		if (line.reveal && time > line.reveal.start) {
 			const amount = easeInOutCubic(clamp01((time - line.reveal.start) / Math.max(1, Math.min(1700, line.reveal.end - line.reveal.start))));
@@ -1529,8 +1833,8 @@
 			const k = clamp01((time - rest.start) / Math.max(1, until - rest.start));
 			const swell = Math.sin(Math.PI * k);
 			pose.roll += rest.roll * easeInOutSine(k);
-			pose.yaw = rest.yaw * swell;
-			pose.pitch = rest.pitch * swell;
+			pose.yaw += rest.yaw * swell;
+			pose.pitch += rest.pitch * swell;
 			pose.dolly = -rest.zoom * swell;
 		}
 		if (!Number.isFinite(line.leave) && time > line.outro) pose.z += 700 * easeInOutCubic(clamp01((time - line.outro) / 4200));
@@ -1576,7 +1880,7 @@
 		const type = move.type;
 		if (type === "cut" || type === "panel") {
 			const pose = time >= move.cutAt ? to : from;
-			return { ...pose, yaw: 0, pitch: 0, dolly: 0, sway: null, u };
+			return { ...pose, dolly: 0, sway: null, u };
 		}
 		let eased;
 		if (type === "line") eased = easeInOutQuart(u);
@@ -1600,8 +1904,8 @@
 		const bell = Math.sin(Math.PI * clamp01(type === "whip" ? u : easeInOutSine(u)));
 		return {
 			...pose,
-			yaw: move.swing.yaw * bell,
-			pitch: move.swing.pitch * bell,
+			yaw: pose.yaw + move.swing.yaw * bell,
+			pitch: pose.pitch + move.swing.pitch * bell,
 			dolly,
 			sway: { u, dx: to.x - from.x, dy: to.y - from.y, board: type !== "line", whip: type === "whip" },
 			u,
@@ -1621,9 +1925,11 @@
 		const first = lines[0];
 		if (time < first.arrive) {
 			const target = holdPose(plan, 0, first.arrive);
-			const start = { x: target.x, y: target.y, z: target.z + 900, roll: target.roll - 10 };
+			const start = { ...target, z: target.z + 900, roll: target.roll - 10 };
 			const amount = easeInOutCubic(clamp01((time - (first.arrive - INTRO_MS)) / INTRO_MS));
-			pose = { ...mixPose(start, target, amount), yaw: 24 * (1 - amount), pitch: -10 * (1 - amount), dolly: 900 * (1 - amount), sway: null };
+			pose = { ...mixPose(start, target, amount), dolly: 900 * (1 - amount), sway: null };
+			pose.yaw += 24 * (1 - amount);
+			pose.pitch -= 10 * (1 - amount);
 		} else {
 			const index = lineIndexAt(plan, time);
 			const line = lines[index];
@@ -1631,7 +1937,7 @@
 			if (next && time > line.leave) {
 				pose = movePose(plan, index, time);
 			} else {
-				pose = { yaw: 0, pitch: 0, dolly: 0, sway: null, ...holdPose(plan, index, time) };
+				pose = { dolly: 0, sway: null, ...holdPose(plan, index, time) };
 				const previous = lines[index - 1];
 				const since = time - line.arrive;
 				if (previous && since >= 0 && since < 700 && !["cut", "panel", "fade"].includes(previous.move?.type)) {
@@ -1933,8 +2239,11 @@
 				y = (-move.y / length) * amount;
 			}
 		}
-		x -= Math.sin(((pose.yaw || 0) * Math.PI) / 180) * plan.W * 0.42;
-		y += Math.sin(((pose.pitch || 0) * Math.PI) / 180) * plan.H * 0.42;
+		// Swings slide the video fully; the standing turn that faces a drum line only a little (it would zoom the video in for the whole line).
+		const yaw = (pose.yaw || 0) - (pose.faceYaw || 0) * 0.72;
+		const pitch = (pose.pitch || 0) - (pose.facePitch || 0) * 0.72;
+		x -= Math.sin((yaw * Math.PI) / 180) * plan.W * 0.42;
+		y += Math.sin((pitch * Math.PI) / 180) * plan.H * 0.42;
 		const dolly = PERSPECTIVE_PX / (PERSPECTIVE_PX + (pose.dolly || 0) * 0.45);
 		const wanted = coverScale(-pose.roll, plan.W, plan.H) * 1.14 * dolly * (1 + (pose.beat || 0) * 0.025);
 		const scale = Math.max(wanted, coverScale(-pose.roll, plan.W, plan.H, x, y) * 1.01);
@@ -1959,6 +2268,22 @@
 			if (time >= panel.start && time <= panel.end) return { position: lerp(-1, 1, easeInOutCubic((time - panel.start) / Math.max(1, panel.end - panel.start))), color: panel.color };
 		}
 		return null;
+	};
+
+	/**
+	 * How much of a board's stroke (a strip's track, a split's divider) is
+	 * drawn: it reaches each line's stop while that line is sung.
+	 */
+	const strokeLevel = (plan, board, stroke, time) => {
+		let level = 0;
+		stroke.stops.forEach((stop, local) => {
+			const line = plan.lines[board.first + local];
+			const begin = line.start - 300;
+			if (time <= begin) return;
+			const amount = easeInOutCubic(clamp01((time - begin) / clamp(line.end - line.start + 300, 600, 1800)));
+			level = Math.max(level, lerp(local ? stroke.stops[local - 1] : 0, stop, amount));
+		});
+		return level;
 	};
 
 	const pure = Object.freeze({
@@ -1988,6 +2313,8 @@
 		coverScale,
 		barsLevel,
 		panelAt,
+		strokeLevel,
+		facingOf,
 	});
 
 	// ---------------------------------------------------------------------
@@ -2066,7 +2393,31 @@
 		element.style.fontStyle = spec.style;
 		if (spec.spacing) element.style.letterSpacing = spec.spacing + "em";
 	};
-	const BOX_ACCENTS = new Set(["box", "underline", "mark"]);
+	// Accents drawn with an extra element behind or around the emphasised word.
+	const BOX_ACCENTS = new Set(["box", "underline", "mark", "stamp"]);
+	const SVG_NS = "http://www.w3.org/2000/svg";
+	// A hand-drawn loop around a word, in a unit box: it overshoots its start like a pen stroke.
+	const LOOP_PATH = [
+		["M", 0.05, 0.6], ["C", 0.0, 0.24, 0.32, 0.03, 0.58, 0.04], ["C", 0.88, 0.05, 1.03, 0.3, 0.97, 0.6],
+		["C", 0.92, 0.9, 0.5, 1.02, 0.24, 0.94], ["C", 0.0, 0.86, -0.03, 0.48, 0.16, 0.26],
+	];
+
+	/** The loop of the "circle" accent, sized to a word. */
+	const createLoop = (document, width, height, stroke) => {
+		const svg = document.createElementNS(SVG_NS, "svg");
+		svg.setAttribute("class", "ivlyrics-motion-loop");
+		svg.setAttribute("viewBox", "0 0 " + round(width) + " " + round(height));
+		svg.setAttribute("aria-hidden", "true");
+		svg.setAttribute("focusable", "false");
+		svg.style.width = round(width) + "px";
+		svg.style.height = round(height) + "px";
+		const path = document.createElementNS(SVG_NS, "path");
+		path.setAttribute("d", LOOP_PATH.map(([command, ...points]) => command + points.map((value, index) => round(value * (index % 2 ? height : width))).join(" ")).join(" "));
+		path.setAttribute("pathLength", "1");
+		path.setAttribute("stroke-width", String(round(stroke, 2)));
+		svg.appendChild(path);
+		return svg;
+	};
 
 	const createEngine = ({ stage, viewport, camera, scrim, wash, flash, panel, bars, subtitle, live, hudShot, hudTime }) => {
 		const document = root.document;
@@ -2160,6 +2511,12 @@
 				box = document.createElement("span");
 				box.className = "ivlyrics-motion-box is-" + board.accent;
 				wordEl.appendChild(box);
+			} else if (spot.emph && board.accent === "circle") {
+				// Drawn around the word as it is sung (--b, like the boxes).
+				box = createLoop(document, spot.width + spot.size * 0.56, spot.size * 1.3, Math.max(2, spot.size * 0.055));
+				box.style.left = round(-spot.size * 0.28) + "px";
+				box.style.top = round(-spot.size * 0.13) + "px";
+				wordEl.appendChild(box);
 			}
 			const solid = document.createElement("span");
 			solid.className = "ivlyrics-motion-solid";
@@ -2185,7 +2542,8 @@
 				wordEl.appendChild(spark);
 			}
 			lineEl.appendChild(wordEl);
-			return { el: wordEl, solid, box, spark, chars, word, index: wordIndex, emph: spot.emph, cache: {} };
+			// Glowing words throb with the beat.
+			return { el: wordEl, solid, box, spark, chars, word, index: wordIndex, emph: spot.emph, pulse: spot.emph && board.accent === "glow", cache: {} };
 		};
 
 		const mountBoard = (index) => {
@@ -2213,12 +2571,21 @@
 				el.appendChild(motifEl);
 				return { el: motifEl, motif, paths: drawn?.paths || [], cache: {} };
 			});
+			const strokes = board.strokes.map((stroke) => {
+				const strokeEl = document.createElement("div");
+				strokeEl.className = "ivlyrics-motion-stroke";
+				strokeEl.style.width = round(stroke.length) + "px";
+				el.appendChild(strokeEl);
+				return { el: strokeEl, stroke, cache: {} };
+			});
 			const lines = board.places.map((place, local) => {
 				const line = plan.lines[board.first + local];
 				const lineEl = document.createElement("div");
 				lineEl.className = "ivlyrics-motion-line";
 				if (line.info.lang) lineEl.lang = line.info.lang;
-				lineEl.style.transform = "translate3d(" + round(place.x) + "px," + round(place.y) + "px," + round(place.z) + "px) rotateZ(" + round(place.rot, 2) + "deg)";
+				lineEl.style.transform = "translate3d(" + round(place.x) + "px," + round(place.y) + "px," + round(place.z) + "px) rotateZ(" + round(place.rot, 2) + "deg)"
+					+ (place.tiltY ? " rotateY(" + round(place.tiltY, 2) + "deg)" : "")
+					+ (place.tiltX ? " rotateX(" + round(place.tiltX, 2) + "deg)" : "");
 				let rule = null;
 				if (board.rule) {
 					rule = document.createElement("div");
@@ -2234,7 +2601,7 @@
 				return { el: lineEl, line, words, rule, cache: {}, settled: null };
 			});
 			camera.appendChild(el);
-			return { el, board, lines, motifs, echo };
+			return { el, board, lines, motifs, strokes, echo };
 		};
 
 		const writeSolid = (word, frameState) => {
@@ -2254,6 +2621,7 @@
 				write(word.cache, "active", false, (value) => word.el.classList.toggle("is-active", value));
 				if (word.box) write(word.cache, "box", sung ? 1 : 0, (value) => word.box.style.setProperty("--b", String(value)));
 				if (word.spark) write(word.cache, "spark", "hidden", (value) => { word.spark.style.visibility = value; });
+				if (word.pulse) write(word.cache, "pulse", "", (value) => { word.solid.style.scale = value; });
 				if (word.chars) {
 					for (const char of word.chars) {
 						write(char.cache, "opacity", 1, (value) => { char.el.style.opacity = String(value); });
@@ -2264,7 +2632,7 @@
 			if (entry.rule) write(entry.cache, "rule", sung ? 1 : 0, (value) => entry.rule.style.setProperty("--r", String(value)));
 		};
 
-		const paintWords = (entry, time, distance) => {
+		const paintWords = (entry, time, distance, beat) => {
 			entry.settled = null;
 			const line = entry.line;
 			const sway = clamp01(1 - (distance - 0.3) / 0.9);
@@ -2276,6 +2644,10 @@
 				write(word.cache, "active", time >= word.word.start && time < word.word.end, (value) => word.el.classList.toggle("is-active", value));
 				if (word.box) {
 					write(word.cache, "box", round(easeOutCubic(clamp01((time - word.word.start + 40) / (300 * fxPaceOf(pace)))), 3), (value) => word.box.style.setProperty("--b", String(value)));
+				}
+				if (word.pulse) {
+					const throb = time >= word.word.start ? 1 + beat * 0.09 : 1;
+					write(word.cache, "pulse", throb > 1.004 ? String(round(throb, 3)) : "", (value) => { word.solid.style.scale = value; });
 				}
 				if (word.spark) {
 					const since = time - word.word.start;
@@ -2303,16 +2675,20 @@
 			}
 		};
 
+		const NEAR = [240, 660, 0.86];
+		// Diving through a line lets it grow much closer before it fades.
+		const NEAR_THROUGH = [600, 980, 0.97];
+		/** Things fade as they come up to the lens instead of filling the screen. */
+		const closenessOf = (depth, near) => (depth > PERSPECTIVE_PX * near[2] ? 0 : 1 - clamp01((depth - near[0]) / (near[1] - near[0])));
+
 		const paintBoard = (entry, time, pose, progress, beat, through) => {
 			const board = entry.board;
 			const visibility = boardVisibility(board, time);
-			// Diving through a line lets it grow much closer before it fades.
-			const near = through === board.index ? [600, 980, 0.97] : [240, 660, 0.86];
+			const near = through === board.index ? NEAR_THROUGH : NEAR;
 			for (const lineEntry of entry.lines) {
 				const line = lineEntry.line;
 				const distance = progress - line.n;
-				const depth = viewDepth(pose, line.center);
-				const closeness = depth > PERSPECTIVE_PX * near[2] ? 0 : 1 - clamp01((depth - near[0]) / (near[1] - near[0]));
+				const closeness = closenessOf(viewDepth(pose, line.center), near);
 				// A line still being sung (overlapping the next one: a duet, an echo) stays bright.
 				const singing = distance > 0 && time >= line.start && time < line.end + 150;
 				const levels = lineLevels(singing ? Math.min(distance, 0.2) : distance);
@@ -2321,13 +2697,14 @@
 				write(lineEntry.cache, "ghost", ghost, (value) => lineEntry.el.style.setProperty("--lg", String(value)));
 				write(lineEntry.cache, "solid", solid, (value) => lineEntry.el.style.setProperty("--ls", String(value)));
 				write(lineEntry.cache, "visibility", ghost <= 0.002 && solid <= 0.002 ? "hidden" : "visible", (value) => { lineEntry.el.style.visibility = value; });
-				if (time >= line.start - 900 && time <= line.end + 1700) paintWords(lineEntry, time, distance);
+				if (time >= line.start - 900 && time <= line.end + 1700) paintWords(lineEntry, time, distance, beat);
 				else settleLine(lineEntry, time > line.end);
 			}
 			for (const item of entry.motifs) {
 				const motif = item.motif;
 				const startAt = motif.line === null ? board.appear + 250 : plan.lines[board.first + motif.line].start - 60;
-				if (time < startAt || visibility <= 0.002) {
+				const closeness = closenessOf(viewDepth(pose, motif.center), near);
+				if (time < startAt || visibility * closeness <= 0.002) {
 					write(item.cache, "visibility", "hidden", (value) => { item.el.style.visibility = value; });
 					continue;
 				}
@@ -2338,7 +2715,7 @@
 				const fade = motif.line === null ? 1 : lineDistance > 1.5 ? 0.6 : 1;
 				const scale = Math.max(0, easeOutBack(entrance)) * (1 + beat * 0.12);
 				const rotation = motif.rot - (1 - easeOutCubic(entrance)) * 70 + (motif.spin * since) / 1000;
-				write(item.cache, "opacity", round(motif.opacity * visibility * fade, 3), (value) => { item.el.style.opacity = String(value); });
+				write(item.cache, "opacity", round(motif.opacity * visibility * fade * closeness, 3), (value) => { item.el.style.opacity = String(value); });
 				write(item.cache, "transform",
 					"translate3d(" + round(motif.x) + "px," + round(motif.y) + "px," + round(motif.z) + "px) translate(-50%,-50%) rotate(" + round(rotation, 1) + "deg) scale(" + round(scale, 3) + ")",
 					(value) => { item.el.style.transform = value; });
@@ -2346,6 +2723,14 @@
 				write(item.cache, "draw", draw, (value) => {
 					for (const path of item.paths) if (path.mode === "stroke") path.el.style.strokeDashoffset = String(value);
 				});
+			}
+			for (const item of entry.strokes) {
+				const stroke = item.stroke;
+				const level = round(strokeLevel(plan, board, stroke, time), 4);
+				write(item.cache, "opacity", round(level > 0 ? 0.62 * visibility : 0, 3), (value) => { item.el.style.opacity = String(value); });
+				write(item.cache, "transform",
+					"translate3d(" + round(stroke.x) + "px," + round(stroke.y) + "px," + round(stroke.z) + "px) rotateZ(" + stroke.rot + "deg) scaleX(" + level + ")",
+					(value) => { item.el.style.transform = value; });
 			}
 			if (entry.echo) {
 				const echo = board.echo;

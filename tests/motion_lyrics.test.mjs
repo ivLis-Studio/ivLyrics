@@ -337,7 +337,7 @@ test("the camera arrives before each line, upright and facing it, and leaves aft
 		const settled = motion.cameraPose(plan, line.start + 1, null);
 		const turn = ((settled.roll - line.camera.roll) % 360 + 540) % 360 - 180;
 		assert.ok(Math.abs(turn) < 3, "read upright: " + settled.roll + " vs " + line.camera.roll);
-		assert.ok(Math.abs(settled.yaw) < 4 && Math.abs(settled.pitch) < 4, "facing the line: " + settled.yaw + " " + settled.pitch);
+		assert.ok(Math.abs(settled.yaw - line.camera.yaw) < 4 && Math.abs(settled.pitch - line.camera.pitch) < 4, "facing the line: " + settled.yaw + " " + settled.pitch);
 		assert.ok(Math.hypot(settled.x - line.camera.x, settled.y - line.camera.y) < 40, "framed on the line");
 	});
 	const pause = plan.lines.find((line) => line.reveal);
@@ -681,5 +681,203 @@ test("serif sets a few words and the odd shot, never two shots running", () => {
 	assert.ok([...withSerif.needs.keys()].some((key) => key.includes("|serif|")), "and its face loads");
 	assert.equal(staged(false).words[1].spec.kind, "impact");
 });
+
+// A point on a line's own plane (lx, ly from its centre) in world space, as the engine places it.
+const turnX = (p, degrees) => { const r = (degrees * Math.PI) / 180; return { x: p.x, y: p.y * Math.cos(r) - p.z * Math.sin(r), z: p.y * Math.sin(r) + p.z * Math.cos(r) }; };
+const turnY = (p, degrees) => { const r = (degrees * Math.PI) / 180; return { x: p.x * Math.cos(r) + p.z * Math.sin(r), y: p.y, z: -p.x * Math.sin(r) + p.z * Math.cos(r) }; };
+const turnZ = (p, degrees) => { const r = (degrees * Math.PI) / 180; return { x: p.x * Math.cos(r) - p.y * Math.sin(r), y: p.x * Math.sin(r) + p.y * Math.cos(r), z: p.z }; };
+const onLine = (board, place, lx, ly) => {
+	let p = turnZ(turnY(turnX({ x: lx, y: ly, z: 0 }, place.tiltX || 0), place.tiltY || 0), place.rot);
+	p = turnZ({ x: p.x + place.x, y: p.y + place.y, z: p.z + place.z }, board.roll);
+	return { x: p.x + board.origin.x, y: p.y + board.origin.y, z: p.z + board.origin.z };
+};
+// Where the camera sees a world point: screen offset from the centre (px) and depth.
+const seenFrom = (motion, pose, point) => {
+	let p = turnZ({ x: point.x - pose.x, y: point.y - pose.y, z: point.z - pose.z }, -pose.roll);
+	p = turnX(turnY(p, pose.yaw || 0), pose.pitch || 0);
+	const scale = motion.PERSPECTIVE_PX / (motion.PERSPECTIVE_PX - p.z);
+	return { x: p.x * scale, y: p.y * scale, depth: p.z };
+};
+
+test("each of the sixteen compositions sets its lines where the camera reads them", () => {
+	const { motion, director, type } = load();
+	assert.equal(director.LAYOUTS.length, 16);
+	assert.equal(new Set(director.LAYOUTS).size, 16);
+	assert.deepEqual(Object.keys(director.MAX_LINES).sort(), [...director.LAYOUTS].sort());
+	const model = motion.buildModel(song());
+	for (const layout of director.LAYOUTS) {
+		for (const [seed, dutch] of [[2, 0], [5, 9], [11, -6]]) {
+			const direction = director.normalizeDirection({ shots: [{ from: 0, to: 9, layout, enter: "pan", dutch }] }, model, { seed });
+			assert.ok(direction.shots.every((shot) => shot.layout === layout && shot.to - shot.from + 1 <= director.MAX_LINES[layout]), layout + " holds its lines");
+			const plan = compose(motion, type, model, direction, seed);
+			assert.equal(plan.lines.length, model.length);
+			for (const line of plan.lines) {
+				const board = plan.boards[line.board];
+				const label = layout + " seed " + seed + " line " + line.n;
+				const upright = line.camera.roll - board.dutch - (board.roll + line.place.rot);
+				assert.ok(Math.abs(upright - Math.round(upright / 360) * 360) < 0.01, label + " is upright");
+				assert.ok([line.camera.x, line.camera.y, line.camera.z, line.camera.yaw, line.camera.pitch, line.place.x, line.place.y, line.place.z].every(Number.isFinite), label + " is placed");
+				assert.equal(line.place.block.words.length, line.shown.length, label + " sets every word");
+				const centre = seenFrom(motion, line.camera, line.center);
+				assert.ok(Math.abs(centre.x) <= 1440 * 0.42 && Math.abs(centre.y) <= 900 * 0.42, label + " is in the frame: " + centre.x + ", " + centre.y);
+				assert.ok(Math.abs(centre.depth - motion.viewDepth(line.camera, line.center)) < 0.01);
+				const settled = motion.cameraPose(plan, line.start + 1, null);
+				assert.ok(Math.abs(settled.yaw - line.camera.yaw) < 4 && Math.abs(settled.pitch - line.camera.pitch) < 4, label + " is faced when it starts");
+				if (layout === "carousel" || layout === "reel") {
+					// On a drum the camera turns to look at the line squarely, tilted shots too.
+					for (const [lx, ly] of [[260, 0], [-260, 0], [0, 80], [0, -80]]) {
+						assert.ok(Math.abs(motion.viewDepth(line.camera, onLine(board, line.place, lx, ly))) < 0.5, label + " is faced squarely");
+					}
+				} else {
+					assert.equal(line.camera.yaw, 0);
+					assert.equal(line.camera.pitch, 0);
+				}
+			}
+			const drum = plan.boards.find((board) => board.places.length >= 3);
+			if (layout === "carousel") {
+				const tilts = drum.places.map((place) => place.tiltY);
+				assert.ok(Math.abs(tilts[0] - tilts[tilts.length - 1]) > 20 && Math.abs(tilts[0] - tilts[tilts.length - 1]) <= 90, "the lines go round the drum: " + tilts);
+				assert.ok(plan.lines.some((line) => Math.abs(line.camera.yaw) > 8), "and the camera swings round to them");
+			}
+			if (layout === "reel") {
+				const tilts = drum.places.map((place) => place.tiltX);
+				assert.ok(tilts.every((tilt, index) => !index || tilt < tilts[index - 1]), "the reel rolls one way: " + tilts);
+				assert.ok(Math.abs(tilts[0] - tilts[tilts.length - 1]) <= 121, "within a third of a turn");
+			}
+			if (layout === "crawl") {
+				const tilt = drum.places[0].tiltX;
+				assert.equal(Math.abs(tilt), 36);
+				assert.ok(drum.places.every((place) => place.tiltX === tilt), "one tilted plane");
+				const depths = drum.places.map((place) => place.z);
+				assert.ok(depths.every((z, index) => !index || (tilt > 0 ? z > depths[index - 1] : z < depths[index - 1])), "the lines lie along it: " + depths);
+			}
+			if (layout === "swell") {
+				const sizes = drum.places.map((place) => place.block.size);
+				assert.ok(sizes[sizes.length - 1] > sizes[0] * 1.5, "each line outgrows the last: " + sizes);
+			}
+			if (layout === "radial") {
+				const turns = drum.places.map((place) => place.rot);
+				assert.ok(Math.abs(turns[1] - turns[0]) >= 50 && Math.abs(Math.abs(turns[1] - turns[0]) - 90) > 1, "spokes, not a square: " + turns);
+			}
+			for (const board of plan.boards) {
+				assert.equal(board.strokes.length, (layout === "strip" || layout === "split") ? 1 : 0, layout + " strokes");
+				for (const stroke of board.strokes) {
+					assert.equal(stroke.stops.length, board.places.length);
+					assert.ok(stroke.stops.every((stop, index) => stop > 0 && stop <= 1 && (!index || stop >= stroke.stops[index - 1] - 1e-9)), layout + " stops: " + stroke.stops);
+					assert.equal(stroke.rot, layout === "split" ? 90 : 0);
+					const first = plan.lines[board.first];
+					const last = plan.lines[board.last];
+					assert.equal(motion.strokeLevel(plan, board, stroke, first.start - 400), 0, "nothing drawn before the first line");
+					let level = 0;
+					for (let time = first.start - 400; time <= last.end + 2000; time += 90) {
+						const now = motion.strokeLevel(plan, board, stroke, time);
+						assert.ok(now >= level - 1e-9, "it only grows");
+						level = now;
+					}
+					assert.ok(Math.abs(level - stroke.stops[stroke.stops.length - 1]) < 1e-6, "and reaches the last line");
+				}
+			}
+			for (let time = plan.lines[0].arrive - 3000; time < plan.lines[plan.lines.length - 1].end + 4000; time += 211) {
+				const pose = motion.cameraPose(plan, time, null);
+				assert.ok([pose.x, pose.y, pose.z, pose.roll, pose.yaw, pose.pitch].every(Number.isFinite), layout + " at " + time);
+				const back = motion.backgroundFrame(plan, pose);
+				assert.ok([back.rotate, back.scale, back.x, back.y].every(Number.isFinite) && back.scale < 4, layout + " background at " + time);
+			}
+		}
+	}
+	const facing = motion.facingOf({ tiltY: 30 }, 0);
+	assert.ok(Math.abs(facing.yaw + 30) < 1e-9 && Math.abs(facing.pitch) < 1e-9, "a line turned 30 degrees is met by turning the camera back");
+	const rolled = motion.facingOf({ tiltX: -25 }, 0);
+	assert.ok(Math.abs(rolled.pitch - 25) < 1e-9 && Math.abs(rolled.yaw) < 1e-9);
+});
+
+test("the local director moves through many compositions and accents", () => {
+	const { motion, director } = load();
+	// A long song with no returning section, sung over itself here and there.
+	const lyrics = [];
+	let start = 2000;
+	for (let index = 0; index < 54; index += 1) {
+		if (index % 9 === 8) {
+			// A short held line on its own, between pauses.
+			lyrics.push(line(["stay" + index], start + 3000, { step: 1500 }));
+			start += 3000 + 1500 + 3700;
+			continue;
+		}
+		const parts = ["verse" + index, "keeps", "moving", "onward", "tonight", "again"].slice(0, 2 + (index % 4));
+		lyrics.push(line(parts, start, { step: 420 }));
+		start += parts.length * 420 + (index % 5 === 4 ? 2600 : index % 7 === 3 ? -300 : 700);
+	}
+	const model = motion.buildModel(lyrics);
+	const layouts = new Set();
+	const accents = new Set();
+	for (let seed = 1; seed <= 24; seed += 1) {
+		const direction = director.localDirection(model, { seed, tempo: { tempo: "mid", pace: 1 } });
+		const used = new Set(direction.shots.map((shot) => shot.layout));
+		assert.ok(used.size >= 7, "seed " + seed + " uses " + used.size + " compositions of " + direction.shots.length + " shots");
+		assert.ok(new Set(direction.shots.map((shot) => shot.accent)).size >= 5, "seed " + seed + " accents");
+		direction.shots.forEach((shot, index) => {
+			const previous = direction.shots[index - 1];
+			layouts.add(shot.layout);
+			accents.add(shot.accent);
+			assert.ok(director.ACCENTS.includes(shot.accent));
+			if (previous) {
+				assert.notEqual(shot.layout, previous.layout, "seed " + seed + ": a composition never follows itself");
+				assert.notEqual(shot.accent, previous.accent, "seed " + seed + ": nor an accent");
+			}
+			const emphasised = Array.from({ length: shot.to - shot.from + 1 }, (_, offset) => direction.lines[shot.from + offset]).some((entry) => entry?.emph?.length);
+			assert.ok(emphasised, "seed " + seed + " shot " + index + " shows its accent on a word");
+		});
+	}
+	assert.deepEqual([...layouts].sort(), [...director.LAYOUTS].sort(), "every composition is reached");
+	assert.equal(director.ACCENTS.length, 12);
+	assert.deepEqual([...accents].sort(), [...director.ACCENTS].sort(), "every accent is reached");
+	// Voices facing each other and the build before a chorus steer the choice.
+	const tally = (make, name) => {
+		let hits = 0;
+		for (let seed = 1; seed <= 60; seed += 1) {
+			const direction = director.localDirection(make(), { seed, tempo: { tempo: "mid", pace: 1 } });
+			if (direction.shots[0].layout === name) hits += 1;
+		}
+		return hits;
+	};
+	const answer = () => motion.buildModel([line(["I", "call", "you"], 0), line(["you", "call", "me"], 900), line(["we", "both", "know"], 1800), line(["it", "is", "over"], 2700)]);
+	const apart = () => motion.buildModel([line(["I", "call", "you"], 0), line(["you", "call", "me"], 2200), line(["we", "both", "know"], 4400), line(["it", "is", "over"], 6600)]);
+	assert.ok(tally(answer, "split") > tally(apart, "split"), "overlapping voices face each other more often");
+});
+
+test("every accent has its look, and the AI is told about every composition and accent", () => {
+	const { motion, director } = load();
+	const css = read("style.css");
+	const looks = {
+		color: ".accent-color ", box: ".accent-box ", outline: ".accent-outline ", underline: ".ivlyrics-motion-box.is-underline", mark: ".ivlyrics-motion-box.is-mark",
+		spark: ".ivlyrics-motion-spark", glow: ".accent-glow ", gradient: ".accent-gradient ", stamp: ".ivlyrics-motion-box.is-stamp", circle: ".ivlyrics-motion-loop path",
+		extrude: ".accent-extrude ", sticker: ".accent-sticker ",
+	};
+	assert.deepEqual(Object.keys(looks).sort(), [...director.ACCENTS].sort());
+	for (const [name, selector] of Object.entries(looks)) assert.ok(css.includes(selector), name + " is styled by " + selector);
+	assert.ok(css.includes(".ivlyrics-motion-stroke"));
+	const source = read("MotionLyrics.js");
+	assert.match(source, /BOX_ACCENTS = new Set\(\["box", "underline", "mark", "stamp"\]\)/);
+	assert.match(source, /board\.accent === "circle"/);
+	assert.match(source, /board\.accent === "glow"/);
+	assert.match(source, /rotateY\(" \+ round\(place\.tiltY, 2\)/);
+	assert.match(source, /rotateX\(" \+ round\(place\.tiltX, 2\)/);
+	const window = { addEventListener() {}, setTimeout, clearTimeout, localStorage: { getItem: () => null, setItem() {} } };
+	const context = vm.createContext({ window, console, setTimeout, clearTimeout, Intl, localStorage: window.localStorage, Spicetify: { LocalStorage: { get: () => null, set() {} } } });
+	context.globalThis = context;
+	vm.runInContext(read("AIAddonManager.js"), context);
+	// Without the director's vocabulary the prompt falls back to the manager's own copy: both must agree.
+	const fallback = window.AIAddonManager.buildMotionDirectionPrompt({ lines: [] });
+	const informed = window.AIAddonManager.buildMotionDirectionPrompt({ lines: [], vocabulary: director.vocabulary() });
+	for (const prompt of [fallback, informed]) {
+		for (const name of director.LAYOUTS) assert.ok(prompt.includes(name + " = "), "the prompt explains " + name);
+		for (const name of director.ACCENTS) assert.ok(prompt.includes(name + " = "), "the prompt explains " + name);
+		assert.ok(prompt.includes("(" + director.ACCENTS.join("|") + ")"));
+		for (const [name, most] of Object.entries(director.MAX_LINES)) if (most < 6) assert.ok(prompt.includes(name + " at most " + most), name + " limit");
+	}
+	assert.equal(director.VERSION, 3, "older cached directions are asked for again");
+	assert.equal(typeof motion.strokeLevel, "function");
+});
+
 
 
