@@ -10442,6 +10442,9 @@
     };
 
     const LYRICS_SEND_RETRY_DELAYS = [250, 750];
+    // The overlay can receive lyrics from several programs at once. Naming this
+    // sender lets it keep another program's lyrics while Spotify is paused.
+    const OVERLAY_SOURCE_ID = 'ivlyrics';
 
     const resolveOverlayPresentationContext = (sender, trackInfo, context) => {
         const previous = sender._lastTrackInfo?.uri === trackInfo.uri
@@ -11126,6 +11129,7 @@
             });
 
             await this.queueLyricsSend('/lyrics', trackInfo.uri, {
+                source: OVERLAY_SOURCE_ID,
                 trackUri: trackInfo.uri || null,
                 track: {
                     title: currentTitle,
@@ -11302,6 +11306,7 @@
                     } catch (e) { }
 
                     await this.sendProgressPayload('/progress', {
+                        source: OVERLAY_SOURCE_ID,
                         trackUri: currentUri || null,
                         position,
                         isPlaying: getOverlayProgressIsPlaying(),
