@@ -3821,6 +3821,16 @@ body.ivlyrics-fullscreen-container-mounted [data-tippy-root] {
   z-index: calc(var(--iv-layer-fullscreen) + 8) !important;
 }
 
+/* A playing <video> pins Chromium's frame rate to the video's cadence even
+ * when another layer fully covers it: Spotify's Now Playing Canvas (30 fps)
+ * held every fullscreen animation at 30 fps on 120 Hz displays. The
+ * fullscreen layer is opaque over all of Spotify (#main), so the covered
+ * videos are taken out of rendering while it is mounted. ivLyrics' own
+ * videos render inside #lyrics-fullscreen-container and are unaffected. */
+body.ivlyrics-fullscreen-container-mounted #main video {
+  visibility: hidden !important;
+}
+
 /* 전체화면에서 배경 요소 오버플로우 방지 */
 #lyrics-fullscreen-container #ivLyrics-gradient-background {
   position: absolute;
