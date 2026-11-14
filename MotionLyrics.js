@@ -2773,7 +2773,7 @@
 		if (spec.spacing) element.style.letterSpacing = spec.spacing + "em";
 	};
 	// Accents drawn with an extra element behind or around the emphasised word.
-	const BOX_ACCENTS = new Set(["box", "underline", "mark", "stamp", "bubble", "bracket"]);
+	const BOX_ACCENTS = new Set(["underline", "mark", "stamp", "bracket"]);
 	const SVG_NS = "http://www.w3.org/2000/svg";
 	// A hand-drawn loop around a word, in a unit box: it overshoots its start like a pen stroke.
 	const LOOP_PATH = [
@@ -2945,6 +2945,9 @@
 			let chars = null;
 			if (CHAR_FX.has(line.fx) && spot.letters !== false) {
 				const cased = (spot.text || word.text) !== word.text;
+				// Styles that paint through the glyphs (the gradient accent) then paint each letter, not the word:
+				// the word would also paint every letter where it rests, under the one in motion.
+				solid.classList.add("has-letters");
 				chars = word.chars.map((char) => {
 					const charEl = document.createElement("span");
 					charEl.className = "ivlyrics-motion-char";

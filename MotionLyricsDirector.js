@@ -34,8 +34,8 @@
 	// Effects that move single letters; joined scripts get a word-level equivalent.
 	const LETTER_FX = Object.freeze(["type", "assemble", "drop", "wave", "track", "bounce", "flicker"]);
 	const ACCENTS = Object.freeze([
-		"color", "box", "outline", "underline", "mark", "spark", "glow", "gradient", "stamp", "circle", "extrude", "sticker",
-		"script", "giant", "trail", "scribble", "bubble", "bracket",
+		"color", "outline", "underline", "mark", "spark", "glow", "gradient", "stamp", "circle", "extrude", "sticker",
+		"script", "giant", "trail", "scribble", "bracket",
 	]);
 	// Shot faces. Serif shots are rare (SERIF_SHARE); shot.serif sets only a shot's emphasised words in serif.
 	const TYPES = Object.freeze(["impact", "serif", "round"]);
@@ -428,12 +428,12 @@
 			script: 1, scribble: 0.6, bracket: 0.5, giant: 0.3,
 		},
 		mid: {
-			color: 1, box: 0.7, underline: 0.6, mark: 0.6, outline: 0.4, spark: 0.5, glow: 0.6, gradient: 0.7, stamp: 0.5, circle: 0.6, extrude: 0.6, sticker: 0.5,
-			script: 0.8, giant: 0.7, trail: 0.5, scribble: 0.6, bubble: 0.5, bracket: 0.5,
+			color: 1, underline: 0.6, mark: 0.6, outline: 0.4, spark: 0.5, glow: 0.6, gradient: 0.7, stamp: 0.5, circle: 0.6, extrude: 0.6, sticker: 0.5,
+			script: 0.8, giant: 0.7, trail: 0.5, scribble: 0.6, bracket: 0.5,
 		},
 		fast: {
-			box: 1, spark: 1.2, color: 0.8, mark: 0.6, outline: 0.5, glow: 0.8, gradient: 0.6, stamp: 0.9, circle: 0.4, extrude: 0.9, sticker: 0.8,
-			giant: 1, trail: 0.9, bubble: 0.7, bracket: 0.6, script: 0.5, scribble: 0.4,
+			spark: 1.2, color: 0.8, mark: 0.6, outline: 0.5, glow: 0.8, gradient: 0.6, stamp: 0.9, circle: 0.4, extrude: 0.9, sticker: 0.8,
+			giant: 1, trail: 0.9, bracket: 0.6, script: 0.5, scribble: 0.4,
 		},
 	});
 

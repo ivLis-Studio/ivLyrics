@@ -11520,7 +11520,6 @@ html.is-lp-view-switch::view-transition-new(root) {
 .ivlyrics-motion-line.on-color {
   --iv-motion-accent: #0d0d12;
   --iv-motion-accent-2: #f6f2ea;
-  --iv-motion-on-accent: #fff;
 }
 
 .ivlyrics-motion-char {
@@ -11548,8 +11547,7 @@ html.is-lp-view-switch::view-transition-new(root) {
 .accent-underline .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
 .accent-spark .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
 .accent-stamp .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
-.accent-giant .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
-.accent-bubble .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+.accent-giant .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
   color: var(--iv-motion-accent, #ff5ca0);
 }
 
@@ -11561,11 +11559,6 @@ html.is-lp-view-switch::view-transition-new(root) {
 
 .accent-script .ivlyrics-motion-word.is-emph .ivlyrics-motion-ghost {
   rotate: -4deg;
-}
-
-/* On a colour ground a speech bubble is ink, so its word turns white. */
-.accent-bubble .ivlyrics-motion-line.on-color .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
-  color: #fff;
 }
 
 .accent-outline .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
@@ -11583,13 +11576,19 @@ html.is-lp-view-switch::view-transition-new(root) {
     0 0 0.5em var(--iv-motion-accent, #ff5ca0);
 }
 
-/* Letters filled with a gradient of the two accent colours (top to bottom, so letters set one by one match). */
-.accent-gradient .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
+/* Letters filled with a gradient of the two accent colours (top to bottom, so letters set one by one match).
+   A word animated letter by letter paints the gradient on its letters only: painted on the word as well,
+   it would show every letter where it rests, under the one in motion and before it is sung. */
+.accent-gradient .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid:not(.has-letters),
 .accent-gradient .ivlyrics-motion-word.is-emph .ivlyrics-motion-char {
   background-image: linear-gradient(180deg, color-mix(in srgb, var(--iv-motion-accent-2, #5cd6ff) 80%, #fff) 14%, var(--iv-motion-accent, #ff5ca0) 86%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  text-shadow: none;
+}
+
+.accent-gradient .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid.has-letters {
   text-shadow: none;
 }
 
@@ -11618,7 +11617,7 @@ html.is-lp-view-switch::view-transition-new(root) {
     0.04em 0.1em 0.14em rgba(0, 0, 0, 0.45);
 }
 
-/* Highlight box, underline and marker sweep in behind emphasised words. */
+/* The mark an accent draws with an emphasised word: an underline, a marker stroke, a stamp's frame or brackets. */
 .ivlyrics-motion-box {
   position: absolute;
   inset: 0.02em -0.12em 0.02em;
@@ -11670,26 +11669,6 @@ html.is-lp-view-switch::view-transition-new(root) {
   stroke-linejoin: round;
   stroke-dasharray: 1;
   stroke-dashoffset: calc(1 - var(--b, 0));
-}
-
-/* A speech bubble: an ink label with a tail, popping up behind the word. */
-.ivlyrics-motion-box.is-bubble,
-.ivlyrics-motion-word[dir="rtl"] .ivlyrics-motion-box.is-bubble {
-  inset: -0.06em -0.26em -0.04em;
-  border-radius: 0.3em;
-  background: #0d0d12;
-  transform: scale(var(--b, 0));
-  transform-origin: 18% 100%;
-}
-
-.ivlyrics-motion-box.is-bubble::after {
-  content: "";
-  position: absolute;
-  top: calc(100% - 0.02em);
-  left: 0.34em;
-  border: 0.14em solid transparent;
-  border-top: 0.2em solid #0d0d12;
-  border-left-color: #0d0d12;
 }
 
 /* Brackets: a rule either side of the word closing in on it. */
@@ -11763,11 +11742,6 @@ html.is-lp-view-switch::view-transition-new(root) {
   opacity: var(--fl, 0);
   transform-origin: 0 0;
   backface-visibility: hidden;
-}
-
-.accent-box .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
-  color: var(--iv-motion-on-accent, #0d0d12);
-  text-shadow: none;
 }
 
 .ivlyrics-motion-spark {

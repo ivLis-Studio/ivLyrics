@@ -834,7 +834,7 @@ test("the local director moves through many compositions and accents", () => {
 	let pillars = 0;
 	for (let seed = 1; seed <= 30; seed += 1) pillars += director.localDirection(japanese, { seed, tempo: { tempo: "slow", pace: 1.4 } }).shots.filter((shot) => shot.layout === "pillar").length;
 	assert.ok(pillars > 0, "Japanese lines can stand upright");
-	assert.equal(director.ACCENTS.length, 18);
+	assert.equal(director.ACCENTS.length, 16);
 	assert.deepEqual([...accents].sort(), [...director.ACCENTS].sort(), "every accent is reached");
 	// Voices facing each other and the build before a chorus steer the choice.
 	const tally = (make, name) => {
@@ -854,16 +854,23 @@ test("every accent has its look, and the AI is told about every composition and 
 	const { motion, director } = load();
 	const css = read("style.css");
 	const looks = {
-		color: ".accent-color ", box: ".accent-box ", outline: ".accent-outline ", underline: ".ivlyrics-motion-box.is-underline", mark: ".ivlyrics-motion-box.is-mark",
+		color: ".accent-color ", outline: ".accent-outline ", underline: ".ivlyrics-motion-box.is-underline", mark: ".ivlyrics-motion-box.is-mark",
 		spark: ".ivlyrics-motion-spark", glow: ".accent-glow ", gradient: ".accent-gradient ", stamp: ".ivlyrics-motion-box.is-stamp", circle: ".ivlyrics-motion-loop path",
 		extrude: ".accent-extrude ", sticker: ".accent-sticker ", script: ".accent-script ", giant: ".accent-giant ", trail: ".ivlyrics-motion-trail",
-		scribble: ".ivlyrics-motion-loop path", bubble: ".ivlyrics-motion-box.is-bubble", bracket: ".ivlyrics-motion-box.is-bracket",
+		scribble: ".ivlyrics-motion-loop path", bracket: ".ivlyrics-motion-box.is-bracket",
 	};
 	assert.deepEqual(Object.keys(looks).sort(), [...director.ACCENTS].sort());
 	for (const [name, selector] of Object.entries(looks)) assert.ok(css.includes(selector), name + " is styled by " + selector);
+	// No accent sets an opaque box behind a word.
+	assert.ok(!director.ACCENTS.includes("box") && !director.ACCENTS.includes("bubble"));
+	assert.ok(!css.includes(".accent-box") && !css.includes(".is-bubble"));
+	assert.equal(director.normalizeDirection({ shots: [{ from: 0, to: 0, layout: "column", accent: "box" }] }, motion.buildModel([line(["one", "two"], 0)]), { seed: 1 }).shots[0].accent === "box", false, "an older answer asking for a box gets another accent");
+	// A gradient word animated letter by letter paints its letters, not the word as well (the letters would show twice).
+	assert.ok(css.includes(".accent-gradient .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid:not(.has-letters),"));
 	assert.ok(css.includes(".ivlyrics-motion-stroke"));
 	const source = read("MotionLyrics.js");
-	assert.match(source, /BOX_ACCENTS = new Set\(\["box", "underline", "mark", "stamp", "bubble", "bracket"\]\)/);
+	assert.match(source, /BOX_ACCENTS = new Set\(\["underline", "mark", "stamp", "bracket"\]\)/);
+	assert.match(source, /solid\.classList\.add\("has-letters"\)/);
 	assert.match(source, /board\.accent === "scribble"/);
 	assert.match(source, /board\.accent === "trail"/);
 	for (const selector of [".ivlyrics-motion-flood", ".ivlyrics-motion-plate.is-card", ".ivlyrics-motion-plate.is-band", ".ivlyrics-motion-plate.is-ring", ".ivlyrics-motion-fill", ".ivlyrics-motion-word.is-upright", ".ivlyrics-motion-line.on-color"]) {
