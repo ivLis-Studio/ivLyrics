@@ -121,6 +121,7 @@ window.LANG_EN = {
       "aiTasks": {
         "title": "Providers by task"
       },
+      "vinylTypography": "Vinyl typography",
       "lyricLayers": {
         "title": "Lyric layers",
         "subtitle": "Compare and adjust the fonts of the original, pronunciation, translation and furigana in one view."

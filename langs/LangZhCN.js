@@ -121,6 +121,7 @@ window.LANG_ZH_CN = {
       "aiTasks": {
         "title": "按功能分配提供者"
       },
+      "vinylTypography": "黑胶排版",
       "lyricLayers": {
         "title": "歌词图层",
         "subtitle": "在同一画面中对比并调整原文、发音、翻译和注音假名的字体。"

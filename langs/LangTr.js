@@ -121,6 +121,7 @@ window.LANG_TR = {
       "aiTasks": {
         "title": "Göreve göre sağlayıcılar"
       },
+      "vinylTypography": "Plak tipografisi",
       "lyricLayers": {
         "title": "Söz katmanları",
         "subtitle": "Orijinal, telaffuz, çeviri ve furigana yazı tiplerini tek ekranda karşılaştırıp ayarlayın."

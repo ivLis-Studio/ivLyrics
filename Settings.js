@@ -6108,6 +6108,11 @@ const getLyricsTypographyColumnLabel = (role) => {
 // handlers) of the former per-layer sections. Labels and current values are
 // resolved when rendering, so language and config changes apply.
 const buildLyricsTypographyColumns = ({ vinyl = false, onChange, furiganaOnChange } = {}) => {
+  // The vinyl table shares the generic "Typography" section title, so search
+  // names its groups after the LP view instead.
+  const vinylTitle = vinyl
+    ? getSettingsText("settingsUi.sections.vinylTypography", "Vinyl typography")
+    : "";
   const columns = LYRICS_TYPOGRAPHY_SECTIONS.map((section) => {
     const styleKey = `settingsAdvanced.${section.style}`;
     const fontKey = `${section.role}-font-family`;
@@ -6126,6 +6131,7 @@ const buildLyricsTypographyColumns = ({ vinyl = false, onChange, furiganaOnChang
       anchor: `${vinyl ? "vinyl-" : ""}${section.section}`,
       label: getLyricsTypographyColumnLabel(section.role),
       subtitle: I18n.t(`${styleKey}.subtitle`),
+      groupTitle: vinylTitle,
       color: `var(--settings-layer-${section.role})`,
       items,
       onChange,
@@ -6137,6 +6143,7 @@ const buildLyricsTypographyColumns = ({ vinyl = false, onChange, furiganaOnChang
       anchor: "furigana-style",
       label: getLyricsTypographyColumnLabel("furigana"),
       subtitle: I18n.t("settingsAdvanced.furiganaStyle.subtitle"),
+      groupTitle: vinylTitle,
       color: "var(--settings-layer-furigana)",
       toggle: {
         key: "furigana-enabled",
@@ -9575,6 +9582,13 @@ const getSettingsResultContainer = (button, id, rowClass) => {
 const SETTINGS_SEARCHABLE_TAB_SELECTOR =
   '.tab-content[data-tab-id]:not([data-tab-id="search"]):not([data-tab-id="changed"])';
 
+// Search text is read from item metadata before it reaches the DOM, so markup
+// such as the <b> tags in option descriptions has to be flattened by hand.
+const settingsSearchPlainText = (value) =>
+  typeof value === "string"
+    ? value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+    : "";
+
 const ConfigModal = ({
   onRequestClose = () => {},
   initialTab: requestedInitialTab = "general",
@@ -10408,6 +10422,7 @@ const ConfigModal = ({
 
   const [discoveredSearchSettings, setDiscoveredSearchSettings] = react.useState([]);
   const discoveredSearchSignatureRef = react.useRef("");
+  const declaredSearchIndexRef = react.useRef(null);
 
   // 실제로 렌더된 설정 행을 색인한다. 수동 목록은 다국어 별칭과 보조 설명으로만
   // 사용하므로 설정이 추가되거나 키가 바뀌어도 검색 목적지가 어긋나지 않는다.
@@ -10530,6 +10545,19 @@ const ConfigModal = ({
         });
       });
 
+      // Only the active tab is mounted, so the DOM scan below cannot see rows in
+      // other menus. The registry walks every menu's element tree and supplies
+      // their search entries; the manual list above still owns the aliases and
+      // translations that only it knows about.
+      getDeclaredSearchSettings().forEach((setting) => {
+        mergeSearchSetting({
+          ...setting,
+          i18nKeys: [...setting.i18nKeys],
+          directKeywords: [...setting.directKeywords],
+          contextKeywords: [...setting.contextKeywords],
+        });
+      });
+
       container
         .querySelectorAll(SETTINGS_SEARCHABLE_TAB_SELECTOR)
         .forEach((tabNode) => {
@@ -10574,9 +10602,13 @@ const ConfigModal = ({
               : node.closest("[data-setting-key]")?.getAttribute("data-setting-key") || "";
             const settingKey =
               explicitSettingKey || ancestorSettingKey || currentSectionKey || null;
-            const resultKey = explicitSettingKey
+            // Layer table cells and headers are indexed as their column.
+            const groupResultKey = settingKey
+              ? getDeclaredSearchRouting().get(`${tabId}:${settingKey}`)
+              : undefined;
+            const resultKey = groupResultKey || (explicitSettingKey
               ? `${tabId}:${explicitSettingKey}`
-              : `${tabId}:${settingKey || "top"}:row-${unanchoredRowIndex++}`;
+              : `${tabId}:${settingKey || "top"}:row-${unanchoredRowIndex++}`);
 
             const manualSetting = settingKey
               ? manualByDestination.get(`${tabId}:${settingKey}`)
@@ -10626,7 +10658,7 @@ const ConfigModal = ({
                 : currentSectionKey || tabId,
               name,
               desc: description,
-              sectionLabel: isSectionTitle ? "" : currentSectionLabel,
+              sectionLabel: groupResultKey || isSectionTitle ? "" : currentSectionLabel,
               i18nKeys: manualSetting?.i18nKeys || [],
               directKeywords: [
                 ...(manualSetting?.keywords || []),
@@ -10640,7 +10672,7 @@ const ConfigModal = ({
                 currentSectionLabel,
                 currentSectionDescription,
               ].filter(Boolean),
-              preferVisibleText: !isSectionTitle,
+              preferVisibleText: !isSectionTitle && !groupResultKey,
             });
           });
         });
@@ -12693,6 +12725,7 @@ const ConfigModal = ({
     const columns = [
       {
         id: "normal",
+        anchor: "cultural-annotations-normal-style",
         label: getSettingsText("settingsUi.fullscreenViews.normal", "Normal mode"),
         color: "var(--settings-layer-translation)",
         items: [
@@ -12734,6 +12767,7 @@ const ConfigModal = ({
       },
       {
         id: "vinyl",
+        anchor: "cultural-annotations-vinyl-style",
         label: vinylModeLabel,
         color: "var(--settings-layer-base)",
         items: [
@@ -12852,9 +12886,12 @@ const ConfigModal = ({
     );
 
   const renderNowPlayingTab = () => {
+    const panelTitle = getSettingsText("tabs.nowplaying", "Panel Lyrics");
     const panelLayer = (role, labelKey, fallbackLabel, fontKey, fontFallbackLabel, sizeKey, sizeFallback, sizeMin, sizeMax) => ({
       id: role,
+      anchor: `panel-${role}-style`,
       label: getSettingsText(labelKey, fallbackLabel),
+      groupTitle: panelTitle,
       color: `var(--settings-layer-${role})`,
       items: [
         {
@@ -12881,7 +12918,9 @@ const ConfigModal = ({
     const panelColumns = [
       {
         id: "base",
+        anchor: "panel-base-style",
         label: getSettingsText("misc.default", "Default"),
+        groupTitle: panelTitle,
         color: "var(--settings-layer-base)",
         items: [
           {
@@ -15345,7 +15384,7 @@ react.createElement(OptionList, {
   function buildSettingsRegistry() {
     const entries = [];
     const seen = new Set();
-    const add = (tabId, section, item, onChange, labelPrefix) => {
+    const add = (tabId, section, item, onChange, labelPrefix, matrix) => {
       if (!item || !item.key || seen.has(item.key)) return;
       if (item.key !== SETTINGS_BACKGROUND_MODE_KEY && !hasSettingDefault(item.key)) return;
       if (getCanonicalSettingsDestination(tabId, item.key).tabId !== tabId) return;
@@ -15355,6 +15394,7 @@ react.createElement(OptionList, {
         tabId,
         sectionKey: section?.sectionKey || null,
         sectionTitle: section?.title || "",
+        matrix: matrix || null,
         item: labelPrefix && !String(item.desc || "").startsWith(labelPrefix)
           ? { ...item, desc: `${labelPrefix} · ${item.desc}` }
           : item,
@@ -15378,8 +15418,15 @@ react.createElement(OptionList, {
       if (node.type === SettingsLayerMatrix) {
         (props.columns || []).forEach((column) => {
           const handler = column.onChange || props.onChange;
-          if (column.toggle) add(tabId, nextSection, { ...column.toggle, type: ConfigSlider }, handler);
-          (column.items || []).forEach((item) => add(tabId, nextSection, item, handler, column.label));
+          // Search groups the whole column, so its cells share this identity.
+          const matrix = {
+            anchor: column.anchor,
+            label: column.label,
+            title: column.groupTitle || "",
+            subtitle: column.subtitle || "",
+          };
+          if (column.toggle) add(tabId, nextSection, { ...column.toggle, type: ConfigSlider }, handler, "", matrix);
+          (column.items || []).forEach((item) => add(tabId, nextSection, item, handler, column.label, matrix));
         });
       }
       // A function is evaluated only here, when the registry is built.
@@ -15399,6 +15446,91 @@ react.createElement(OptionList, {
       }
     });
     return entries;
+  }
+
+  // Search entries for settings the user has not opened yet. Cached because the
+  // registry renders every menu tree; the manual index and the active tab's DOM
+  // scan are merged on top of it in the search index effect.
+  function getDeclaredSearchIndex() {
+    if (declaredSearchIndexRef.current) return declaredSearchIndexRef.current;
+    const tabLabels = new Map(sidebarTabs.map((tab) => [tab.id, tab.label]));
+    const groups = new Map();
+    const routing = new Map();
+    const entries = [];
+    buildSettingsRegistry().forEach((entry) => {
+      if (entry.item.searchable === false) return;
+      const tabLabel = tabLabels.get(entry.tabId) || entry.tabId;
+      const name = settingsSearchPlainText(entry.item.desc);
+      const desc = settingsSearchPlainText(entry.item.info);
+      const matrix = entry.matrix;
+      if (matrix && matrix.anchor) {
+        // One result per layer: the whole table column is the destination, so
+        // its cells and header only contribute search words.
+        const resultKey = `${entry.tabId}:${matrix.anchor}`;
+        routing.set(`${entry.tabId}:${entry.key}`, resultKey);
+        routing.set(`${entry.tabId}:${matrix.anchor}`, resultKey);
+        let group = groups.get(resultKey);
+        if (!group) {
+          const groupTitle = matrix.title || entry.sectionTitle || "";
+          group = {
+            resultKey,
+            section: tabLabel,
+            sectionKey: entry.tabId,
+            settingKey: matrix.anchor,
+            navItemId: entry.sectionKey || entry.tabId,
+            name: `${groupTitle} - ${matrix.label}`.trim(),
+            desc: matrix.subtitle || "",
+            sectionLabel: "",
+            i18nKeys: [],
+            directKeywords: [groupTitle, matrix.label, matrix.anchor],
+            contextKeywords: [tabLabel, entry.sectionTitle || ""],
+            preferVisibleText: true,
+          };
+          groups.set(resultKey, group);
+          entries.push(group);
+        }
+        group.i18nKeys.push(...(entry.item.i18nKeys || []));
+        group.directKeywords.push(name, desc, entry.key);
+        return;
+      }
+      entries.push({
+        resultKey: `${entry.tabId}:${entry.key}`,
+        section: tabLabel,
+        sectionKey: entry.tabId,
+        settingKey: entry.key,
+        navItemId: entry.sectionKey || entry.tabId,
+        name,
+        desc,
+        sectionLabel: entry.sectionTitle || "",
+        i18nKeys: entry.item.i18nKeys || [],
+        directKeywords: [
+          ...(entry.item.keywords || []),
+          name,
+          desc,
+          entry.key,
+        ].filter(Boolean),
+        contextKeywords: [tabLabel, entry.sectionTitle || ""].filter(Boolean),
+        preferVisibleText: false,
+      });
+    });
+    const finalized = entries
+      .map((entry) => ({
+        ...entry,
+        i18nKeys: [...new Set(entry.i18nKeys.filter(Boolean))],
+        directKeywords: [...new Set(entry.directKeywords.filter(Boolean))],
+        contextKeywords: [...new Set(entry.contextKeywords.filter(Boolean))],
+      }))
+      .filter((entry) => entry.name || entry.desc);
+    declaredSearchIndexRef.current = { entries: finalized, routing };
+    return declaredSearchIndexRef.current;
+  }
+
+  function getDeclaredSearchSettings() {
+    return getDeclaredSearchIndex().entries;
+  }
+
+  function getDeclaredSearchRouting() {
+    return getDeclaredSearchIndex().routing;
   }
 
   const resetChangedEntries = (entries) => {

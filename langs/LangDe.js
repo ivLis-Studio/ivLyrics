@@ -121,6 +121,7 @@ window.LANG_DE = {
       "aiTasks": {
         "title": "Anbieter nach Aufgabe"
       },
+      "vinylTypography": "Vinyl-Typografie",
       "lyricLayers": {
         "title": "Liedtext-Ebenen",
         "subtitle": "Schriften von Original, Aussprache, Übersetzung und Furigana in einer Ansicht vergleichen und anpassen."

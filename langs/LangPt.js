@@ -121,6 +121,7 @@ window.LANG_PT = {
       "aiTasks": {
         "title": "Provedores por tarefa"
       },
+      "vinylTypography": "Tipografia do vinil",
       "lyricLayers": {
         "title": "Camadas da letra",
         "subtitle": "Compare e ajuste as fontes do original, da pronúncia, da tradução e do furigana em uma única tela."

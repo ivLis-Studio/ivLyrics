@@ -121,6 +121,7 @@ window.LANG_MS = {
       "aiTasks": {
         "title": "Penyedia mengikut tugas"
       },
+      "vinylTypography": "Tipografi vinil",
       "lyricLayers": {
         "title": "Lapisan lirik",
         "subtitle": "Bandingkan dan laraskan fon teks asal, sebutan, terjemahan dan furigana dalam satu paparan."

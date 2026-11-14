@@ -121,6 +121,7 @@ window.LANG_FR = {
       "aiTasks": {
         "title": "Fournisseurs par tâche"
       },
+      "vinylTypography": "Typographie du vinyle",
       "lyricLayers": {
         "title": "Couches des paroles",
         "subtitle": "Comparez et ajustez les polices de l’original, de la prononciation, de la traduction et des furigana dans une seule vue."
