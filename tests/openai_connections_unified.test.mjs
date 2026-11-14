@@ -261,7 +261,7 @@ function settingsList(h) {
     const lists = nodes(root, node => node.type?.name === 'FallbackProvidersSection');
     assert.equal(lists.length, 1);
     const Component = lists[0].type;
-    return { root, render: () => h.ui.render(Component) };
+    return { root, render: () => h.ui.render(Component, lists[0].props) };
 }
 
 test('the settings UI exposes one add control and preserves credentials/capabilities when editing, moving and deleting', () => {
@@ -297,7 +297,8 @@ test('connection controls respect order boundaries, mask keys and route toggles 
     let editor = nodes(tree, node => node.type?.name === 'ConnectionEditor')[0];
     let card = h.ui.render(editor.type, editor.props);
     const buttons = nodes(card, node => node.type === 'button');
-    assert.equal(buttons.find(node => node.props['aria-label'] === 'Move up').props.disabled, true);
+    assert.equal(buttons.find(node => node.props['aria-label'] === 'Move up').props.disabled, false,
+        'the first additional provider promotes itself into the primary slot');
     assert.equal(buttons.find(node => node.props['aria-label'] === 'Move down').props.disabled, false);
     const key = nodes(card, node => node.type === 'input' && node.props.id?.endsWith('-apiKeys'))[0];
     assert.equal(key.props.type, 'password');
@@ -325,4 +326,203 @@ test('connection tests use the edited provider rather than falling back through 
     assert.equal(h.requests[0].body.model, 'allowed-model');
     const updated = h.ui.render(editor.type, editor.props);
     assert.equal(nodes(updated, node => node.props.role === 'status')[0].children[0], '✓ Connection successful.');
+});
+
+test('the primary card can be moved down the chain by swapping with the next provider', () => {
+    const h = harness({
+        'fallback-providers': [connection('next', { capabilities: { metadata: false } })]
+    });
+    const Settings = h.addon.getSettingsUI();
+    const primaryCard = () => nodes(h.ui.render(Settings), node => node.props.className?.split(' ').includes('ai-addon-connection-card'))[0];
+    const control = (label, root = primaryCard()) => nodes(root, node => node.props['aria-label'] === label)[0];
+    assert.equal(control('Move up').props.disabled, true, 'the primary is already first');
+    assert.equal(control('Move down').props.disabled, false);
+
+    control('Move down').props.onClick();
+
+    assert.equal(h.settings.get('api-keys'), 'next-key');
+    assert.equal(h.settings.get('base-url'), 'https://next.test/v1');
+    assert.equal(h.settings.get('model'), 'next-model');
+    assert.equal(h.settings.get('custom-model'), '');
+    assert.deepEqual(plain(h.settings.get('primary-capabilities')), { metadata: false });
+    const demoted = plain(h.settings.get('fallback-providers'));
+    assert.equal(demoted.length, 1);
+    assert.equal(demoted[0].apiKeys, 'primary-key');
+    assert.equal(demoted[0].baseUrl, 'https://primary.test/v1');
+    assert.equal(demoted[0].model, 'primary-model');
+    assert.equal(demoted[0].enabled, true);
+    assert.equal(demoted[0].inheritPrimaryModel, false);
+    assert.deepEqual(demoted[0].capabilities, {});
+    assert.ok(demoted[0].id && demoted[0].id !== 'next');
+    assert.deepEqual(Array.from(h.hooks.getRequestTargets(), target => target.baseUrl),
+        ['https://next.test/v1', 'https://primary.test/v1'], 'request order follows the swap');
+
+    control('Move down').props.onClick();
+    assert.equal(h.settings.get('api-keys'), 'primary-key');
+    assert.deepEqual(plain(h.settings.get('primary-capabilities')), {});
+    assert.deepEqual(Array.from(h.hooks.getRequestTargets(), target => target.baseUrl),
+        ['https://primary.test/v1', 'https://next.test/v1'], 'the swap is reversible');
+});
+
+test('the primary move and remove controls stay disabled until an additional provider exists', () => {
+    const h = harness();
+    const Settings = h.addon.getSettingsUI();
+    const primaryCard = nodes(h.ui.render(Settings), node => node.props.className?.split(' ').includes('ai-addon-connection-card'))[0];
+    assert.equal(nodes(primaryCard, node => node.props['aria-label'] === 'Move down')[0].props.disabled, true);
+    assert.equal(nodes(primaryCard, node => node.props['aria-label'] === 'Remove provider')[0].props.disabled, true,
+        'the chain must always keep at least one provider');
+
+    const list = settingsList(h);
+    const add = nodes(list.render(), node => node.type === 'button' && node.children.includes('Add provider'))[0];
+    add.props.onClick();
+    const again = nodes(h.ui.render(Settings), node => node.props.className?.split(' ').includes('ai-addon-connection-card'))[0];
+    assert.equal(nodes(again, node => node.props['aria-label'] === 'Move down')[0].props.disabled, false);
+    assert.equal(nodes(again, node => node.props['aria-label'] === 'Remove provider')[0].props.disabled, false);
+});
+
+test('removing the primary promotes the next provider without leaving an empty chain', () => {
+    const h = harness({
+        'fallback-providers': [connection('next', { capabilities: { metadata: false } }), connection('later')]
+    });
+    const Settings = h.addon.getSettingsUI();
+    const primaryCard = () => nodes(h.ui.render(Settings), node => node.props.className?.split(' ').includes('ai-addon-connection-card'))[0];
+    const control = label => nodes(primaryCard(), node => node.props['aria-label'] === label)[0];
+
+    control('Remove provider').props.onClick();
+
+    assert.equal(h.settings.get('api-keys'), 'next-key');
+    assert.equal(h.settings.get('base-url'), 'https://next.test/v1');
+    assert.equal(h.settings.get('model'), 'next-model');
+    assert.equal(h.settings.get('custom-model'), '');
+    assert.deepEqual(plain(h.settings.get('primary-capabilities')), { metadata: false });
+    const remaining = plain(h.settings.get('fallback-providers'));
+    assert.deepEqual(remaining.map(item => item.id), ['later'], 'the removed primary is not kept as a provider');
+    assert.deepEqual(Array.from(h.hooks.getRequestTargets(), target => target.baseUrl),
+        ['https://next.test/v1', 'https://later.test/v1']);
+    assert.equal(h.hooks.getProviderConnections().length, 2);
+    assert.equal(nodes(primaryCard(), node => node.props['aria-label'] === 'Remove provider')[0].props.disabled, false);
+});
+
+test('the primary can be moved back up from the first additional provider', () => {
+    const h = harness({
+        'fallback-providers': [connection('next', { capabilities: { metadata: false } })]
+    });
+    const Settings = h.addon.getSettingsUI();
+    const primaryCard = () => nodes(h.ui.render(Settings), node => node.props.className?.split(' ').includes('ai-addon-connection-card'))[0];
+    nodes(primaryCard(), node => node.props['aria-label'] === 'Move down')[0].props.onClick();
+    assert.equal(h.settings.get('api-keys'), 'next-key');
+
+    const list = settingsList(h);
+    const first = nodes(list.render(), node => node.type?.name === 'ConnectionEditor')[0];
+    const card = h.ui.render(first.type, first.props);
+    const up = nodes(card, node => node.props['aria-label'] === 'Move up')[0];
+    assert.equal(up.props.disabled, false);
+
+    up.props.onClick();
+
+    assert.equal(h.settings.get('api-keys'), 'primary-key');
+    assert.equal(h.settings.get('base-url'), 'https://primary.test/v1');
+    assert.equal(h.settings.get('model'), 'primary-model');
+    assert.deepEqual(plain(h.settings.get('primary-capabilities')), {});
+    const demoted = plain(h.settings.get('fallback-providers'));
+    assert.equal(demoted.length, 1);
+    assert.equal(demoted[0].apiKeys, 'next-key');
+    assert.deepEqual(demoted[0].capabilities, { metadata: false });
+    assert.deepEqual(Array.from(h.hooks.getRequestTargets(), target => target.baseUrl),
+        ['https://primary.test/v1', 'https://next.test/v1'], 'moving up restores the original order');
+});
+
+test('removing the primary while it is the only provider is a no-op', () => {
+    const h = harness();
+    const Settings = h.addon.getSettingsUI();
+    const card = nodes(h.ui.render(Settings), node => node.props.className?.split(' ').includes('ai-addon-connection-card'))[0];
+    nodes(card, node => node.props['aria-label'] === 'Remove provider')[0].props.onClick();
+    assert.deepEqual(h.writes, []);
+    assert.equal(h.hooks.getProviderConnections().length, 1);
+    assert.equal(h.settings.get('api-keys'), 'primary-key');
+});
+
+test('an older install keeps its keys, custom model and disabled capability choices when the primary moves down', () => {
+    const legacyPrimaryKeys = JSON.stringify(['primary-key-one', 'primary-key-two']);
+    const h = harness({
+        'api-keys': legacyPrimaryKeys,
+        'custom-model': 'primary-custom-model',
+        model: 'primary-custom-model',
+        'primary-capabilities': { metadata: false, translate: false },
+        'fallback-providers': [
+            connection('next', { apiKeys: JSON.stringify(['next-key-one', 'next-key-two']), capabilities: { wordSupplements: false } }),
+            connection('paused', { enabled: false, capabilities: { tmi: false }, 'legacy-note': 'keep-me' })
+        ],
+        'extra-endpoints': [endpoint('imported', { apiKey: undefined, api_key: 'imported-key', model: '', custom_model: 'imported-custom', capabilities: { pronunciation: false } })]
+    });
+    const Settings = h.addon.getSettingsUI();
+    const primaryCard = () => nodes(h.ui.render(Settings), node => node.props.className?.split(' ').includes('ai-addon-connection-card'))[0];
+    nodes(primaryCard(), node => node.props['aria-label'] === 'Move down')[0].props.onClick();
+
+    assert.equal(h.settings.get('api-keys'), JSON.stringify(['next-key-one', 'next-key-two']),
+        'the promoted provider brings its whole key list');
+    assert.equal(h.settings.get('base-url'), 'https://next.test/v1');
+    assert.equal(h.settings.get('model'), 'next-model');
+    assert.deepEqual(plain(h.settings.get('primary-capabilities')), { wordSupplements: false });
+
+    const saved = plain(h.settings.get('fallback-providers'));
+    assert.equal(saved[0].apiKeys, legacyPrimaryKeys, 'the demoted primary keeps both of its keys');
+    assert.equal(saved[0].baseUrl, 'https://primary.test/v1');
+    assert.equal(saved[0].model, 'primary-custom-model', 'a custom model stays explicit instead of blanking out');
+    assert.deepEqual(saved[0].capabilities, { metadata: false, translate: false },
+        'capability choices turned off on the old primary stay off');
+    assert.equal(saved[0].enabled, true);
+
+    assert.equal(saved[1].id, 'paused');
+    assert.equal(saved[1].enabled, false, 'a disabled provider is not re-enabled by the move');
+    assert.equal(saved[1].apiKeys, 'paused-key');
+    assert.deepEqual(saved[1].capabilities, { tmi: false });
+    assert.equal(saved[1]['legacy-note'], 'keep-me', 'unknown saved fields survive the round trip');
+    assert.equal(saved[2].apiKeys, 'imported-key');
+    assert.equal(saved[2].model, 'imported-custom');
+    assert.deepEqual(saved[2].capabilities, { pronunciation: false });
+    assert.deepEqual(plain(h.settings.get('extra-endpoints')), [],
+        'the retired store is cleared only after its entries are merged');
+
+    assert.deepEqual(Array.from(h.hooks.getRequestTargets(), target => target.apiKey),
+        ['next-key-one', 'next-key-two', 'primary-key-one', 'primary-key-two', 'imported-key'],
+        'the moved chain keeps every key of every enabled provider in order');
+    assert.deepEqual(Array.from(h.hooks.getRequestTargets('translate'), target => target.apiKey),
+        ['next-key-one', 'next-key-two', 'imported-key'],
+        'a capability the old primary had turned off is not re-enabled by the move');
+});
+
+test('an older install keeps every remaining provider when the primary is removed', () => {
+    const h = harness({
+        'api-keys': JSON.stringify(['primary-key-one', 'primary-key-two']),
+        'custom-model': 'primary-custom-model',
+        model: 'primary-custom-model',
+        'primary-capabilities': { metadata: false },
+        'fallback-providers': [
+            connection('next', { capabilities: { metadata: false } }),
+            connection('paused', { enabled: false })
+        ],
+        'extra-endpoints': [endpoint('imported', { apiKey: undefined, api_key: 'imported-key', model: '', custom_model: 'imported-custom' })]
+    });
+    const Settings = h.addon.getSettingsUI();
+    const primaryCard = () => nodes(h.ui.render(Settings), node => node.props.className?.split(' ').includes('ai-addon-connection-card'))[0];
+    nodes(primaryCard(), node => node.props['aria-label'] === 'Remove provider')[0].props.onClick();
+
+    assert.equal(h.settings.get('api-keys'), 'next-key');
+    assert.equal(h.settings.get('base-url'), 'https://next.test/v1');
+    assert.equal(h.settings.get('model'), 'next-model');
+    assert.deepEqual(plain(h.settings.get('primary-capabilities')), { metadata: false });
+
+    const saved = plain(h.settings.get('fallback-providers'));
+    assert.deepEqual(saved.map(item => item.id), ['paused', 'imported'],
+        'only the removed primary disappears; the rest keep their order');
+    assert.equal(saved[0].enabled, false, 'the disabled provider stays disabled');
+    assert.equal(saved[0].apiKeys, 'paused-key');
+    assert.equal(saved[1].apiKeys, 'imported-key');
+    assert.equal(saved[1].model, 'imported-custom');
+    assert.deepEqual(plain(h.settings.get('extra-endpoints')), []);
+    assert.deepEqual(Array.from(h.hooks.getProviderConnections(), item => item.id), ['primary', 'imported'],
+        'the disabled provider stays saved but out of the request chain');
+    assert.deepEqual(Array.from(h.hooks.getRequestTargets(), target => target.baseUrl),
+        ['https://next.test/v1', 'https://imported.test/v1']);
 });
