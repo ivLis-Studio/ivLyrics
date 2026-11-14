@@ -78,6 +78,8 @@ const load = ({ globalFallback = false } = {}) => {
 		} });
 		sender.setupOffsetListener();
 	}
+	// Both receivers are running; their sends are captured above.
+	overlay._isConnected = helper._isConnected = true;
 	if (globalFallback) {
 		values.set('ivLyrics:visual:translation-mode:english', 'gemini_ko');
 		values.set('ivLyrics:visual:translation-mode-2:english', 'gemini_romaji');

@@ -642,7 +642,7 @@ window.LANG_KO = {
       "customModel": "직접 입력",
       "getFreeApiKey": "무료 키 받기",
       "groqDesc": "Groq는 매우 빠른 추론을 무료로 제공합니다.",
-      "sonarWebSearch": "Sonar 모델은 실시간 웹 검색을 함께 사용합니다.",
+      "perplexityAgentModels": "API 키로 Perplexity Agent API의 모델 목록을 자동으로 불러옵니다. 음악 리서치에는 웹 검색이 함께 사용됩니다.",
       "geminiBaseUrlDesc": "Gemini 호환 API를 사용하려면 이 주소를 바꾸세요.",
       "modelsAvailable": "사용 가능한 모델 {count}개",
       "requestBodyMerge": "요청 본문 병합 JSON",
@@ -826,7 +826,10 @@ window.LANG_KO = {
     "fullscreenScreenHint": "Spotify를 모니터 전체로 전환해 전체화면을 엽니다",
     "localLyricsApplying": "적용 중…",
     "currentTrack": "현재 곡",
-    "more": "더보기"
+    "more": "더보기",
+    "pronunciationFirst": "발음 우선",
+    "pronunciationFirstTitle": "발음 우선 모드",
+    "pronunciationFirstDesc": "원문과 발음의 위치를 바꿔 외국어 가사를 따라 읽기 쉽게 표시합니다"
   },
   "messages": {
     "noLyrics": "사용 가능한 가사가 없음",
@@ -985,6 +988,11 @@ window.LANG_KO = {
     "reference": "기준",
     "cached": "캐시 있음",
     "empty": "비어 있음",
+    "byUnit": "단위별",
+    "joined": "합친 발음",
+    "editAsLine": "줄로 편집",
+    "editAsLineHint": "단위별 발음을 지우고 이 줄을 한 줄로 편집합니다",
+    "cachedByUnit": "캐시 있음 · 단위별 {count}줄",
     "pronunciationPlaceholder": "가사 한 줄당 한 줄씩 입력",
     "translationPlaceholder": "가사 한 줄당 한 줄씩 입력",
     "shiftDown": "이 줄부터 아래로 한 줄 밀기",
@@ -1582,6 +1590,14 @@ window.LANG_KO = {
           "classic": "클래식",
           "expressive": "익스프레시브"
         }
+      },
+      "syncedPronunciation": {
+        "label": "싱크 발음 사용",
+        "desc": "노래방 가사의 발음을 부르는 단어·글자 타이밍에 맞춰 받아옵니다. 켜면 발음 우선 모드와 발음 노래방 채우기를 쓸 수 있습니다. 끄면 발음을 줄 단위 평문으로 더 빠르게 받아옵니다."
+      },
+      "pronunciationFill": {
+        "label": "발음 노래방 채우기",
+        "desc": "발음 우선 모드가 꺼져 있어도 원문 아래 발음이 부르는 타이밍에 맞춰 노래방처럼 채워집니다. AI가 발음을 단어·글자 타이밍에 맞춰 나눕니다. 바운스·글로우 같은 다른 효과는 적용되지 않습니다."
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_KO = {
     "label": "가사 플러스"
   },
   "generationStatus": {
+    "wordSync": "단어 싱크",
+    "externalWordSync": "외부 가사 서버에서 단어 단위 싱크 데이터를 생성 중입니다.",
+    "wordSyncFailed": "단어 싱크 실패",
+    "externalWordSyncFailed": "단어 단위 싱크 데이터를 생성하거나 적용하지 못했습니다. 기존 가사를 유지합니다.",
     "complete": "완료!",
     "culturalAnnotations": "문화적 설명",
     "culturalAnnotationsLoading": "문화적 설명을 생성하는 중...",
     "wordSupplements": "단어 상세",
-    "wordSupplementsLoading": "단어 읽기와 뜻을 불러오는 중..."
+    "wordSupplementsLoading": "단어 읽기와 뜻을 불러오는 중...",
+    "pronunciationSync": "발음 싱크",
+    "pronunciationSyncLoading": "AI가 발음을 가사 싱크에 맞추는 중...",
+    "pronunciationSyncFailed": "발음 싱크 실패",
+    "pronunciationSyncFailedDesc": "AI로 발음 싱크를 만들지 못해 근사 싱크로 표시합니다."
   },
   "videoSync": {
     "title": "영상 싱크",

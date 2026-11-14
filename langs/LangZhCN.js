@@ -642,7 +642,7 @@ window.LANG_ZH_CN = {
       "customModel": "自定义模型",
       "getFreeApiKey": "获取免费密钥",
       "groqDesc": "Groq 免费提供超高速推理。",
-      "sonarWebSearch": "Sonar 模型内置实时网页搜索。",
+      "perplexityAgentModels": "使用 API 密钥自动加载 Perplexity Agent API 的模型列表。音乐研究还会使用网页搜索。",
       "geminiBaseUrlDesc": "如需使用兼容 Gemini 的 API，请修改此地址。",
       "modelsAvailable": "可用模型：{count} 个",
       "requestBodyMerge": "请求体合并 JSON",
@@ -826,7 +826,10 @@ window.LANG_ZH_CN = {
     "fullscreenScreenHint": "将 Spotify 切换为占满整个显示器并打开全屏",
     "localLyricsApplying": "正在应用…",
     "currentTrack": "当前曲目",
-    "more": "更多"
+    "more": "更多",
+    "pronunciationFirst": "发音优先",
+    "pronunciationFirstTitle": "发音优先模式",
+    "pronunciationFirstDesc": "交换原文与发音的位置，方便跟着外语歌词唱"
   },
   "messages": {
     "noLyrics": "暂无可用歌词",
@@ -985,6 +988,11 @@ window.LANG_ZH_CN = {
     "reference": "参考",
     "cached": "已缓存",
     "empty": "空",
+    "byUnit": "按单位",
+    "joined": "合并发音",
+    "editAsLine": "按行编辑",
+    "editAsLineHint": "删除按单位的发音，将此行作为整行编辑",
+    "cachedByUnit": "已缓存 · 按单位 {count} 行",
     "pronunciationPlaceholder": "每行歌词对应一行",
     "translationPlaceholder": "每行歌词对应一行",
     "shiftDown": "将此行及以下下移一行",
@@ -1582,6 +1590,14 @@ window.LANG_ZH_CN = {
           "classic": "经典",
           "expressive": "表现力"
         }
+      },
+      "syncedPronunciation": {
+        "label": "使用同步发音",
+        "desc": "按演唱的每个词或字的时间获取卡拉OK歌词的发音。开启后可使用发音优先模式和发音卡拉OK填充。关闭时，发音以整行纯文本更快获取。"
+      },
+      "pronunciationFill": {
+        "label": "发音卡拉OK填充",
+        "desc": "即使关闭发音优先模式，原文下方的发音也会随演唱时间像卡拉OK一样填充。AI 会按单词或字符的时间拆分发音。不会应用弹跳、发光等其他效果。"
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_ZH_CN = {
     "label": "歌词 Plus"
   },
   "generationStatus": {
+    "wordSync": "逐词同步",
+    "externalWordSync": "正在外部歌词服务器上生成逐词同步数据。",
+    "wordSyncFailed": "逐词同步失败",
+    "externalWordSyncFailed": "无法生成或应用逐词同步数据。将保留当前歌词。",
     "complete": "完成！",
     "culturalAnnotations": "文化背景说明",
     "culturalAnnotationsLoading": "正在分析文化背景...",
     "wordSupplements": "单词详情",
-    "wordSupplementsLoading": "正在加载单词发音和释义..."
+    "wordSupplementsLoading": "正在加载单词发音和释义...",
+    "pronunciationSync": "发音同步",
+    "pronunciationSyncLoading": "AI 正在将发音与歌词时间对齐...",
+    "pronunciationSyncFailed": "发音同步失败",
+    "pronunciationSyncFailedDesc": "无法用 AI 生成发音时间，将以近似时间显示。"
   },
   "videoSync": {
     "title": "视频同步",

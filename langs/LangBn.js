@@ -642,7 +642,7 @@ window.LANG_BN = {
       "customModel": "কাস্টম মডেল",
       "getFreeApiKey": "বিনামূল্যে কী নিন",
       "groqDesc": "Groq বিনামূল্যে অত্যন্ত দ্রুত ইনফারেন্স দেয়।",
-      "sonarWebSearch": "Sonar মডেলে রিয়েল-টাইম ওয়েব সার্চ অন্তর্ভুক্ত।",
+      "perplexityAgentModels": "আপনার কী দিয়ে Perplexity Agent API থেকে মডেলগুলো স্বয়ংক্রিয়ভাবে লোড হয়। সঙ্গীত গবেষণায় ওয়েব সার্চও ব্যবহার হয়।",
       "geminiBaseUrlDesc": "Gemini-সামঞ্জস্যপূর্ণ API ব্যবহার করতে এটি বদলান।",
       "modelsAvailable": "উপলভ্য মডেল: {count}",
       "requestBodyMerge": "অনুরোধের বডিতে মার্জ করার JSON",
@@ -826,7 +826,10 @@ window.LANG_BN = {
     "fullscreenScreenHint": "Spotify-কে পুরো মনিটরে ছড়িয়ে পূর্ণ পর্দা খোলে",
     "localLyricsApplying": "প্রয়োগ হচ্ছে…",
     "currentTrack": "বর্তমান ট্র্যাক",
-    "more": "আরও"
+    "more": "আরও",
+    "pronunciationFirst": "উচ্চারণ আগে",
+    "pronunciationFirstTitle": "উচ্চারণ-আগে মোড",
+    "pronunciationFirstDesc": "মূল গানের কথা আর উচ্চারণের জায়গা বদলে দেয়, যাতে বিদেশি ভাষার গানের সঙ্গে সহজে গাওয়া যায়"
   },
   "messages": {
     "noLyrics": "কোনো লিরিক্স পাওয়া যায়নি",
@@ -985,6 +988,11 @@ window.LANG_BN = {
     "reference": "রেফারেন্স",
     "cached": "ক্যাশে আছে",
     "empty": "খালি",
+    "byUnit": "একক অনুযায়ী",
+    "joined": "একত্রিত",
+    "editAsLine": "লাইন হিসেবে সম্পাদনা",
+    "editAsLineHint": "একক অনুযায়ী উচ্চারণ মুছে এই লাইনটি পুরো লাইন হিসেবে সম্পাদনা করুন",
+    "cachedByUnit": "ক্যাশে আছে · একক অনুযায়ী {count}টি লাইন",
     "pronunciationPlaceholder": "প্রতি লিরিক্স লাইনের জন্য এক লাইন",
     "translationPlaceholder": "প্রতি লিরিক্স লাইনের জন্য এক লাইন",
     "shiftDown": "এই লাইন ও নিচের সব লাইন এক লাইন নিচে সরান",
@@ -1582,6 +1590,14 @@ window.LANG_BN = {
           "classic": "ক্লাসিক",
           "expressive": "এক্সপ্রেসিভ"
         }
+      },
+      "syncedPronunciation": {
+        "label": "সিঙ্ক করা উচ্চারণ ব্যবহার করুন",
+        "desc": "কারাওকে লিরিকের উচ্চারণ প্রতিটি গাওয়া শব্দ বা অক্ষরের সময় অনুযায়ী ভাগ করে আনে। চালু করলে উচ্চারণ আগে মোড এবং উচ্চারণ কারাওকের মতো ভরাট ব্যবহার করা যায়। বন্ধ থাকলে উচ্চারণ লাইনভিত্তিক সাধারণ লেখা হিসেবে দ্রুত আসে।"
+      },
+      "pronunciationFill": {
+        "label": "উচ্চারণ কারাওকের মতো ভরাট করুন",
+        "desc": "উচ্চারণ-আগে মোড বন্ধ থাকলেও উচ্চারণের সারি গানের সময়ের সাথে ভরাট হয়। AI প্রতিটি শব্দ বা অক্ষরের সময় অনুযায়ী উচ্চারণ ভাগ করে। লাফানো ও আভার মতো অন্য প্রভাব প্রয়োগ হয় না।"
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_BN = {
     "label": "লিরিক্স প্লাস"
   },
   "generationStatus": {
+    "wordSync": "শব্দভিত্তিক সিঙ্ক",
+    "externalWordSync": "বাহ্যিক গানের কথা সার্ভারে শব্দভিত্তিক সিঙ্ক ডেটা তৈরি করা হচ্ছে।",
+    "wordSyncFailed": "শব্দভিত্তিক সিঙ্ক ব্যর্থ",
+    "externalWordSyncFailed": "শব্দভিত্তিক সিঙ্ক ডেটা তৈরি বা প্রয়োগ করা যায়নি। বর্তমান গানের কথা রাখা হচ্ছে।",
     "complete": "সম্পন্ন!",
     "culturalAnnotations": "সাংস্কৃতিক প্রেক্ষাপটের ব্যাখ্যা",
     "culturalAnnotationsLoading": "সাংস্কৃতিক প্রেক্ষাপট বিশ্লেষণ করা হচ্ছে...",
     "wordSupplements": "শব্দের বিবরণ",
-    "wordSupplementsLoading": "শব্দ উচ্চারণ ও অর্থ লোড হচ্ছে..."
+    "wordSupplementsLoading": "শব্দ উচ্চারণ ও অর্থ লোড হচ্ছে...",
+    "pronunciationSync": "উচ্চারণের টাইমিং",
+    "pronunciationSyncLoading": "AI উচ্চারণকে গানের কথার টাইমিংয়ের সঙ্গে মেলাচ্ছে...",
+    "pronunciationSyncFailed": "উচ্চারণের টাইমিং ব্যর্থ",
+    "pronunciationSyncFailedDesc": "AI দিয়ে উচ্চারণের টাইমিং তৈরি করা যায়নি। আনুমানিক টাইমিং দেখানো হচ্ছে।"
   },
   "videoSync": {
     "title": "ভিডিও টাইমিং",

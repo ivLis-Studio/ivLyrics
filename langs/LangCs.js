@@ -642,7 +642,7 @@ window.LANG_CS = {
       "customModel": "Vlastní model",
       "getFreeApiKey": "Získat klíč zdarma",
       "groqDesc": "Groq nabízí bezplatnou a extrémně rychlou inferenci.",
-      "sonarWebSearch": "Modely Sonar zahrnují vyhledávání na webu v reálném čase.",
+      "perplexityAgentModels": "Modely se automaticky načítají z Perplexity Agent API pomocí vašeho klíče. Hudební výzkum navíc vyhledává na webu.",
       "geminiBaseUrlDesc": "Změňte ji, pokud chcete použít API kompatibilní s Gemini.",
       "modelsAvailable": "Dostupné modely: {count}",
       "requestBodyMerge": "JSON ke sloučení s tělem požadavku",
@@ -826,7 +826,10 @@ window.LANG_CS = {
     "fullscreenScreenHint": "Roztáhne Spotify přes celý monitor a otevře celou obrazovku",
     "localLyricsApplying": "Používá se…",
     "currentTrack": "Aktuální skladba",
-    "more": "Více"
+    "more": "Více",
+    "pronunciationFirst": "Nejdřív výslovnost",
+    "pronunciationFirstTitle": "Režim nejdřív výslovnost",
+    "pronunciationFirstDesc": "Prohodí původní text a výslovnost, aby se dalo snadno zpívat s cizojazyčnými texty"
   },
   "messages": {
     "noLyrics": "Nejsou k dispozici žádné texty",
@@ -985,6 +988,11 @@ window.LANG_CS = {
     "reference": "Reference",
     "cached": "Uloženo do mezipaměti",
     "empty": "Prázdný",
+    "byUnit": "Po jednotkách",
+    "joined": "Spojeno",
+    "editAsLine": "Upravit jako řádek",
+    "editAsLineHint": "Odstraní výslovnost po jednotkách a upraví řádek jako celek",
+    "cachedByUnit": "V mezipaměti · {count} řádků po jednotkách",
     "pronunciationPlaceholder": "Jeden řádek na lyrický řádek",
     "translationPlaceholder": "Jeden řádek na lyrický řádek",
     "shiftDown": "Posuňte tento řádek a vše pod ním dolů",
@@ -1582,6 +1590,14 @@ window.LANG_CS = {
           "classic": "Klasický",
           "expressive": "Expresivní"
         }
+      },
+      "syncedPronunciation": {
+        "label": "Synchronizovaná výslovnost",
+        "desc": "Načte výslovnost karaoke textů rozdělenou podle načasování každého zpívaného slova nebo znaku. Po zapnutí je k dispozici režim Nejdřív výslovnost a vyplňování výslovnosti jako karaoke. Po vypnutí se výslovnost načte rychleji jako prostý text po řádcích."
+      },
+      "pronunciationFill": {
+        "label": "Vyplňovat výslovnost jako karaoke",
+        "desc": "I když je režim nejdřív výslovnost vypnutý, řádek výslovnosti se vyplňuje v rytmu zpěvu. AI rozdělí výslovnost podle časování slov nebo znaků. Další efekty, jako poskakování a záře, se nepoužijí."
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_CS = {
     "label": "Texty Plus"
   },
   "generationStatus": {
+    "wordSync": "Synchronizace slov",
+    "externalWordSync": "Na externím serveru s texty písní se vytváří synchronizace po slovech.",
+    "wordSyncFailed": "Synchronizace slov selhala",
+    "externalWordSyncFailed": "Synchronizaci po slovech se nepodařilo vytvořit nebo použít. Aktuální text zůstává zachován.",
     "complete": "Hotovo!",
     "culturalAnnotations": "Vysvětlení kulturního kontextu",
     "culturalAnnotationsLoading": "Analyzuje se kulturní kontext...",
     "wordSupplements": "Podrobnosti slov",
-    "wordSupplementsLoading": "Načítání výslovnosti a glos..."
+    "wordSupplementsLoading": "Načítání výslovnosti a glos...",
+    "pronunciationSync": "Časování výslovnosti",
+    "pronunciationSyncLoading": "AI přizpůsobuje výslovnost časování textu...",
+    "pronunciationSyncFailed": "Časování výslovnosti selhalo",
+    "pronunciationSyncFailedDesc": "Výslovnost se nepodařilo načasovat pomocí AI. Zobrazuje se přibližné časování."
   },
   "videoSync": {
     "title": "Časování videa",

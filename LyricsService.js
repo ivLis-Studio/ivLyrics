@@ -8901,7 +8901,9 @@
                             text: lyricsText,
                             wantSmartPhonetic: targetField === 'phonetic',
                             sourceLang: detectedLanguage || 'auto',
-                            provider
+                            provider,
+                            pronunciationSlots: targetField === 'phonetic'
+                                && !!window.ivLyricsPronunciationSlots?.isRequested?.(lyrics, lyricsResult.karaokeSource)
                         });
                         if (!isCurrentRequest()) return { stale: true };
                         output = targetField === 'phonetic'
@@ -9690,6 +9692,8 @@
             onStreamReset = null,
             pronunciationNotation = null,
             sourceLang = null,
+            // Karaoke songs: request the pronunciation split by sung unit.
+            pronunciationSlots = false,
         }) {
             if (!text?.trim()) throw new Error("No text provided for translation");
             const sourceTextHash = getLyricsTextCacheHash(text);
@@ -9739,6 +9743,9 @@
                         return _translatorInflightRequests.get(requestKey);
                     }
                     if (localCached && isCachedTranslationStructurallyValid(localCached, text, wantSmartPhonetic)) {
+                        if (wantSmartPhonetic) {
+                            window.ivLyricsPronunciationSlots?.remember?.(finalTrackId, text, localCached);
+                        }
                         if (window.ApiTracker) {
                             window.ApiTracker.logCacheHit(
                                 wantSmartPhonetic ? 'phonetic' : 'translation',
@@ -9766,7 +9773,7 @@
 
                 const addonPromise = (async () => {
                     try {
-                        const result = await window.AIAddonManager.translateLyrics({
+                        const request = {
                             trackId: finalTrackId,
                             artist,
                             title,
@@ -9778,7 +9785,11 @@
                             provider,
                             onLine,
                             onStreamReset
-                        });
+                        };
+                        const slotsApi = window.ivLyricsPronunciationSlots;
+                        const result = wantSmartPhonetic && pronunciationSlots && slotsApi
+                            ? await slotsApi.requestPronunciation(window.AIAddonManager, request)
+                            : await window.AIAddonManager.translateLyrics(request);
 
                         if (result && _translatorInflightRequests.get(requestKey) === addonPromise) {
                             await LyricsCache.setTranslation(
@@ -9789,6 +9800,7 @@
                                 provider,
                                 sourceHash
                             ).catch(() => { });
+                            if (wantSmartPhonetic) slotsApi?.remember?.(finalTrackId, text, result);
                         }
                         return result || null;
                     } catch (e) {
@@ -10430,6 +10442,76 @@
     };
 
     const LYRICS_SEND_RETRY_DELAYS = [250, 750];
+    // The overlay can receive lyrics from several programs at once. Naming this
+    // sender lets it keep another program's lyrics while Spotify is paused.
+    const OVERLAY_SOURCE_ID = 'ivlyrics';
+    // While nothing answers, probes back off from five seconds to a minute.
+    // Focus, track changes and the settings page probe sooner.
+    const SENDER_PROBE_DELAYS = [5000, 10000, 20000, 40000, 60000];
+    const SENDER_PROBE_TIMEOUT_MS = 1500;
+    const SENDER_FOREGROUND_PROBE_GAP_MS = 10000;
+    // Overlays that interpolate playback (protocol 2) need progress only when
+    // the playback state changes, the position jumps, or a heartbeat is due.
+    // Older overlays and the helper read every 250 ms anchor while playing.
+    const PROGRESS_DRIFT_TOLERANCE_MS = 250;
+    const PROGRESS_HEARTBEAT_MS = { playing: 2000, paused: 10000 };
+    const LEGACY_PAUSED_HEARTBEAT_MS = 2000;
+    // Receivers without receipts cannot report lost lyrics (after a restart),
+    // so returning to Spotify refreshes them at most this often.
+    const LEGACY_RESEND_GAP_MS = 30000;
+    const RECEIPT_RESEND_GAP_MS = 5000;
+
+    // Mutable state that each sender owns. The helper inherits the overlay's
+    // methods but must never read or write the overlay's state.
+    const createSenderState = () => ({
+        lastSentUri: null,
+        lastSentLyrics: null,
+        lastSentOffset: null,
+        _lastSentDedupeToken: null,
+        lastDeliveredUri: null,
+        _deliveryGeneration: 0,
+        _deliveryKey: null,
+        _terminalDeliveryFailure: null,
+        _lastTrackInfo: null,
+        _lastLyrics: null,
+        _lastPresentationContext: null,
+        _lastPresentationKey: null,
+        lastConfigDelay: undefined,
+        _offsetCache: {},
+        _isConnected: false,
+        _receiverProtocol: 1,
+        _probeFailures: 0,
+        _lastProbeAt: 0,
+        _connectionCheckTimer: null,
+        _isSettingsOpen: false,
+        _settingsTimer: null,
+        _worker: null,
+        _isSendingProgress: false,
+        _lastProgressUri: null,
+        _lastProgress: null,
+        _lastLegacyResendAt: 0,
+        _lastReceiptResendAt: 0,
+        _reqId: 0,
+        _lastReqId: 0,
+        _pendingLyricsSend: null,
+        _lyricsSendActive: false,
+        _runtimeGeneration: 0,
+        _connectionRecoveryTimer: null,
+        _connectionRecoveryBootstrapTimer: null,
+        _initialized: false,
+        _offsetListenerSetup: false,
+        _runtimeListenerSetup: false,
+        _runtimeEnabledState: undefined,
+        _storageListener: null,
+        _delayChangedListener: null,
+        _offsetChangedListener: null,
+        _lyricsReadyListener: null,
+        _visibilityChangeListener: null,
+        _focusListener: null,
+        _songChangeListener: null,
+        _runtimeStorageListener: null,
+        _runtimeEventListener: null
+    });
 
     const resolveOverlayPresentationContext = (sender, trackInfo, context) => {
         const previous = sender._lastTrackInfo?.uri === trackInfo.uri
@@ -10446,38 +10528,21 @@
     };
 
     const OverlaySender = {
+        ...createSenderState(),
         DEFAULT_PORT: 15000,
-        progressInterval: null,
-        lastSentUri: null,
-        lastSentLyrics: null,
-        lastSentOffset: null,
-        _lastSentDedupeToken: null,
-        lastDeliveredUri: null,
-        _deliveryGeneration: 0,
-        _deliveryKey: null,
-        _terminalDeliveryFailure: null,
-        _lastTrackInfo: null,
-        _lastLyrics: null,
-        _lastPresentationContext: null,
-        _lastPresentationKey: null,
-        lastConfigDelay: undefined,
-        _offsetCache: {},
-
-        // 연결 상태
-        _isConnected: false,
-        _connectionCheckInterval: null,
-        _lastConnectionAttempt: 0,
-        _isSettingsOpen: false,
-        _settingsTimer: null,
-        _worker: null,
-        _isSendingProgress: false,
-        _reqId: 0,
-        _lastReqId: 0,
-        _pendingLyricsSend: null,
-        _lyricsSendActive: false,
-        _runtimeGeneration: 0,
-        _connectionRecoveryTimer: null,
-        _connectionRecoveryBootstrapTimer: null,
+        LOG_TAG: '[OverlaySender]',
+        CONNECTION_EVENT: 'ivLyrics:overlay-connection',
+        LYRICS_ENDPOINT: '/lyrics',
+        PROGRESS_ENDPOINT: '/progress',
+        // GET on the progress path answers the status on overlay 1.3.0 and
+        // later, and 405 on older overlays. Either response means it runs.
+        PROBE_ENDPOINT: '/progress',
+        // Named payloads carry trackUri and get receipts from new overlays.
+        SOURCE_ID: OVERLAY_SOURCE_ID,
+        // The trim option and translated titles apply only to the overlay.
+        USES_DISPLAY_METADATA: true,
+        // Receivers that read the raw position need an anchor every tick.
+        CONTINUOUS_PROGRESS: false,
 
         // 포트 설정 (localStorage에 저장)
         get port() {
@@ -10494,6 +10559,7 @@
                 } else {
                     Spicetify.LocalStorage.set('ivLyrics:overlay-port', portNum.toString());
                 }
+                this._probeFailures = 0;
                 this.isConnected = false;
                 this.checkConnection();
             }
@@ -10533,7 +10599,7 @@
         },
 
         formatMetadataText(text) {
-            if (!this.trimMetadata || !text) return text;
+            if (!this.USES_DISPLAY_METADATA || !this.trimMetadata || !text) return text;
             // Match FullscreenOverlay's Shorten Titles option, independently.
             const trimmed = text
                 .replace(/\(.+?\)/g, '')
@@ -10545,7 +10611,7 @@
 
         async refreshMetadata() {
             this._lastProgressUri = null;
-            this._lastProgressPayloadKey = null;
+            this._lastProgress = null;
             if (!this.enabled || !this._lastTrackInfo || !this._lastLyrics) return;
             // Retain the original cache so turning the option off restores it.
             await this.sendLyrics(
@@ -10562,7 +10628,7 @@
             this._isSettingsOpen = Boolean(isOpen);
 
             if (this._isSettingsOpen) {
-                helperDebug('[OverlaySender] 설정창 열림 - 연결 확인 폴링 시작');
+                helperDebug(this.LOG_TAG, '설정창 열림 - 연결 확인 폴링 시작');
                 this.checkConnection();
                 this._settingsTimer = setInterval(() => {
                     if (!this.isConnected) {
@@ -10570,7 +10636,7 @@
                     }
                 }, 5000);
             } else {
-                helperDebug('[OverlaySender] 설정창 닫힘 - 연결 확인 폴링 종료');
+                helperDebug(this.LOG_TAG, '설정창 닫힘 - 연결 확인 폴링 종료');
             }
         },
 
@@ -10581,17 +10647,18 @@
             const wasConnected = this._isConnected;
             this._isConnected = value;
             this.syncProgressConnection();
+            // Repeated failed probes keep the state; announce only changes.
+            if (value === wasConnected) return;
 
-            window.dispatchEvent(new CustomEvent('ivLyrics:overlay-connection', {
+            window.dispatchEvent(new CustomEvent(this.CONNECTION_EVENT, {
                 detail: { connected: value }
             }));
 
-            if (value && !wasConnected) {
-                helperDebug('[OverlaySender] 오버레이 연결됨 ✓');
+            if (value) {
+                helperDebug(this.LOG_TAG, '연결됨 ✓');
                 this.handleConnectionRecovery();
-            }
-            else if (!value && wasConnected) {
-                helperDebug('[OverlaySender] 오버레이 연결 끊김');
+            } else {
+                helperDebug(this.LOG_TAG, '연결 끊김');
             }
         },
 
@@ -10655,23 +10722,62 @@
             const runtimeGeneration = this._runtimeGeneration;
             const port = this.port;
             if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
+            this._lastProbeAt = Date.now();
 
+            // A GET probe changes nothing on the receiver. Any HTTP response,
+            // even 404/405 from an older receiver, means it is running.
             try {
-                const response = await fetch(`http://localhost:${port}/progress`, {
-                    method: 'POST',
+                const response = await fetch(`http://localhost:${port}${this.PROBE_ENDPOINT}`, {
+                    method: 'GET',
                     mode: 'cors',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ position: 0, isPlaying: false }),
-                    signal: AbortSignal.timeout(1000)
+                    cache: 'no-store',
+                    signal: AbortSignal.timeout(SENDER_PROBE_TIMEOUT_MS)
                 });
                 if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
-                this.isConnected = response.ok;
-                return this.isConnected;
+                let protocol = 1;
+                if (response.ok && typeof response.json === 'function') {
+                    try {
+                        const status = await response.json();
+                        if (Number.isInteger(status?.protocol) && status.protocol > 1) protocol = status.protocol;
+                    } catch (e) { }
+                    if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
+                }
+                this._receiverProtocol = protocol;
+                this._probeFailures = 0;
+                this.isConnected = true;
+                return true;
             } catch (e) {
                 if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
+                this._probeFailures = Math.min(this._probeFailures + 1, SENDER_PROBE_DELAYS.length);
                 this.isConnected = false;
                 return false;
             }
+        },
+
+        getProbeDelay() {
+            const step = Math.max(0, this._probeFailures - 1);
+            return SENDER_PROBE_DELAYS[Math.min(step, SENDER_PROBE_DELAYS.length - 1)];
+        },
+
+        // Probe soon when the user is likely to have just started the receiver.
+        requestProbe() {
+            if (!this.enabled || this.isConnected || !this._runtimeListenerSetup) return;
+            if (Date.now() - this._lastProbeAt < SENDER_FOREGROUND_PROBE_GAP_MS) return;
+            this.scheduleConnectionCheck(0);
+        },
+
+        handleForeground() {
+            if (!this.enabled) return;
+            if (!this.isConnected) {
+                this.requestProbe();
+                return;
+            }
+            if (this._receiverProtocol >= 2 || !this._lastTrackInfo) return;
+            const now = Date.now();
+            if (now - this._lastLegacyResendAt < LEGACY_RESEND_GAP_MS) return;
+            this._lastLegacyResendAt = now;
+            helperDebug(this.LOG_TAG, '창 활성화 - 가사 재전송');
+            this.resendWithNewOffset('foreground');
         },
 
         openOverlayApp() {
@@ -10687,13 +10793,15 @@
             return 'https://ivlis.kr/ivLyrics/extensions/#overlay';
         },
 
-        async sendToEndpoint(endpoint, data) {
+        // Returns false when the payload was not accepted, true when it was,
+        // or the receiver's receipt object when one was requested and sent.
+        async sendToEndpoint(endpoint, data, { receipt = false } = {}) {
             if (!this.enabled) return;
             const runtimeGeneration = this._runtimeGeneration;
             const port = this.port;
             if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
 
-            const isProgressEndpoint = endpoint === '/progress' || endpoint === '/lyrics/progress';
+            const isProgressEndpoint = endpoint === this.PROGRESS_ENDPOINT;
 
             try {
                 const response = await fetch(`http://localhost:${port}${endpoint}`, {
@@ -10711,9 +10819,8 @@
                         responseDetail = await response.text();
                     } catch (e) { }
                     if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
-                    if (this._isConnected) {
-                        this.isConnected = false;
-                    }
+                    // The receiver answered, so it is still running; it only
+                    // rejected this payload.
                     if (!isProgressEndpoint) {
                         console.error('[LyricsService] 가사 전송 실패:', {
                             endpoint,
@@ -10725,8 +10832,15 @@
                     return false;
                 }
 
-                if (!this._isConnected && response.ok) {
+                if (!this._isConnected) {
                     this.isConnected = true;
+                }
+                if (receipt && typeof response.json === 'function') {
+                    try {
+                        const body = await response.json();
+                        if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
+                        if (body && typeof body === 'object') return body;
+                    } catch (e) { }
                 }
                 return true;
             } catch (e) {
@@ -10978,7 +11092,13 @@
                     if (this.lastDeliveredUri === next.uri) {
                         this.lastDeliveredUri = null;
                     }
-                    this.scheduleConnectionCheck?.();
+                    // Unreachable receivers get this payload once they answer a
+                    // probe again (handleConnectionRecovery); retrying now only
+                    // fails again.
+                    if (!this.isConnected) {
+                        markTerminalFailure(next);
+                        continue;
+                    }
 
                     const retryDelay = LYRICS_SEND_RETRY_DELAYS[next.retryCount];
                     if (retryDelay === undefined) {
@@ -11013,7 +11133,7 @@
             if (!trackInfo || !lyrics || !Array.isArray(lyrics)) return;
             if (!this.enabled) return;
             if (this.isStaleTrackSend(trackInfo)) {
-                helperDebug('[OverlaySender] 이전 곡 가사 전송 차단:', trackInfo.uri);
+                helperDebug(this.LOG_TAG, '이전 곡 가사 전송 차단:', trackInfo.uri);
                 return;
             }
 
@@ -11039,7 +11159,7 @@
                 preserved.preservedPronunciationCount > 0
                 || preserved.preservedTranslationCount > 0
             ) {
-                helperDebug('[OverlaySender] 최신 발음/번역 보존:', {
+                helperDebug(this.LOG_TAG, '최신 발음/번역 보존:', {
                     pronunciation: preserved.preservedPronunciationCount,
                     translation: preserved.preservedTranslationCount,
                     reason: sendReason
@@ -11051,22 +11171,26 @@
             this._lastPresentationContext = effectivePresentationContext;
             this._lastPresentationKey = presentationKey;
 
+            // Nothing is listening. The cached lyrics go out when a probe
+            // connects (handleConnectionRecovery resends them).
+            if (!this.isConnected) return;
+
             const offset = await this.getSyncOffset(trackInfo.uri);
 
             if (currentReqId < this._lastReqId) {
-                helperDebug(`[OverlaySender] 오래된 요청 무시됨 (#${currentReqId} < #${this._lastReqId})`);
+                helperDebug(this.LOG_TAG, `오래된 요청 무시됨 (#${currentReqId} < #${this._lastReqId})`);
                 return;
             }
             this._lastReqId = currentReqId;
 
             if (!this.enabled || this.isStaleTrackSend(trackInfo)) {
-                helperDebug('[OverlaySender] 이전 곡 가사 전송 차단 (오프셋 계산 후):', trackInfo.uri);
+                helperDebug(this.LOG_TAG, '이전 곡 가사 전송 차단 (오프셋 계산 후):', trackInfo.uri);
                 return;
             }
 
             const originalTitle = trackInfo.title || Spicetify.Player.data?.item?.metadata?.title || '';
             const originalArtist = trackInfo.artist || Spicetify.Player.data?.item?.metadata?.artist_name || '';
-            const translatedMetadata = trackInfo.translatedMetadata || null;
+            const translatedMetadata = this.USES_DISPLAY_METADATA ? trackInfo.translatedMetadata || null : null;
             const currentTitle = this.formatMetadataText(translatedMetadata?.translated?.title || originalTitle);
             const currentArtist = this.formatMetadataText(translatedMetadata?.translated?.artist || originalArtist);
             const mappedLines = mapLyricsForSender(lyricsToSend, offset, supplementVisibility);
@@ -11105,7 +11229,7 @@
 
             const currentAlbum = Spicetify.Player.data?.item?.metadata?.album_title || '';
 
-            helperDebug('[OverlaySender] 가사 전송:', {
+            helperDebug(this.LOG_TAG, '가사 전송:', {
                 lines: mappedLines.length,
                 offset,
                 title: currentTitle,
@@ -11113,8 +11237,8 @@
                 translated: !!translatedMetadata
             });
 
-            await this.queueLyricsSend('/lyrics', trackInfo.uri, {
-                trackUri: trackInfo.uri || null,
+            await this.queueLyricsSend(this.LYRICS_ENDPOINT, trackInfo.uri, {
+                ...this.getSourceFields(trackInfo.uri),
                 track: {
                     title: currentTitle,
                     artist: currentArtist,
@@ -11138,7 +11262,7 @@
                 ? { [trackUri]: trackOffset }
                 : {};
             if (this._lastTrackInfo && this._lastLyrics) {
-                helperDebug('[OverlaySender] 가사 재전송 (싱크 반영)');
+                helperDebug(this.LOG_TAG, '가사 재전송:', sendReason);
                 await this.sendLyrics(
                     this._lastTrackInfo,
                     this._lastLyrics,
@@ -11155,7 +11279,7 @@
 
             // 번역된 메타데이터를 포함하여 가사 재전송
             this._lastTrackInfo.translatedMetadata = translatedMetadata;
-            helperDebug('[OverlaySender] 번역된 메타데이터로 재전송');
+            helperDebug(this.LOG_TAG, '번역된 메타데이터로 재전송');
             await this.sendLyrics(
                 this._lastTrackInfo,
                 this._lastLyrics,
@@ -11179,23 +11303,45 @@
             } else {
                 this.clearConnectionRecovery();
                 this.stopProgressSync();
-                if (this.enabled) this.scheduleConnectionCheck(5000);
+                if (this.enabled) this.scheduleConnectionCheck(this.getProbeDelay());
             }
+        },
+
+        getSourceFields(trackUri) {
+            return this.SOURCE_ID ? { source: this.SOURCE_ID, trackUri: trackUri || null } : {};
+        },
+
+        // How often unchanged progress repeats; 0 sends every 250 ms tick.
+        getProgressHeartbeat(isPlaying) {
+            if (this.CONTINUOUS_PROGRESS || this._receiverProtocol < 2) {
+                return isPlaying ? 0 : LEGACY_PAUSED_HEARTBEAT_MS;
+            }
+            return isPlaying ? PROGRESS_HEARTBEAT_MS.playing : PROGRESS_HEARTBEAT_MS.paused;
         },
 
         async sendProgressPayload(endpoint, payload, trackUri) {
             const runtimeGeneration = this._runtimeGeneration;
             const worker = this._worker;
-            const key = JSON.stringify([trackUri, payload]);
             const now = Date.now();
-            // Receivers hide stale data after five seconds. Retain a two-second
-            // heartbeat, while sending pause, seek, queue and track changes now.
-            if (!payload.isPlaying && key === this._lastProgressPayloadKey
-                && now - this._lastProgressSentAt < 2000) return;
-            if (await this.sendToEndpoint(endpoint, payload)
-                && runtimeGeneration === this._runtimeGeneration && worker === this._worker) {
-                this._lastProgressPayloadKey = key;
-                this._lastProgressSentAt = now;
+            const heartbeat = this.getProgressHeartbeat(payload.isPlaying);
+            // Position and remaining time advance by themselves. Any other
+            // field (track, play state, queue, metadata) is a change sent now.
+            const { position, remaining, currentTrack, ...state } = payload;
+            const stateKey = JSON.stringify([trackUri, state]);
+            const last = this._lastProgress;
+            if (last && heartbeat > 0 && !currentTrack && stateKey === last.stateKey) {
+                const expected = last.position + (payload.isPlaying ? now - last.sentAt : 0);
+                const jumped = Math.abs(position - expected) > PROGRESS_DRIFT_TOLERANCE_MS;
+                if (!jumped && now - last.sentAt < heartbeat) return;
+            }
+            // Protocol 2 overlays keep the display for about two heartbeats
+            // and return a receipt naming the lyrics they hold for us.
+            const named = !!this.SOURCE_ID && this._receiverProtocol >= 2;
+            const body = named ? { ...payload, heartbeatMs: heartbeat } : payload;
+            const result = await this.sendToEndpoint(endpoint, body, { receipt: named });
+            if (result && runtimeGeneration === this._runtimeGeneration && worker === this._worker) {
+                this._lastProgress = { stateKey, position, sentAt: now };
+                if (typeof result === 'object') this.handleReceipt(result, trackUri);
             }
         },
 
@@ -11244,60 +11390,8 @@
                 this._isSendingProgress = true;
                 const sendingWorker = this._worker;
                 try {
-                    const playbackSnapshot = Utils.getPlayerPlaybackSnapshot();
-                    const progressTiming = normalizeOverlayProgressTiming(
-                        playbackSnapshot.position,
-                        playbackSnapshot.duration || Spicetify.Player.getDuration()
-                    );
-                    const { position, duration, remaining } = progressTiming;
-
-                    // 현재 트랙 정보 (트랙 변경 감지용)
-                    let currentTrack = null;
-                    const currentItem = Utils.resolveStablePlaybackTrack(null, playbackSnapshot);
-                    const currentUri = playbackSnapshot.uri || currentItem?.uri;
-                    if (currentUri && this._lastProgressUri !== currentUri) {
-                        this._lastProgressUri = currentUri;
-                        try {
-                            const imageUrl = currentItem?.metadata?.image_xlarge_url
-                                || currentItem?.metadata?.image_url
-                                || currentItem?.metadata?.image_large_url;
-                            let albumArt = null;
-                            albumArt = resolveSpotifyImageUrl(imageUrl);
-                            currentTrack = {
-                                title: this.formatMetadataText(currentItem?.metadata?.title || currentItem?.name || ''),
-                                artist: this.formatMetadataText(currentItem?.metadata?.artist_name || ''),
-                                album: currentItem?.metadata?.album_title || '',
-                                albumArt
-                            };
-                        } catch (e) { }
-                    }
-
-                    let nextTrack = null;
-                    try {
-                        const queue = Spicetify.Queue;
-                        if (queue?.nextTracks?.length > 0) {
-                            const next = queue.nextTracks[0];
-                            if (next?.contextTrack?.metadata) {
-                                const imageUrl = next.contextTrack.metadata.image_url || next.contextTrack.metadata.image_xlarge_url;
-                                const albumArt = resolveSpotifyImageUrl(imageUrl);
-                                nextTrack = {
-                                    title: this.formatMetadataText(next.contextTrack.metadata.title || ''),
-                                    artist: this.formatMetadataText(next.contextTrack.metadata.artist_name || ''),
-                                    albumArt
-                                };
-                            }
-                        }
-                    } catch (e) { }
-
-                    await this.sendProgressPayload('/progress', {
-                        trackUri: currentUri || null,
-                        position,
-                        isPlaying: getOverlayProgressIsPlaying(),
-                        duration,
-                        remaining,
-                        currentTrack,
-                        nextTrack
-                    }, currentUri);
+                    const { trackUri, payload } = this.buildProgressPayload();
+                    await this.sendProgressPayload(this.PROGRESS_ENDPOINT, payload, trackUri);
                 } finally {
                     if (this._worker === sendingWorker) this._isSendingProgress = false;
                 }
@@ -11306,14 +11400,80 @@
             this._worker.postMessage('start');
         },
 
+        buildProgressPayload() {
+            const playbackSnapshot = Utils.getPlayerPlaybackSnapshot();
+            const { position, duration, remaining } = normalizeOverlayProgressTiming(
+                playbackSnapshot.position,
+                playbackSnapshot.duration || Spicetify.Player.getDuration()
+            );
+
+            // Track details go out once per track, with the first progress.
+            let currentTrack = null;
+            const currentItem = Utils.resolveStablePlaybackTrack(null, playbackSnapshot);
+            const currentUri = playbackSnapshot.uri || currentItem?.uri;
+            if (currentUri && this._lastProgressUri !== currentUri) {
+                this._lastProgressUri = currentUri;
+                try {
+                    const imageUrl = currentItem?.metadata?.image_xlarge_url
+                        || currentItem?.metadata?.image_url
+                        || currentItem?.metadata?.image_large_url;
+                    currentTrack = {
+                        title: this.formatMetadataText(currentItem?.metadata?.title || currentItem?.name || ''),
+                        artist: this.formatMetadataText(currentItem?.metadata?.artist_name || ''),
+                        album: currentItem?.metadata?.album_title || '',
+                        albumArt: resolveSpotifyImageUrl(imageUrl)
+                    };
+                } catch (e) { }
+            }
+
+            let nextTrack = null;
+            try {
+                const next = Spicetify.Queue?.nextTracks?.[0];
+                const metadata = next?.contextTrack?.metadata;
+                if (metadata) {
+                    nextTrack = {
+                        title: this.formatMetadataText(metadata.title || ''),
+                        artist: this.formatMetadataText(metadata.artist_name || ''),
+                        albumArt: resolveSpotifyImageUrl(metadata.image_url || metadata.image_xlarge_url)
+                    };
+                }
+            } catch (e) { }
+
+            return {
+                trackUri: currentUri,
+                payload: {
+                    ...this.getSourceFields(currentUri),
+                    position,
+                    isPlaying: getOverlayProgressIsPlaying(),
+                    duration,
+                    remaining,
+                    currentTrack,
+                    nextTrack
+                }
+            };
+        },
+
         stopProgressSync() {
-            this._lastProgressPayloadKey = null;
-            this._lastProgressSentAt = 0;
+            this._lastProgress = null;
             if (!this._worker) return;
             cleanupWorker(this._worker);
             this._worker = null;
             this._isSendingProgress = false;
             this._lastProgressUri = null;
+        },
+
+        // A protocol 2 overlay reports the lyrics it holds for this sender. If
+        // they differ from what was delivered for the playing track, it has
+        // restarted or missed them: send them again.
+        handleReceipt(receipt, trackUri) {
+            if (!trackUri || (receipt.hasLyrics && receipt.lyricsTrackUri === trackUri)) return;
+            if (this.lastDeliveredUri !== trackUri || this._lastTrackInfo?.uri !== trackUri) return;
+            if (this._lyricsSendActive || this._pendingLyricsSend) return;
+            const now = Date.now();
+            if (now - this._lastReceiptResendAt < RECEIPT_RESEND_GAP_MS) return;
+            this._lastReceiptResendAt = now;
+            this.lastDeliveredUri = null;
+            this.resendWithNewOffset('receiver-missing-lyrics');
         },
 
         setupOffsetListener() {
@@ -11325,7 +11485,7 @@
             this._storageListener = (e) => {
                 if (e.key && e.key.startsWith('lyrics-delay:')) {
                     this.resendWithNewOffset();
-                } else if (e.key === 'ivLyrics:overlay-trim-metadata') {
+                } else if (e.key === 'ivLyrics:overlay-trim-metadata' && this.USES_DISPLAY_METADATA) {
                     this.refreshMetadata();
                 }
             };
@@ -11345,7 +11505,7 @@
                 const detail = e.detail || {};
                 const { trackInfo, lyrics } = detail;
                 if (trackInfo) {
-                    helperDebug('[OverlaySender] 가사 준비 이벤트 수신:', {
+                    helperDebug(this.LOG_TAG, '가사 준비 이벤트 수신:', {
                         uri: trackInfo.uri,
                         title: trackInfo.title,
                         lines: lyrics?.length || 0
@@ -11363,20 +11523,13 @@
                 }
             };
 
-            // 페이지 가시성 변경 감지
+            // Returning to Spotify reconnects a receiver started meanwhile, and
+            // refreshes lyrics on receivers that cannot report losing them.
             this._visibilityChangeListener = () => {
-                if (document.visibilityState === 'visible' && this.enabled) {
-                    helperDebug('[OverlaySender] 페이지 활성화 - 가사 재전송');
-                    setTimeout(() => this.resendWithNewOffset(), 200);
-                }
+                if (document.visibilityState === 'visible') this.handleForeground();
             };
-
-            // 창 포커스 시
             this._focusListener = () => {
-                if (this.enabled && this._lastTrackInfo) {
-                    helperDebug('[OverlaySender] 창 포커스 - 가사 재전송');
-                    setTimeout(() => this.resendWithNewOffset(), 300);
-                }
+                this.handleForeground();
             };
 
             // 트랙 변경 감지
@@ -11402,7 +11555,8 @@
                 // 오버레이 활성화 상태가 아니면 스킵
                 if (!this.enabled) return;
                 // 현재 곡 조회는 별도 OverlayService의 단일 songchange 리스너가 담당한다.
-                helperDebug('[OverlaySender] 곡 변경 - 전송 상태 초기화:', previousUri);
+                helperDebug(this.LOG_TAG, '곡 변경 - 전송 상태 초기화:', previousUri);
+                this.requestProbe();
             };
 
             window.addEventListener('storage', this._storageListener);
@@ -11480,6 +11634,7 @@
             this._runtimeGeneration += 1;
             this.clearConnectionRecovery();
             if (enabled) {
+                this._probeFailures = 0;
                 this.startProgressSync();
                 this.setupOffsetListener();
                 this.scheduleConnectionCheck();
@@ -11543,7 +11698,7 @@
             this._initialized = true;
             this.setupRuntimeListener();
             this.syncRuntimeState();
-            helperDebug('[OverlaySender] Initialized in Extension');
+            helperDebug(this.LOG_TAG, 'Initialized in Extension');
         },
 
         destroy() {
@@ -11570,60 +11725,23 @@
         }
     };
 
+    // The helper app (port 15123) shares the current lyrics with other local
+    // programs. It reuses the overlay sender with its own endpoints and state.
+    const ownSenderState = () => Object.fromEntries(
+        Object.entries(createSenderState()).map(([key, value]) => [key, { value, writable: true }])
+    );
     const lyricsHelperSender = Object.create(OverlaySender, {
-        DEFAULT_PORT: {
-            value: 15123  // Helper 서버 포트 (video_server와 lyrics_server 통합)
-        },
-        // ⚠️ 상태 분리: Object.create로 만든 객체는 자기 소유 속성이 없으면
-        // 프로토타입(OverlaySender)의 가변 상태를 그대로 읽고, 상속된 메서드가
-        // OverlaySender의 워커를 죽이거나 window 리스너를 떼어내는 사고가 발생한다.
-        // (오버레이에 가사가 안 들어오던 원인) 반드시 전부 own property로 초기화한다.
-        progressInterval: { value: null, writable: true },
-        lastSentUri: { value: null, writable: true },
-        lastSentLyrics: { value: null, writable: true },
-        lastSentOffset: { value: null, writable: true },
-        _lastSentDedupeToken: { value: null, writable: true },
-        lastDeliveredUri: { value: null, writable: true },
-        _deliveryGeneration: { value: 0, writable: true },
-        _deliveryKey: { value: null, writable: true },
-        _terminalDeliveryFailure: { value: null, writable: true },
-        _lastTrackInfo: { value: null, writable: true },
-        _lastLyrics: { value: null, writable: true },
-        _lastPresentationContext: { value: null, writable: true },
-        _lastPresentationKey: { value: null, writable: true },
-        lastConfigDelay: { value: undefined, writable: true },
-        _offsetCache: { value: {}, writable: true },
-        _isConnected: { value: false, writable: true },
-        _connectionCheckInterval: { value: null, writable: true },
-        _connectionCheckTimer: { value: null, writable: true },
-        _lastConnectionAttempt: { value: 0, writable: true },
-        _isSettingsOpen: { value: false, writable: true },
-        _settingsTimer: { value: null, writable: true },
-        _worker: { value: null, writable: true },
-        _isSendingProgress: { value: false, writable: true },
-        _lastProgressUri: { value: null, writable: true },
-        _lastProgressPayloadKey: { value: null, writable: true },
-        _lastProgressSentAt: { value: 0, writable: true },
-        _reqId: { value: 0, writable: true },
-        _lastReqId: { value: 0, writable: true },
-        _pendingLyricsSend: { value: null, writable: true },
-        _lyricsSendActive: { value: false, writable: true },
-        _runtimeGeneration: { value: 0, writable: true },
-        _connectionRecoveryTimer: { value: null, writable: true },
-        _connectionRecoveryBootstrapTimer: { value: null, writable: true },
-        _initialized: { value: false, writable: true },
-        _offsetListenerSetup: { value: false, writable: true },
-        _runtimeListenerSetup: { value: false, writable: true },
-        _runtimeEnabledState: { value: undefined, writable: true },
-        _storageListener: { value: null, writable: true },
-        _delayChangedListener: { value: null, writable: true },
-        _offsetChangedListener: { value: null, writable: true },
-        _lyricsReadyListener: { value: null, writable: true },
-        _visibilityChangeListener: { value: null, writable: true },
-        _focusListener: { value: null, writable: true },
-        _songChangeListener: { value: null, writable: true },
-        _runtimeStorageListener: { value: null, writable: true },
-        _runtimeEventListener: { value: null, writable: true },
+        ...ownSenderState(),
+        DEFAULT_PORT: { value: 15123 },
+        LOG_TAG: { value: '[lyricsHelperSender]' },
+        CONNECTION_EVENT: { value: 'ivLyrics:lyrics-helper-connection' },
+        LYRICS_ENDPOINT: { value: '/lyrics/sender' },
+        PROGRESS_ENDPOINT: { value: '/lyrics/progress' },
+        PROBE_ENDPOINT: { value: '/lyrics/health' },
+        SOURCE_ID: { value: null },
+        USES_DISPLAY_METADATA: { value: false },
+        // Helper clients read the raw position, so every 250 ms anchor counts.
+        CONTINUOUS_PROGRESS: { value: true },
         port: {
             get() {
                 return this.DEFAULT_PORT;
@@ -11645,454 +11763,16 @@
                 this.syncRuntimeState();
             }
         },
-        setSettingsOpen: {
-            value: function (isOpen) {
-                clearSettingsPolling(this);
-                this._isSettingsOpen = Boolean(isOpen);
-
-                if (this._isSettingsOpen) {
-                    helperDebug('[lyricsHelperSender] 설정창 열림 - 연결 확인 폴링 시작');
-                    this.checkConnection();
-                    this._settingsTimer = setInterval(() => {
-                        if (!this.isConnected) {
-                            this.checkConnection();
-                        }
-                    }, 5000);
-                } else {
-                    helperDebug('[lyricsHelperSender] 설정창 닫힘 - 연결 확인 폴링 종료');
-                }
-            }
-        },
-        isConnected: {
-            get() {
-                return this._isConnected;
-            },
-            set(value) {
-                const wasConnected = this._isConnected;
-                this._isConnected = value;
-                this.syncProgressConnection();
-
-                window.dispatchEvent(new CustomEvent('ivLyrics:lyrics-helper-connection', {
-                    detail: { connected: value }
-                }));
-
-                if (value && !wasConnected) {
-                    helperDebug('[lyricsHelperSender] 헬퍼 연결됨 ✓');
-                    this.handleConnectionRecovery();
-                }
-                else if (!value && wasConnected) {
-                    helperDebug('[lyricsHelperSender] 헬퍼 연결 끊김');
-                }
-            }
-        },
-        sendLyrics: {
-            value: async function (
-                trackInfo,
-                lyrics,
-                forceResend = false,
-                sendReason = 'normal',
-                presentationContext = null
-            ) {
-                if (!trackInfo || !lyrics || !Array.isArray(lyrics)) return;
-                if (!this.enabled) return;
-                if (this.isStaleTrackSend(trackInfo)) {
-                    helperDebug('[lyricsHelperSender] 이전 곡 가사 전송 차단:', trackInfo.uri);
-                    return;
-                }
-
-                const currentReqId = ++this._reqId;
-                const effectivePresentationContext = resolveOverlayPresentationContext(this, trackInfo, presentationContext);
-                const presentationKey = getOverlayPresentationKey(
-                    trackInfo,
-                    lyrics,
-                    effectivePresentationContext
-                );
-                const supplementVisibility = getOverlaySupplementVisibility(effectivePresentationContext);
-                const preserved = this._lastTrackInfo?.uri === trackInfo.uri
-                    && this._lastPresentationKey === presentationKey
-                    ? preserveOverlayAuxiliaryLyrics(this._lastLyrics, lyrics, supplementVisibility)
-                    : {
-                        lyrics,
-                        preservedPronunciationCount: 0,
-                        preservedTranslationCount: 0
-                    };
-                const lyricsToSend = preserved.lyrics;
-
-                if (
-                    preserved.preservedPronunciationCount > 0
-                    || preserved.preservedTranslationCount > 0
-                ) {
-                    helperDebug('[lyricsHelperSender] 최신 발음/번역 보존:', {
-                        pronunciation: preserved.preservedPronunciationCount,
-                        translation: preserved.preservedTranslationCount,
-                        reason: sendReason
-                    });
-                }
-
-                this._lastTrackInfo = trackInfo;
-                this._lastLyrics = lyricsToSend;
-                this._lastPresentationContext = effectivePresentationContext;
-                this._lastPresentationKey = presentationKey;
-
-                const offset = await this.getSyncOffset(trackInfo.uri);
-
-                if (currentReqId < this._lastReqId) {
-                    helperDebug(`[lyricsHelperSender] 오래된 요청 무시됨 (#${currentReqId} < #${this._lastReqId})`);
-                    return;
-                }
-                this._lastReqId = currentReqId;
-
-                if (!this.enabled || this.isStaleTrackSend(trackInfo)) {
-                    helperDebug('[lyricsHelperSender] 이전 곡 가사 전송 차단 (오프셋 계산 후):', trackInfo.uri);
-                    return;
-                }
-
-                const mappedLines = mapLyricsForSender(lyricsToSend, offset, supplementVisibility);
-                const isSynced = lyricsToSend.some(l => l.startTime !== undefined && l.startTime !== null);
-                const lyricsHash = JSON.stringify([mappedLines, isSynced]);
-
-                if (!forceResend &&
-                    this.lastSentUri === trackInfo.uri &&
-                    this.lastSentLyrics === lyricsHash &&
-                    this.lastSentOffset === offset) {
-                    return;
-                }
-
-                const deliveryKey = JSON.stringify([trackInfo.uri, lyricsHash, offset]);
-                const isReconnectCycle = sendReason === 'reconnect';
-                let deliveryGeneration = this._deliveryGeneration;
-                if (!isReconnectCycle || this._deliveryKey !== deliveryKey) {
-                    deliveryGeneration = ++this._deliveryGeneration;
-                    this._deliveryKey = deliveryKey;
-                    this._terminalDeliveryFailure = null;
-                }
-
-                this.lastSentUri = trackInfo.uri;
-                this.lastSentLyrics = lyricsHash;
-                this.lastSentOffset = offset;
-
-                // 앨범 이미지 URL 처리 개선
-                let albumArt = null;
-                try {
-                    const imageUrl = Spicetify.Player.data?.item?.metadata?.image_xlarge_url
-                        || Spicetify.Player.data?.item?.metadata?.image_url
-                        || Spicetify.Player.data?.item?.metadata?.image_large_url;
-                    albumArt = resolveSpotifyImageUrl(imageUrl);
-                } catch (e) { }
-
-                // 현재 트랙 정보 가져오기 (Spicetify.Player.data에서 최신 정보 사용)
-                const currentTitle = trackInfo.title || Spicetify.Player.data?.item?.metadata?.title || '';
-                const currentArtist = trackInfo.artist || Spicetify.Player.data?.item?.metadata?.artist_name || '';
-                const currentAlbum = Spicetify.Player.data?.item?.metadata?.album_title || '';
-
-                helperDebug('[lyricsHelperSender] 가사 전송:', {
-                    lines: mappedLines.length,
-                    offset,
-                    title: currentTitle,
-                    artist: currentArtist
-                });
-
-                // 새로운 엔드포인트 사용: /lyrics/sender
-                await this.queueLyricsSend('/lyrics/sender', trackInfo.uri, {
-                    track: {
-                        title: currentTitle,
-                        artist: currentArtist,
-                        album: currentAlbum,
-                        albumArt,
-                        duration: Spicetify.Player.getDuration() || 0
-                    },
-                    lyrics: mappedLines,
-                    isSynced
-                }, {
-                    key: deliveryKey,
-                    generation: deliveryGeneration,
-                    isReconnectCycle
-                });
-            }
-        },
-        resendWithNewOffset: {
-            value: async function (sendReason = 'explicit', offsetUpdate = null) {
-                const trackUri = offsetUpdate?.trackUri;
-                const trackOffset = Number(offsetUpdate?.offset);
-                this._offsetCache = trackUri && Number.isFinite(trackOffset)
-                    ? { [trackUri]: trackOffset }
-                    : {};
-                if (this._lastTrackInfo && this._lastLyrics) {
-                    helperDebug('[lyricsHelperSender] 가사 재전송 (싱크 반영)');
-                    await this.sendLyrics(
-                        this._lastTrackInfo,
-                        this._lastLyrics,
-                        true,
-                        sendReason,
-                        this._lastPresentationContext
-                    );
-                }
-            }
-        },
-        // progress 전송용 엔드포인트 오버라이드
-        sendProgressToEndpoint: {
-            value: async function (data) {
-                if (!this.enabled) return;
-                try {
-                    const response = await fetch(`http://localhost:${this.port}/lyrics/progress`, {
-                        method: 'POST',
-                        mode: 'cors',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(data),
-                        signal: AbortSignal.timeout(2000)
-                    });
-                    if (!this._isConnected && response.ok) {
-                        this.isConnected = true;
-                    }
-                } catch (e) {
-                    if (this._isConnected) {
-                        this.isConnected = false;
-                    }
-                }
-            }
-        },
-        setupOffsetListener: {
-            value: function () {
-                // 중복 호출 방지
-                if (this._offsetListenerSetup) return;
-                this._offsetListenerSetup = true;
-
-                this._storageListener = (e) => {
-                    if (e.key && e.key.startsWith('lyrics-delay:')) {
-                        this.resendWithNewOffset();
-                    }
-                };
-
-                this._delayChangedListener = () => {
-                    this.resendWithNewOffset();
-                };
-
-                this._offsetChangedListener = (event) => {
-                    this.resendWithNewOffset('offset-event', event.detail || null);
-                };
-
-                this._lyricsReadyListener = (e) => {
-                    if (!this.enabled) return;
-                    const detail = e.detail || {};
-                    const { trackInfo, lyrics } = detail;
-                    if (trackInfo) {
-                        helperDebug('[lyricsHelperSender] 가사 준비 이벤트 수신:', {
-                            uri: trackInfo.uri,
-                            title: trackInfo.title,
-                            lines: lyrics?.length || 0
-                        });
-                        this.sendLyrics(trackInfo, lyrics || [], false, 'lyrics-ready', {
-                            provider: detail.provider,
-                            lyricsType: detail.lyricsType,
-                            displayMode1: detail.displayMode1,
-                            displayMode2: detail.displayMode2,
-                            pronunciationNotation: detail.pronunciationNotation,
-                            translationTargetLanguage: detail.translationTargetLanguage,
-                            translationSourceText: detail.translationSourceText,
-                            presentationComplete: detail.presentationComplete
-                        });
-                    }
-                };
-
-                this._visibilityChangeListener = () => {
-                    if (document.visibilityState === 'visible' && this.enabled) {
-                        helperDebug('[lyricsHelperSender] 페이지 활성화 - 가사 재전송');
-                        setTimeout(() => this.resendWithNewOffset(), 200);
-                    }
-                };
-
-                this._focusListener = () => {
-                    if (this.enabled && this._lastTrackInfo) {
-                        helperDebug('[lyricsHelperSender] 창 포커스 - 가사 재전송');
-                        setTimeout(() => this.resendWithNewOffset(), 300);
-                    }
-                };
-
-                this._songChangeListener = () => {
-                    const previousUri = this._lastTrackInfo?.uri || this.lastSentUri || null;
-                    // 캐시 초기화
-                    this.lastSentUri = null;
-                    this.lastSentLyrics = null;
-                    this.lastSentOffset = null;
-                    this._lastSentDedupeToken = null;
-                    this.lastDeliveredUri = null;
-                    this._deliveryGeneration += 1;
-                    this._deliveryKey = null;
-                    this._terminalDeliveryFailure = null;
-                    this._pendingLyricsSend = null;
-                    this._offsetCache = {};
-                    this._lastProgressUri = null;
-                    this._lastTrackInfo = null;
-                    this._lastLyrics = null;
-                    this._lastPresentationContext = null;
-                    this._lastPresentationKey = null;
-
-                    // 오버레이 활성화 상태가 아니면 스킵
-                    if (!this.enabled) return;
-                    // 현재 곡 조회는 별도 OverlayService의 단일 songchange 리스너가 담당한다.
-                    helperDebug('[lyricsHelperSender] 곡 변경 - 전송 상태 초기화:', previousUri);
-                };
-
-                window.addEventListener('storage', this._storageListener);
-                window.addEventListener('ivLyrics:delay-changed', this._delayChangedListener);
-                window.addEventListener('ivLyrics:offset-changed', this._offsetChangedListener);
-                window.addEventListener('ivLyrics:global-offset-changed', this._offsetChangedListener);
-                window.addEventListener('ivLyrics:lyrics-ready', this._lyricsReadyListener);
-                document.addEventListener('visibilitychange', this._visibilityChangeListener);
-                window.addEventListener('focus', this._focusListener);
-                Spicetify.Player.addEventListener('songchange', this._songChangeListener);
-            }
-        },
-        // Reuse the same lifecycle code while retaining own method descriptors and
-        // the independent worker/listener state declared above.
+        // Lifecycle methods stay own, fixed properties so neither sender can
+        // replace the other's teardown.
         teardownOffsetListener: { value: OverlaySender.teardownOffsetListener },
-        startProgressSync: {
-            value: function () {
-                if (this._worker) return;
-                if (!this.enabled || !this.isConnected) return;
-
-                const blob = new Blob([`
-                  let interval = null;
-                  self.onmessage = function(e) {
-                    if (e.data === 'start') {
-                      if (interval) clearInterval(interval);
-                      interval = setInterval(() => {
-                        self.postMessage('tick');
-                      }, 250);
-                    } else if (e.data === 'stop') {
-                      if (interval) clearInterval(interval);
-                      interval = null;
-                    }
-                  };
-                `], { type: 'application/javascript' });
-
-                const workerUrl = URL.createObjectURL(blob);
-                this._worker = new Worker(workerUrl);
-                URL.revokeObjectURL(workerUrl);
-
-                this._worker.onmessage = async () => {
-                    if (!this.enabled) return;
-                    if (this._isSendingProgress) return;
-                    if (!this.isConnected) return;
-
-                    // 전역 딜레이 변경 체크
-                    if (typeof window.CONFIG !== 'undefined' && window.CONFIG.visual) {
-                        if (this.lastConfigDelay === undefined) {
-                            this.lastConfigDelay = window.CONFIG.visual.delay;
-                        }
-                        if (this.lastConfigDelay !== window.CONFIG.visual.delay) {
-                            this.lastConfigDelay = window.CONFIG.visual.delay;
-                            this.resendWithNewOffset();
-                        }
-                    }
-
-                    this._isSendingProgress = true;
-                    const sendingWorker = this._worker;
-                    try {
-                        const playbackSnapshot = Utils.getPlayerPlaybackSnapshot();
-                        const progressTiming = normalizeOverlayProgressTiming(
-                            playbackSnapshot.position,
-                            playbackSnapshot.duration || Spicetify.Player.getDuration()
-                        );
-                        const { position, duration, remaining } = progressTiming;
-
-                        let currentTrack = null;
-                        const currentItem = Utils.resolveStablePlaybackTrack(null, playbackSnapshot);
-                        const currentUri = playbackSnapshot.uri || currentItem?.uri;
-                        if (currentUri && this._lastProgressUri !== currentUri) {
-                            this._lastProgressUri = currentUri;
-                            try {
-                                const imageUrl = currentItem?.metadata?.image_xlarge_url
-                                    || currentItem?.metadata?.image_url
-                                    || currentItem?.metadata?.image_large_url;
-                                let albumArt = null;
-                                albumArt = resolveSpotifyImageUrl(imageUrl);
-                                currentTrack = {
-                                    title: currentItem?.metadata?.title || currentItem?.name || '',
-                                    artist: currentItem?.metadata?.artist_name || '',
-                                    album: currentItem?.metadata?.album_title || '',
-                                    albumArt
-                                };
-                            } catch (e) { }
-                        }
-
-                        let nextTrack = null;
-                        try {
-                            const queue = Spicetify.Queue;
-                            if (queue?.nextTracks?.length > 0) {
-                                const next = queue.nextTracks[0];
-                                if (next?.contextTrack?.metadata) {
-                                    const imageUrl = next.contextTrack.metadata.image_url || next.contextTrack.metadata.image_xlarge_url;
-                                    const albumArt = resolveSpotifyImageUrl(imageUrl);
-                                    nextTrack = {
-                                        title: next.contextTrack.metadata.title || '',
-                                        artist: next.contextTrack.metadata.artist_name || '',
-                                        albumArt
-                                    };
-                                }
-                            }
-                        } catch (e) { }
-
-                        // 새로운 엔드포인트 사용: /lyrics/progress
-                        await this.sendProgressPayload('/lyrics/progress', {
-                            position,
-                            isPlaying: getOverlayProgressIsPlaying(),
-                            duration,
-                            remaining,
-                            currentTrack,
-                            nextTrack
-                        }, currentUri);
-                    } finally {
-                        if (this._worker === sendingWorker) this._isSendingProgress = false;
-                    }
-                };
-
-                this._worker.postMessage('start');
-            }
-        },
         stopProgressSync: { value: OverlaySender.stopProgressSync },
         scheduleConnectionCheck: { value: OverlaySender.scheduleConnectionCheck },
         syncRuntimeState: { value: OverlaySender.syncRuntimeState },
         setupRuntimeListener: { value: OverlaySender.setupRuntimeListener },
         teardownRuntimeListener: { value: OverlaySender.teardownRuntimeListener },
-        checkConnection: {
-            value: async function () {
-                if (!this.enabled) return false;
-                const runtimeGeneration = this._runtimeGeneration;
-                const port = this.port;
-                if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
-
-                try {
-                    // /lyrics/progress 엔드포인트로 연결 확인
-                    const response = await fetch(`http://localhost:${port}/lyrics/progress`, {
-                        method: 'POST',
-                        mode: 'cors',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ position: 0, isPlaying: false }),
-                        signal: AbortSignal.timeout(1000)
-                    });
-                    if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
-                    this.isConnected = response.ok;
-                    return this.isConnected;
-                } catch (e) {
-                    if (!this.isRuntimeRequestCurrent(runtimeGeneration, port)) return false;
-                    this.isConnected = false;
-                    return false;
-                }
-            }
-        },
-        init: {
-            value: function () {
-                if (this._initialized) return;
-                this._initialized = true;
-                this.setupRuntimeListener();
-                this.syncRuntimeState();
-                helperDebug('[lyricsHelperSender] Initialized in Extension');
-            }
-        },
         destroy: { value: OverlaySender.destroy }
     });
-
 
     window.LyricsService = LyricsService;
 

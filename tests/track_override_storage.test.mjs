@@ -19,7 +19,7 @@ const slice = (text, from, to) => {
 const serialize = (value) => value === undefined ? "[undefined]" : JSON.parse(JSON.stringify(value));
 const databases = [
   ["TrackLanguageDB", "ivLyrics-lang-db", "track-language-overrides", "getLanguage", "setLanguage", "clearLanguage", "ja"],
-  ["TrackLyricsProviderDB", "ivLyrics-provider-db", "track-lyrics-provider-overrides", "getProvider", "setProvider", "clearProvider", "paxsenix"],
+  ["TrackLyricsProviderDB", "ivLyrics-provider-db", "track-lyrics-provider-overrides", "getProvider", "setProvider", "clearProvider", "open-lyrics"],
   ["TrackBackgroundDB", "ivLyrics-background-db", "track-background-overrides", "getOverride", "setOverride", "clearOverride", "gradient-background"],
 ];
 

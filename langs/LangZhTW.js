@@ -642,7 +642,7 @@ window.LANG_ZH_TW = {
       "customModel": "自訂模型",
       "getFreeApiKey": "取得免費金鑰",
       "groqDesc": "Groq 免費提供超高速推論。",
-      "sonarWebSearch": "Sonar 模型內建即時網頁搜尋。",
+      "perplexityAgentModels": "使用 API 金鑰自動載入 Perplexity Agent API 的模型清單。音樂研究也會使用網頁搜尋。",
       "geminiBaseUrlDesc": "如需使用相容 Gemini 的 API，請修改此位址。",
       "modelsAvailable": "可用模型：{count} 個",
       "requestBodyMerge": "請求本文合併 JSON",
@@ -826,7 +826,10 @@ window.LANG_ZH_TW = {
     "fullscreenScreenHint": "將 Spotify 切換為佔滿整個顯示器並開啟全螢幕",
     "localLyricsApplying": "正在套用…",
     "currentTrack": "目前曲目",
-    "more": "更多"
+    "more": "更多",
+    "pronunciationFirst": "發音優先",
+    "pronunciationFirstTitle": "發音優先模式",
+    "pronunciationFirstDesc": "交換原文與發音的位置，方便跟著外語歌詞唱"
   },
   "messages": {
     "noLyrics": "無可用歌詞",
@@ -985,6 +988,11 @@ window.LANG_ZH_TW = {
     "reference": "參考",
     "cached": "已有快取",
     "empty": "空白",
+    "byUnit": "按單位",
+    "joined": "合併發音",
+    "editAsLine": "按行編輯",
+    "editAsLineHint": "刪除按單位的發音，將此行作為整行編輯",
+    "cachedByUnit": "已快取 · 按單位 {count} 行",
     "pronunciationPlaceholder": "每行歌詞對應一行",
     "translationPlaceholder": "每行歌詞對應一行",
     "shiftDown": "將此行及以下下移一行",
@@ -1582,6 +1590,14 @@ window.LANG_ZH_TW = {
           "classic": "經典",
           "expressive": "表現力"
         }
+      },
+      "syncedPronunciation": {
+        "label": "使用同步發音",
+        "desc": "依演唱的每個詞或字的時間取得卡拉OK歌詞的發音。開啟後可使用發音優先模式與發音卡拉OK填色。關閉時，發音會以整行純文字更快取得。"
+      },
+      "pronunciationFill": {
+        "label": "發音卡拉OK填色",
+        "desc": "即使關閉發音優先模式，原文下方的發音也會隨演唱時間像卡拉OK一樣填色。AI 會依單字或字元的時間拆分發音。不會套用彈跳、發光等其他效果。"
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_ZH_TW = {
     "label": "歌詞 Plus"
   },
   "generationStatus": {
+    "wordSync": "逐詞同步",
+    "externalWordSync": "正在外部歌詞伺服器上產生逐詞同步資料。",
+    "wordSyncFailed": "逐詞同步失敗",
+    "externalWordSyncFailed": "無法產生或套用逐詞同步資料。將保留目前的歌詞。",
     "complete": "完成！",
     "culturalAnnotations": "文化背景說明",
     "culturalAnnotationsLoading": "正在分析文化背景...",
     "wordSupplements": "單字詳情",
-    "wordSupplementsLoading": "正在載入單字發音和釋義..."
+    "wordSupplementsLoading": "正在載入單字發音和釋義...",
+    "pronunciationSync": "發音同步",
+    "pronunciationSyncLoading": "AI 正在將發音與歌詞時間對齊...",
+    "pronunciationSyncFailed": "發音同步失敗",
+    "pronunciationSyncFailedDesc": "無法用 AI 產生發音時間，將以近似時間顯示。"
   },
   "videoSync": {
     "title": "影片同步",

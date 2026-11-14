@@ -642,7 +642,7 @@ window.LANG_TH = {
       "customModel": "โมเดลที่กำหนดเอง",
       "getFreeApiKey": "รับคีย์ฟรี",
       "groqDesc": "Groq ให้บริการประมวลผลโมเดลที่เร็วมากโดยไม่มีค่าใช้จ่าย",
-      "sonarWebSearch": "โมเดล Sonar มีการค้นหาเว็บแบบเรียลไทม์ในตัว",
+      "perplexityAgentModels": "โหลดรายการโมเดลจาก Perplexity Agent API โดยอัตโนมัติด้วยคีย์ของคุณ การวิจัยเพลงจะใช้การค้นหาเว็บด้วย",
       "geminiBaseUrlDesc": "เปลี่ยนที่อยู่นี้หากต้องการใช้ API ที่เข้ากันได้กับ Gemini",
       "modelsAvailable": "โมเดลที่ใช้ได้: {count}",
       "requestBodyMerge": "JSON ที่จะรวมเข้ากับเนื้อหาคำขอ",
@@ -826,7 +826,10 @@ window.LANG_TH = {
     "fullscreenScreenHint": "ขยาย Spotify ให้เต็มทั้งจอภาพแล้วเปิดโหมดเต็มจอ",
     "localLyricsApplying": "กำลังใช้…",
     "currentTrack": "แทร็กปัจจุบัน",
-    "more": "เพิ่มเติม"
+    "more": "เพิ่มเติม",
+    "pronunciationFirst": "เน้นคำอ่าน",
+    "pronunciationFirstTitle": "โหมดเน้นคำอ่าน",
+    "pronunciationFirstDesc": "สลับตำแหน่งเนื้อเพลงต้นฉบับกับคำอ่าน เพื่อให้ร้องตามเพลงภาษาต่างประเทศได้ง่าย"
   },
   "messages": {
     "noLyrics": "ไม่มีเนื้อเพลงที่ใช้ได้",
@@ -985,6 +988,11 @@ window.LANG_TH = {
     "reference": "อ้างอิง",
     "cached": "มีแคช",
     "empty": "ว่าง",
+    "byUnit": "ตามหน่วย",
+    "joined": "รวมแล้ว",
+    "editAsLine": "แก้ไขเป็นบรรทัด",
+    "editAsLineHint": "ลบคำอ่านตามหน่วยและแก้ไขบรรทัดนี้ทั้งบรรทัด",
+    "cachedByUnit": "แคชแล้ว · ตามหน่วย {count} บรรทัด",
     "pronunciationPlaceholder": "หนึ่งบรรทัดต่อหนึ่งบรรทัดของเนื้อเพลง",
     "translationPlaceholder": "หนึ่งบรรทัดต่อหนึ่งบรรทัดของเนื้อเพลง",
     "shiftDown": "เลื่อนบรรทัดนี้และบรรทัดถัดลงไปหนึ่งบรรทัด",
@@ -1582,6 +1590,14 @@ window.LANG_TH = {
           "classic": "คลาสสิก",
           "expressive": "เอ็กซ์เพรสซีฟ"
         }
+      },
+      "syncedPronunciation": {
+        "label": "ใช้คำอ่านแบบซิงก์",
+        "desc": "ดึงคำอ่านของเนื้อเพลงคาราโอเกะโดยแบ่งตามจังหวะของแต่ละคำหรือตัวอักษรที่ร้อง เมื่อเปิด จะใช้โหมดเน้นคำอ่านและการเติมสีคำอ่านแบบคาราโอเกะได้ เมื่อปิด คำอ่านจะมาเร็วขึ้นเป็นข้อความธรรมดาทีละบรรทัด"
+      },
+      "pronunciationFill": {
+        "label": "เติมสีคำอ่านแบบคาราโอเกะ",
+        "desc": "แม้ปิดโหมดเน้นคำอ่าน บรรทัดคำอ่านก็จะเติมสีตามจังหวะการร้อง AI จะแบ่งคำอ่านตามจังหวะของแต่ละคำหรือตัวอักษร โดยไม่ใช้เอฟเฟกต์อื่น เช่น การเด้งและการเรืองแสง"
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_TH = {
     "label": "เนื้อเพลง Plus"
   },
   "generationStatus": {
+    "wordSync": "ซิงก์ระดับคำ",
+    "externalWordSync": "กำลังสร้างข้อมูลซิงก์ระดับคำบนเซิร์ฟเวอร์เนื้อเพลงภายนอก",
+    "wordSyncFailed": "ซิงก์ระดับคำไม่สำเร็จ",
+    "externalWordSyncFailed": "ไม่สามารถสร้างหรือใช้ข้อมูลซิงก์ระดับคำได้ จะคงเนื้อเพลงปัจจุบันไว้",
     "complete": "เสร็จแล้ว!",
     "culturalAnnotations": "คำอธิบายบริบททางวัฒนธรรม",
     "culturalAnnotationsLoading": "กำลังวิเคราะห์บริบททางวัฒนธรรม...",
     "wordSupplements": "รายละเอียดคำ",
-    "wordSupplementsLoading": "กำลังโหลดคำอ่านและคำแปล..."
+    "wordSupplementsLoading": "กำลังโหลดคำอ่านและคำแปล...",
+    "pronunciationSync": "จังหวะคำอ่าน",
+    "pronunciationSyncLoading": "AI กำลังจัดคำอ่านให้ตรงกับจังหวะเนื้อเพลง...",
+    "pronunciationSyncFailed": "จัดจังหวะคำอ่านไม่สำเร็จ",
+    "pronunciationSyncFailedDesc": "ไม่สามารถจัดจังหวะคำอ่านด้วย AI ได้ จึงแสดงจังหวะโดยประมาณ"
   },
   "videoSync": {
     "title": "จังหวะวิดีโอ",

@@ -2050,6 +2050,8 @@ const IVLYRICS_TOOLBAR_ICON_PATHS = Object.freeze({
   syncCreator: '<path d="M3 12h2l2-5 3 10 3-8 2 6"/><path d="m16 19 4-4 2 2-4 4-3 1 1-3Z"/>',
   // Lyrics-page toolbar: entries and panel controls drawn on the same grid.
   track: '<path d="M9 18V5.5l11-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',
+  // Pronunciation-first: the two lyric rows trade places.
+  pronunciationFirst: '<path d="M3 7h10M3 12h6M3 17h10"/><path d="M18 4v16"/><path d="m15 7 3-3 3 3"/><path d="m15 17 3 3 3-3"/>',
   more: '<path d="M6 12h.01M12 12h.01M18 12h.01" stroke-width="3"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   chevronRight: '<path d="m9 6 6 6-6 6"/>',
@@ -6153,15 +6155,16 @@ const SyncDataCreatorButton = react.memo(({ trackUri, getTrackInfo, hasKaraokeSy
 
 // ---------------------------------------------------------------------------
 // Lyrics-page floating toolbar
-// Seven labelled entries in three groups: the lyrics mode (named after the
-// current mode), 변환 and 싱크 조절 | 현재 곡 and 더보기 | 설정 and 전체화면.
+// Labelled entries in three groups: the lyrics mode (named after the current
+// mode), 변환, 발음 우선 (while pronunciation is shown) and 싱크 조절 |
+// 현재 곡 and 더보기 | 설정 and 전체화면.
 // In fullscreen they fold into one 메뉴 button. Entries with a panel open it
 // to the left of the toolbar; 현재 곡 drills into the provider, local lyrics
 // and background views. Video selection, image sharing, the cache editor,
 // LRCLIB search and the karaoke sync creator keep their dialogs.
 // ---------------------------------------------------------------------------
 const TOOLBAR_ENTRY_GROUPS = Object.freeze([
-  Object.freeze(["mode", "convert", "sync"]),
+  Object.freeze(["mode", "convert", "pronunciationFirst", "sync"]),
   Object.freeze(["track", "more"]),
   Object.freeze(["settings", "fullscreen", "fullscreenAlt"]),
 ]);
@@ -6756,6 +6759,19 @@ const IvLyricsFloatingToolbar = react.memo((toolbar) => {
         ].filter(Boolean);
         return { title: I18n.t("menu.translationSettings"), lines: shown.length ? [shown.join(" · ")] : [] };
       },
+    },
+    pronunciationFirst: {
+      // Shown only while the pronunciation supplement is on for this song.
+      hidden: !toolbar.showPronunciationFirst,
+      icon: "pronunciationFirst",
+      label: getOptionsText("menu.pronunciationFirst", "발음 우선"),
+      ariaLabel: getOptionsText("menu.pronunciationFirstTitle", "발음 우선 모드"),
+      pressed: !!toolbar.pronunciationFirst,
+      tip: () => ({
+        title: getOptionsText("menu.pronunciationFirstTitle", "발음 우선 모드"),
+        lines: [getOptionsText("menu.pronunciationFirstDesc", "원문과 발음의 위치를 바꿔 외국어 가사를 따라 읽기 쉽게 표시합니다")],
+      }),
+      onActivate: () => actions?.onTogglePronunciationFirst?.(),
     },
     sync: {
       panel: true,

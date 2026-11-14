@@ -642,7 +642,7 @@ window.LANG_TR = {
       "customModel": "Özel model",
       "getFreeApiKey": "Ücretsiz Anahtar Al",
       "groqDesc": "Groq ücretsiz ve son derece hızlı çıkarım sunar.",
-      "sonarWebSearch": "Sonar modelleri gerçek zamanlı web aramasını içerir.",
+      "perplexityAgentModels": "Modeller anahtarınızla Perplexity Agent API'den otomatik olarak yüklenir. Müzik araştırması web aramasını da kullanır.",
       "geminiBaseUrlDesc": "Gemini uyumlu bir API kullanmak için bunu değiştirin.",
       "modelsAvailable": "Kullanılabilir model sayısı: {count}",
       "requestBodyMerge": "İstek gövdesiyle birleştirilecek JSON",
@@ -826,7 +826,10 @@ window.LANG_TR = {
     "fullscreenScreenHint": "Spotify'ı tüm monitörü kaplayacak şekilde açar ve tam ekrana geçer",
     "localLyricsApplying": "Uygulanıyor…",
     "currentTrack": "Mevcut Parça",
-    "more": "Daha Fazla"
+    "more": "Daha Fazla",
+    "pronunciationFirst": "Önce telaffuz",
+    "pronunciationFirstTitle": "Önce telaffuz modu",
+    "pronunciationFirstDesc": "Yabancı dildeki şarkı sözlerine kolayca eşlik edebilmeniz için orijinal sözlerle telaffuzun yerini değiştirir"
   },
   "messages": {
     "noLyrics": "Söz mevcut değil",
@@ -985,6 +988,11 @@ window.LANG_TR = {
     "reference": "Referans",
     "cached": "Önbellekte",
     "empty": "Boş",
+    "byUnit": "Birime göre",
+    "joined": "Birleşik",
+    "editAsLine": "Satır olarak düzenle",
+    "editAsLineHint": "Birim bazlı telaffuzu kaldırıp bu satırı tek satır olarak düzenle",
+    "cachedByUnit": "Önbellekte · birime göre {count} satır",
     "pronunciationPlaceholder": "Söz satırı başına bir satır",
     "translationPlaceholder": "Söz satırı başına bir satır",
     "shiftDown": "Bu satırı ve altındakileri aşağı kaydır",
@@ -1582,6 +1590,14 @@ window.LANG_TR = {
         "classic": "Klasik",
         "expressive": "Etkileyici"
       }
+    },
+    "syncedPronunciation": {
+      "label": "Senkronize telaffuz kullan",
+      "desc": "Karaoke sözlerinin telaffuzunu, söylenen her kelimenin veya karakterin zamanlamasına göre bölünmüş olarak alır. Açıkken önce telaffuz modu ve telaffuzu karaoke gibi doldurma kullanılabilir. Kapalıyken telaffuz satır satır düz metin olarak daha hızlı gelir."
+    },
+    "pronunciationFill": {
+      "label": "Telaffuzu karaoke gibi doldur",
+      "desc": "Önce telaffuz modu kapalıyken bile telaffuz satırı şarkının zamanlamasıyla dolar. Yapay zekâ telaffuzu kelime veya karakter zamanlamasına göre böler. Zıplama ve parlama gibi diğer efektler uygulanmaz."
     }
   },
   "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_TR = {
     "label": "ivLyrics"
   },
   "generationStatus": {
+    "wordSync": "Kelime eşitleme",
+    "externalWordSync": "Harici bir şarkı sözü sunucusunda kelime düzeyinde eşitleme verileri oluşturuluyor.",
+    "wordSyncFailed": "Kelime eşitleme başarısız",
+    "externalWordSyncFailed": "Kelime düzeyinde eşitleme verileri oluşturulamadı veya uygulanamadı. Mevcut şarkı sözleri korunuyor.",
     "complete": "Tamamlandı!",
     "culturalAnnotations": "Kültürel bağlam açıklamaları",
     "culturalAnnotationsLoading": "Kültürel bağlam analiz ediliyor...",
     "wordSupplements": "Kelime ayrıntıları",
-    "wordSupplementsLoading": "Kelime okunuşları ve açıklamalar yükleniyor..."
+    "wordSupplementsLoading": "Kelime okunuşları ve açıklamalar yükleniyor...",
+    "pronunciationSync": "Telaffuz zamanlaması",
+    "pronunciationSyncLoading": "Yapay zekâ telaffuzu söz zamanlamasına uyduruyor...",
+    "pronunciationSyncFailed": "Telaffuz zamanlaması başarısız",
+    "pronunciationSyncFailedDesc": "Telaffuz yapay zekâ ile zamanlanamadı. Yaklaşık zamanlama gösteriliyor."
   },
   "videoSync": {
     "title": "Video zamanlaması",

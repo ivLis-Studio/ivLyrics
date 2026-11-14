@@ -642,7 +642,7 @@ window.LANG_MS = {
       "customModel": "Model tersuai",
       "getFreeApiKey": "Dapatkan Kunci Percuma",
       "groqDesc": "Groq menyediakan inferens yang sangat pantas secara percuma.",
-      "sonarWebSearch": "Model Sonar disertakan dengan carian web masa nyata.",
+      "perplexityAgentModels": "Model dimuatkan secara automatik daripada Perplexity Agent API dengan kunci anda. Penyelidikan muzik juga menggunakan carian web.",
       "geminiBaseUrlDesc": "Tukar alamat ini untuk menggunakan API yang serasi dengan Gemini.",
       "modelsAvailable": "Model tersedia: {count}",
       "requestBodyMerge": "JSON untuk digabungkan ke dalam badan permintaan",
@@ -826,7 +826,10 @@ window.LANG_MS = {
     "fullscreenScreenHint": "Menjadikan Spotify memenuhi seluruh monitor dan membuka skrin penuh",
     "localLyricsApplying": "Sedang digunakan…",
     "currentTrack": "Trek Semasa",
-    "more": "Lagi"
+    "more": "Lagi",
+    "pronunciationFirst": "Sebutan dahulu",
+    "pronunciationFirstTitle": "Mod sebutan dahulu",
+    "pronunciationFirstDesc": "Menukar lirik asal dan sebutan supaya mudah menyanyi bersama lirik bahasa asing"
   },
   "messages": {
     "noLyrics": "Tiada lirik yang tersedia",
@@ -985,6 +988,11 @@ window.LANG_MS = {
     "reference": "Rujukan",
     "cached": "Mempunyai Cache",
     "empty": "Kosong",
+    "byUnit": "Mengikut unit",
+    "joined": "Gabungan",
+    "editAsLine": "Sunting sebagai baris",
+    "editAsLineHint": "Buang sebutan mengikut unit dan sunting baris ini sebagai satu baris",
+    "cachedByUnit": "Dicache · {count} baris mengikut unit",
     "pronunciationPlaceholder": "Masukkan satu baris sebutan untuk setiap baris lirik",
     "translationPlaceholder": "Masukkan satu baris terjemahan untuk setiap baris lirik",
     "shiftDown": "Alih baris ini dan semua di bawahnya satu baris ke bawah",
@@ -1582,6 +1590,14 @@ window.LANG_MS = {
           "classic": "Klasik",
           "expressive": "Ekspresif"
         }
+      },
+      "syncedPronunciation": {
+        "label": "Guna sebutan disegerakkan",
+        "desc": "Mendapatkan sebutan lirik karaoke yang dibahagikan mengikut masa setiap perkataan atau aksara yang dinyanyikan. Apabila dihidupkan, mod sebutan dahulu dan isi sebutan seperti karaoke boleh digunakan. Apabila dimatikan, sebutan diperoleh lebih cepat sebagai teks biasa mengikut baris."
+      },
+      "pronunciationFill": {
+        "label": "Isi sebutan seperti karaoke",
+        "desc": "Walaupun mod sebutan dahulu dimatikan, baris sebutan diisi mengikut masa nyanyian. AI membahagikan sebutan mengikut masa setiap perkataan atau aksara. Kesan lain seperti lantunan dan cahaya tidak digunakan."
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_MS = {
     "label": "Lirik Plus"
   },
   "generationStatus": {
+    "wordSync": "Penyegerakan perkataan",
+    "externalWordSync": "Data penyegerakan setiap perkataan sedang dijana pada pelayan lirik luaran.",
+    "wordSyncFailed": "Penyegerakan perkataan gagal",
+    "externalWordSyncFailed": "Data penyegerakan setiap perkataan tidak dapat dijana atau digunakan. Lirik semasa dikekalkan.",
     "complete": "Selesai!",
     "culturalAnnotations": "Penjelasan konteks budaya",
     "culturalAnnotationsLoading": "Menganalisis konteks budaya...",
     "wordSupplements": "Perincian perkataan",
-    "wordSupplementsLoading": "Memuatkan bacaan & glosa..."
+    "wordSupplementsLoading": "Memuatkan bacaan & glosa...",
+    "pronunciationSync": "Penyegerakan sebutan",
+    "pronunciationSyncLoading": "AI sedang menyelaraskan sebutan dengan masa lirik...",
+    "pronunciationSyncFailed": "Penyegerakan sebutan gagal",
+    "pronunciationSyncFailedDesc": "Tidak dapat menyegerakkan sebutan dengan AI. Memaparkan masa anggaran."
   },
   "videoSync": {
     "title": "Pemasaan video",

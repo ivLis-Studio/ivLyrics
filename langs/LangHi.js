@@ -642,7 +642,7 @@ window.LANG_HI = {
       "customModel": "कस्टम मॉडल",
       "getFreeApiKey": "मुफ़्त कुंजी पाएँ",
       "groqDesc": "Groq बेहद तेज़ इन्फ़रेंस मुफ़्त में देता है।",
-      "sonarWebSearch": "Sonar मॉडल में रीयल-टाइम वेब खोज शामिल है।",
+      "perplexityAgentModels": "आपकी कुंजी से Perplexity Agent API के मॉडल अपने आप लोड होते हैं। संगीत अनुसंधान में वेब खोज भी इस्तेमाल होती है।",
       "geminiBaseUrlDesc": "Gemini-संगत API इस्तेमाल करने के लिए इसे बदलें।",
       "modelsAvailable": "उपलब्ध मॉडल: {count}",
       "requestBodyMerge": "अनुरोध बॉडी में मर्ज होने वाला JSON",
@@ -826,7 +826,10 @@ window.LANG_HI = {
     "fullscreenScreenHint": "Spotify को पूरे मॉनिटर पर फैलाकर फ़ुलस्क्रीन खोलता है",
     "localLyricsApplying": "लागू हो रहा है…",
     "currentTrack": "वर्तमान ट्रैक",
-    "more": "अधिक"
+    "more": "अधिक",
+    "pronunciationFirst": "उच्चारण पहले",
+    "pronunciationFirstTitle": "उच्चारण-पहले मोड",
+    "pronunciationFirstDesc": "मूल बोल और उच्चारण की जगह बदलता है, ताकि विदेशी भाषा के गानों के साथ आसानी से गा सकें"
   },
   "messages": {
     "noLyrics": "कोई लिरिक्स उपलब्ध नहीं",
@@ -985,6 +988,11 @@ window.LANG_HI = {
     "reference": "संदर्भ",
     "cached": "कैश में",
     "empty": "खाली",
+    "byUnit": "इकाई अनुसार",
+    "joined": "जुड़ा हुआ",
+    "editAsLine": "पंक्ति के रूप में संपादित करें",
+    "editAsLineHint": "इकाई-वार उच्चारण हटाकर इस पंक्ति को पूरी पंक्ति के रूप में संपादित करें",
+    "cachedByUnit": "कैश में · इकाई अनुसार {count} पंक्तियाँ",
     "pronunciationPlaceholder": "गीत की हर पंक्ति के लिए एक पंक्ति",
     "translationPlaceholder": "गीत की हर पंक्ति के लिए एक पंक्ति",
     "shiftDown": "इस पंक्ति और नीचे की पंक्तियों को एक पंक्ति नीचे खिसकाएँ",
@@ -1582,6 +1590,14 @@ window.LANG_HI = {
           "classic": "क्लासिक",
           "expressive": "एक्सप्रेसिव"
         }
+      },
+      "syncedPronunciation": {
+        "label": "सिंक उच्चारण इस्तेमाल करें",
+        "desc": "कराओके बोलों का उच्चारण हर गाए गए शब्द या अक्षर की टाइमिंग के अनुसार बाँटकर लाता है। चालू करने पर उच्चारण पहले मोड और उच्चारण को कराओके की तरह भरना उपलब्ध होता है। बंद होने पर उच्चारण पंक्ति-वार सादे टेक्स्ट के रूप में तेज़ी से आता है।"
+      },
+      "pronunciationFill": {
+        "label": "उच्चारण को कराओके की तरह भरें",
+        "desc": "उच्चारण-पहले मोड बंद होने पर भी उच्चारण की पंक्ति गाने की टाइमिंग के साथ भरती है। AI उच्चारण को हर शब्द या अक्षर की टाइमिंग के अनुसार बाँटता है। उछाल और चमक जैसे अन्य प्रभाव लागू नहीं होते।"
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_HI = {
     "label": "लिरिक्स प्लस"
   },
   "generationStatus": {
+    "wordSync": "शब्द सिंक",
+    "externalWordSync": "बाहरी गीत सर्वर पर शब्द-स्तर का सिंक डेटा तैयार किया जा रहा है।",
+    "wordSyncFailed": "शब्द सिंक विफल",
+    "externalWordSyncFailed": "शब्द-स्तर का सिंक डेटा बनाया या लागू नहीं किया जा सका। मौजूदा गीत के बोल बनाए रखे जाएंगे।",
     "complete": "पूर्ण!",
     "culturalAnnotations": "सांस्कृतिक संदर्भ की व्याख्या",
     "culturalAnnotationsLoading": "सांस्कृतिक संदर्भ का विश्लेषण हो रहा है...",
     "wordSupplements": "शब्द विवरण",
-    "wordSupplementsLoading": "शब्द उच्चारण और अर्थ लोड हो रहे हैं..."
+    "wordSupplementsLoading": "शब्द उच्चारण और अर्थ लोड हो रहे हैं...",
+    "pronunciationSync": "उच्चारण टाइमिंग",
+    "pronunciationSyncLoading": "AI उच्चारण को बोलों की टाइमिंग से मिला रहा है...",
+    "pronunciationSyncFailed": "उच्चारण टाइमिंग विफल",
+    "pronunciationSyncFailedDesc": "AI से उच्चारण की टाइमिंग नहीं बन सकी। अनुमानित टाइमिंग दिखाई जा रही है।"
   },
   "videoSync": {
     "title": "वीडियो टाइमिंग",

@@ -642,7 +642,7 @@ window.LANG_VI = {
       "customModel": "Mô hình tùy chỉnh",
       "getFreeApiKey": "Nhận khóa miễn phí",
       "groqDesc": "Groq cung cấp suy luận siêu nhanh miễn phí.",
-      "sonarWebSearch": "Các mô hình Sonar có sẵn tính năng tìm kiếm web theo thời gian thực.",
+      "perplexityAgentModels": "Danh sách mô hình được tải tự động từ Perplexity Agent API bằng khóa của bạn. Nghiên cứu âm nhạc cũng dùng tìm kiếm web.",
       "geminiBaseUrlDesc": "Thay đổi địa chỉ này để dùng API tương thích với Gemini.",
       "modelsAvailable": "Mô hình khả dụng: {count}",
       "requestBodyMerge": "JSON hợp nhất vào nội dung yêu cầu",
@@ -826,7 +826,10 @@ window.LANG_VI = {
     "fullscreenScreenHint": "Cho Spotify phủ kín toàn bộ màn hình rồi mở chế độ toàn màn hình",
     "localLyricsApplying": "Đang áp dụng…",
     "currentTrack": "Bài hát hiện tại",
-    "more": "Thêm"
+    "more": "Thêm",
+    "pronunciationFirst": "Ưu tiên phát âm",
+    "pronunciationFirstTitle": "Chế độ ưu tiên phát âm",
+    "pronunciationFirstDesc": "Đổi chỗ lời gốc và phát âm để dễ hát theo lời bài hát tiếng nước ngoài"
   },
   "messages": {
     "noLyrics": "Không có lời bài hát khả dụng",
@@ -985,6 +988,11 @@ window.LANG_VI = {
     "reference": "Tham chiếu",
     "cached": "Đã lưu cache",
     "empty": "Trống",
+    "byUnit": "Theo đơn vị",
+    "joined": "Ghép lại",
+    "editAsLine": "Sửa theo dòng",
+    "editAsLineHint": "Xóa phát âm theo đơn vị và sửa cả dòng này",
+    "cachedByUnit": "Đã lưu · {count} dòng theo đơn vị",
     "pronunciationPlaceholder": "Mỗi dòng lời bài hát tương ứng một dòng",
     "translationPlaceholder": "Mỗi dòng lời bài hát tương ứng một dòng",
     "shiftDown": "Dịch dòng này và các dòng bên dưới xuống một dòng",
@@ -1582,6 +1590,14 @@ window.LANG_VI = {
           "classic": "Cổ điển",
           "expressive": "Biểu cảm"
         }
+      },
+      "syncedPronunciation": {
+        "label": "Dùng phát âm đồng bộ",
+        "desc": "Lấy phát âm của lời karaoke được chia theo thời điểm của từng từ hoặc ký tự được hát. Khi bật, có thể dùng chế độ ưu tiên phát âm và tô phát âm như karaoke. Khi tắt, phát âm được lấy nhanh hơn dưới dạng văn bản thường theo từng dòng."
+      },
+      "pronunciationFill": {
+        "label": "Tô phát âm như karaoke",
+        "desc": "Ngay cả khi chế độ ưu tiên phát âm đang tắt, dòng phát âm vẫn được tô theo nhịp hát. AI chia phát âm theo thời gian của từng từ hoặc ký tự. Không áp dụng các hiệu ứng khác như nảy và phát sáng."
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_VI = {
     "label": "Lời bài hát Plus"
   },
   "generationStatus": {
+    "wordSync": "Đồng bộ từng từ",
+    "externalWordSync": "Đang tạo dữ liệu đồng bộ từng từ trên máy chủ lời bài hát bên ngoài.",
+    "wordSyncFailed": "Đồng bộ từng từ thất bại",
+    "externalWordSyncFailed": "Không thể tạo hoặc áp dụng dữ liệu đồng bộ từng từ. Giữ nguyên lời bài hát hiện tại.",
     "complete": "Hoàn tất!",
     "culturalAnnotations": "Giải thích bối cảnh văn hóa",
     "culturalAnnotationsLoading": "Đang phân tích bối cảnh văn hóa...",
     "wordSupplements": "Chi tiết từ",
-    "wordSupplementsLoading": "Đang tải cách đọc & nghĩa..."
+    "wordSupplementsLoading": "Đang tải cách đọc & nghĩa...",
+    "pronunciationSync": "Đồng bộ phát âm",
+    "pronunciationSyncLoading": "AI đang khớp phát âm với thời gian lời bài hát...",
+    "pronunciationSyncFailed": "Đồng bộ phát âm thất bại",
+    "pronunciationSyncFailedDesc": "Không thể đồng bộ phát âm bằng AI. Đang hiển thị thời gian gần đúng."
   },
   "videoSync": {
     "title": "Thời gian video",

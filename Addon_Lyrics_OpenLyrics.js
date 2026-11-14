@@ -1,11 +1,11 @@
 /**
- * Lyrically (Paxsenix) Provider Addon
- * Resolves lyrics through the public Lyrically API.
+ * Open Lyrics Addon
+ * Connects to public lyrics servers on GitHub.
  *
  * @addon-type lyrics
- * @id paxsenix
- * @name Lyrically (Paxsenix)
- * @version 1.0.7
+ * @id open-lyrics
+ * @name Open Lyrics
+ * @version 1.1.0
  * @supports karaoke: true
  * @supports synced: true
  * @supports unsynced: true
@@ -16,7 +16,9 @@
 
     const decodeEndpoint = encoded => atob(encoded);
     const ENDPOINTS = Object.freeze({
-        homepage: decodeEndpoint('aHR0cHM6Ly9seXJpY3MucGF4c2VuaXgub3Jn'),
+        homepage: decodeEndpoint('aHR0cHM6Ly9naXRodWIuY29tL2l2TGlzLVN0dWRpby9pdkx5cmljcw=='),
+        aggregateOne: decodeEndpoint('aHR0cHM6Ly9hcGkubGlyaXFvLWFsZmFycml6aS5teS5pZC92MS9seXJpY3M='),
+        aggregateTwo: decodeEndpoint('aHR0cHM6Ly9hcGkubHJjbXV4LmRldi9nZXQ='),
         catalogSearch: decodeEndpoint('aHR0cHM6Ly9pdHVuZXMuYXBwbGUuY29tL3NlYXJjaA=='),
         readerPrefix: decodeEndpoint('aHR0cHM6Ly9yLmppbmEuYWkvaHR0cDovLw=='),
         providerSearch: decodeEndpoint('aHR0cHM6Ly9seXJpY3MucGF4c2VuaXgub3JnL2t1Z291L3NlYXJjaA=='),
@@ -24,9 +26,8 @@
         catalogLyrics: decodeEndpoint('aHR0cHM6Ly9seXJpY3MucGF4c2VuaXgub3JnL2FwcGxlLW11c2ljL2x5cmljcw==')
     });
     const STRUCTURED_PROVIDER_ID = atob('a3Vnb3U=');
-    const getEndpointLabel = value => String(value || '').split('://').pop().replace(/\/$/, '');
     const CATALOG_SEARCH_HOST = new URL(ENDPOINTS.catalogSearch).hostname;
-    const ATTRIBUTION = `Lyrics via Lyrically API (${ENDPOINTS.homepage}).`;
+    const ATTRIBUTION = 'Lyrics via Open Lyrics.';
 
     function lyricsText(key, fallback, params) {
         const path = `settings.lyricsProviders.${key}`;
@@ -35,9 +36,9 @@
         return params ? String(fallback).replace(/\{(\w+)\}/g, (match, name) => params[name] ?? match) : fallback;
     }
 
-    const CACHE_VERSION = 'paxsenix-provider-v17';
-    const REQUEST_TIMEOUT_MS = 9000;
-    const PROVIDER_TIMEOUT_MS = 12000;
+    const CACHE_VERSION = 'open-lyrics-v2';
+    const REQUEST_TIMEOUT_MS = 25000;
+    const PROVIDER_TIMEOUT_MS = 30000;
     const JAPANESE_LINE_SPLIT_TRIGGER_WIDTH = 22;
     const JAPANESE_LINE_SPLIT_HARD_WIDTH = 26;
     const JAPANESE_LINE_SPLIT_MIN_WIDTH = 6;
@@ -61,34 +62,34 @@
     ];
 
     const ADDON_INFO = {
-        id: 'paxsenix',
-        name: 'Lyrically (Paxsenix)',
+        id: 'open-lyrics',
+        name: 'Open Lyrics',
         author: 'default',
-        version: '1.0.7',
+        version: '1.1.0',
         cacheVersion: CACHE_VERSION,
         description: {
-            ko: 'Lyrically 공개 API에서 가사를 가져옵니다',
-            en: 'Lyrics through the public Lyrically API',
-            ja: 'Lyricallyの公開APIから歌詞を取得します',
-            'zh-CN': '通过公开的 Lyrically API 获取歌词',
-            'zh-TW': '透過公開的 Lyrically API 取得歌詞',
-            hi: 'सार्वजनिक Lyrically API के ज़रिए गीत के बोल',
-            es: 'Letras a través de la API pública de Lyrically',
-            fr: 'Paroles via l’API publique Lyrically',
-            ar: 'كلمات الأغاني عبر واجهة Lyrically API العامة',
-            fa: 'متن ترانه از طریق API عمومی Lyrically',
-            de: 'Songtexte über die öffentliche Lyrically-API',
-            ru: 'Тексты песен через публичный API Lyrically',
-            sv: 'Låttexter via Lyricallys publika API',
-            pt: 'Letras pela API pública do Lyrically',
-            bn: 'পাবলিক Lyrically API-এর মাধ্যমে লিরিক্স',
-            cs: 'Texty písní přes veřejné API Lyrically',
-            it: 'Testi tramite l’API pubblica di Lyrically',
-            th: 'เนื้อเพลงผ่าน API สาธารณะของ Lyrically',
-            vi: 'Lời bài hát qua API công khai của Lyrically',
-            id: 'Lirik melalui API publik Lyrically',
-            ms: 'Lirik melalui API awam Lyrically',
-            tr: 'Herkese açık Lyrically API üzerinden şarkı sözleri'
+            "ko": "GitHub의 여러 공개 가사 서버에 연결합니다.",
+            "en": "Connects to public lyrics servers on GitHub.",
+            "ja": "GitHub上の複数の公開歌詞サーバーに接続します。",
+            "zh-CN": "连接 GitHub 上的多个公共歌词服务器。",
+            "zh-TW": "連接 GitHub 上的多個公開歌詞伺服器。",
+            "hi": "GitHub पर कई सार्वजनिक गीत सर्वरों से जुड़ता है।",
+            "es": "Se conecta a varios servidores públicos de letras en GitHub.",
+            "fr": "Se connecte à plusieurs serveurs publics de paroles sur GitHub.",
+            "ar": "يتصل بعدة خوادم عامة لكلمات الأغاني على GitHub.",
+            "fa": "به چندین سرور عمومی متن ترانه در GitHub متصل می‌شود.",
+            "de": "Verbindet sich mit mehreren öffentlichen Liedtextservern auf GitHub.",
+            "ru": "Подключается к нескольким публичным серверам текстов песен на GitHub.",
+            "sv": "Ansluter till flera offentliga låttextservrar på GitHub.",
+            "pt": "Conecta-se a vários servidores públicos de letras no GitHub.",
+            "bn": "GitHub-এর একাধিক উন্মুক্ত লিরিক্স সার্ভারে সংযোগ করে।",
+            "cs": "Připojuje se k několika veřejným serverům s texty na GitHubu.",
+            "it": "Si collega a diversi server pubblici di testi su GitHub.",
+            "th": "เชื่อมต่อกับเซิร์ฟเวอร์เนื้อเพลงสาธารณะหลายแห่งบน GitHub",
+            "vi": "Kết nối với nhiều máy chủ lời bài hát công khai trên GitHub.",
+            "id": "Terhubung ke beberapa server lirik publik di GitHub.",
+            "ms": "Menyambung ke beberapa pelayan lirik awam di GitHub.",
+            "tr": "GitHub üzerindeki çeşitli herkese açık şarkı sözü sunucularına bağlanır."
         },
         supports: {
             karaoke: true,
@@ -491,14 +492,14 @@
         let index = agent ? agentOrder.get(agent) : null;
         if (!Number.isFinite(index)) index = line?.oppositeTurn ? 1 : 0;
         if (index <= 0) {
-            return { speaker: 'NORMAL', paxsenixAgent: agent || null };
+            return { speaker: 'NORMAL', openLyricsAgent: agent || null };
         }
         const palette = SPEAKER_PALETTE[(index - 1) % SPEAKER_PALETTE.length];
         return {
             speaker: 'CUSTOM',
             'speaker-color': palette.color,
             'speaker-fallback': palette.fallback,
-            paxsenixAgent: agent || null
+            openLyricsAgent: agent || null
         };
     }
 
@@ -653,7 +654,7 @@
 
     function splitLongJapaneseLine(line, previousLine = null, nextLine = null) {
         const syllables = Array.isArray(line?.syllables) ? line.syllables : [];
-        if (syllables.length < 2 || line?.vocals || line?.paxsenixSegmentCount) return [line];
+        if (syllables.length < 2 || line?.vocals || line?.openLyricsSegmentCount) return [line];
 
         for (let index = 0; index < syllables.length; index++) {
             const syllable = syllables[index];
@@ -692,7 +693,7 @@
         const plan = getJapaneseLineSplitPlan(syllables, totalWidth);
         if (!plan || plan.length < 3) return [line];
 
-        const sourceLineKey = String(line.paxsenixSourceLineKey || line.paxsenixLineKey || 'line');
+        const sourceLineKey = String(line.openLyricsSourceLineKey || line.openLyricsLineKey || 'line');
         const fragmentCount = plan.length - 1;
         const buildJapaneseLineFragment = (startIndex, fragmentIndex) => {
             const endIndex = plan[fragmentIndex + 1];
@@ -707,10 +708,10 @@
                     : last.endTime,
                 text: fragmentSyllables.map(syllable => syllable.text).join('').trim(),
                 syllables: fragmentSyllables,
-                paxsenixLineKey: `${sourceLineKey}-ja-segment-${fragmentIndex + 1}`,
-                paxsenixSourceLineKey: sourceLineKey,
-                paxsenixSegmentIndex: fragmentIndex,
-                paxsenixSegmentCount: fragmentCount
+                openLyricsLineKey: `${sourceLineKey}-ja-segment-${fragmentIndex + 1}`,
+                openLyricsSourceLineKey: sourceLineKey,
+                openLyricsSegmentIndex: fragmentIndex,
+                openLyricsSegmentCount: fragmentCount
             };
         };
         const fragments = plan.slice(0, -1).map(buildJapaneseLineFragment);
@@ -1023,7 +1024,7 @@
                 text: [leadText, backgroundText].filter(Boolean).join(' '),
                 ...presentation,
                 kind: 'vocal',
-                paxsenixLineKey: key,
+                openLyricsLineKey: key,
                 oppositeTurn: Boolean(line?.oppositeTurn)
             };
 
@@ -1065,7 +1066,7 @@
                 'speaker-color': line['speaker-color'],
                 'speaker-fallback': line['speaker-fallback'],
                 kind: line.kind,
-                paxsenixLineKey: line.paxsenixLineKey
+                openLyricsLineKey: line.openLyricsLineKey
             }))
             : null;
         const unsynced = displayLines.map(line => ({ text: line.text }));
@@ -1097,7 +1098,7 @@
         return 0;
     }
 
-    async function fetchBestLyrics(info, signal = null) {
+    async function fetchPrimaryLyrics(info, signal = null) {
         const durationMs = normalizeDurationMilliseconds(info);
         const attempts = await Promise.allSettled([
             fetchCatalogCandidate(info, signal),
@@ -1121,26 +1122,152 @@
         return candidates[0] || null;
     }
 
-    const PaxsenixLyricsAddon = {
+    function normalizeIsrc(value) {
+        const isrc = String(value || '').replace(/[\s-]/g, '').toUpperCase();
+        return /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/.test(isrc) ? isrc : '';
+    }
+
+    async function resolveIsrc(info) {
+        const service = window.SyncDataService;
+        const trackId = String(info?.uri || '').match(/^spotify:track:([A-Za-z0-9]{22})$/)?.[1];
+        const known = normalizeIsrc(info?.isrc || info?.external_ids?.isrc || info?.externalIds?.isrc
+            || service?.getTrackIsrc?.(trackId, info));
+        return known || normalizeIsrc(await service?.resolveTrackIsrc?.(trackId, info));
+    }
+
+    // Both JSON APIs use absolute milliseconds. Missing values must not become
+    // zero: that would turn plain lyrics into a stack of synchronized lines.
+    function openTime(value) {
+        if (value === null || value === undefined || (typeof value === 'string' && !value.trim()) || typeof value === 'boolean') return null;
+        const time = Number(value);
+        return Number.isFinite(time) && time >= 0 && time <= 86400000 ? Math.round(time) : null;
+    }
+
+    function parseOpenTrack(track, source, durationMs) {
+        const rows = source === 'server-a' ? track?.timed : track?.lines;
+        const level = String(source === 'server-a' ? track?.syncLevel : track?.meta?.level).toLowerCase();
+        if (!Array.isArray(rows) || !rows.length) return parsePlainLyrics(track?.plain || '');
+        const plain = [], timed = [], agents = new Map();
+        for (let index = 0; index < rows.length; index++) {
+            const row = rows[index];
+            if (!row || row.isInstrumental === true) continue;
+            const text = decodeLyricTextEntities(row.text).trim();
+            if (!text) continue;
+            plain.push({ text });
+            if (level === 'none' || level === 'plain') continue;
+            const embedded = Array.isArray(row.words) && row.words.length ? row.words : null;
+            const words = embedded || track?.words?.[row.id ?? index];
+            const detailed = ['word', 'syllable', 'character'].includes(level) && Array.isArray(words)
+                && words.length > 0 && words.every(word => typeof word?.text === 'string'
+                    && openTime(word.start) !== null && openTime(word.end) > openTime(word.start));
+            const exactWords = detailed && normalizeReferenceSpacingCharacters(words.map(word => word.text).join(''))
+                === normalizeReferenceSpacingCharacters(text);
+            const startTime = openTime(row.start) ?? (exactWords ? openTime(words[0].start)
+                : source === 'server-b' && openTime(row.end) > 0 ? 0 : null);
+            if (startTime === null) continue;
+            let endTime = openTime(row.end);
+            if (!(endTime > startTime)) endTime = exactWords ? Math.max(...words.map(word => openTime(word.end))) : null;
+            if (!(endTime > startTime)) endTime = openTime(rows[index + 1]?.start);
+            if (!(endTime > startTime) && startTime > 0 && index === rows.length - 1) {
+                endTime = durationMs > startTime ? durationMs : startTime + 3000;
+            }
+            // A line with only zero timestamps is not a timed result.
+            if (!(endTime > startTime)) continue;
+            if (durationMs > 0) endTime = Math.min(endTime, durationMs);
+            if (!(endTime > startTime)) continue;
+            const agent = String(row.agent || '');
+            if (agent && !agents.has(agent)) agents.set(agent, agents.size);
+            const line = { startTime, endTime, text, kind: 'vocal', ...getSpeakerPresentation(row, agents) };
+            if (exactWords) {
+                const tokens = words.map(word => ({ text: word.text, timestamp: word.start, endtime: word.end, part: true }));
+                const syllables = parseTimedTokens(tokens, startTime, endTime, text)
+                    .filter(word => word.startTime >= startTime && word.startTime < endTime)
+                    .map(word => ({ ...word, endTime: Math.min(endTime, word.endTime) }));
+                if (syllables.length === words.length) line.syllables = syllables;
+            }
+            timed.push(line);
+        }
+        timed.sort((a, b) => a.startTime - b.startTime);
+        return {
+            karaoke: timed.some(line => line.syllables?.length) ? timed : null,
+            synced: timed.length ? timed.map(({ syllables, ...line }) => line) : null,
+            unsynced: plain.length ? plain : null
+        };
+    }
+
+    function parseOpenResponse(body, source, durationMs) {
+        if (!body || body.error) return null;
+        if (source === 'server-a' && body.primary) {
+            const primary = { source, payload: body.primary, parsed: parseOpenTrack(body.primary, source, durationMs) };
+            if (getCandidateQuality(primary) > 0) return primary;
+        }
+        const tracks = source === 'server-a' ? [body.primary, ...(Array.isArray(body.tracks) ? body.tracks : [])] : [body];
+        return tracks.filter(Boolean).map(track => ({ source, payload: track, parsed: parseOpenTrack(track, source, durationMs) }))
+            .filter(candidate => getCandidateQuality(candidate) > 0)
+            .sort((a, b) => getCandidateQuality(b) - getCandidateQuality(a))[0] || null;
+    }
+
+    async function fetchRemoteLyrics(source, isrcPromise, info, signal) {
+        const isrc = await isrcPromise;
+        if (!isrc || signal?.aborted) return null;
+        const url = new URL(source === 'server-a' ? ENDPOINTS.aggregateOne : ENDPOINTS.aggregateTwo);
+        url.searchParams.set('isrc', isrc);
+        const { response, body } = await fetchJson(url, signal);
+        if (!response.ok) return null;
+        const returnedIsrc = normalizeIsrc(body?.metadata?.isrc || body?.track?.isrc);
+        if (returnedIsrc && returnedIsrc !== isrc) return null;
+        return parseOpenResponse(body, source, normalizeDurationMilliseconds(info));
+    }
+
+    async function fetchBestLyrics(info, parentSignal = null) {
+        const controller = new AbortController();
+        const abort = () => controller.abort();
+        if (parentSignal?.aborted) abort();
+        else parentSignal?.addEventListener('abort', abort, { once: true });
+        const isrc = resolveIsrc(info).catch(() => '');
+        try {
+            return await new Promise(resolve => {
+                let remaining = 3, settled = false;
+                const finish = candidate => {
+                    remaining--;
+                    if (settled) return;
+                    if (candidate || remaining === 0 || controller.signal.aborted) {
+                        settled = true;
+                        resolve(candidate || null);
+                        controller.abort();
+                    }
+                };
+                // Resolve even when an ISRC lookup or a transport ignores cancellation.
+                controller.signal.addEventListener('abort', () => finish(null), { once: true });
+                const tasks = [
+                    fetchPrimaryLyrics(info, controller.signal),
+                    fetchRemoteLyrics('server-a', isrc, info, controller.signal),
+                    fetchRemoteLyrics('server-b', isrc, info, controller.signal)
+                ];
+                tasks.forEach(task => task.then(finish, () => finish(null)));
+                if (controller.signal.aborted) finish(null);
+            });
+        } finally {
+            controller.abort();
+            parentSignal?.removeEventListener('abort', abort);
+        }
+    }
+
+    const OpenLyricsAddon = {
         ...ADDON_INFO,
 
         async init() {
-            window.__ivLyricsDebugLog?.(`[Paxsenix Lyrics Addon] Initialized (v${ADDON_INFO.version})`);
+            window.__ivLyricsDebugLog?.(`[Open Lyrics] Initialized (v${ADDON_INFO.version})`);
         },
 
         getSettingsUI() {
             const React = Spicetify.React;
-            return function PaxsenixLyricsSettings() {
-                return React.createElement('div', { className: 'ai-addon-settings paxsenix-settings' },
+            return function OpenLyricsSettings() {
+                return React.createElement('div', { className: 'ai-addon-settings open-lyrics-settings' },
                     React.createElement('div', { className: 'ai-addon-setting', style: { marginTop: '16px' } },
                         React.createElement('div', { className: 'ai-addon-info-box' },
                             React.createElement('p', { style: { fontWeight: 700, marginBottom: '8px' } }, ADDON_INFO.name),
-                            React.createElement('p', { style: { marginBottom: '8px' } }, lyricsText('attribution', ATTRIBUTION, { source: `Lyrically API (${ENDPOINTS.homepage})` })),
-                            React.createElement('a', {
-                                href: ENDPOINTS.homepage,
-                                target: '_blank',
-                                rel: 'noopener noreferrer'
-                            }, getEndpointLabel(ENDPOINTS.homepage))
+                            React.createElement('p', { style: { marginBottom: '8px' } }, lyricsText('attribution', ATTRIBUTION, { source: 'Open Lyrics' }))
                         )
                     )
                 );
@@ -1172,7 +1299,7 @@
             try {
                 const candidate = await fetchBestLyrics(info, controller?.signal || null);
                 if (!candidate) {
-                    result.error = 'No lyrics';
+                    result.error = controller?.signal.aborted ? 'Request timed out' : 'No lyrics';
                     return result;
                 }
 
@@ -1180,19 +1307,20 @@
                 result.synced = candidate.parsed.synced?.length ? candidate.parsed.synced : null;
                 result.unsynced = candidate.parsed.unsynced?.length ? candidate.parsed.unsynced : null;
                 result.karaokeSource = result.karaoke ? ADDON_INFO.id : null;
-                result.paxsenix = {
+                result.openLyrics = {
                     upstream: candidate.source,
                     syncType: candidate.payload?.syncType || null,
                     matchedTitle: candidate.match?.candidate?.title || null,
                     matchedArtist: candidate.match?.candidate?.artist || null,
                     matchScore: candidate.match?.score ?? null,
-                    sourceUrl: ENDPOINTS.homepage
+                    sourceUrl: candidate.source === 'server-a' ? ENDPOINTS.aggregateOne
+                        : candidate.source === 'server-b' ? ENDPOINTS.aggregateTwo : ENDPOINTS.homepage
                 };
                 return result;
             } catch (error) {
                 const timedOut = error?.name === 'AbortError' || error?.name === 'TimeoutError';
                 result.error = timedOut ? 'Request timed out' : (error?.message || 'Request error');
-                console.warn('[Paxsenix Lyrics Addon] Failed to load lyrics:', error);
+                console.warn('[Open Lyrics] Failed to load lyrics:', error);
                 return result;
             } finally {
                 if (timeout) clearTimeout(timeout);
@@ -1202,14 +1330,14 @@
 
     const registerAddon = () => {
         if (window.LyricsAddonManager) {
-            window.LyricsAddonManager.register(PaxsenixLyricsAddon);
+            window.LyricsAddonManager.register(OpenLyricsAddon);
         } else {
             setTimeout(registerAddon, 100);
         }
     };
 
-    window.PaxsenixLyricsAddon = PaxsenixLyricsAddon;
-    window.__ivLyricsPaxsenixDebug = Object.freeze({
+    window.OpenLyricsAddon = OpenLyricsAddon;
+    window.__ivLyricsOpenLyricsDebug = Object.freeze({
         normalizeDurationMilliseconds,
         normalizeComparable,
         normalizeTitleCore,
@@ -1236,9 +1364,12 @@
         isLikelyMetadataCreditLine,
         parseStructuredLyrics,
         parsePayload,
-        getCandidateQuality
+        getCandidateQuality,
+        parseOpenTrack,
+        parseOpenResponse,
+        fetchBestLyrics
     });
 
     registerAddon();
-    window.__ivLyricsDebugLog?.('[Paxsenix Lyrics Addon] Module loaded');
+    window.__ivLyricsDebugLog?.('[Open Lyrics] Module loaded');
 })();

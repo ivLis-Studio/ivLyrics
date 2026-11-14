@@ -642,7 +642,7 @@ window.LANG_JA = {
       "customModel": "カスタムモデル",
       "getFreeApiKey": "無料キーを取得",
       "groqDesc": "Groqは超高速な推論を無料で提供しています。",
-      "sonarWebSearch": "Sonarモデルはリアルタイムのウェブ検索に対応しています。",
+      "perplexityAgentModels": "APIキーでPerplexity Agent APIのモデル一覧を自動で読み込みます。音楽リサーチではウェブ検索も使用します。",
       "geminiBaseUrlDesc": "Gemini互換APIを使う場合はこのURLを変更してください。",
       "modelsAvailable": "利用可能なモデル: {count}",
       "requestBodyMerge": "リクエスト本文にマージするJSON",
@@ -826,7 +826,10 @@ window.LANG_JA = {
     "fullscreenScreenHint": "Spotifyをモニター全体に切り替えて全画面を開きます",
     "localLyricsApplying": "適用中…",
     "currentTrack": "現在の曲",
-    "more": "その他"
+    "more": "その他",
+    "pronunciationFirst": "発音優先",
+    "pronunciationFirstTitle": "発音優先モード",
+    "pronunciationFirstDesc": "原文と発音の位置を入れ替えて、外国語の歌詞を読みながら歌いやすくします"
   },
   "messages": {
     "noLyrics": "利用可能な歌詞がありません",
@@ -985,6 +988,11 @@ window.LANG_JA = {
     "reference": "参照",
     "cached": "キャッシュあり",
     "empty": "空",
+    "byUnit": "単位別",
+    "joined": "結合後",
+    "editAsLine": "行で編集",
+    "editAsLineHint": "単位ごとの発音を消して、この行を1行として編集します",
+    "cachedByUnit": "キャッシュあり · 単位別 {count}行",
     "pronunciationPlaceholder": "歌詞1行ごとに1行入力",
     "translationPlaceholder": "歌詞1行ごとに1行入力",
     "shiftDown": "この行以降を1行下へずらす",
@@ -1582,6 +1590,14 @@ window.LANG_JA = {
           "classic": "クラシック",
           "expressive": "エクスプレッシブ"
         }
+      },
+      "syncedPronunciation": {
+        "label": "同期発音を使う",
+        "desc": "カラオケ歌詞の発音を、歌う単語・文字のタイミングに合わせて取得します。オンにすると発音優先モードと発音のカラオケ塗りを使えます。オフにすると発音は行ごとのテキストとして、より速く取得されます。"
+      },
+      "pronunciationFill": {
+        "label": "発音をカラオケのように塗る",
+        "desc": "発音優先モードがオフでも、原文の下の発音が歌うタイミングに合わせてカラオケのように塗られます。AIが発音を単語・文字のタイミングに合わせて分割します。バウンスやグローなどの他の効果は適用されません。"
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_JA = {
     "label": "歌詞プラス"
   },
   "generationStatus": {
+    "wordSync": "単語同期",
+    "externalWordSync": "外部の歌詞サーバーで単語単位の同期データを生成しています。",
+    "wordSyncFailed": "単語同期に失敗",
+    "externalWordSyncFailed": "単語単位の同期データを生成または適用できませんでした。現在の歌詞を維持します。",
     "complete": "完了！",
     "culturalAnnotations": "文化的背景の解説",
     "culturalAnnotationsLoading": "文化的背景を分析中...",
     "wordSupplements": "単語詳細",
-    "wordSupplementsLoading": "単語の読みと意味を読み込み中..."
+    "wordSupplementsLoading": "単語の読みと意味を読み込み中...",
+    "pronunciationSync": "発音の同期",
+    "pronunciationSyncLoading": "AIが発音を歌詞のタイミングに合わせています...",
+    "pronunciationSyncFailed": "発音の同期に失敗",
+    "pronunciationSyncFailedDesc": "AIで発音のタイミングを作成できなかったため、おおよそのタイミングで表示します。"
   },
   "videoSync": {
     "title": "動画のタイミング",

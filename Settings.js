@@ -7385,6 +7385,9 @@ const SETTINGS_DEFAULT_VALUES = Object.freeze({
   "spotify-fake-karaoke-enabled": false, "pseudo-karaoke-render-advance": 250,
   "prefer-sync-data-provider": true, "prefer-lyrics-type-over-provider-order": true,
   "prefetch-enabled": true, "prefetch-video-enabled": true, "prefetch-word-details-enabled": true,
+  "pronunciation-first": false,
+  "synced-pronunciation": false,
+  "pronunciation-karaoke-fill": false,
   "quick-sync-controls-enabled": true, "seek-fade-compensation": false, "fullscreen-key": "f12",
   "translate-metadata": false,
   "translate-metadata-mode": "translated", "fullscreen-two-column": true,
@@ -7451,7 +7454,8 @@ const SETTINGS_FALLBACK_DEFAULT_VALUES = Object.freeze({
   "sync-creator-word-forward-alt-key": "", "sync-creator-word-back-key": ",",
   "sync-creator-word-back-alt-key": "", "sync-creator-syllable-key": ";",
   "sync-creator-syllable-alt-key": "", "sync-creator-drag-key": "/",
-  "sync-creator-drag-alt-key": "numpaddivide",
+  "sync-creator-drag-alt-key": "numpaddivide", "sync-creator-last-char-end-key": "`",
+  "sync-creator-last-char-end-alt-key": "",
 });
 
 const SETTINGS_DEFAULT_BACKGROUND_MODE = "gradient-background";
@@ -12455,6 +12459,14 @@ const ConfigModal = ({
           { key: "sync-creator-drag-alt-key", defaultValue: CONFIG.visual["sync-creator-drag-alt-key"] ?? "numpaddivide" },
         ],
       },
+      {
+        id: "last-char-end",
+        label: getSettingsText("syncCreator.lastCharEnd.markNow", "End now"),
+        items: [
+          { key: "sync-creator-last-char-end-key", defaultValue: CONFIG.visual["sync-creator-last-char-end-key"] ?? "`" },
+          { key: "sync-creator-last-char-end-alt-key", defaultValue: CONFIG.visual["sync-creator-last-char-end-alt-key"] ?? "" },
+        ],
+      },
     ];
     const syncCreatorHotkeyColumns = [
       getSettingsText("settings.shortcuts.primary", "Primary"),
@@ -12534,6 +12546,20 @@ const ConfigModal = ({
               },
               // Expressive motion is a style of the bounce, so it needs the bounce on.
               when: () => CONFIG.visual["karaoke-bounce"] !== false,
+            },
+            {
+              desc: I18n.t("settingsAdvanced.karaokeMode.syncedPronunciation.label"),
+              info: I18n.t("settingsAdvanced.karaokeMode.syncedPronunciation.desc"),
+              key: "synced-pronunciation",
+              type: ConfigSlider,
+            },
+            {
+              desc: I18n.t("settingsAdvanced.karaokeMode.pronunciationFill.label"),
+              info: I18n.t("settingsAdvanced.karaokeMode.pronunciationFill.desc"),
+              key: "pronunciation-karaoke-fill",
+              type: ConfigSlider,
+              // The fill splits the pronunciation by sung unit.
+              when: () => CONFIG.visual["synced-pronunciation"] === true,
             },
             {
               desc: I18n.t("settingsAdvanced.karaokeMode.spotifyFakeKaraoke.label"),

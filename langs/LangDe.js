@@ -642,7 +642,7 @@ window.LANG_DE = {
       "customModel": "Eigenes Modell",
       "getFreeApiKey": "Kostenlosen Schlüssel abrufen",
       "groqDesc": "Groq bietet kostenlose, extrem schnelle Inferenz.",
-      "sonarWebSearch": "Sonar-Modelle enthalten eine Websuche in Echtzeit.",
+      "perplexityAgentModels": "Modelle werden mit deinem Schlüssel automatisch aus der Perplexity Agent API geladen. Die Musikrecherche nutzt zusätzlich die Websuche.",
       "geminiBaseUrlDesc": "Ändere sie, um eine Gemini-kompatible API zu verwenden.",
       "modelsAvailable": "Verfügbare Modelle: {count}",
       "requestBodyMerge": "JSON zum Zusammenführen mit dem Request-Body",
@@ -826,7 +826,10 @@ window.LANG_DE = {
     "fullscreenScreenHint": "Lässt Spotify den ganzen Monitor ausfüllen und öffnet das Vollbild",
     "localLyricsApplying": "Wird angewendet…",
     "currentTrack": "Aktueller Track",
-    "more": "Mehr"
+    "more": "Mehr",
+    "pronunciationFirst": "Aussprache zuerst",
+    "pronunciationFirstTitle": "Aussprache-zuerst-Modus",
+    "pronunciationFirstDesc": "Tauscht Originaltext und Aussprache, damit du fremdsprachige Liedtexte leicht mitsingen kannst"
   },
   "messages": {
     "noLyrics": "Kein Songtext verfügbar",
@@ -985,6 +988,11 @@ window.LANG_DE = {
     "reference": "Referenz",
     "cached": "Im Cache",
     "empty": "Leer",
+    "byUnit": "Nach Einheit",
+    "joined": "Zusammengesetzt",
+    "editAsLine": "Als Zeile bearbeiten",
+    "editAsLineHint": "Entfernt die Aussprache pro Einheit und bearbeitet diese Zeile als Ganzes",
+    "cachedByUnit": "Im Cache · {count} Zeilen nach Einheit",
     "pronunciationPlaceholder": "Eine Zeile pro Liedzeile",
     "translationPlaceholder": "Eine Zeile pro Liedzeile",
     "shiftDown": "Diese und alle folgenden Zeilen nach unten verschieben",
@@ -1582,6 +1590,14 @@ window.LANG_DE = {
           "classic": "Klassisch",
           "expressive": "Ausdrucksstark"
         }
+      },
+      "syncedPronunciation": {
+        "label": "Synchronisierte Aussprache",
+        "desc": "Lädt die Aussprache von Karaoke-Texten aufgeteilt nach dem Timing jedes gesungenen Worts oder Zeichens. Eingeschaltet stehen der Modus „Aussprache zuerst“ und das Füllen der Aussprache wie Karaoke zur Verfügung. Ausgeschaltet kommt die Aussprache schneller als einfacher Zeilentext."
+      },
+      "pronunciationFill": {
+        "label": "Aussprache wie Karaoke füllen",
+        "desc": "Auch wenn der Aussprache-zuerst-Modus aus ist, füllt sich die Aussprachezeile im Takt des Gesangs. Die KI verteilt die Aussprache auf das Wort- oder Zeichentiming. Andere Effekte wie Hüpfen und Leuchten werden nicht angewendet."
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_DE = {
     "label": "Songtexte Plus"
   },
   "generationStatus": {
+    "wordSync": "Wortsynchronisierung",
+    "externalWordSync": "Auf einem externen Liedtextserver werden Zeitdaten für einzelne Wörter erstellt.",
+    "wordSyncFailed": "Wortsynchronisierung fehlgeschlagen",
+    "externalWordSyncFailed": "Die Zeitdaten für einzelne Wörter konnten nicht erstellt oder angewendet werden. Der aktuelle Liedtext bleibt erhalten.",
     "complete": "Fertig!",
     "culturalAnnotations": "Kulturellen Kontext erklären",
     "culturalAnnotationsLoading": "Kultureller Kontext wird analysiert...",
     "wordSupplements": "Wortdetails",
-    "wordSupplementsLoading": "Wortlesungen & Glossen werden geladen..."
+    "wordSupplementsLoading": "Wortlesungen & Glossen werden geladen...",
+    "pronunciationSync": "Aussprache-Timing",
+    "pronunciationSyncLoading": "KI passt die Aussprache an das Liedtext-Timing an...",
+    "pronunciationSyncFailed": "Aussprache-Timing fehlgeschlagen",
+    "pronunciationSyncFailedDesc": "Die Aussprache konnte nicht per KI getimt werden. Es wird ein ungefähres Timing angezeigt."
   },
   "videoSync": {
     "title": "Video-Timing",

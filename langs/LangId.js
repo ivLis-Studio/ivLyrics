@@ -642,7 +642,7 @@ window.LANG_ID = {
       "customModel": "Model kustom",
       "getFreeApiKey": "Dapatkan Kunci Gratis",
       "groqDesc": "Groq menyediakan inferensi supercepat secara gratis.",
-      "sonarWebSearch": "Model Sonar sudah dilengkapi penelusuran web real-time.",
+      "perplexityAgentModels": "Model dimuat otomatis dari Perplexity Agent API dengan kunci Anda. Riset musik juga menggunakan penelusuran web.",
       "geminiBaseUrlDesc": "Ubah alamat ini untuk menggunakan API yang kompatibel dengan Gemini.",
       "modelsAvailable": "Model tersedia: {count}",
       "requestBodyMerge": "JSON untuk digabungkan ke isi permintaan",
@@ -826,7 +826,10 @@ window.LANG_ID = {
     "fullscreenScreenHint": "Membuat Spotify memenuhi seluruh monitor lalu membuka layar penuh",
     "localLyricsApplying": "Menerapkan…",
     "currentTrack": "Trek Saat Ini",
-    "more": "Lainnya"
+    "more": "Lainnya",
+    "pronunciationFirst": "Pelafalan dulu",
+    "pronunciationFirstTitle": "Mode pelafalan dulu",
+    "pronunciationFirstDesc": "Menukar lirik asli dan pelafalan agar mudah ikut menyanyikan lirik berbahasa asing"
   },
   "messages": {
     "noLyrics": "Lirik tidak tersedia",
@@ -985,6 +988,11 @@ window.LANG_ID = {
     "reference": "Referensi",
     "cached": "Tersimpan di cache",
     "empty": "Kosong",
+    "byUnit": "Per unit",
+    "joined": "Gabungan",
+    "editAsLine": "Edit sebagai baris",
+    "editAsLineHint": "Hapus pelafalan per unit dan edit baris ini sebagai satu baris",
+    "cachedByUnit": "Tersimpan · {count} baris per unit",
     "pronunciationPlaceholder": "Satu baris untuk setiap baris lirik",
     "translationPlaceholder": "Satu baris untuk setiap baris lirik",
     "shiftDown": "Geser baris ini dan semua di bawahnya turun satu baris",
@@ -1582,6 +1590,14 @@ window.LANG_ID = {
           "classic": "Klasik",
           "expressive": "Ekspresif"
         }
+      },
+      "syncedPronunciation": {
+        "label": "Gunakan pelafalan tersinkron",
+        "desc": "Mengambil pelafalan lirik karaoke yang dibagi sesuai waktu setiap kata atau karakter yang dinyanyikan. Jika aktif, mode pelafalan dulu dan isi pelafalan seperti karaoke dapat digunakan. Jika nonaktif, pelafalan diambil lebih cepat sebagai teks biasa per baris."
+      },
+      "pronunciationFill": {
+        "label": "Isi pelafalan seperti karaoke",
+        "desc": "Meski mode pelafalan dulu nonaktif, baris pelafalan terisi mengikuti waktu nyanyian. AI membagi pelafalan sesuai waktu tiap kata atau karakter. Efek lain seperti pantulan dan kilau tidak diterapkan."
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_ID = {
     "label": "Lirik Plus"
   },
   "generationStatus": {
+    "wordSync": "Sinkronisasi kata",
+    "externalWordSync": "Sedang membuat data sinkronisasi per kata di server lirik eksternal.",
+    "wordSyncFailed": "Sinkronisasi kata gagal",
+    "externalWordSyncFailed": "Tidak dapat membuat atau menerapkan sinkronisasi per kata. Lirik saat ini tetap digunakan.",
     "complete": "Selesai!",
     "culturalAnnotations": "Penjelasan konteks budaya",
     "culturalAnnotationsLoading": "Menganalisis konteks budaya...",
     "wordSupplements": "Detail kata",
-    "wordSupplementsLoading": "Memuat bacaan & glosa..."
+    "wordSupplementsLoading": "Memuat bacaan & glosa...",
+    "pronunciationSync": "Sinkron pelafalan",
+    "pronunciationSyncLoading": "AI sedang menyesuaikan pelafalan dengan waktu lirik...",
+    "pronunciationSyncFailed": "Sinkron pelafalan gagal",
+    "pronunciationSyncFailedDesc": "Tidak dapat menyinkronkan pelafalan dengan AI. Menampilkan waktu perkiraan."
   },
   "videoSync": {
     "title": "Waktu video",

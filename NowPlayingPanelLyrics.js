@@ -3907,6 +3907,36 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
             || (Array.isArray(line?.vocals?.lead?.syllables) && line.vocals.lead.syllables.length > 0)
         )), [lyrics]);
         const panelPlaybackTimeline = useMemo(() => buildPanelLinePlaybackTimeline(lyrics), [lyrics]);
+        // Pronunciation-first mode swaps only the displayed values; timing,
+        // indices and every lookup keep using the original lines.
+        const [pronunciationFirstRevision, setPronunciationFirstRevision] = useState(0);
+        useEffect(() => {
+            const api = window.ivLyricsPronunciationFirst;
+            if (!api) return undefined;
+            const refresh = () => setPronunciationFirstRevision((revision) => revision + 1);
+            window.addEventListener(api.CHANGED_EVENT, refresh);
+            window.addEventListener(api.UPDATED_EVENT, refresh);
+            return () => {
+                window.removeEventListener(api.CHANGED_EVENT, refresh);
+                window.removeEventListener(api.UPDATED_EVENT, refresh);
+            };
+        }, []);
+        const displayLyrics = useMemo(() => {
+            const api = window.ivLyricsPronunciationFirst;
+            if (!api?.isEnabled?.() || !Array.isArray(lyrics) || lyrics.length === 0) return lyrics;
+            const lineLevel = window.CONFIG?.visual?.["translate:display-mode"] !== "replace";
+            if (!hasKaraokeTiming && !lineLevel) return lyrics;
+            const trackUri = Spicetify.Player.data?.item?.uri || null;
+            return api.applyToLines(lyrics, {
+                karaoke: hasKaraokeTiming,
+                lineLevel,
+                timed: hasKaraokeTiming && trackUri ? api.getTimed(trackUri, lyrics) : null,
+            });
+        }, [lyrics, hasKaraokeTiming, pronunciationFirstRevision]);
+        // While rows show pronunciation first, the panel clock reads ahead like the page.
+        window._ivLyricsPanelPronunciationLead = displayLyrics !== lyrics
+            ? (window.ivLyricsPronunciationFirst?.LEAD_MS || 0)
+            : 0;
         const containerRef = useRef(null);
         const scrollRef = useRef(null);
         const previousLyricsLayoutRef = useRef(initialLyrics);
@@ -4329,7 +4359,8 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
                         title: trackInfo.title,
                         text: lyricsText,
                         wantSmartPhonetic: true,
-                        provider
+                        provider,
+                        pronunciationSlots: !!window.ivLyricsPronunciationSlots?.isRequested?.(lyricsData, karaokeSource)
                     });
                     if (!isActiveLoad(loadSeq, trackInfo.uri)) {
                         return;
@@ -4937,7 +4968,9 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
                 const pseudoAdvance = PSEUDO_KARAOKE_SOURCES.has(karaokeSource)
                     ? pseudoKaraokeAdvanceMs
                     : 0;
-                const adjustedPosition = position + (cachedDelay || 0) + trackOffset + globalOffset + pseudoAdvance;
+                // Pronunciation-first rows read ahead of the singer; not a sync offset.
+                const adjustedPosition = position + (cachedDelay || 0) + trackOffset + globalOffset + pseudoAdvance
+                    + (window._ivLyricsPanelPronunciationLead || 0);
 
                 // 전역 변수에 현재 시간 저장 (KaraokeWord에서 읽음)
                 window._ivLyricsPanelCurrentTime = adjustedPosition;
@@ -5068,7 +5101,7 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
             const halfLines = Math.floor(visibleLineCount / 2);
             const displayableLyrics = lyrics
                 .map((line, index) => ({
-                    line,
+                    line: displayLyrics?.[index] ?? line,
                     index,
                     interludeInfo: getInterludeInfo(line, lyrics[index + 1], index, lyrics.length)
                 }))
@@ -5156,7 +5189,7 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
                         || (activeIsInterlude && relativeIndex < 0 && !isVirtualTrailingInterlude))
                 };
             });
-        }, [lyrics, currentIndex, visualIndex, visibleLineCount, activeTrailingInterludeKey, visualTrailingInterludeKey, autoInstrumentalBreakEnabled, singingLineIndices, panelPlaybackTimeline]);
+        }, [lyrics, displayLyrics, currentIndex, visualIndex, visibleLineCount, activeTrailingInterludeKey, visualTrailingInterludeKey, autoInstrumentalBreakEnabled, singingLineIndices, panelPlaybackTimeline]);
 
         // currentTime은 더 이상 상태로 관리하지 않음 (전역 변수 window._ivLyricsPanelCurrentTime 사용)
 
@@ -5967,6 +6000,9 @@ body.ivlyrics-starrynight-theme .Root__now-playing-bar {
         }
 
         try {
+            // Native preview suppression also applies when startup restores
+            // ivLyrics, where insertPanelLyrics intentionally never mounts.
+            injectStyles();
             setPanelActiveState(true);
             setupPageDetection();
             setupObserver();

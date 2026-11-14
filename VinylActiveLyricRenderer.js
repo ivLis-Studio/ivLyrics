@@ -45,7 +45,9 @@ const VinylActiveLyricRenderer = (() => {
         lineEndTime,
         liveClock = null
     ) => {
-        const scrollEntriesRef = useRef(new Map());
+        // Lazily created; this hook renders with every playback position update.
+        const scrollEntriesRef = useRef(null);
+        scrollEntriesRef.current ??= new Map();
         const scrollTimingRef = useRef(null);
         const appliedProgressRef = useRef(null);
         const wakeLiveScrollRef = useRef(null);

@@ -642,7 +642,7 @@ window.LANG_PT = {
       "customModel": "Modelo personalizado",
       "getFreeApiKey": "Obter chave grátis",
       "groqDesc": "O Groq oferece inferência ultrarrápida e gratuita.",
-      "sonarWebSearch": "Os modelos Sonar incluem pesquisa na web em tempo real.",
+      "perplexityAgentModels": "Os modelos são carregados automaticamente da Perplexity Agent API com sua chave. A pesquisa musical também busca na web.",
       "geminiBaseUrlDesc": "Altere para usar uma API compatível com o Gemini.",
       "modelsAvailable": "Modelos disponíveis: {count}",
       "requestBodyMerge": "JSON para mesclar ao corpo da solicitação",
@@ -826,7 +826,10 @@ window.LANG_PT = {
     "fullscreenScreenHint": "Faz o Spotify ocupar o monitor inteiro e abre a tela cheia",
     "localLyricsApplying": "Aplicando…",
     "currentTrack": "Faixa Atual",
-    "more": "Mais"
+    "more": "Mais",
+    "pronunciationFirst": "Pronúncia primeiro",
+    "pronunciationFirstTitle": "Modo pronúncia primeiro",
+    "pronunciationFirstDesc": "Troca a letra original e a pronúncia para cantar facilmente letras em outros idiomas"
   },
   "messages": {
     "noLyrics": "Nenhuma letra disponível",
@@ -985,6 +988,11 @@ window.LANG_PT = {
     "reference": "Referência",
     "cached": "Em cache",
     "empty": "Vazio",
+    "byUnit": "Por unidade",
+    "joined": "Unida",
+    "editAsLine": "Editar como linha",
+    "editAsLineHint": "Remove a pronúncia por unidade e edita esta linha inteira",
+    "cachedByUnit": "Em cache · {count} linhas por unidade",
     "pronunciationPlaceholder": "Uma linha para cada linha da letra",
     "translationPlaceholder": "Uma linha para cada linha da letra",
     "shiftDown": "Mover esta linha e as seguintes uma linha para baixo",
@@ -1582,6 +1590,14 @@ window.LANG_PT = {
           "classic": "Clássico",
           "expressive": "Expressivo"
         }
+      },
+      "syncedPronunciation": {
+        "label": "Pronúncia sincronizada",
+        "desc": "Obtém a pronúncia das letras de karaokê dividida conforme o tempo de cada palavra ou caractere cantado. Ativada, ficam disponíveis o modo pronúncia primeiro e o preenchimento da pronúncia como karaokê. Desativada, a pronúncia chega mais rápido como texto simples por linha."
+      },
+      "pronunciationFill": {
+        "label": "Preencher a pronúncia como karaokê",
+        "desc": "Mesmo com o modo pronúncia primeiro desativado, a linha de pronúncia é preenchida no ritmo do canto. A IA divide a pronúncia conforme o tempo de cada palavra ou caractere. Outros efeitos, como salto e brilho, não são aplicados."
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_PT = {
     "label": "Letra Plus"
   },
   "generationStatus": {
+    "wordSync": "Sincronização por palavra",
+    "externalWordSync": "Gerando sincronização por palavra em um servidor externo de letras.",
+    "wordSyncFailed": "Falha ao sincronizar palavras",
+    "externalWordSyncFailed": "Não foi possível gerar ou aplicar a sincronização por palavra. A letra atual será mantida.",
     "complete": "Concluído!",
     "culturalAnnotations": "Explicações de contexto cultural",
     "culturalAnnotationsLoading": "Analisando o contexto cultural...",
     "wordSupplements": "Detalhes das palavras",
-    "wordSupplementsLoading": "Carregando leituras e glosas..."
+    "wordSupplementsLoading": "Carregando leituras e glosas...",
+    "pronunciationSync": "Sincronia da pronúncia",
+    "pronunciationSyncLoading": "A IA está ajustando a pronúncia ao tempo da letra...",
+    "pronunciationSyncFailed": "Falha na sincronia da pronúncia",
+    "pronunciationSyncFailedDesc": "Não foi possível sincronizar a pronúncia com IA. Exibindo uma sincronia aproximada."
   },
   "videoSync": {
     "title": "Sincronia do vídeo",

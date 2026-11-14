@@ -642,7 +642,7 @@ window.LANG_EN = {
       "customModel": "Custom model",
       "getFreeApiKey": "Get Free Key",
       "groqDesc": "Groq offers free, ultra-fast inference.",
-      "sonarWebSearch": "Sonar models include real-time web search.",
+      "perplexityAgentModels": "Models load automatically from the Perplexity Agent API with your key. Music research also searches the web.",
       "geminiBaseUrlDesc": "Change this to use a Gemini-compatible API.",
       "modelsAvailable": "Models available: {count}",
       "requestBodyMerge": "Request body merge JSON",
@@ -826,7 +826,10 @@ window.LANG_EN = {
     "fullscreenScreenHint": "Switches Spotify to fill the whole monitor and opens fullscreen",
     "localLyricsApplying": "Applying…",
     "currentTrack": "Current Track",
-    "more": "More"
+    "more": "More",
+    "pronunciationFirst": "Pronunciation first",
+    "pronunciationFirstTitle": "Pronunciation-first mode",
+    "pronunciationFirstDesc": "Swaps the original lyrics and the pronunciation so foreign lyrics are easy to sing along to"
   },
   "messages": {
     "noLyrics": "No lyrics available",
@@ -985,6 +988,11 @@ window.LANG_EN = {
     "reference": "Reference",
     "cached": "Cached",
     "empty": "Empty",
+    "byUnit": "By unit",
+    "joined": "Joined",
+    "editAsLine": "Edit as line",
+    "editAsLineHint": "Drop the unit pronunciation and edit this line as one line",
+    "cachedByUnit": "Cached · {count} lines by unit",
     "pronunciationPlaceholder": "One line per lyric line",
     "translationPlaceholder": "One line per lyric line",
     "shiftDown": "Shift this line and everything below down",
@@ -1582,6 +1590,14 @@ window.LANG_EN = {
           "classic": "Classic",
           "expressive": "Expressive"
         }
+      },
+      "syncedPronunciation": {
+        "label": "Synced pronunciation",
+        "desc": "Gets karaoke pronunciation split along the timing of each sung word or character. On, pronunciation-first mode and pronunciation fill become available. Off, pronunciation comes faster as plain line text."
+      },
+      "pronunciationFill": {
+        "label": "Fill pronunciation like karaoke",
+        "desc": "Even with pronunciation-first mode off, the pronunciation row fills in time with the singing. AI splits the pronunciation across the word or character timing. Other effects such as bounce and glow are not applied."
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_EN = {
     "label": "Lyrics Plus"
   },
   "generationStatus": {
+    "wordSync": "Word timing",
+    "externalWordSync": "Generating word-level timing on an external lyrics server.",
+    "wordSyncFailed": "Word timing failed",
+    "externalWordSyncFailed": "Could not generate or apply word-level timing. Keeping the current lyrics.",
     "complete": "Done!",
     "culturalAnnotations": "Cultural context explanations",
     "culturalAnnotationsLoading": "Analyzing cultural context...",
     "wordSupplements": "Word details",
-    "wordSupplementsLoading": "Loading word readings & glosses..."
+    "wordSupplementsLoading": "Loading word readings & glosses...",
+    "pronunciationSync": "Pronunciation timing",
+    "pronunciationSyncLoading": "AI is matching the pronunciation to the lyric timing...",
+    "pronunciationSyncFailed": "Pronunciation timing failed",
+    "pronunciationSyncFailedDesc": "Could not time the pronunciation with AI. Showing approximate timing."
   },
   "videoSync": {
     "title": "Video timing",

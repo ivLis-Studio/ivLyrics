@@ -642,7 +642,7 @@ window.LANG_SV = {
       "customModel": "Egen modell",
       "getFreeApiKey": "Hämta gratis nyckel",
       "groqDesc": "Groq erbjuder kostnadsfri, extremt snabb inferens.",
-      "sonarWebSearch": "Sonar-modellerna har inbyggd webbsökning i realtid.",
+      "perplexityAgentModels": "Modellerna läses in automatiskt från Perplexity Agent API med din nyckel. Musikforskningen söker även på webben.",
       "geminiBaseUrlDesc": "Ändra den för att använda ett Gemini-kompatibelt API.",
       "modelsAvailable": "Tillgängliga modeller: {count}",
       "requestBodyMerge": "JSON att slå samman med förfrågans innehåll",
@@ -826,7 +826,10 @@ window.LANG_SV = {
     "fullscreenScreenHint": "Låter Spotify fylla hela skärmen och öppnar helskärm",
     "localLyricsApplying": "Tillämpar…",
     "currentTrack": "Aktuellt spår",
-    "more": "Mer"
+    "more": "Mer",
+    "pronunciationFirst": "Uttal först",
+    "pronunciationFirstTitle": "Läget uttal först",
+    "pronunciationFirstDesc": "Byter plats på originaltext och uttal så att det blir lätt att sjunga med i utländska låttexter"
   },
   "messages": {
     "noLyrics": "Inga texter tillgängliga",
@@ -985,6 +988,11 @@ window.LANG_SV = {
     "reference": "Referens",
     "cached": "Cachad",
     "empty": "Tom",
+    "byUnit": "Per enhet",
+    "joined": "Sammanfogat",
+    "editAsLine": "Redigera som rad",
+    "editAsLineHint": "Ta bort uttalet per enhet och redigera raden som en helhet",
+    "cachedByUnit": "Cachad · {count} rader per enhet",
     "pronunciationPlaceholder": "En rad per lyrikrad",
     "translationPlaceholder": "En rad per lyrikrad",
     "shiftDown": "Flytta den här raden och alla under en rad ned",
@@ -1582,6 +1590,14 @@ window.LANG_SV = {
           "classic": "Klassisk",
           "expressive": "Uttrycksfull"
         }
+      },
+      "syncedPronunciation": {
+        "label": "Synkroniserat uttal",
+        "desc": "Hämtar uttalet för karaoketexter uppdelat efter tidpunkten för varje sjunget ord eller tecken. När det är på blir läget Uttal först och fyllning av uttalet som karaoke tillgängliga. När det är av kommer uttalet snabbare som vanlig text per rad."
+      },
+      "pronunciationFill": {
+        "label": "Fyll uttalet som karaoke",
+        "desc": "Även när läget uttal först är av fylls uttalsraden i takt med sången. AI delar upp uttalet efter ord- eller teckentimingen. Andra effekter som studs och glöd används inte."
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_SV = {
     "label": "Låttext Plus"
   },
   "generationStatus": {
+    "wordSync": "Ordsynkronisering",
+    "externalWordSync": "Synkronisering ord för ord skapas på en extern låttextserver.",
+    "wordSyncFailed": "Ordsynkronisering misslyckades",
+    "externalWordSyncFailed": "Det gick inte att skapa eller använda synkronisering ord för ord. Den aktuella låttexten behålls.",
     "complete": "Klart!",
     "culturalAnnotations": "Förklaringar av kulturell kontext",
     "culturalAnnotationsLoading": "Analyserar kulturell kontext...",
     "wordSupplements": "Orddetaljer",
-    "wordSupplementsLoading": "Läser in uttal och glosor..."
+    "wordSupplementsLoading": "Läser in uttal och glosor...",
+    "pronunciationSync": "Uttalstiming",
+    "pronunciationSyncLoading": "AI anpassar uttalet till låttextens timing...",
+    "pronunciationSyncFailed": "Uttalstiming misslyckades",
+    "pronunciationSyncFailedDesc": "Kunde inte tajma uttalet med AI. Visar ungefärlig timing."
   },
   "videoSync": {
     "title": "Videotiming",

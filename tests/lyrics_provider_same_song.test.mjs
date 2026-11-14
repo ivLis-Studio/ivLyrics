@@ -4,7 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 // Regression: searches by title and artist also return the artist's other
-// songs. Paxsenix accepted "The Color Violet" for "Lady Of Namek" (same artist
+// songs. OpenLyrics accepted "The Color Violet" for "Lady Of Namek" (same artist
 // and album, no title in common) and LRCLIB accepted any artist match, so a
 // song missing from a catalog showed the lyrics of another song by its artist.
 
@@ -13,7 +13,7 @@ const track = {
     album: 'Alone At Prom', duration: 193993
 };
 
-const paxsenixSource = readFileSync(new URL('../Addon_Lyrics_Paxsenix.js', import.meta.url), 'utf8');
+const openLyricsSource = readFileSync(new URL('../Addon_Lyrics_OpenLyrics.js', import.meta.url), 'utf8');
 const lrclibSource = readFileSync(new URL('../Addon_Lyrics_Lrclib.js', import.meta.url), 'utf8');
 
 const functionSource = (source, name) => {
@@ -27,43 +27,43 @@ const functionSource = (source, name) => {
     throw new Error(`unbalanced function ${name}`);
 };
 
-const paxsenix = new Function(`${[
+const openLyrics = new Function(`${[
     'normalizeDurationMilliseconds', 'normalizeComparable', 'normalizeTitleCore', 'tokenOverlap', 'scoreText',
     'scoreCandidate', 'getLatinShare', 'tokenSimilarity', 'titleContains', 'hasSameSongTitle', 'selectBestCandidate'
-].map(name => functionSource(paxsenixSource, name)).join('\n')}
+].map(name => functionSource(openLyricsSource, name)).join('\n')}
 return { selectBestCandidate };`)();
 
 const candidate = (id, title, artist, album, durationSeconds) => ({ id, title, artist, album, durationSeconds });
 
-test('Paxsenix never takes another song by the same artist for a missing one', () => {
+test('OpenLyrics never takes another song by the same artist for a missing one', () => {
     // What Apple Music's catalog search returns for "Lady Of Namek Tory Lanez".
     const results = [
         candidate(1, 'Lady of Namek (Instrumental)', 'Smooth Jazz All Stars',
             'Smooth Jazz All Stars Cover Tory Lanez (Instrumental)', 192.264),
         candidate(1599010268, 'The Color Violet', 'Tory Lanez', 'Alone At Prom', 226.467),
     ];
-    assert.equal(paxsenix.selectBestCandidate(results, track), null);
+    assert.equal(openLyrics.selectBestCandidate(results, track), null);
     // Even a sibling track of the same length is not the song.
-    assert.equal(paxsenix.selectBestCandidate([candidate(2, 'Hurts Me', 'Tory Lanez', 'Alone At Prom', 194)], track), null);
-    assert.equal(paxsenix.selectBestCandidate([candidate(3, 'One Day', 'Drake', 'Views', 174)],
+    assert.equal(openLyrics.selectBestCandidate([candidate(2, 'Hurts Me', 'Tory Lanez', 'Alone At Prom', 194)], track), null);
+    assert.equal(openLyrics.selectBestCandidate([candidate(3, 'One Day', 'Drake', 'Views', 174)],
         { title: 'One Dance', artist: 'Drake', album: 'Views', duration: 173987 }), null, 'one shared word is not enough');
     // A title that merely starts like another is another song, and a one-word
     // title is not found inside a longer one ("i" in "Pursuit").
-    const rejects = (title, wanted, artist = 'Tory Lanez') => paxsenix.selectBestCandidate(
+    const rejects = (title, wanted, artist = 'Tory Lanez') => openLyrics.selectBestCandidate(
         [candidate(6, title, artist, 'Album', 200)], { title: wanted, artist, album: 'Album', duration: 200000 }) === null;
     assert.ok(rejects('Love Me Like You Do', 'Love Me Harder'));
     assert.ok(rejects('I', 'Pursuit Of Happiness'));
     assert.ok(rejects('U', 'Lose Yourself'));
 });
 
-test('Paxsenix still matches the same song under other spellings and versions', () => {
-    const pick = (title, info = track) => paxsenix.selectBestCandidate(
+test('OpenLyrics still matches the same song under other spellings and versions', () => {
+    const pick = (title, info = track) => openLyrics.selectBestCandidate(
         [candidate(4, title, 'Tory Lanez', 'Alone At Prom', 194)], info)?.candidate.title ?? null;
     assert.equal(pick('Lady of Namek'), 'Lady of Namek');
     assert.equal(pick('LADY OF NAMEK (feat. Someone)'), 'LADY OF NAMEK (feat. Someone)');
     assert.equal(pick('Lady Of Namek - Remastered 2024'), 'Lady Of Namek - Remastered 2024');
     // Punctuation spellings, and a version suffix that survives the title core.
-    const accepts = (title, wanted) => paxsenix.selectBestCandidate(
+    const accepts = (title, wanted) => openLyrics.selectBestCandidate(
         [candidate(7, title, 'Tory Lanez', 'Alone At Prom', 200)], { title: wanted, artist: 'Tory Lanez', album: 'Alone At Prom', duration: 200000 }) !== null;
     assert.ok(accepts('FEEL', 'F.E.E.L.'));
     assert.ok(accepts('Dont Stop The Music', "Don't Stop The Music"));
@@ -71,15 +71,15 @@ test('Paxsenix still matches the same song under other spellings and versions', 
     assert.ok(accepts('Lady Of Namek Pt. 2 Deluxe', 'Lady Of Namek'));
     // Titles in different scripts cannot be compared, so the length decides.
     const korean = { title: '좋은 날', artist: 'IU', album: 'Real', duration: 233000 };
-    const romanized = (durationSeconds) => paxsenix.selectBestCandidate(
+    const romanized = (durationSeconds) => openLyrics.selectBestCandidate(
         [candidate(5, 'Good Day', 'IU', 'Real', durationSeconds)], korean)?.candidate.title ?? null;
     assert.equal(romanized(233.4), 'Good Day');
     assert.equal(romanized(250), null);
 });
 
-test('Paxsenix keeps Latin accent variants without conflating non-Latin letters', () => {
+test('OpenLyrics keeps Latin accent variants without conflating non-Latin letters', () => {
     const select = (title, wanted, artist = 'Fixture Artist', album = 'Fixture Album') =>
-        paxsenix.selectBestCandidate([
+        openLyrics.selectBestCandidate([
             candidate(8, title, artist, album, 200)
         ], { title: wanted, artist: 'Fixture Artist', album: 'Fixture Album', duration: 200000 });
 

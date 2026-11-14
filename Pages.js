@@ -1975,7 +1975,7 @@ const CreditFooter = react.memo(({ provider, contributors }) => {
 					react.createElement(
 						"span",
 						{ className: "lyrics-credit-footer-value" },
-						provider
+						provider === "open-lyrics" ? "Open Lyrics" : provider
 				)
 			),
 			visibleContributors.length > 0 && react.createElement(
@@ -2341,10 +2341,13 @@ const getTrackPositionFPS = () => {
 	);
 };
 
+// Pronunciation-first rows read ahead of the singer (PronunciationFirst.js
+// getLeadMs); that lead is not a sync offset and is never shown with them.
 const getCurrentLyricsPlaybackPosition = (trackOffset = 0, globalOffset = getGlobalSyncOffsetValue()) => {
 	const newPos = window.Utils?.getSafePlayerProgress?.()
 		?? (Spicetify.Player?.getProgress?.() || 0);
-	const delay = CONFIG.visual.delay + trackOffset + globalOffset;
+	const delay = CONFIG.visual.delay + trackOffset + globalOffset
+		+ (window.ivLyricsPronunciationFirst?.getLeadMs?.() || 0);
 	return Math.round(newPos + delay);
 };
 
@@ -2370,7 +2373,8 @@ const getFrameAlignedPlayerPosition = (frameTime = NaN) => {
 // The same frame-aligned clock in lyric time: the configured delay plus the
 // mounted page's track and global sync offsets.
 const getFrameAlignedLyricsPlaybackPosition = (frameTime = NaN) => getFrameAlignedPlayerPosition(frameTime)
-	+ CONFIG.visual.delay + lyricsPlaybackOffsets.trackOffset + lyricsPlaybackOffsets.globalOffset;
+	+ CONFIG.visual.delay + lyricsPlaybackOffsets.trackOffset + lyricsPlaybackOffsets.globalOffset
+	+ (window.ivLyricsPronunciationFirst?.getLeadMs?.() || 0);
 
 const useLyricsPlaybackPosition = () => {
 	const trackOffset = useTrackOffsetState();
@@ -3653,6 +3657,7 @@ const getKaraokeVocalRows = (line) => {
 		speakerClass: normalizeKaraokeSpeakerClass(line.vocals.lead.speaker, line.vocals.lead['speaker-color'], line.vocals.lead['speaker-fallback']),
 		speakerStyle: getKaraokeSpeakerStyle(line.vocals.lead.speaker, line.vocals.lead['speaker-color'], line.vocals.lead['speaker-fallback']),
 		phonetic: line.vocals.lead.phonetic || "",
+		phoneticUnits: line.vocals.lead.phoneticUnits || null,
 		translation: line.vocals.lead.translation || "",
 		text: line.vocals.lead.text || "",
 		syllables: splitRenderableKaraokeSyllables(line.vocals.lead.syllables),
@@ -3674,6 +3679,7 @@ const getKaraokeVocalRows = (line) => {
 				speakerClass: normalizeKaraokeSpeakerClass(part.speaker, part['speaker-color'], part['speaker-fallback']),
 				speakerStyle: getKaraokeSpeakerStyle(part.speaker, part['speaker-color'], part['speaker-fallback']),
 				phonetic: part.phonetic || "",
+				phoneticUnits: part.phoneticUnits || null,
 				translation: part.translation || "",
 				text: part.text || "",
 				syllables: splitRenderableKaraokeSyllables(part.syllables),
@@ -3851,7 +3857,7 @@ const getLastSyllableEndTime = (line) => {
 	return lastEndTime;
 };
 
-const getKaraokeLineFillEndTime = (line) => {
+const computeKaraokeLineFillEndTime = (line) => {
 	const timedChars = applyKaraokeWhitespaceCompensation(buildKaraokeTimedChars(line));
 	const timedCharEndTime = timedChars.reduce((maxEndTime, charInfo) => {
 		const endTime = toFiniteTime(charInfo?.endTime);
@@ -3864,6 +3870,36 @@ const getKaraokeLineFillEndTime = (line) => {
 
 	const lineBounds = getKaraokeLineBounds(line);
 	return toFiniteTime(lineBounds.endTime) ?? getLastSyllableEndTime(line);
+};
+
+// Playback windows, cumulative vocal ends and the trailing-interlude check
+// each need a line's fill end, and every lyrics update (translation and
+// pronunciation streams included) asks again for every line. Rebuilding the
+// line's timed glyphs for each request repeated the same work three or four
+// times. Display copies of a line share its timing arrays, so the cache is
+// keyed by them; any changed input is recomputed.
+const karaokeLineFillEndTimeCache = new WeakMap();
+
+const getKaraokeLineFillEndTime = (line) => {
+	if (!line || typeof line !== "object") return computeKaraokeLineFillEndTime(line);
+	const syllables = line.syllables;
+	const vocals = line.vocals;
+	const key = (syllables && typeof syllables === "object") ? syllables
+		: (vocals && typeof vocals === "object") ? vocals : line;
+	const locale = String(window.Utils?.getDetectedLanguage?.() || "auto");
+	const cached = karaokeLineFillEndTimeCache.get(key);
+	if (cached && cached.syllables === syllables && cached.vocals === vocals
+		&& Object.is(cached.startTime, line.startTime) && Object.is(cached.endTime, line.endTime)
+		&& cached.text === line.text && cached.originalText === line.originalText
+		&& cached.locale === locale) {
+		return cached.value;
+	}
+	const value = computeKaraokeLineFillEndTime(line);
+	karaokeLineFillEndTimeCache.set(key, {
+		syllables, vocals, startTime: line.startTime, endTime: line.endTime,
+		text: line.text, originalText: line.originalText, locale, value,
+	});
+	return value;
 };
 
 const getInterludeInfo = (line, nextLine = null, lineIndex = -1, lineCount = 0) => {
@@ -4839,6 +4875,51 @@ const shouldWrapKaraokeByWord = (text, motionStyle = null) => {
 		|| (motionStyle === "expressive" && /[^\s.\-\u2010\u2011][.\-\u2010\u2011]+[^\s.\-\u2010\u2011]/u.test(normalizedText));
 };
 
+const shouldPreferKaraokeWhitespaceWrap = (text) => (
+	/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(text)
+	&& /\S\s+\S/u.test(text)
+);
+
+// Source timing units control fill/motion, not line breaks. Keep the units
+// between two explicit spaces together, including when a provider times each
+// CJK character separately. The CSS width limit still lets long groups wrap.
+const createKaraokeWhitespaceWrapBuilder = (elements, elementCache) => {
+	let children = [];
+	let startIndex = 0;
+	const flush = () => {
+		if (children.length === 0) return;
+		if (children.length === 1) {
+			elements.push(children[0]);
+		} else {
+			const key = `karaoke-whitespace-${startIndex}`;
+			const cached = elementCache?.get(key);
+			if (cached && cached.children.length === children.length
+				&& children.every((child, index) => child === cached.children[index])) {
+				elements.push(cached.element);
+			} else {
+				const element = react.createElement("span", {
+					className: "lyrics-karaoke-wrap-group", key,
+				}, children);
+				elementCache?.set(key, { children, element });
+				elements.push(element);
+			}
+		}
+		children = [];
+	};
+	return {
+		push(element, isSpace, index) {
+			if (isSpace) {
+				flush();
+				elements.push(element);
+			} else {
+				if (children.length === 0) startIndex = index;
+				children.push(element);
+			}
+		},
+		flush,
+	};
+};
+
 const clampKaraokeFillCurveValue = (value, fallback = 0) => {
 	const numberValue = Number(value);
 	if (!Number.isFinite(numberValue)) {
@@ -5160,7 +5241,7 @@ const wrapKaraokeInlineStyleRuns = (
 const buildKaraokeWordElements = (
 	timedChars,
 	charElements,
-	{ position = 0, isActive = false, isComplete = false, globalCharOffset = 0, activeGlobalCharIndex = -1, wordTimed = false, wordRenderCache = null, presentationCache = null, elementCache = null, wordSupplementByKey = null, livePaint = false, motionStyle = null, expressiveWordStarts = null } = {}
+	{ position = 0, isActive = false, isComplete = false, globalCharOffset = 0, activeGlobalCharIndex = -1, wordTimed = false, wordRenderCache = null, presentationCache = null, elementCache = null, wordSupplementByKey = null, livePaint = false, motionStyle = null, expressiveWordStarts = null, preferWhitespaceWrap = false } = {}
 ) => {
 	if (!Array.isArray(timedChars) || !Array.isArray(charElements) || timedChars.length !== charElements.length) {
 		return charElements;
@@ -5177,6 +5258,13 @@ const buildKaraokeWordElements = (
 	};
 
 	const wordElements = [];
+	const whitespaceWrap = preferWhitespaceWrap ? createKaraokeWhitespaceWrapBuilder(wordElements, elementCache) : null;
+	const appendWords = (...elements) => {
+		for (const element of elements) {
+			if (whitespaceWrap) whitespaceWrap.push(element, false, currentWordStart);
+			else wordElements.push(element);
+		}
+	};
 	let currentWord = [];
 	let currentWordStart = 0;
 	let currentWordUnit = null;
@@ -5324,12 +5412,12 @@ const buildKaraokeWordElements = (
 			// Keep one annotation stack for the source word, with independently
 			// moving pieces inside it. A shared reading/gloss must not repeat.
 			if (wordSupplementByKey instanceof Map) {
-				wordElements.push(buildWord(currentWordStart, currentWord, currentWordUnit, { nestedWords: parts }));
+				appendWords(buildWord(currentWordStart, currentWord, currentWordUnit, { nestedWords: parts }));
 			} else {
-				wordElements.push(...parts);
+				appendWords(...parts);
 			}
 		} else {
-			wordElements.push(buildWord(currentWordStart, currentWord, currentWordUnit));
+			appendWords(buildWord(currentWordStart, currentWord, currentWordUnit));
 		}
 		currentWord = [];
 		currentWordUnit = null;
@@ -5364,12 +5452,16 @@ const buildKaraokeWordElements = (
 
 		if (isWhitespace) {
 			flushWord();
-			wordElements.push(...wrapKaraokeInlineStyleRuns([charInfo], [element], {
+			const spaces = wrapKaraokeInlineStyleRuns([charInfo], [element], {
 				keyPrefix: "karaoke-space-inline-style",
 				sourceIndexOffset: index,
 				presentationCache,
 				elementCache,
-			}));
+			});
+			for (const space of spaces) {
+				if (whitespaceWrap) whitespaceWrap.push(space, true, index);
+				else wordElements.push(space);
+			}
 			continue;
 		}
 
@@ -5377,6 +5469,7 @@ const buildKaraokeWordElements = (
 	}
 
 	flushWord();
+	whitespaceWrap?.flush();
 	return wordElements;
 };
 
@@ -5553,13 +5646,14 @@ const buildKaraokeTextRunElements = (
 	elementCache = null,
 	livePaint = false,
 	readings = null,
-	motionStyle = null
+	motionStyle = null,
+	preferWhitespaceWrap = false
 ) => {
 	const segments = preparedSegments || buildKaraokeTextRunSegments(timedChars, wordTimed, preserveInlineStyles);
 	const renderSegments = textDirection === "rtl" ? [...segments].reverse() : segments;
 	const expressiveMotion = motionStyle === "expressive";
 
-	return renderSegments.map((segment) => {
+	const elements = renderSegments.map((segment) => {
 		if (segment.type === "space") {
 			const cached = elementCache?.get(segment);
 			if (cached) return cached.element;
@@ -5667,6 +5761,13 @@ const buildKaraokeTextRunElements = (
 		});
 		return element;
 	});
+	if (!preferWhitespaceWrap) return elements;
+	const wrappedElements = [];
+	const whitespaceWrap = createKaraokeWhitespaceWrapBuilder(wrappedElements, elementCache);
+	elements.forEach((element, index) => whitespaceWrap.push(element,
+		renderSegments[index].type === "space", renderSegments[index].startIndex));
+	whitespaceWrap.flush();
+	return wrappedElements;
 };
 
 const getPseudoKaraokeRenderAdvance = (karaokeSource) => {
@@ -5985,6 +6086,14 @@ const LyricsLineBlock = react.memo(({
 		return targets;
 	}, [displayedCulturalAnnotations, isKara, mainText, subText, subText2]);
 	const hasParallelKaraokeRows = useMemo(() => isKara && hasKaraokeVocalRows(mainLine), [isKara, mainLine, settingsRevision]);
+	// Pronunciation fill: timed units for this row's pronunciation, only when
+	// they spell exactly the pronunciation shown.
+	const phoneticFillUnits = useMemo(() => isKara && !hasParallelKaraokeRows && mainLine?.phoneticUnits
+		? getPhoneticFillUnits(mainLine?.phoneticUnits, mainLine?.phoneticText || mainLine?.phonetic)
+		: null, [isKara, hasParallelKaraokeRows, mainLine]);
+	const phoneticFillPosition = phoneticFillUnits ? position : 0;
+	const phoneticFillClock = phoneticFillUnits ? liveClock : null;
+	const phoneticFillActive = phoneticFillUnits ? isActive : false;
 	const interludeInfo = useMemo(() => mainLine?.interludeInfo || getInterludeInfo(mainLine), [mainLine, settingsRevision]);
 	const shouldRenderInterlude = interludeInfo.isInterlude;
 	const shouldShowInterlude = shouldRenderInterlude && isCurrentLine;
@@ -6080,11 +6189,15 @@ const LyricsLineBlock = react.memo(({
 	const paragraph = useMemo(() => react.createElement("p", paragraphProps, renderedMainContent),
 		[paragraphProps, renderedMainContent]);
 	const supplements = useMemo(() => [
-		!shouldRenderInterlude && !hasParallelKaraokeRows && renderLyricSubLine(
+		!shouldRenderInterlude && !hasParallelKaraokeRows && (phoneticFillUnits ? renderPhoneticFillSubLine(
+			phoneticFillUnits, phoneticFillPosition, phoneticFillActive, phoneticFillClock,
+			subCopyText ? createCopyHandler(subCopyText, subCopySuccessKey, subCopyFailureKey) : null,
+			singleLineScroll
+		) : renderLyricSubLine(
 			"lyrics-lyricsContainer-LyricsLine-phonetic", subText,
 			subCopyText ? createCopyHandler(subCopyText, subCopySuccessKey, subCopyFailureKey) : null,
 			singleLineScroll, culturalAnnotationsByTarget.sub
-		),
+		)),
 		!shouldRenderInterlude && !hasParallelKaraokeRows && renderLyricSubLine(
 			"lyrics-lyricsContainer-LyricsLine-translation", subText2,
 			subText2CopyText ? createCopyHandler(subText2CopyText, subText2CopySuccessKey, subText2CopyFailureKey) : null,
@@ -6099,6 +6212,7 @@ const LyricsLineBlock = react.memo(({
 			);
 		}),
 	], [shouldRenderInterlude, hasParallelKaraokeRows, subText, subText2,
+		phoneticFillUnits, phoneticFillPosition, phoneticFillActive, phoneticFillClock,
 		subCopyText, subCopySuccessKey, subCopyFailureKey, subText2CopyText,
 		subText2CopySuccessKey, subText2CopyFailureKey, singleLineScroll,
 		culturalAnnotationsByTarget, displayedCulturalAnnotations, settingsRevision]);
@@ -6593,9 +6707,14 @@ const useSyncedLyricsEngine = ({
 			...(isInterludeHandoff ? { "--lyrics-interlude-fade-duration": `${interludeFadeDurationMs}ms` } : {}),
 		};
 	}, [trailingInterludeLine, visualAnchorUsesTrailingInterlude, isScrolling, suppressLayoutShiftAnimation, usesScriptedCompactLineShift, isInterludeHandoff, interludeFadeDurationMs, compactOffset]);
-	const compactLineShiftAnimationsRef = useRef(new Map());
-	const compactLineTransformSnapshotsRef = useRef(new WeakMap());
-	const compactLineMotionDataRef = useRef(new WeakMap());
+	// Lazily created: useRef(new Map()) built and discarded a collection on
+	// every render, and position updates render this engine at the clock rate.
+	const compactLineShiftAnimationsRef = useRef(null);
+	compactLineShiftAnimationsRef.current ??= new Map();
+	const compactLineTransformSnapshotsRef = useRef(null);
+	compactLineTransformSnapshotsRef.current ??= new WeakMap();
+	const compactLineMotionDataRef = useRef(null);
+	compactLineMotionDataRef.current ??= new WeakMap();
 	const compactLineMotionContextRef = useRef(null);
 	const compactLinePlaybackPositionRef = useRef(position);
 	compactLinePlaybackPositionRef.current = position;
@@ -7038,7 +7157,8 @@ const useSyncedLyricsEngine = ({
 	// rows). They are parked at a fixed index with a style reused by identity,
 	// so a line change no longer re-renders and restyles every row.
 	const parkedRowMargin = 3;
-	const parkedLineStylesRef = useRef(new WeakMap());
+	const parkedLineStylesRef = useRef(null);
+	parkedLineStylesRef.current ??= new WeakMap();
 	const getParkedLineStyle = (line, parkedIndex, stableStyle) => {
 		const presentation = getLinePresentation(line);
 		const shiftDuration = stableStyle["--line-shift-duration"];
@@ -7667,7 +7787,9 @@ const buildKaraokeTimedChars = (line) => {
 		return coalesceKaraokeTimedGraphemes(timedChars, lyricsLocale);
 	}
 
-	const fallbackChars = splitKaraokeGraphemes(getCopyableText(line?.text) || "", lyricsLocale);
+	// A karaoke track can contain line-timed rows. Presentation stores the
+	// pronunciation in `text`, so those rows must use the preserved original.
+	const fallbackChars = splitKaraokeGraphemes(getCopyableText(line?.originalText ?? line?.text) || "", lyricsLocale);
 	const { startTime, endTime } = getKaraokeLineBounds(line);
 	const totalDuration = Math.max(1, endTime - startTime || 500);
 	const charDuration = Math.max(1, totalDuration / Math.max(1, fallbackChars.length || 1));
@@ -8491,7 +8613,9 @@ const useKaraokeWordStackSupplements = ({ line, timedChars, timedText, wordTimed
 			return "auto";
 		}
 	}, [supplementsApi, timedText, globalLangTick, settingsRevision]);
-	const suitable = !!supplementsApi && !!wordTimed && supplementsApi.isSuitableSourceLanguage(sourceLang);
+	// Pronunciation-first rows already show the reading as the sung text.
+	const suitable = !!supplementsApi && !!wordTimed && line?.pronunciationFirst !== true
+		&& supplementsApi.isSuitableSourceLanguage(sourceLang);
 	const units = useMemo(() => {
 		if (!suitable || !supplementsApi) return [];
 		try {
@@ -8816,6 +8940,8 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 			const rowActiveGlobalCharIndex = rowActiveCharIndex >= 0 ? currentOffset + rowActiveCharIndex : -1;
 			const rowPhonetic = row.phonetic || rowPhonetics[rowIndex] || "";
 			const rowTranslation = row.translation || rowTranslations[rowIndex] || "";
+			const rowPhoneticUnits = row.phoneticUnits ? getPhoneticFillUnits(row.phoneticUnits, rowPhonetic) : null;
+			const rowPosition = getKaraokeVocalRowRenderPosition(rowRenderData, position);
 
 			return react.createElement(
                           "span",
@@ -8827,7 +8953,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
                           },
                           react.createElement("span", { className: "lyrics-vocal-main" }, react.createElement(KaraokeLine, {
                                   line: rowLine,
-                                  position: getKaraokeVocalRowRenderPosition(rowRenderData, position),
+                                  position: rowPosition,
 					isActive,
 					isEffectFocused,
 					isEffectLive,
@@ -8841,7 +8967,12 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 				rowPhonetic && react.createElement(
 					"span",
 					{ className: "lyrics-lyricsContainer-LyricsLine-phonetic lyrics-karaoke-part-subline" },
-					rowPhonetic
+					rowPhoneticUnits ? react.createElement(PhoneticFillText, {
+						units: rowPhoneticUnits,
+						position: rowPosition,
+						active: isActive,
+						...(vocalRowLivePositionMaps ? { liveClock, livePositionMap: vocalRowLivePositionMaps[rowIndex] } : {}),
+					}) : rowPhonetic
 				),
 				rowTranslation && react.createElement(
 					"span",
@@ -8886,14 +9017,24 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 
 	const furiganaEnabled = CONFIG?.visual?.["furigana-enabled"] === true;
 	const furiganaReady = window.FuriganaConverter?.isAvailable?.() === true;
-	const hasCharReadings = charReadings instanceof Map && Array.from(charReadings.values()).some((entry) => typeof entry === 'string' ? !!entry : !!(entry && entry.text));
+	// The active row renders at the playback clock rate; scan the readings in
+	// place instead of copying them into a new array on every render.
+	let hasCharReadings = false;
+	if (charReadings instanceof Map) {
+		for (const entry of charReadings.values()) {
+			if (typeof entry === 'string' ? entry : entry?.text) {
+				hasCharReadings = true;
+				break;
+			}
+		}
+	}
 	const expressiveMotion = isKaraokeExpressiveMotionEnabled();
-	const { furiganaMap, timedChars, motionProfiles, endTime, wrapByWord, textDirection, useTextRun, preserveInlineStyles, timedText, wordStartTimes, wordRenderCache, textRunSegments, hasInlinePresentation } = useMemo(() => {
+	const { furiganaMap, timedChars, motionProfiles, endTime, wrapByWord, preferWhitespaceWrap, textDirection, useTextRun, preserveInlineStyles, timedText, wordStartTimes, wordRenderCache, textRunSegments, hasInlinePresentation } = useMemo(() => {
 		const sourceSyllables = Array.isArray(line.syllables) && line.syllables.length > 0
 			? line.syllables
 			: getTimedSyllablesFromLine(line);
 		const rawLineText = sourceSyllables.map((syllable) => syllable?.text || "").join("")
-			|| getCopyableText(line.text)
+			|| getCopyableText(line.originalText ?? line.text)
 			|| "";
 		const processedText = furiganaMapOverride instanceof Map
 			? ""
@@ -8928,6 +9069,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 				getKaraokeLineBounds(line).endTime
 			),
 			wrapByWord: shouldWrapKaraokeByWord(rawLineText, expressiveMotion ? KARAOKE_EXPRESSIVE_MOTION_STYLE : null),
+			preferWhitespaceWrap: shouldPreferKaraokeWhitespaceWrap(rawLineText),
 			textDirection: detectedTextDirection,
 			useTextRun,
 			preserveInlineStyles,
@@ -9223,7 +9365,8 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 			wrapperElementCache,
 			livePaint,
 			textRunReadings,
-			expressiveMotion ? KARAOKE_EXPRESSIVE_MOTION_STYLE : null
+			expressiveMotion ? KARAOKE_EXPRESSIVE_MOTION_STYLE : null,
+			preferWhitespaceWrap
 		)
 		: (wrapByWord || wordTimed)
 		? buildKaraokeWordElements(timedChars, charElements, {
@@ -9240,6 +9383,7 @@ const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = is
 			livePaint,
 			motionStyle: expressiveMotion ? KARAOKE_EXPRESSIVE_MOTION_STYLE : null,
 			expressiveWordStarts: expressiveUnits?.wordStarts || null,
+			preferWhitespaceWrap,
 		})
 		: wrapKaraokeInlineStyleRuns(timedChars, charElements, {
 			presentationCache: presentationCaches.characters,
@@ -9574,6 +9718,115 @@ const useKaraokeLivePainting = (liveClock, livePositionMap, rootRef, dataRef) =>
 		if (entryRef.current) KaraokeLivePainter.release(entryRef.current);
 		entryRef.current = null;
 	}, []);
+};
+
+// Pronunciation fill (Settings > Karaoke mode). With pronunciation-first off,
+// the pronunciation row of a karaoke line fills along its timed units (the
+// part of the pronunciation sung during each karaoke unit). React owns each
+// unit's pending/active/done state on the singing row; KaraokeLivePainter
+// writes the active unit's fill edge every frame from the same clock as the
+// lyric. No bounce, glow or other karaoke effect applies, and rows that are
+// not singing keep their usual color.
+const PHONETIC_FILL_ATTRIBUTE = "data-phonetic-fill";
+const normalizePhoneticFillText = (value) => String(value ?? "").replace(/\s+/gu, " ").trim();
+
+/** The units, if they spell exactly the pronunciation shown in the row. */
+const getPhoneticFillUnits = (units, text) => {
+	if (!Array.isArray(units) || units.length === 0 || typeof text !== "string" || !text.trim()) return null;
+	const joined = normalizePhoneticFillText(units.map((unit) => unit?.text ?? "").join(""));
+	return joined === normalizePhoneticFillText(text) ? units : null;
+};
+
+const usePhoneticFillPainting = (liveClock, livePositionMap, rootRef, units) => {
+	const entryRef = useRef(null);
+	(react.useLayoutEffect || useEffect)(() => {
+		const root = rootRef.current;
+		if (!liveClock || !root || !Array.isArray(units) || units.length === 0) {
+			if (entryRef.current) KaraokeLivePainter.release(entryRef.current);
+			entryRef.current = null;
+			return;
+		}
+		const entry = entryRef.current ??= { units: new Map(), data: null, lastPosition: NaN };
+		entry.clock = liveClock;
+		entry.mapPosition = livePositionMap;
+		const next = new Map();
+		for (const element of root.querySelectorAll("[" + PHONETIC_FILL_ATTRIBUTE + "]")) {
+			const key = element.getAttribute(PHONETIC_FILL_ATTRIBUTE);
+			const source = units[Number(key)];
+			if (!source) continue;
+			const previous = entry.units.get(key);
+			next.set(key, previous && previous.elements[0] === element
+				&& previous.fill.startTime === source.startTime && previous.fill.endTime === source.endTime
+				? previous
+				: {
+					key, elements: [element], values: new Map(), profile: null, expressive: null,
+					fill: { startTime: source.startTime, endTime: source.endTime, softEdge: 10 },
+				});
+		}
+		entry.units = next;
+		entry.lastPosition = NaN;
+		KaraokeLivePainter.attach(entry);
+		paintKaraokeLiveEntry(entry, performance.now());
+	});
+	useEffect(() => () => {
+		if (entryRef.current) KaraokeLivePainter.release(entryRef.current);
+		entryRef.current = null;
+	}, []);
+};
+
+const PhoneticFillText = react.memo(({ units, position = 0, active = false, liveClock = null, livePositionMap = null }) => {
+	const rootRef = useRef(null);
+	const live = active && liveClock ? liveClock : null;
+	usePhoneticFillPainting(live, livePositionMap, rootRef, units);
+	return react.createElement(
+		"span",
+		{ ref: rootRef, className: "lyrics-phonetic-fill" },
+		units.map((unit, index) => {
+			let state = "";
+			let style = null;
+			if (active) {
+				if (position >= unit.endTime) {
+					state = "done";
+				} else if (position > unit.startTime) {
+					state = "active";
+					if (!live) {
+						const fill = getKaraokeLiveFill(position, unit.startTime, unit.endTime) ?? 0;
+						const softEdge = getKaraokeFillSoftEdge(fill, 10);
+						style = {
+							"--karaoke-char-fill": fill.toFixed(2) + "%",
+							"--karaoke-char-fill-soft-start": Math.max(0, fill - softEdge).toFixed(2) + "%",
+							"--karaoke-char-fill-soft-end": Math.min(100, fill + softEdge).toFixed(2) + "%",
+						};
+					}
+				} else {
+					state = "pending";
+				}
+			}
+			return react.createElement("span", {
+				key: index,
+				className: state ? "lyrics-phonetic-fill-unit lyrics-phonetic-fill-unit--" + state : "lyrics-phonetic-fill-unit",
+				[PHONETIC_FILL_ATTRIBUTE]: index,
+				"data-text": state === "active" ? unit.text : undefined,
+				style,
+			}, unit.text);
+		})
+	);
+});
+
+const renderPhoneticFillSubLine = (units, position, active, liveClock, onContextMenu = null, singleLineScroll = false) => {
+	const props = {
+		className: "lyrics-lyricsContainer-LyricsLine-phonetic" + (singleLineScroll ? " ivlyrics-vinyl-lyric-scroll-viewport" : ""),
+		style: { "--sub-lyric-color": CONFIG.visual["inactive-color"] },
+	};
+	if (onContextMenu) props.onContextMenu = onContextMenu;
+	const content = react.createElement(PhoneticFillText, { units, position, active, liveClock });
+	return react.createElement(
+		"p",
+		props,
+		singleLineScroll
+			? react.createElement("span", { className: "ivlyrics-vinyl-lyric-scroll-content" }, content)
+			: content
+	);
 };
 
 // Reveal is a bounded visual effect on existing rows. Never remount the page

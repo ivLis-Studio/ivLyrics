@@ -642,7 +642,7 @@ window.LANG_AR = {
       "customModel": "نموذج مخصص",
       "getFreeApiKey": "احصل على مفتاح مجاني",
       "groqDesc": "يوفّر Groq استدلالًا فائق السرعة مجانًا.",
-      "sonarWebSearch": "تتضمن نماذج Sonar البحث على الويب في الوقت الفعلي.",
+      "perplexityAgentModels": "تُحمَّل النماذج تلقائيًا من Perplexity Agent API باستخدام مفتاحك. ويستخدم البحث الموسيقي أيضًا البحث على الويب.",
       "geminiBaseUrlDesc": "غيّر هذا العنوان لاستخدام API متوافقة مع Gemini.",
       "modelsAvailable": "النماذج المتاحة: {count}",
       "requestBodyMerge": "JSON لدمجه في نص الطلب",
@@ -826,7 +826,10 @@ window.LANG_AR = {
     "fullscreenScreenHint": "يجعل Spotify يملأ الشاشة بالكامل ويفتح وضع ملء الشاشة",
     "localLyricsApplying": "جارٍ التطبيق…",
     "currentTrack": "المسار الحالي",
-    "more": "المزيد"
+    "more": "المزيد",
+    "pronunciationFirst": "النطق أولًا",
+    "pronunciationFirstTitle": "وضع النطق أولًا",
+    "pronunciationFirstDesc": "يبدّل مكان كلمات الأغنية الأصلية والنطق لتسهيل الغناء مع الأغاني الأجنبية"
   },
   "messages": {
     "noLyrics": "لا توجد كلمات متاحة",
@@ -985,6 +988,11 @@ window.LANG_AR = {
     "reference": "مرجع",
     "cached": "مخزن مؤقتًا",
     "empty": "فارغ",
+    "byUnit": "حسب الوحدة",
+    "joined": "مدمج",
+    "editAsLine": "تحرير كسطر",
+    "editAsLineHint": "احذف النطق حسب الوحدة وحرّر هذا السطر كاملاً",
+    "cachedByUnit": "مخزّن · {count} سطر حسب الوحدة",
     "pronunciationPlaceholder": "سطر واحد لكل سطر من الكلمات",
     "translationPlaceholder": "سطر واحد لكل سطر من الكلمات",
     "shiftDown": "إزاحة هذا السطر وما بعده سطرًا واحدًا لأسفل",
@@ -1582,6 +1590,14 @@ window.LANG_AR = {
           "classic": "كلاسيكي",
           "expressive": "تعبيري"
         }
+      },
+      "syncedPronunciation": {
+        "label": "استخدام النطق المتزامن",
+        "desc": "يجلب نطق كلمات الكاريوكي مقسّمًا حسب توقيت كل كلمة أو حرف يُغنّى. عند التشغيل يصبح وضع النطق أولًا وتلوين النطق مثل الكاريوكي متاحين. عند الإيقاف يأتي النطق أسرع كنص عادي لكل سطر."
+      },
+      "pronunciationFill": {
+        "label": "تلوين النطق مثل الكاريوكي",
+        "desc": "حتى عند إيقاف وضع النطق أولًا، يتلوّن سطر النطق مع توقيت الغناء. يقسّم الذكاء الاصطناعي النطق حسب توقيت كل كلمة أو حرف. لا تُطبَّق التأثيرات الأخرى مثل الارتداد والتوهج."
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_AR = {
     "label": "كلمات بلس"
   },
   "generationStatus": {
+    "wordSync": "مزامنة الكلمات",
+    "externalWordSync": "يجري إنشاء بيانات مزامنة لكل كلمة على خادم خارجي لكلمات الأغاني.",
+    "wordSyncFailed": "فشلت مزامنة الكلمات",
+    "externalWordSyncFailed": "تعذّر إنشاء بيانات المزامنة لكل كلمة أو تطبيقها. سيتم الاحتفاظ بكلمات الأغنية الحالية.",
     "complete": "تم!",
     "culturalAnnotations": "شرح السياق الثقافي",
     "culturalAnnotationsLoading": "جارٍ تحليل السياق الثقافي...",
     "wordSupplements": "تفاصيل الكلمات",
-    "wordSupplementsLoading": "جارٍ تحميل القراءات والمعاني..."
+    "wordSupplementsLoading": "جارٍ تحميل القراءات والمعاني...",
+    "pronunciationSync": "توقيت النطق",
+    "pronunciationSyncLoading": "يطابق الذكاء الاصطناعي النطق مع توقيت كلمات الأغنية...",
+    "pronunciationSyncFailed": "تعذّر توقيت النطق",
+    "pronunciationSyncFailedDesc": "تعذّر توقيت النطق باستخدام الذكاء الاصطناعي. يُعرض توقيت تقريبي."
   },
   "videoSync": {
     "title": "توقيت الفيديو",

@@ -358,6 +358,18 @@ body.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer * {
   transform: scaleX(1);
 }
 
+.lyrics-translation-loading-indicator.is-failed,
+.lyrics-translation-loading-indicator.is-failed-exiting {
+  max-width: 260px;
+  color: #ffd5d7;
+  background: rgba(100, 24, 31, 0.88);
+  border-color: rgba(255, 111, 120, 0.65);
+}
+
+.lyrics-translation-loading-indicator.is-failed-exiting {
+  animation: ivlyricsGenerationPillOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
 .lyrics-translation-loading-label {
   position: relative;
   display: grid;
@@ -392,7 +404,9 @@ body.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer * {
 }
 
 .lyrics-translation-loading-indicator.is-complete .lyrics-generation-status-loading-label,
-.lyrics-translation-loading-indicator.is-exiting .lyrics-generation-status-loading-label {
+.lyrics-translation-loading-indicator.is-exiting .lyrics-generation-status-loading-label,
+.lyrics-translation-loading-indicator.is-failed .lyrics-generation-status-loading-label,
+.lyrics-translation-loading-indicator.is-failed-exiting .lyrics-generation-status-loading-label {
   position: absolute;
   inset: 0 auto auto 0;
   opacity: 0;
@@ -400,7 +414,9 @@ body.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer * {
 }
 
 .lyrics-translation-loading-indicator.is-complete .lyrics-generation-status-complete-label,
-.lyrics-translation-loading-indicator.is-exiting .lyrics-generation-status-complete-label {
+.lyrics-translation-loading-indicator.is-exiting .lyrics-generation-status-complete-label,
+.lyrics-translation-loading-indicator.is-failed .lyrics-generation-status-complete-label,
+.lyrics-translation-loading-indicator.is-failed-exiting .lyrics-generation-status-complete-label {
   position: relative;
   inset: auto;
   opacity: 1;
@@ -428,7 +444,8 @@ body.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer * {
 }
 
 .lyrics-translation-loading-spinner,
-.lyrics-generation-status-check {
+.lyrics-generation-status-check,
+.lyrics-generation-status-error {
   grid-area: 1 / 1;
   width: 16px;
   height: 16px;
@@ -460,7 +477,9 @@ body.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer * {
 }
 
 .lyrics-translation-loading-indicator.is-complete .lyrics-translation-loading-spinner,
-.lyrics-translation-loading-indicator.is-exiting .lyrics-translation-loading-spinner {
+.lyrics-translation-loading-indicator.is-exiting .lyrics-translation-loading-spinner,
+.lyrics-translation-loading-indicator.is-failed .lyrics-translation-loading-spinner,
+.lyrics-translation-loading-indicator.is-failed-exiting .lyrics-translation-loading-spinner {
   opacity: 0;
   transform: scale(0.5);
   animation-play-state: paused;
@@ -588,7 +607,8 @@ body.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer * {
     stroke-dashoffset: 0;
   }
 
-  .lyrics-translation-loading-indicator.is-exiting {
+  .lyrics-translation-loading-indicator.is-exiting,
+  .lyrics-translation-loading-indicator.is-failed-exiting {
     opacity: 0;
   }
 }
@@ -615,7 +635,8 @@ body.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer * {
   stroke-dashoffset: 0;
 }
 
-.motion-reduced .lyrics-translation-loading-indicator.is-exiting {
+.motion-reduced .lyrics-translation-loading-indicator.is-exiting,
+.motion-reduced .lyrics-translation-loading-indicator.is-failed-exiting {
   opacity: 0;
 }
 
@@ -2020,10 +2041,6 @@ body.ivlyrics-page-active .main-topBar-container {
   will-change: transform;
 }
 
-.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) {
-  letter-spacing: -0.005em;
-}
-
 .lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine {
   filter: blur(calc(var(--blur-index) * 1.5px));
 }
@@ -2336,6 +2353,14 @@ body.ivlyrics-page-active .main-topBar-container {
   overflow-wrap: break-word;
   width: 100%;
   /* Ensure full width for wrapping */
+}
+
+/* Prefer explicit spaces in CJK too. Only a token wider than the lyric
+   column falls back to grapheme wrapping; focus never changes this policy. */
+:is(.lyrics-lyricsContainer-SyncedLyrics, .lyrics-lyricsContainer-SyncedScrollView, .lyrics-lyricsContainer-UnsyncedLyricsPage)
+  .lyrics-lyricsContainer-LyricsLine > p {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 @media (min-width: 1280px) {
@@ -2676,8 +2701,8 @@ div.lyrics-tabBar-headerItemLink {
 }
 
 .lyrics-karaoke-line.has-word-wrap {
-  word-break: normal;
-  overflow-wrap: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .lyrics-karaoke-stack {
@@ -3307,6 +3332,7 @@ div.lyrics-tabBar-headerItemLink {
   will-change: transform, opacity, filter, text-shadow;
 }
 
+.lyrics-karaoke-wrap-group,
 .lyrics-karaoke-word {
   display: inline-block;
   max-width: 100%;
@@ -14565,9 +14591,18 @@ body.ivlyrics-sync-creator-covering > #main {
 
 .ivlyrics-cache-edit-item-fields {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Pronunciation (by unit or as a line) beside the translation. */
+.ivlyrics-cache-edit-item-pair {
+  min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
   gap: 12px;
+  align-items: start;
 }
 
 .ivlyrics-cache-edit-field {
@@ -14594,6 +14629,116 @@ body.ivlyrics-sync-creator-covering > #main {
   color: rgba(255, 255, 255, 0.7);
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ivlyrics-cache-edit-field-title,
+.ivlyrics-cache-edit-field-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ivlyrics-cache-edit-field-actions {
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ivlyrics-cache-edit-text-button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ivlyrics-cache-edit-text-button:hover:not(:disabled) {
+  color: var(--spice-text);
+  border-color: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.42);
+  background: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.12);
+}
+
+.ivlyrics-cache-edit-text-button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+/* One cell per sung unit: the original unit above its pronunciation. */
+.ivlyrics-cache-edit-units {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 4px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ivlyrics-cache-edit-unit {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ivlyrics-cache-edit-unit.has-gap {
+  margin-left: 10px;
+}
+
+.ivlyrics-cache-edit-unit-source {
+  padding: 0 2px;
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: pre;
+  color: rgba(255, 255, 255, 0.64);
+}
+
+.ivlyrics-cache-edit-unit-input {
+  box-sizing: border-box;
+  min-width: 3ch;
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  color: var(--spice-text);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  text-align: center;
+}
+
+.ivlyrics-cache-edit-unit-input:focus {
+  outline: none;
+  border-color: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.52);
+  box-shadow: 0 0 0 2px rgba(var(--spice-rgb-accent, 30, 215, 96), 0.14);
+}
+
+.ivlyrics-cache-edit-unit-preview {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.ivlyrics-cache-edit-unit-preview-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.ivlyrics-cache-edit-unit-preview-text {
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .ivlyrics-cache-edit-shift-button {
@@ -14637,6 +14782,12 @@ body.ivlyrics-sync-creator-covering > #main {
   word-break: break-word;
   color: rgba(255, 255, 255, 0.78);
   background: rgba(255, 255, 255, 0.04);
+}
+
+.ivlyrics-cache-edit-field--original .ivlyrics-cache-edit-original-line {
+  min-height: 0;
+  padding: 10px 14px;
+  font-size: 14px;
 }
 
 .ivlyrics-cache-edit-line-input {
@@ -14723,6 +14874,10 @@ body.ivlyrics-sync-creator-covering > #main {
   }
 
   .ivlyrics-cache-edit-item-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ivlyrics-cache-edit-item-pair {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -18887,18 +19042,21 @@ body.ivlyrics-sync-creator-covering > #main {
 }
 
 .ivlyrics-cache-edit-original-line,
-.ivlyrics-cache-edit-line-input {
+.ivlyrics-cache-edit-line-input,
+.ivlyrics-cache-edit-units {
   border-radius: var(--iv-radius-input);
 }
 
 .ivlyrics-cache-edit-shift-button,
-.ivlyrics-cache-edit-button {
+.ivlyrics-cache-edit-button,
+.ivlyrics-cache-edit-text-button {
   border-radius: var(--iv-radius-pill);
 }
 
 .ivlyrics-cache-edit-close:focus-visible,
 .ivlyrics-cache-edit-button:focus-visible,
 .ivlyrics-cache-edit-shift-button:focus-visible,
+.ivlyrics-cache-edit-text-button:focus-visible,
 .ivlyrics-cache-edit-line-input:focus-visible,
 .ivlyrics-marketplace-confirm-btn:focus-visible {
   outline: none;
@@ -19188,6 +19346,49 @@ body.ivlyrics-sync-creator-covering > #main {
   text-shadow:
     var(--lyrics-phonetic-outline-shadow, 0 0 0 transparent),
     var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+/* Pronunciation fill (Settings > Karaoke mode). Only the singing row's
+   pronunciation has unit states. The active unit draws an active-colored copy
+   of its text over itself and reveals it up to the fill edge, so the row keeps
+   its own color, shadow, outline and line breaks. The copy is centered on the
+   unit's content box, which puts its baseline exactly on the unit's baseline. */
+.lyrics-phonetic-fill-unit--pending,
+.lyrics-phonetic-fill-unit--active {
+  color: var(--lyrics-color-inactive);
+}
+
+.lyrics-phonetic-fill-unit--done {
+  color: var(--lyrics-color-active);
+}
+
+.lyrics-phonetic-fill-unit--active {
+  position: relative;
+}
+
+.lyrics-phonetic-fill-unit--active::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  white-space: pre;
+  color: var(--lyrics-color-active);
+  -webkit-text-fill-color: var(--lyrics-color-active);
+  text-shadow: none;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(var(--phonetic-fill-direction, to right),
+      #000 var(--karaoke-char-fill-soft-start, var(--karaoke-char-fill, 0%)),
+      transparent var(--karaoke-char-fill-soft-end, var(--karaoke-char-fill, 0%)));
+  mask-image: linear-gradient(var(--phonetic-fill-direction, to right),
+      #000 var(--karaoke-char-fill-soft-start, var(--karaoke-char-fill, 0%)),
+      transparent var(--karaoke-char-fill-soft-end, var(--karaoke-char-fill, 0%)));
+}
+
+.lyrics-phonetic-fill-unit--active:dir(rtl)::after {
+  --phonetic-fill-direction: to left;
+  justify-content: flex-end;
 }
 
 .lyrics-lyricsContainer-LyricsLine > .lyrics-lyricsContainer-LyricsLine-translation,
@@ -23126,6 +23327,62 @@ a.research-media-item:hover {
 
 .ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-loading {
   color: var(--ivl-tb-text-3);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-units {
+  padding: 8px;
+  border: 1px solid var(--ivl-tb-line-2);
+  border-radius: var(--ivl-tb-r-sm);
+  background: var(--ivl-tb-surface-2);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-unit-source {
+  color: var(--ivl-tb-text-3);
+  font-family: var(--ivl-tb-font);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-unit-input {
+  height: 28px;
+  border: 1px solid var(--ivl-tb-line-2);
+  border-radius: var(--ivl-tb-r-xs);
+  background: var(--ivl-tb-surface);
+  color: var(--ivl-tb-text);
+  font: 13px/1.2 var(--ivl-tb-font);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-unit-input:focus {
+  border-color: var(--ivl-tb-accent-line);
+  box-shadow: 0 0 0 3px var(--ivl-tb-accent-soft);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-unit-preview {
+  color: var(--ivl-tb-text-2);
+  font-family: var(--ivl-tb-font);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-unit-preview-label {
+  color: var(--ivl-tb-text-3);
+  font-weight: 500;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-text-button {
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--ivl-tb-r-sm);
+  background: transparent;
+  color: var(--ivl-tb-text-3);
+  font: 500 11.5px var(--ivl-tb-font);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-text-button:hover:not(:disabled) {
+  background: var(--ivl-tb-surface-3);
+  color: var(--ivl-tb-text);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-text-button:focus-visible {
+  outline: none;
+  box-shadow: var(--ivl-tb-focus);
 }
 
 

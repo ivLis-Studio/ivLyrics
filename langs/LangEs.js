@@ -642,7 +642,7 @@ window.LANG_ES = {
       "customModel": "Modelo personalizado",
       "getFreeApiKey": "Obtener clave gratis",
       "groqDesc": "Groq ofrece inferencia ultrarrápida y gratuita.",
-      "sonarWebSearch": "Los modelos Sonar incluyen búsqueda web en tiempo real.",
+      "perplexityAgentModels": "Los modelos se cargan automáticamente desde la Perplexity Agent API con tu clave. La investigación musical también busca en la web.",
       "geminiBaseUrlDesc": "Cámbiala para usar una API compatible con Gemini.",
       "modelsAvailable": "Modelos disponibles: {count}",
       "requestBodyMerge": "JSON para combinar con el cuerpo de la solicitud",
@@ -826,7 +826,10 @@ window.LANG_ES = {
     "fullscreenScreenHint": "Hace que Spotify ocupe todo el monitor y abre la pantalla completa",
     "localLyricsApplying": "Aplicando…",
     "currentTrack": "Pista actual",
-    "more": "Más"
+    "more": "Más",
+    "pronunciationFirst": "Pronunciación primero",
+    "pronunciationFirstTitle": "Modo pronunciación primero",
+    "pronunciationFirstDesc": "Intercambia la letra original y la pronunciación para cantar fácilmente letras en otros idiomas"
   },
   "messages": {
     "noLyrics": "No hay letras disponibles",
@@ -985,6 +988,11 @@ window.LANG_ES = {
     "reference": "Referencia",
     "cached": "En caché",
     "empty": "Vacío",
+    "byUnit": "Por unidad",
+    "joined": "Unida",
+    "editAsLine": "Editar como línea",
+    "editAsLineHint": "Quita la pronunciación por unidad y edita esta línea completa",
+    "cachedByUnit": "En caché · {count} líneas por unidad",
     "pronunciationPlaceholder": "Una línea por cada línea de la letra",
     "translationPlaceholder": "Una línea por cada línea de la letra",
     "shiftDown": "Desplazar esta línea y las siguientes una línea abajo",
@@ -1582,6 +1590,14 @@ window.LANG_ES = {
           "classic": "Clásico",
           "expressive": "Expresivo"
         }
+      },
+      "syncedPronunciation": {
+        "label": "Pronunciación sincronizada",
+        "desc": "Obtiene la pronunciación de las letras de karaoke dividida según el tiempo de cada palabra o carácter cantado. Al activarla, están disponibles el modo de pronunciación primero y el relleno de la pronunciación como karaoke. Desactivada, la pronunciación llega más rápido como texto por líneas."
+      },
+      "pronunciationFill": {
+        "label": "Rellenar la pronunciación como karaoke",
+        "desc": "Aunque el modo pronunciación primero esté desactivado, la fila de pronunciación se rellena al ritmo del canto. La IA reparte la pronunciación según el tiempo de cada palabra o carácter. No se aplican otros efectos como el rebote o el brillo."
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_ES = {
     "label": "Letras Plus"
   },
   "generationStatus": {
+    "wordSync": "Sincronización por palabra",
+    "externalWordSync": "Se están generando tiempos por palabra en un servidor externo de letras.",
+    "wordSyncFailed": "Error al sincronizar palabras",
+    "externalWordSyncFailed": "No se pudo generar o aplicar la sincronización por palabra. Se conserva la letra actual.",
     "complete": "¡Listo!",
     "culturalAnnotations": "Explicaciones del contexto cultural",
     "culturalAnnotationsLoading": "Analizando el contexto cultural...",
     "wordSupplements": "Detalles de palabras",
-    "wordSupplementsLoading": "Cargando lecturas y glosas..."
+    "wordSupplementsLoading": "Cargando lecturas y glosas...",
+    "pronunciationSync": "Sincronía de pronunciación",
+    "pronunciationSyncLoading": "La IA está ajustando la pronunciación a los tiempos de la letra...",
+    "pronunciationSyncFailed": "Error en la sincronía de pronunciación",
+    "pronunciationSyncFailedDesc": "No se pudo sincronizar la pronunciación con IA. Se muestra una sincronía aproximada."
   },
   "videoSync": {
     "title": "Sincronización del video",

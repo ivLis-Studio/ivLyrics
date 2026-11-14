@@ -77,7 +77,7 @@ const createProviders = () => {
 		},
 		setTimeout() { throw new Error("provider tests must not schedule network/registration work"); },
 	});
-	for (const name of ["Unison", "LyricsPlus", "Paxsenix"]) {
+	for (const name of ["Unison", "LyricsPlus", "OpenLyrics"]) {
 		vm.runInContext(readFileSync(sourceFile(`Addon_Lyrics_${name}.js`), "utf8"), context,
 			{ filename: `Addon_Lyrics_${name}.js` });
 	}
@@ -104,12 +104,12 @@ const createProviders = () => {
 			}) };
 			return normalize(window.__ivLyricsPlusDebug.parseLyricsPayload(payload, 60000));
 		},
-		paxsenix(payload) {
-			return normalize(window.__ivLyricsPaxsenixDebug.parsePayload(payload, 60000));
+		openLyrics(payload) {
+			return normalize(window.__ivLyricsOpenLyricsDebug.parsePayload(payload, 60000));
 		},
-		paxsenixTtml(rows) {
+		openLyricsTtml(rows) {
 			currentDocument = makeDocument(rows);
-			return normalize(window.__ivLyricsPaxsenixDebug.parsePayload({ ttmlContent: "<tt></tt>" }, 60000));
+			return normalize(window.__ivLyricsOpenLyricsDebug.parsePayload({ ttmlContent: "<tt></tt>" }, 60000));
 		},
 	};
 };
@@ -172,7 +172,7 @@ for (const provider of ["unison", "lyricsPlus"]) {
 	}
 }
 
-test("Paxsenix structured lyrics preserve a long explicit end and its background across a following line", () => {
+test("OpenLyrics structured lyrics preserve a long explicit end and its background across a following line", () => {
 	const payload = {
 		syncType: "syllable", metadata: { language: "en" },
 		lyrics: [
@@ -183,9 +183,9 @@ test("Paxsenix structured lyrics preserve a long explicit end and its background
 				text: [{ text: "Next", timestamp: 2000, endtime: 4000 }] },
 		],
 	};
-	const result = createProviders().paxsenix(payload);
+	const result = createProviders().openLyrics(payload);
 	assert.equal(result.karaoke.length, 2);
-	assert.deepEqual(result.karaoke.map((line) => [line.paxsenixLineKey, line.startTime, line.endTime]),
+	assert.deepEqual(result.karaoke.map((line) => [line.openLyricsLineKey, line.startTime, line.endTime]),
 		[["long", 1000, 30000], ["next", 2000, 4000]]);
 	const { lead, background } = result.karaoke[0].vocals;
 	assert.equal(lead.role, "lead");
@@ -195,7 +195,7 @@ test("Paxsenix structured lyrics preserve a long explicit end and its background
 	assert.deepEqual(background[0].syllables, [token("Echo", 1500, 25000)]);
 });
 
-test("Paxsenix TTML fallback preserves the same paragraph boundaries as Unison", () => {
+test("OpenLyrics TTML fallback preserves the same paragraph boundaries as Unison", () => {
 	const rows = scenarios[1][1];
-	assertSourceLines(createProviders().paxsenixTtml(rows), rows, "unison");
+	assertSourceLines(createProviders().openLyricsTtml(rows), rows, "unison");
 });

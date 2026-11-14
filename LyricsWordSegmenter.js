@@ -321,9 +321,23 @@
 	const defaultSegmenter = createLyricsSegmenter();
 	const segmentLyrics = defaultSegmenter.segmentLyrics;
 	const segmentRanges = defaultSegmenter.segmentRanges;
+	// Karaoke rendering segments the same syllables and lines many times per
+	// lyrics update (timing windows, glyph rows, fill ends, furigana maps).
+	// Grapheme clusters depend only on the text and requested locale, so keep
+	// recent results; callers receive their own copy.
+	const GRAPHEME_CACHE_LIMIT = 4096;
+	const graphemeCache = new Map();
 	const segmentGraphemes = (text, locale = "auto") => {
 		const source = String(text || "");
-		return source ? graphemes(source, normalizeLocale(locale, source)) : [];
+		if (!source) return [];
+		const key = String(locale) + "\u0000" + source;
+		let cached = graphemeCache.get(key);
+		if (!cached) {
+			cached = graphemes(source, normalizeLocale(locale, source));
+			if (graphemeCache.size >= GRAPHEME_CACHE_LIMIT) graphemeCache.delete(graphemeCache.keys().next().value);
+			graphemeCache.set(key, cached);
+		}
+		return cached.slice();
 	};
 	const api = Object.freeze({ normalizeLocale, createLyricsSegmenter, segmentLyrics, segmentRanges, segmentGraphemes });
 	globalThis.LyricsWordSegmenter = api;

@@ -14,6 +14,10 @@ const serviceSource = readFileSync(new URL('../LyricsService.js', import.meta.ur
 // covered by karaoke_vocal_render_cache. Compare every glyph and presentation
 // value here without requiring the old release-time anchor reset.
 const normalize = value => JSON.parse(JSON.stringify(value, (key, entry) => {
+  // Whitespace wrapping intentionally adds layout-only parents in CJK. Keep
+  // comparing every original paint/timing node against the old cache path.
+  if (Array.isArray(entry)) return entry.flat(Infinity).flatMap(child =>
+    child?.props?.className === 'lyrics-karaoke-wrap-group' ? child.children.flat(Infinity) : [child]);
   // One visual wrapper per voice isolates arrival opacity from glyph effects.
   // Its structure is checked separately; compare every existing glyph below it.
   if (entry?.props?.className === 'lyrics-vocal-main') return entry.children[0];
@@ -358,7 +362,9 @@ test('cached annotation, locale and injected helper data refresh on their real d
 const beforePresentationCache = execFileSync('git', ['show', 'aae1e95:Pages.js'], {
   cwd: new URL('..', import.meta.url), encoding: 'utf8',
 });
-const exactTree = value => JSON.parse(JSON.stringify(value));
+const exactTree = value => JSON.parse(JSON.stringify(value, (key, entry) =>
+  Array.isArray(entry) ? entry.flat(Infinity).flatMap(child =>
+    child?.props?.className === 'lyrics-karaoke-wrap-group' ? child.children.flat(Infinity) : [child]) : entry));
 
 test('inline style preparation is reused while every glyph and vocal anchor matches the previous renderer', () => {
   for (const [text, locale] of [['Hello  long styled words!', 'en'], ['漢字の歌、聞こえる', 'ja'],

@@ -642,7 +642,7 @@ window.LANG_FR = {
       "customModel": "Modèle personnalisé",
       "getFreeApiKey": "Obtenir une clé gratuite",
       "groqDesc": "Groq propose une inférence ultra-rapide et gratuite.",
-      "sonarWebSearch": "Les modèles Sonar intègrent la recherche web en temps réel.",
+      "perplexityAgentModels": "Les modèles sont chargés automatiquement depuis l’API Perplexity Agent avec votre clé. La recherche musicale utilise aussi la recherche web.",
       "geminiBaseUrlDesc": "Modifiez-la pour utiliser une API compatible avec Gemini.",
       "modelsAvailable": "Modèles disponibles : {count}",
       "requestBodyMerge": "JSON à fusionner dans le corps de la requête",
@@ -826,7 +826,10 @@ window.LANG_FR = {
     "fullscreenScreenHint": "Fait occuper tout le moniteur à Spotify et ouvre le plein écran",
     "localLyricsApplying": "Application…",
     "currentTrack": "Titre actuel",
-    "more": "Plus"
+    "more": "Plus",
+    "pronunciationFirst": "Prononciation d'abord",
+    "pronunciationFirstTitle": "Mode prononciation d'abord",
+    "pronunciationFirstDesc": "Inverse les paroles originales et la prononciation pour chanter facilement des paroles étrangères"
   },
   "messages": {
     "noLyrics": "Aucune parole disponible",
@@ -985,6 +988,11 @@ window.LANG_FR = {
     "reference": "Référence",
     "cached": "En cache",
     "empty": "Vide",
+    "byUnit": "Par unité",
+    "joined": "Assemblée",
+    "editAsLine": "Modifier en ligne",
+    "editAsLineHint": "Supprime la prononciation par unité et modifie cette ligne en entier",
+    "cachedByUnit": "En cache · {count} lignes par unité",
     "pronunciationPlaceholder": "Une ligne par ligne de paroles",
     "translationPlaceholder": "Une ligne par ligne de paroles",
     "shiftDown": "Décaler cette ligne et les suivantes d'une ligne vers le bas",
@@ -1582,6 +1590,14 @@ window.LANG_FR = {
           "classic": "Classique",
           "expressive": "Expressif"
         }
+      },
+      "syncedPronunciation": {
+        "label": "Prononciation synchronisée",
+        "desc": "Récupère la prononciation des paroles karaoké découpée selon le minutage de chaque mot ou caractère chanté. Activée, elle rend disponibles le mode Prononciation d'abord et le remplissage de la prononciation comme au karaoké. Désactivée, la prononciation arrive plus vite en texte simple par ligne."
+      },
+      "pronunciationFill": {
+        "label": "Remplir la prononciation comme au karaoké",
+        "desc": "Même lorsque le mode prononciation d'abord est désactivé, la ligne de prononciation se remplit au rythme du chant. L'IA répartit la prononciation selon le minutage des mots ou des caractères. Les autres effets, comme le rebond et la lueur, ne sont pas appliqués."
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_FR = {
     "label": "Paroles Plus"
   },
   "generationStatus": {
+    "wordSync": "Synchronisation des mots",
+    "externalWordSync": "La synchronisation mot par mot est en cours de création sur un serveur de paroles externe.",
+    "wordSyncFailed": "Échec de la synchronisation",
+    "externalWordSyncFailed": "Impossible de générer ou d’appliquer la synchronisation mot par mot. Les paroles actuelles sont conservées.",
     "complete": "Terminé !",
     "culturalAnnotations": "Explications du contexte culturel",
     "culturalAnnotationsLoading": "Analyse du contexte culturel...",
     "wordSupplements": "Détails des mots",
-    "wordSupplementsLoading": "Chargement des lectures et gloses..."
+    "wordSupplementsLoading": "Chargement des lectures et gloses...",
+    "pronunciationSync": "Synchro de la prononciation",
+    "pronunciationSyncLoading": "L'IA aligne la prononciation sur le minutage des paroles...",
+    "pronunciationSyncFailed": "Échec de la synchro de la prononciation",
+    "pronunciationSyncFailedDesc": "Impossible de synchroniser la prononciation avec l'IA. Affichage d'un minutage approximatif."
   },
   "videoSync": {
     "title": "Timing de la vidéo",

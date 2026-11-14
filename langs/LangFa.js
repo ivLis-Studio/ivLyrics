@@ -642,7 +642,7 @@ window.LANG_FA = {
       "customModel": "مدل سفارشی",
       "getFreeApiKey": "دریافت کلید رایگان",
       "groqDesc": "Groq استنتاج بسیار سریع را رایگان ارائه می‌دهد.",
-      "sonarWebSearch": "مدل‌های Sonar جست‌وجوی هم‌زمان در وب را دارند.",
+      "perplexityAgentModels": "مدل‌ها با کلید شما به‌طور خودکار از Perplexity Agent API بارگیری می‌شوند. پژوهش موسیقی از جست‌وجوی وب هم استفاده می‌کند.",
       "geminiBaseUrlDesc": "برای استفاده از API سازگار با Gemini، این نشانی را تغییر دهید.",
       "modelsAvailable": "مدل‌های در دسترس: {count}",
       "requestBodyMerge": "JSON برای ادغام با بدنه درخواست",
@@ -826,7 +826,10 @@ window.LANG_FA = {
     "fullscreenScreenHint": "Spotify را روی کل نمایشگر می‌برد و حالت تمام‌صفحه را باز می‌کند",
     "localLyricsApplying": "در حال اعمال…",
     "currentTrack": "آهنگ فعلی",
-    "more": "بیشتر"
+    "more": "بیشتر",
+    "pronunciationFirst": "اول تلفظ",
+    "pronunciationFirstTitle": "حالت اول تلفظ",
+    "pronunciationFirstDesc": "جای متن اصلی و تلفظ را عوض می‌کند تا همراه‌خوانی آهنگ‌های خارجی آسان شود"
   },
   "messages": {
     "noLyrics": "متن آهنگی موجود نیست",
@@ -985,6 +988,11 @@ window.LANG_FA = {
     "reference": "مرجع",
     "cached": "کش شده",
     "empty": "خالی",
+    "byUnit": "بر اساس واحد",
+    "joined": "یکجا",
+    "editAsLine": "ویرایش به‌صورت خط",
+    "editAsLineHint": "تلفظ واحدبه‌واحد را حذف کن و این خط را یکجا ویرایش کن",
+    "cachedByUnit": "در حافظه · {count} خط بر اساس واحد",
     "pronunciationPlaceholder": "برای هر خط از متن، یک خط وارد کنید",
     "translationPlaceholder": "برای هر خط از متن، یک خط وارد کنید",
     "shiftDown": "این خط و خطوط بعدی را یک خط به پایین ببرید",
@@ -1582,6 +1590,14 @@ window.LANG_FA = {
           "classic": "کلاسیک",
           "expressive": "پرشور"
         }
+      },
+      "syncedPronunciation": {
+        "label": "استفاده از تلفظ همگام",
+        "desc": "تلفظ متن‌های کارائوکه را بر اساس زمان‌بندی هر واژه یا حرفی که خوانده می‌شود تقسیم‌شده دریافت می‌کند. با روشن کردن آن، حالت اول تلفظ و پر کردن تلفظ مانند کارائوکه در دسترس است. وقتی خاموش است، تلفظ سریع‌تر به‌صورت متن ساده هر خط دریافت می‌شود."
+      },
+      "pronunciationFill": {
+        "label": "پر کردن تلفظ مانند کارائوکه",
+        "desc": "حتی وقتی حالت اول تلفظ خاموش است، ردیف تلفظ هم‌زمان با خواندن پر می‌شود. هوش مصنوعی تلفظ را بر اساس زمان‌بندی هر کلمه یا نویسه تقسیم می‌کند. جلوه‌های دیگر مانند پرش و درخشش اعمال نمی‌شوند."
       }
     },
     "prefetch": {
@@ -2191,11 +2207,19 @@ window.LANG_FA = {
     "label": "متن آهنگ پلاس"
   },
   "generationStatus": {
+    "wordSync": "همگام‌سازی واژه‌ها",
+    "externalWordSync": "داده‌های همگام‌سازی واژه‌به‌واژه در یک سرور خارجی متن ترانه در حال تولید است.",
+    "wordSyncFailed": "همگام‌سازی واژه‌ها ناموفق بود",
+    "externalWordSyncFailed": "ایجاد یا اعمال داده‌های همگام‌سازی واژه‌به‌واژه ممکن نشد. متن فعلی ترانه حفظ می‌شود.",
     "complete": "انجام شد!",
     "culturalAnnotations": "توضیح زمینه فرهنگی",
     "culturalAnnotationsLoading": "در حال تحلیل زمینه فرهنگی...",
     "wordSupplements": "جزئیات واژه‌ها",
-    "wordSupplementsLoading": "در حال بارگذاری خوانش‌ها و معنی‌ها..."
+    "wordSupplementsLoading": "در حال بارگذاری خوانش‌ها و معنی‌ها...",
+    "pronunciationSync": "زمان‌بندی تلفظ",
+    "pronunciationSyncLoading": "هوش مصنوعی در حال تطبیق تلفظ با زمان‌بندی متن آهنگ است...",
+    "pronunciationSyncFailed": "زمان‌بندی تلفظ ناموفق بود",
+    "pronunciationSyncFailedDesc": "زمان‌بندی تلفظ با هوش مصنوعی انجام نشد. زمان‌بندی تقریبی نمایش داده می‌شود."
   },
   "videoSync": {
     "title": "زمان‌بندی ویدیو",

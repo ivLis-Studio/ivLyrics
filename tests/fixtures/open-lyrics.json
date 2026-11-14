@@ -1,0 +1,278 @@
+[
+  {
+    "name": "native-word-ms",
+    "source": "server-b",
+    "track": {
+      "meta": {
+        "level": "word"
+      },
+      "lines": [
+        {
+          "text": "Hello world",
+          "start": 1000,
+          "end": 3000,
+          "words": [
+            {
+              "text": "Hello",
+              "start": 1000,
+              "end": 1800
+            },
+            {
+              "text": "world",
+              "start": 2000,
+              "end": 3000
+            }
+          ]
+        }
+      ]
+    },
+    "kind": "karaoke",
+    "texts": [
+      "Hello world"
+    ],
+    "starts": [
+      1000
+    ]
+  },
+  {
+    "name": "line-zero-omitted",
+    "source": "server-b",
+    "track": {
+      "meta": {
+        "level": "line"
+      },
+      "lines": [
+        {
+          "text": "First line",
+          "end": 2000
+        },
+        {
+          "text": "Second line",
+          "start": 2200,
+          "end": 5000
+        }
+      ]
+    },
+    "kind": "synced",
+    "texts": [
+      "First line",
+      "Second line"
+    ],
+    "starts": [
+      0,
+      2200
+    ]
+  },
+  {
+    "name": "plain-only",
+    "source": "server-b",
+    "track": {
+      "meta": {
+        "level": "none"
+      },
+      "lines": [
+        {
+          "text": "Plain first"
+        },
+        {
+          "text": "Plain second"
+        }
+      ]
+    },
+    "kind": "plain",
+    "texts": [
+      "Plain first",
+      "Plain second"
+    ],
+    "starts": []
+  },
+  {
+    "name": "top-level-native-words",
+    "source": "server-a",
+    "track": {
+      "syncLevel": "syllable",
+      "timed": [
+        {
+          "text": "안녕 세상",
+          "start": 1000,
+          "end": 3000,
+          "id": 7
+        }
+      ],
+      "words": {
+        "7": [
+          {
+            "text": "안녕",
+            "start": 1000,
+            "end": 1500
+          },
+          {
+            "text": "세상",
+            "start": 1700,
+            "end": 3000
+          }
+        ]
+      }
+    },
+    "kind": "karaoke",
+    "texts": [
+      "안녕 세상"
+    ],
+    "starts": [
+      1000
+    ]
+  },
+  {
+    "name": "mixed-word-and-line",
+    "source": "server-a",
+    "track": {
+      "syncLevel": "word",
+      "timed": [
+        {
+          "text": "Hello world",
+          "start": 1000,
+          "end": 3000,
+          "words": [
+            {
+              "text": "Hello",
+              "start": 1000,
+              "end": 1800
+            },
+            {
+              "text": "world",
+              "start": 2000,
+              "end": 3000
+            }
+          ]
+        },
+        {
+          "text": "Line without words",
+          "start": 4000,
+          "end": 6000
+        }
+      ]
+    },
+    "kind": "karaoke",
+    "texts": [
+      "Hello world",
+      "Line without words"
+    ],
+    "starts": [
+      1000,
+      4000
+    ]
+  },
+  {
+    "name": "wrong-word-text-demoted",
+    "source": "server-b",
+    "track": {
+      "meta": {
+        "level": "word"
+      },
+      "lines": [
+        {
+          "text": "Hello world",
+          "start": 1000,
+          "end": 3000,
+          "words": [
+            {
+              "text": "Different",
+              "start": 1000,
+              "end": 3000
+            }
+          ]
+        }
+      ]
+    },
+    "kind": "synced",
+    "texts": [
+      "Hello world"
+    ],
+    "starts": [
+      1000
+    ]
+  },
+  {
+    "name": "invalid-words-demoted",
+    "source": "server-a",
+    "track": {
+      "syncLevel": "word",
+      "timed": [
+        {
+          "text": "Hello world",
+          "start": 1000,
+          "end": 3000,
+          "words": [
+            {
+              "text": "Hello world",
+              "start": null,
+              "end": 3000
+            }
+          ]
+        }
+      ]
+    },
+    "kind": "synced",
+    "texts": [
+      "Hello world"
+    ],
+    "starts": [
+      1000
+    ]
+  },
+  {
+    "name": "zero-timing-is-plain",
+    "source": "server-a",
+    "track": {
+      "syncLevel": "line",
+      "timed": [
+        {
+          "text": "No real time",
+          "start": 0,
+          "end": 0
+        }
+      ]
+    },
+    "kind": "plain",
+    "texts": [
+      "No real time"
+    ],
+    "starts": []
+  },
+  {
+    "name": "plain-fallback",
+    "source": "server-a",
+    "track": {
+      "syncLevel": "plain",
+      "plain": "No time\nAnother line"
+    },
+    "kind": "plain",
+    "texts": [
+      "No time",
+      "Another line"
+    ],
+    "starts": []
+  },
+  {
+    "name": "missing-final-end",
+    "source": "server-b",
+    "track": {
+      "meta": {
+        "level": "line"
+      },
+      "lines": [
+        {
+          "text": "Last line",
+          "start": 8000
+        }
+      ]
+    },
+    "kind": "synced",
+    "texts": [
+      "Last line"
+    ],
+    "starts": [
+      8000
+    ]
+  }
+]
