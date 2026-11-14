@@ -210,8 +210,9 @@ test("unit pronunciation streams through the lyric request and repairs misses", 
 		id: "fake",
 		generateCharacterPronunciation: async () => { throw new Error("not used"); },
 		translateLyrics: async (params) => {
-			requests.push({ text: params.text, phonetic: params.wantSmartPhonetic, repair: /earlier answer/.test(params.phoneticPrompt.userPrompt) });
-			const answer = requests.length === 1 ? ["A", "B|C"] : ["B"];
+			const repair = /earlier answer/.test(params.phoneticPrompt.userPrompt);
+			requests.push({ text: params.text, phonetic: params.wantSmartPhonetic, repair });
+			const answer = params.text.split("\n").map((row) => (row === "x" ? "A" : (repair ? "B" : "B|C")));
 			answer.forEach((line, index) => params.onLine(index, line));
 			return { phonetic: answer };
 		},
@@ -224,6 +225,10 @@ test("unit pronunciation streams through the lyric request and repairs misses", 
 		onSlots: (index, parts) => seen.push([index, parts]),
 	});
 	assert.deepEqual(plain([...result]), [[0, ["A"]], [3, ["B"]]]);
-	assert.deepEqual(plain(requests), [{ text: "x\ny", phonetic: true, repair: false }, { text: "y", phonetic: true, repair: true }]);
+	assert.deepEqual(plain(requests), [
+		{ text: "x", phonetic: true, repair: false },
+		{ text: "y", phonetic: true, repair: false },
+		{ text: "y", phonetic: true, repair: true },
+	]);
 	assert.deepEqual(plain(seen), [[0, ["A"]], [0, ["A"]], [3, ["B"]], [3, ["B"]]]);
 });

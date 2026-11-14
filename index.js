@@ -4026,8 +4026,10 @@ const Prefetcher = {
         const getSplitCachedResult = (isPhonetic) => getCachedMappedResult(isPhonetic, text, true);
         const getLegacyCachedResult = (isPhonetic) => getCachedMappedResult(isPhonetic, legacyText, false);
 
+        // 발음과 번역은 서로 기다리지 않고 동시에 미리 불러온다.
         // 발음 요청 (wantSmartPhonetic = true)
-        if (needPhonetic) {
+        const prefetchPhonetic = async () => {
+          if (!needPhonetic) return;
           try {
             const cachedMapped = (await getSplitCachedResult(true)) || (await getLegacyCachedResult(true));
             if (!isCurrentRequest()) return null;
@@ -4058,10 +4060,11 @@ const Prefetcher = {
           } catch (error) {
             console.warn(`[Prefetcher] Phonetic prefetch failed:`, error.message);
           }
-        }
+        };
 
         // 번역 요청 (wantSmartPhonetic = false)
-        if (needTranslation) {
+        const prefetchTranslation = async () => {
+          if (!needTranslation) return;
           try {
             const cachedMapped = (await getSplitCachedResult(false)) || (await getLegacyCachedResult(false));
             if (!isCurrentRequest()) return null;
@@ -4101,7 +4104,9 @@ const Prefetcher = {
           } catch (error) {
             console.warn(`[Prefetcher] Translation prefetch failed:`, error.message);
           }
-        }
+        };
+
+        await Promise.all([prefetchPhonetic(), prefetchTranslation()]);
 
         // 결과를 프리페치 캐시에 저장 (완료 표시용)
         if (!isCurrentRequest()) return null;
@@ -7781,13 +7786,9 @@ class LyricsContainer extends react.Component {
         }
         : null;
 
-      // 발음과 번역을 별도로 요청 (둘 다 필요한 경우)
-      let phoneticResponse = null;
-      let translationResponse = null;
-
-      // 발음 요청 (gemini_romaji)
-      if (needPhonetic) {
-        phoneticResponse = await window.Translator.callGemini({
+      // 발음과 번역은 서로 기다리지 않고 동시에 요청한다.
+      const phoneticRequest = needPhonetic
+        ? window.Translator.callGemini({
           trackId,
           artist: this.state.artist || lyricsState.artist,
           title: this.state.title || lyricsState.title,
@@ -7800,15 +7801,10 @@ class LyricsContainer extends react.Component {
           onLine: handlePhoneticStreamLine,
           onStreamReset: handlePhoneticStreamReset,
           pronunciationSlots: !!window.ivLyricsPronunciationSlots?.hasRealTiming?.(originalLyrics, lyricsState.karaokeSource),
-        });
-      }
-
-      // 번역 요청 (gemini_ko)
-      if (needTranslation) {
-        if (!isCurrentRequest()) {
-          return;
-        }
-        translationResponse = await window.Translator.callGemini({
+        })
+        : null;
+      const translationRequest = needTranslation
+        ? window.Translator.callGemini({
           trackId,
           artist: this.state.artist || lyricsState.artist,
           title: this.state.title || lyricsState.title,
@@ -7818,8 +7814,15 @@ class LyricsContainer extends react.Component {
           ignoreCache: true,
           onLine: handleTranslationStreamLine,
           onStreamReset: handleTranslationStreamReset,
-        });
-      }
+        })
+        : null;
+      // Both settle before a failure is reported, so no stream updates the
+      // page after the error is handled.
+      const [phoneticSettled, translationSettled] = await Promise.allSettled([phoneticRequest, translationRequest]);
+      if (phoneticSettled.status === "rejected") throw phoneticSettled.reason;
+      if (translationSettled.status === "rejected") throw translationSettled.reason;
+      const phoneticResponse = phoneticSettled.value;
+      const translationResponse = translationSettled.value;
 
       if (!isCurrentRequest()) {
         return;

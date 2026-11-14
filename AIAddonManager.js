@@ -1367,8 +1367,78 @@ Return exactly ${lineCount} lines, each with the same number of | fields as its 
 
     // Lone Hangul letters are never a readable pronunciation (ん written as ㄴ).
     const PRONUNCIATION_SLOT_LONE_JAMO_RE = /[\u1100-\u11FF\u3131-\u318E\uA960-\uA97F\uD7B0-\uD7FF]/u;
-    // Unit pronunciation requests of one song running at once.
-    const PRONUNCIATION_SLOT_PARALLEL_REQUESTS = 5;
+    // Reasoning models think longer than linearly with the lines of a request
+    // (gpt-6-luna: one line 6 s, two 14 s, three up to 29 s, seven up to 60 s),
+    // so a song's unit pronunciation goes out as small requests side by side,
+    // and the opening line goes out alone to show within seconds.
+    const PRONUNCIATION_PARALLEL_REQUESTS = 12;
+    const PRONUNCIATION_BATCH_LINES = 2;
+    const PRONUNCIATION_BATCH_UNITS = 60;
+    // A rate-limited request is sent again this many times, after a pause.
+    const PRONUNCIATION_RATE_LIMIT_RETRIES = 3;
+    const PRONUNCIATION_RATE_LIMIT_PAUSE_MS = 1500;
+
+    const isSupersededAbort = (error) => error?.name === 'AbortError' && error?.superseded === true;
+
+    const isRateLimitError = (error) => {
+        if (!error) return false;
+        if (Number(error.status) === 429 || Number(error.statusCode) === 429) return true;
+        return /\b429\b|rate.?limit|too many requests|resource.?exhausted/i.test(String(error.message || ''));
+    };
+
+    const pause = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    /**
+     * Runs batches side by side, in order. `run(batch)` may return follow-up
+     * batches (repairs), which go out next. A rate-limited batch halves the
+     * requests in flight and is sent again after a pause, so a provider that
+     * refuses parallel requests still gets the song one request at a time.
+     * A superseded request stops the remaining batches.
+     * @returns {Promise<Error[]>} Errors of the batches that failed for good.
+     */
+    const runParallelBatches = (batches, run, {
+        limit = PRONUNCIATION_PARALLEL_REQUESTS,
+        retries = PRONUNCIATION_RATE_LIMIT_RETRIES,
+        pauseMs = PRONUNCIATION_RATE_LIMIT_PAUSE_MS,
+        wait = pause
+    } = {}) => new Promise((resolve) => {
+        const queue = batches.map(batch => ({ batch, attempt: 0 }));
+        const errors = [];
+        let allowed = Math.max(1, limit);
+        let active = 0;
+        let stopped = false;
+        const settle = async (job) => {
+            try {
+                const followUps = await run(job.batch);
+                if (!stopped && Array.isArray(followUps) && followUps.length > 0) {
+                    queue.unshift(...followUps.map(batch => ({ batch, attempt: 0 })));
+                }
+            } catch (error) {
+                if (isSupersededAbort(error)) {
+                    stopped = true;
+                    errors.push(error);
+                } else if (!stopped && isRateLimitError(error) && job.attempt < retries) {
+                    allowed = Math.min(allowed, Math.max(1, Math.floor(active / 2)));
+                    // The slot stays taken while waiting, which keeps the pressure down.
+                    await wait(pauseMs * (2 ** job.attempt));
+                    queue.unshift({ batch: job.batch, attempt: job.attempt + 1 });
+                } else {
+                    errors.push(error);
+                }
+            } finally {
+                active -= 1;
+                pump();
+            }
+        };
+        const pump = () => {
+            while (!stopped && active < allowed && queue.length > 0) {
+                active += 1;
+                settle(queue.shift());
+            }
+            if (active === 0 && (stopped || queue.length === 0)) resolve(errors);
+        };
+        pump();
+    });
 
     /**
      * Unit pronunciations of one answered line: exactly the expected number
@@ -3624,6 +3694,16 @@ ${normalizedText}
             return chunks;
         }
 
+        /** Small requests for a song; the opening line goes out alone. */
+        _buildPronunciationBatches(items) {
+            const list = Array.isArray(items) ? items : [];
+            if (list.length <= 1) return list.length ? [list] : [];
+            return [[list[0]], ...this._buildTimedPronunciationChunks(list.slice(1), {
+                maxUnits: PRONUNCIATION_BATCH_UNITS,
+                maxItems: PRONUNCIATION_BATCH_LINES
+            })];
+        }
+
         _parseTimedPronunciationResult(result, chunk) {
             const rows = Array.isArray(result?.l) ? result.l : (Array.isArray(result?.lines) ? result.lines : []);
             const expected = new Map(chunk.map(item => [Number(item.i), item]));
@@ -3679,33 +3759,35 @@ ${normalizedText}
                     }
                 };
                 try {
-                    const chunks = this._buildTimedPronunciationChunks(safeItems);
-                    let next = 0;
-                    const errors = [];
-                    const worker = async () => {
-                        while (next < chunks.length) {
-                            const chunk = chunks[next++];
-                            try {
-                                await runChunk(chunk);
-                            } catch (error) {
-                                errors.push(error);
+                    const chunksOf = (list) => this._buildTimedPronunciationChunks(list, {
+                        maxUnits: PRONUNCIATION_BATCH_UNITS,
+                        maxItems: PRONUNCIATION_BATCH_LINES
+                    });
+                    // Items a request did not split exactly are asked once more as
+                    // soon as it returns. Until anything has worked for this
+                    // provider they wait, so a failing provider is not asked twice.
+                    const deferred = [];
+                    const errors = await runParallelBatches(
+                        this._buildPronunciationBatches(safeItems).map(chunk => ({ chunk, repair: false })),
+                        async ({ chunk, repair }) => {
+                            await runChunk(chunk);
+                            const missing = repair ? [] : chunk.filter(item => !aligned.has(item.i));
+                            if (missing.length === 0) return null;
+                            if (aligned.size === 0) {
+                                deferred.push(...missing);
+                                return null;
                             }
+                            return chunksOf(missing).map(part => ({ chunk: part, repair: true }));
                         }
-                    };
-                    await Promise.all(Array.from({ length: Math.min(3, chunks.length) }, worker));
-                    // One repair pass for items whose slots did not match.
-                    const missing = safeItems.filter(item => !aligned.has(item.i));
-                    if (missing.length > 0 && aligned.size > 0) {
-                        for (const chunk of this._buildTimedPronunciationChunks(missing, { maxUnits: 200, maxItems: 8 })) {
-                            try {
-                                await runChunk(chunk);
-                            } catch (error) {
-                                errors.push(error);
-                            }
-                        }
+                    );
+                    if (deferred.length > 0 && aligned.size > 0 && !errors.some(isSupersededAbort)) {
+                        errors.push(...await runParallelBatches(
+                            chunksOf(deferred).map(chunk => ({ chunk, repair: true })),
+                            ({ chunk }) => runChunk(chunk)
+                        ));
                     }
                     if (aligned.size === 0) {
-                        throw errors[0] || new Error('Timed pronunciation response had no usable items');
+                        throw errors.find(isSupersededAbort) || errors[0] || new Error('Timed pronunciation response had no usable items');
                     }
                     this.emit('ai:request:success', { type: 'timedPronunciation', provider: addon.id });
                     return aligned;
@@ -3720,6 +3802,10 @@ ${normalizedText}
 
         parsePronunciationSlotRow(value, expected, notation = 'translation') {
             return parsePronunciationSlotRow(value, expected, notation);
+        }
+
+        _runParallelBatches(batches, run, options) {
+            return runParallelBatches(batches, run, options);
         }
 
         /**
@@ -3794,35 +3880,40 @@ ${normalizedText}
                     });
                 };
                 // Reasoning models think long before writing unit fields, and
-                // that time grows with the request: small chunks in parallel
+                // that time grows with the request: small requests side by side
                 // keep the first lines (and the whole song) close to the line
-                // pronunciation's pace.
-                const runAll = async (batches, repair) => {
-                    const errors = [];
-                    let next = 0;
-                    const worker = async () => {
-                        while (next < batches.length) {
-                            const batch = batches[next++];
-                            try {
-                                await request(batch, repair);
-                            } catch (error) {
-                                errors.push(error);
-                            }
+                // pronunciation's pace. The lines a request answered with the
+                // wrong fields are asked once more as soon as it returns; until
+                // anything has worked for this provider they wait, so a failing
+                // provider is not asked twice for every line.
+                const batchesOf = (list) => this._buildTimedPronunciationChunks(list, {
+                    maxUnits: PRONUNCIATION_BATCH_UNITS,
+                    maxItems: PRONUNCIATION_BATCH_LINES
+                });
+                const deferred = [];
+                const errors = await runParallelBatches(
+                    this._buildPronunciationBatches(lines).map(batch => ({ batch, repair: false })),
+                    async ({ batch, repair }) => {
+                        await request(batch, repair);
+                        const missing = repair ? [] : batch.filter(line => !slots.has(line.i));
+                        if (missing.length === 0) return null;
+                        if (slots.size === 0) {
+                            deferred.push(...missing);
+                            return null;
                         }
-                    };
-                    await Promise.all(Array.from({ length: Math.min(PRONUNCIATION_SLOT_PARALLEL_REQUESTS, batches.length) }, worker));
-                    return errors;
-                };
-                const errors = await runAll(this._buildTimedPronunciationChunks(lines, { maxUnits: 110, maxItems: 8 }), false);
-                // One repair request for the lines whose fields did not match.
-                const missing = lines.filter(line => !slots.has(line.i));
-                if (missing.length > 0 && slots.size > 0) {
-                    await runAll(this._buildTimedPronunciationChunks(missing, { maxUnits: 110, maxItems: 8 }), true);
+                        return batchesOf(missing).map(part => ({ batch: part, repair: true }));
+                    }
+                );
+                if (deferred.length > 0 && slots.size > 0 && !errors.some(isSupersededAbort)) {
+                    errors.push(...await runParallelBatches(
+                        batchesOf(deferred).map(batch => ({ batch, repair: true })),
+                        ({ batch, repair }) => request(batch, repair)
+                    ));
                 }
                 if (slots.size === 0 && errors.length > 0) {
-                    lastError = errors[0];
+                    lastError = errors.find(isSupersededAbort) || errors[0];
                     console.warn(`[AIAddonManager] Provider ${addon.id} failed for pronunciationSlots:`, lastError?.message || lastError);
-                    if (lastError?.name === 'AbortError' && lastError?.superseded === true) break;
+                    if (isSupersededAbort(lastError)) break;
                 }
                 if (slots.size > 0) {
                     this.emit('ai:request:success', { type: 'pronunciationSlots', provider: addon.id });
