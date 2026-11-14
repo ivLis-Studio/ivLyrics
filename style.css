@@ -11375,7 +11375,9 @@ html.is-lp-view-switch::view-transition-new(root) {
    that the camera element flies through. Every frame writes transforms,
    opacity and a few custom properties; nothing inside the viewport may
    flatten the 3D context (no opacity, filter or overflow on the camera,
-   board or line elements: their opacity is passed down as --lg / --ls). */
+   board or line elements: their opacity is passed down as --lg / --ls).
+   Each word's face (font family, weight, style, tracking) is set inline from
+   MotionLyricsType.js, by the script it is written in. */
 .ivlyrics-motion-stage {
   position: absolute;
   z-index: 0;
@@ -11392,6 +11394,8 @@ html.is-lp-view-switch::view-transition-new(root) {
   background:
     radial-gradient(ellipse 75% 65% at 50% 50%, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.6)),
     rgba(0, 0, 0, 0.38);
+  /* Lightened by the engine in interludes, the intro and the outro. */
+  will-change: opacity;
 }
 
 .ivlyrics-motion-stage[data-mood="dark"] .ivlyrics-motion-scrim,
@@ -11399,6 +11403,13 @@ html.is-lp-view-switch::view-transition-new(root) {
   background:
     radial-gradient(ellipse 70% 60% at 50% 50%, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.7)),
     rgba(0, 0, 0, 0.46);
+}
+
+/* Slow songs get a softer, filmic vignette. */
+.ivlyrics-motion-stage[data-tempo="slow"] .ivlyrics-motion-scrim {
+  background:
+    radial-gradient(ellipse 80% 70% at 50% 50%, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.66)),
+    rgba(0, 0, 0, 0.34);
 }
 
 /* A wash of the board's accent colour over the video; it changes per board. */
@@ -11442,20 +11453,11 @@ html.is-lp-view-switch::view-transition-new(root) {
   position: absolute;
   top: 0;
   left: 0;
-  font-family: var(--iv-motion-display);
-  font-weight: 800;
   font-synthesis: none;
   line-height: 1;
-  letter-spacing: -0.005em;
   white-space: pre;
   transform-origin: 0 0;
   backface-visibility: hidden;
-}
-
-.ivlyrics-motion-word.is-light {
-  font-family: var(--iv-motion-light);
-  font-weight: 250;
-  letter-spacing: -0.02em;
 }
 
 /* Waiting (and sung, dimmer) lines show as outlines. */
@@ -11466,13 +11468,14 @@ html.is-lp-view-switch::view-transition-new(root) {
   opacity: var(--lg, 0.3);
 }
 
-.ivlyrics-motion-word.is-light .ivlyrics-motion-ghost {
+/* Other voices (background vocals, a duet partner) are smaller: they wait as a faint fill. */
+.ivlyrics-motion-word.is-voice .ivlyrics-motion-ghost {
   color: rgba(255, 255, 255, 0.85);
   -webkit-text-stroke: 0;
-  opacity: calc(var(--lg, 0.3) * 0.62);
+  opacity: calc(var(--lg, 0.3) * 0.5);
 }
 
-/* Solid type: each word flies, slams or assembles in as it is sung. */
+/* Solid type: each word flies, slams, blurs or assembles in as it is sung. */
 .ivlyrics-motion-solid {
   position: absolute;
   top: 0;
@@ -11482,6 +11485,11 @@ html.is-lp-view-switch::view-transition-new(root) {
   opacity: calc(var(--ls, 1) * var(--e, 0));
   transform-origin: 50% 62%;
   text-shadow: 0 0.04em 0.22em rgba(0, 0, 0, 0.32);
+}
+
+.ivlyrics-motion-word[dir="rtl"] .ivlyrics-motion-solid {
+  right: 0;
+  left: auto;
 }
 
 .ivlyrics-motion-char {
@@ -11496,7 +11504,18 @@ html.is-lp-view-switch::view-transition-new(root) {
     0 0.04em 0.22em rgba(0, 0, 0, 0.32);
 }
 
-.accent-color .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+.ivlyrics-motion-word.is-background .ivlyrics-motion-solid {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+/* A duet partner sings in the second accent colour. */
+.ivlyrics-motion-word.is-duet .ivlyrics-motion-solid {
+  color: var(--iv-motion-accent-2, #5cd6ff);
+}
+
+.accent-color .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
+.accent-underline .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
+.accent-spark .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
   color: var(--iv-motion-accent, #ff5ca0);
 }
 
@@ -11506,6 +11525,7 @@ html.is-lp-view-switch::view-transition-new(root) {
   text-shadow: none;
 }
 
+/* Highlight box, underline and marker sweep in behind emphasised words. */
 .ivlyrics-motion-box {
   position: absolute;
   inset: 0.02em -0.12em 0.02em;
@@ -11515,9 +11535,57 @@ html.is-lp-view-switch::view-transition-new(root) {
   transform-origin: 0 50%;
 }
 
+.ivlyrics-motion-word[dir="rtl"] .ivlyrics-motion-box {
+  transform-origin: 100% 50%;
+}
+
+.ivlyrics-motion-box.is-underline {
+  inset: auto -0.06em -0.06em;
+  height: max(3px, 0.075em);
+}
+
+.ivlyrics-motion-box.is-mark {
+  inset: 42% -0.1em 4%;
+  opacity: calc(var(--ls, 1) * 0.82);
+  rotate: -1.6deg;
+}
+
 .accent-box .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
   color: #0d0d12;
   text-shadow: none;
+}
+
+.ivlyrics-motion-spark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.9em;
+  height: 1.9em;
+  color: var(--iv-motion-accent, #ff5ca0);
+  visibility: hidden;
+}
+
+.ivlyrics-motion-spark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* A thin rule drawn under the line as it is sung. */
+.ivlyrics-motion-rule {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: max(1.5px, 0.12vh);
+  background: rgba(255, 255, 255, 0.78);
+  opacity: var(--ls, 1);
+  scale: var(--r, 0) 1;
+}
+
+.type-serif .ivlyrics-motion-rule,
+.has-serif .ivlyrics-motion-rule {
+  background: color-mix(in srgb, var(--iv-motion-accent, #fff) 70%, #fff);
 }
 
 .ivlyrics-motion-motif {
@@ -11544,8 +11612,6 @@ html.is-lp-view-switch::view-transition-new(root) {
   position: absolute;
   top: 0;
   left: 0;
-  font-family: var(--iv-motion-display);
-  font-weight: 800;
   font-synthesis: none;
   line-height: 1;
   white-space: pre;
@@ -11553,6 +11619,48 @@ html.is-lp-view-switch::view-transition-new(root) {
   -webkit-text-stroke: max(1.5px, 0.012em) rgba(255, 255, 255, 0.9);
   opacity: 0;
   transform-origin: 0 0;
+}
+
+/* A colour panel that sweeps across the screen on panel cuts. */
+.ivlyrics-motion-panel {
+  position: absolute;
+  top: -20%;
+  left: -40%;
+  width: 180%;
+  height: 140%;
+  background: var(--iv-motion-accent, #ff5ca0);
+  visibility: hidden;
+  will-change: transform;
+}
+
+.ivlyrics-motion-panel.is-alt {
+  background: var(--iv-motion-accent-2, #5cd6ff);
+}
+
+/* Cinematic letterbox bars for the big moments. */
+.ivlyrics-motion-bars {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+}
+
+.ivlyrics-motion-bar {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 11.5%;
+  background: #050507;
+  transform: scaleY(0);
+}
+
+.ivlyrics-motion-bar.is-top {
+  top: 0;
+  transform-origin: 50% 0;
+}
+
+.ivlyrics-motion-bar.is-bottom {
+  bottom: 0;
+  transform-origin: 50% 100%;
 }
 
 .ivlyrics-motion-flash {
@@ -11567,7 +11675,7 @@ html.is-lp-view-switch::view-transition-new(root) {
   position: absolute;
   inset: clamp(18px, 3.2svh, 34px) clamp(20px, 3vw, 44px);
   color: rgba(255, 255, 255, 0.62);
-  font-family: var(--iv-motion-light);
+  font-family: var(--iv-motion-ui);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.14em;
@@ -11627,6 +11735,7 @@ html.is-lp-view-switch::view-transition-new(root) {
   border-radius: 999px;
   background: rgba(14, 14, 18, 0.62);
   color: rgba(255, 255, 255, 0.88);
+  font-family: var(--iv-motion-ui);
   font-size: 12.5px;
   line-height: 1.35;
   transform: translateX(-50%);
@@ -11677,6 +11786,10 @@ html.is-lp-view-switch::view-transition-new(root) {
 
 .ivlyrics-motion-subtitle.has-text {
   opacity: 1;
+}
+
+.ivlyrics-motion-subtitle.has-text.is-resting {
+  opacity: 0;
 }
 
 .ivlyrics-motion-live {

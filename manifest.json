@@ -49,6 +49,7 @@
 		"VinylActiveLyricRenderer.js",
 		"CdVisualizer.js",
 		"MotionLyricsShapes.js",
+		"MotionLyricsType.js",
 		"MotionLyricsDirector.js",
 		"MotionLyrics.js",
 		"VinylPlayerMode.js",

@@ -2,14 +2,20 @@
 //
 // Songs with real word or character timing play as a motion-graphics edit.
 // A director (MotionLyricsDirector.js, written by AI when a provider is
-// available) groups the lines into shots; each shot becomes a board, a
-// composition of several lines in 3D space. A camera flies, rolls and dollies
-// across the boards: upcoming lines wait as faint outlines, each word slams,
-// pops or assembles into solid type as it is sung, and sung lines stay as dim
-// echoes until their board drifts out of view. Motifs and a giant background
-// word animate with each board, and the video background turns and zooms with
-// the camera. Everything is planned once per song and read by playback
-// position, so seeking, pausing and sync offsets need no extra handling.
+// available) groups the lines into shots and paces them to the song's tempo;
+// each shot becomes a board, a composition of several lines in 3D space, set
+// in the faces of its script (MotionLyricsType.js). A camera flies, rolls,
+// orbits and dollies across the boards: upcoming lines wait as faint
+// outlines, each word lands as solid type with its effect as it is sung, and
+// sung lines stay as dim echoes until their board drifts out of view. Motifs,
+// a giant background word, colour panels and letterbox bars animate with each
+// board, and the video background turns and zooms with the camera. Other
+// voices (background vocals, a duet partner) sing in smaller rows of their
+// own line, on their own timing. In interludes the board fades soon after
+// its last word and the camera keeps turning over the video until the
+// lyrics return.
+// Everything is planned once per song and read by playback position, so
+// seeking, pausing and sync offsets need no extra handling.
 (function IvLyricsMotionLyrics(root) {
 	"use strict";
 
@@ -30,7 +36,20 @@
 	const TUNNEL_STEP = 1500;
 	const PUSH_DEPTH = 2300;
 	const PULL_DEPTH = 1900;
-	const FONT_WAIT_MS = 2600;
+	// A dissolve eases the camera this far forward into the next board.
+	const FADE_DEPTH = 420;
+	// Interludes: when the next line is this far off, the board fades soon
+	// after its last word and the camera keeps moving over the video (turning
+	// and pushing in) until the lyrics come back. Rests shorter than
+	// REST_MIN_MS once faded are not worth a fade.
+	const REST_GAP_MS = 5000;
+	const REST_AFTER_MS = 1100;
+	const REST_FADE_MS = 1000;
+	const REST_RETURN_MS = 700;
+	const REST_MIN_MS = 1200;
+	// After the last line the board fades this long after its last word; the camera drifts this long.
+	const OUTRO_REST_MS = 2600;
+	const OUTRO_DRIFT_MS = 16000;
 
 	const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 	const clamp01 = (value) => clamp(value, 0, 1);
@@ -121,12 +140,10 @@
 		return Number.isFinite(number) ? number : NaN;
 	};
 
-	/** The lead voice's timed units (word or character syllables). */
-	const leadSyllablesOf = (line) => {
-		const lead = line?.vocals?.lead?.syllables;
-		const list = Array.isArray(lead) && lead.length ? lead : (Array.isArray(line?.syllables) ? line.syllables : []);
+	/** Timed units (word or character syllables) with usable times. */
+	const timedUnits = (list) => {
 		const syllables = [];
-		for (const syllable of list) {
+		for (const syllable of Array.isArray(list) ? list : []) {
 			const text = String(syllable?.text ?? "");
 			const start = finiteTime(syllable?.startTime ?? syllable?.karaokeFillStartTime);
 			const end = finiteTime(syllable?.endTime ?? syllable?.karaokeFillEndTime);
@@ -134,6 +151,17 @@
 			syllables.push({ text, start, end: Number.isFinite(end) && end >= start ? end : start });
 		}
 		return syllables;
+	};
+
+	const hasLeadVocal = (line) => Array.isArray(line?.vocals?.lead?.syllables) && line.vocals.lead.syllables.length > 0;
+
+	/** The lead voice's timed units. */
+	const leadSyllablesOf = (line) => timedUnits(hasLeadVocal(line) ? line.vocals.lead.syllables : line?.syllables);
+
+	/** The lead voice's text, which carries its word spaces (a multi-voice line's own text mixes the voices). */
+	const leadTextOf = (line) => {
+		if (hasLeadVocal(line)) return typeof line.vocals.lead.text === "string" ? line.vocals.lead.text : "";
+		return typeof line?.originalText === "string" && line.originalText.trim() ? line.originalText : String(line?.text ?? "");
 	};
 
 	/** Whether the lyrics carry real (not estimated) word or character timing. */
@@ -144,14 +172,11 @@
 
 	/**
 	 * Characters of a line with the time each is sung. Word breaks come from
-	 * the line text when it spells the same letters (some sources leave the
+	 * the voice's text when it spells the same letters (some sources leave the
 	 * spaces out of the syllables), otherwise from the syllables' own spaces.
 	 */
-	const buildChars = (line, syllables) => {
+	const buildChars = (lineText, syllables) => {
 		const plain = syllables.map((syllable) => syllable.text).join("").replace(/\s+/gu, "");
-		const lineText = typeof line?.originalText === "string" && line.originalText.trim()
-			? line.originalText
-			: String(line?.text ?? "");
 		const useLineSpaces = lineText.replace(/\s+/gu, "") === plain;
 		const breaks = new Set();
 		if (useLineSpaces) {
@@ -283,13 +308,12 @@
 		end: Math.max(...chars.map((char) => char.end)),
 	});
 
-	/** Words of a line, each with its characters and their timing. */
-	const buildWords = (line) => {
-		const syllables = leadSyllablesOf(line);
+	/** Words of one voice, each with its characters and their timing. */
+	const wordsOf = (text, syllables) => {
 		if (!syllables.length) return [];
 		const runs = [];
 		let current = [];
-		for (const char of buildChars(line, syllables)) {
+		for (const char of buildChars(String(text ?? ""), syllables)) {
 			if (char.space) {
 				if (current.length) runs.push(current);
 				current = [];
@@ -313,22 +337,64 @@
 		return words;
 	};
 
+	/** Words of a line's lead voice. */
+	const buildWords = (line) => wordsOf(leadTextOf(line), leadSyllablesOf(line));
+
+	const MAX_BACKING_VOICES = 3;
+
+	/**
+	 * The other voices sung with a line, each with its own timing: background
+	 * vocals, or a duet partner (another lead part, or another singer).
+	 */
+	const backingOf = (line) => {
+		const parts = Array.isArray(line?.vocals?.background) ? line.vocals.background : [];
+		const leadSpeaker = String(line?.vocals?.lead?.speaker || "");
+		const voices = [];
+		for (const part of parts) {
+			if (voices.length >= MAX_BACKING_VOICES) break;
+			const units = timedUnits(part?.syllables);
+			const words = wordsOf(String(part?.text ?? ""), units);
+			if (!words.some((word) => SOUND_RE.test(word.text))) continue;
+			const speaker = String(part?.speaker || "");
+			const duet = part?.role === "lead" || (!!speaker && !!leadSpeaker && speaker !== leadSpeaker);
+			voices.push({
+				role: duet ? "duet" : "background",
+				words,
+				units,
+				text: words.map((word) => word.text).join(" "),
+				start: words[0].start,
+				end: Math.max(...words.map((word) => word.end)),
+			});
+		}
+		return voices;
+	};
+
 	/** Lines that can play, in time order. */
 	const buildModel = (lyrics) => {
 		const lines = [];
 		(Array.isArray(lyrics) ? lyrics : []).forEach((line, index) => {
-			const words = buildWords(line);
-			if (!words.length || !words.some((word) => SOUND_RE.test(word.text))) return;
-			const syllables = leadSyllablesOf(line);
+			let words = buildWords(line);
+			let syllables = leadSyllablesOf(line);
+			let backing = backingOf(line);
+			if (!words.some((word) => SOUND_RE.test(word.text))) {
+				// Only the other voices sing here: the first of them leads the line.
+				if (!backing.length) return;
+				words = backing[0].words;
+				syllables = backing[0].units;
+				backing = backing.slice(1);
+			}
 			const single = syllables.filter((syllable) => graphemesOf(syllable.text.trim()).length <= 1).length;
+			const ends = [...words, ...backing.flatMap((voice) => voice.words)].map((word) => word.end);
 			lines.push({
 				index,
 				words,
+				backing,
 				text: words.map((word) => word.text).join(" "),
-				start: words[0].start,
-				end: Math.max(...words.map((word) => word.end)),
+				// The line spans every voice in it; its lead words decide when the camera may leave.
+				start: Math.min(words[0].start, ...backing.map((voice) => voice.start)),
+				end: Math.max(...ends),
 				chars: words.reduce((count, word) => count + word.chars.length, 0),
-				charTimed: single / syllables.length >= 0.7,
+				charTimed: syllables.length > 0 && single / syllables.length >= 0.7,
 				translation: translationOf(line),
 			});
 		});
@@ -336,6 +402,8 @@
 	};
 
 	const modelSignature = (lines) => lines.map((line) => Math.round(line.start) + ":" + line.text).join("\u0001");
+	/** The other voices too, so a change to them re-plans the song (the AI reads only the lead). */
+	const voicesSignature = (lines) => lines.map((line) => (line.backing || []).map((voice) => Math.round(voice.start) + ":" + voice.text).join("|")).join("\u0001");
 
 	// ---------------------------------------------------------------------
 	// Energy from the audio analysis (or the singing density without it)
@@ -387,7 +455,7 @@
 	};
 
 	// ---------------------------------------------------------------------
-	// Colour and type
+	// Colour
 	// ---------------------------------------------------------------------
 
 	const parseColor = (value) => {
@@ -439,81 +507,98 @@
 		return [first, hslToHex([(hue + 0.42) % 1, Math.max(0.62, saturation), 0.66])];
 	};
 
-	const FONT_LINK_ID = "ivlyrics-motion-fonts";
-	const FONT_URL = "https://fonts.googleapis.com/css2?family=Anton&family=Black+Han+Sans&family=Dela+Gothic+One&family=ZCOOL+QingKe+HuangYou&display=swap";
-	const DISPLAY_FAMILIES = ["Anton", "Dela Gothic One", "Black Han Sans", "ZCOOL QingKe HuangYou"];
-	const DISPLAY_FONT = DISPLAY_FAMILIES.map((family) => '"' + family + '"').join(", ") + ', "Pretendard Variable", Pretendard, sans-serif';
-	const LIGHT_FONT = '"Pretendard Variable", Pretendard, "Hiragino Sans", "Apple SD Gothic Neo", sans-serif';
-	const FONT_ROLES = Object.freeze({
-		display: { family: DISPLAY_FONT, weight: 800, spacing: -0.005, lineHeight: 1.02 },
-		light: { family: LIGHT_FONT, weight: 250, spacing: -0.02, lineHeight: 1.16 },
-	});
-	const HANGUL_RE = /\p{Script=Hangul}/u;
-	let fontCss = null;
+	// ---------------------------------------------------------------------
+	// Type: faces per script (MotionLyricsType.js) and the fonts a song needs
+	// ---------------------------------------------------------------------
 
-	/** Loads the display faces for the song's characters (bounded wait; fallbacks still render). */
-	const ensureFonts = (document, sample) => {
-		if (!document?.head || typeof document.createElement !== "function") return Promise.resolve(false);
-		if (!fontCss) {
-			fontCss = new Promise((resolve) => {
-				let link = document.getElementById(FONT_LINK_ID);
-				if (link?.sheet) {
-					resolve(true);
-					return;
-				}
-				if (!link) {
-					link = document.createElement("link");
-					link.id = FONT_LINK_ID;
-					link.rel = "stylesheet";
-					link.href = FONT_URL;
-					document.head.appendChild(link);
-				}
-				link.addEventListener("load", () => resolve(true), { once: true });
-				link.addEventListener("error", () => resolve(false), { once: true });
-				root.setTimeout(() => resolve(false), FONT_WAIT_MS);
-			});
-		}
-		const fonts = document.fonts;
-		const text = String(sample || "Aa").slice(0, 600) || "Aa";
-		const wait = new Promise((resolve) => root.setTimeout(resolve, FONT_WAIT_MS, false));
-		const load = fontCss.then(() => {
-			if (typeof fonts?.load !== "function") return false;
-			return Promise.all([
-				...DISPLAY_FAMILIES.map((family) => fonts.load('400 64px "' + family + '"', text).catch(() => [])),
-				fonts.load('250 64px "Pretendard Variable"', text).catch(() => []),
-			]).then(() => true);
-		});
-		return Promise.race([load, wait]);
-	};
+	const typeLib = () => root.ivLyricsMotionType;
+	const UI_FONT = '"Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Hiragino Sans", sans-serif';
+	const FALLBACK_SPEC = Object.freeze({ key: "fallback", script: "latin", kind: "impact", family: UI_FONT, load: null, weight: 800, style: "normal", spacing: 0, lineHeight: 1.08, scale: 1, canvasFont: "normal 800 100px sans-serif" });
+	const fallbackMeasure = (text, size) => graphemesOf(text).reduce((sum, piece) => sum + (CJK_RE.test(piece) || /\p{Script=Hangul}/u.test(piece) ? 1 : 0.56), 0) * size;
+	const DEFAULT_INFO = Object.freeze({ script: "latin", rtl: false, joined: false, lang: "", words: [] });
+	// Word-level stand-ins for letter effects in scripts whose letters join.
+	const JOINED_FX = Object.freeze({ type: "wipe", assemble: "blur", drop: "rise", wave: "rise", track: "wipe", bounce: "pop", flicker: "wipe" });
 
-	const createMeasurer = (document) => {
-		const canvas = document?.createElement?.("canvas");
-		const context = canvas?.getContext?.("2d");
-		const cache = new Map();
-		return (text, size, role = "display") => {
-			const font = FONT_ROLES[role] || FONT_ROLES.display;
-			const key = role + "\u0001" + text;
-			let width = cache.get(key);
-			if (width === undefined) {
-				const pieces = graphemesOf(text);
-				if (context) {
-					context.font = font.weight + " 100px " + font.family;
-					width = context.measureText(text).width + font.spacing * 100 * pieces.length;
-				} else {
-					width = pieces.reduce((sum, piece) => sum + (CJK_RE.test(piece) || HANGUL_RE.test(piece) ? 100 : role === "display" ? 50 : 56), 0);
-				}
-				cache.set(key, width);
-			}
-			return (width * size) / 100;
+	const createFontBook = () => {
+		const specs = new Map();
+		return (script, personality = "impact", role = "display") => {
+			const key = script + "|" + personality + "|" + role;
+			if (!specs.has(key)) specs.set(key, typeLib()?.fontSpec?.(script, personality, role) || FALLBACK_SPEC);
+			return specs.get(key);
 		};
 	};
-	const fallbackMeasure = createMeasurer(null);
+	const casedText = (text, script, upper) => typeLib()?.casedText?.(text, script, upper) ?? String(text);
+	/** The face of a word: a shot's emphasised words may switch to the serif. */
+	const faceOf = (type, serif, isEmph) => (isEmph && serif ? "serif" : type);
+
+	/**
+	 * The faces a direction will set, each with the characters it sets, so
+	 * they can load before the song is composed.
+	 */
+	const fontNeeds = (model, direction, typography) => {
+		const needs = new Map();
+		const font = createFontBook();
+		const add = (spec, text) => {
+			if (!spec?.load) return;
+			const entry = needs.get(spec.key) || { spec, sample: "" };
+			if (entry.sample.length < 400) entry.sample += text;
+			needs.set(spec.key, entry);
+		};
+		for (const shot of direction?.shots || []) {
+			const type = shot.type || "impact";
+			const cased = (text, script) => text + (shot.upper ? casedText(text, script, true) : "");
+			for (let index = shot.from; index <= shot.to; index += 1) {
+				const line = model[index];
+				const info = typography?.[index] || DEFAULT_INFO;
+				if (!line) continue;
+				const emph = new Set(direction?.lines?.[index]?.emph || []);
+				line.words.forEach((word, wordIndex) => {
+					const script = info.words[wordIndex] || info.script;
+					const text = cased(word.text, script);
+					add(font(script, faceOf(type, shot.serif, emph.has(wordIndex)), "display"), text);
+					add(font(script, type, "light"), text);
+				});
+				(line.backing || []).forEach((voice, voiceIndex) => voice.words.forEach((word, position) => {
+					const script = info.backing?.[voiceIndex]?.[position] || info.script;
+					add(font(script, type, voice.role === "duet" ? "display" : "light"), cased(word.text, script));
+				}));
+			}
+			if (shot.echo) add(font(typeLib()?.scriptOf?.(shot.echo) || "latin", type, "display"), shot.echo);
+		}
+		return needs;
+	};
 
 	// ---------------------------------------------------------------------
 	// Composition: a line's words, then a board of lines (board-local px)
 	// ---------------------------------------------------------------------
 
 	const EMPTY_SET = new Set();
+
+	/** A line's words with the face, cased text and natural width each is set in. */
+	const itemsOf = (line, ctx, options) => {
+		const { size, emph = EMPTY_SET, emphScale = 1.3, light = false, type = "impact", serif = false, upper = false } = options;
+		const info = ctx.typography[line.n] || DEFAULT_INFO;
+		return line.words.map((word, index) => {
+			const isEmph = emph.has(index);
+			const script = info.words[index] || info.script;
+			const role = light && !isEmph ? "light" : "display";
+			const spec = ctx.font(script, faceOf(type, serif, isEmph), role);
+			const text = casedText(word.text, script, upper && spec.kind === "impact");
+			const wordSize = size * spec.scale * (isEmph ? emphScale : 1) * (role === "light" ? 0.94 : 1);
+			return {
+				index,
+				spec,
+				text,
+				role,
+				emph: isEmph,
+				letters: !typeLib()?.JOINED?.has(script),
+				size: wordSize,
+				width: ctx.measure(text, wordSize, spec),
+				// Words the segmenter split from one unspaced run stay close.
+				gap: index ? size * (word.joined ? 0.05 + spec.spacing : 0.27 + spec.spacing) : 0,
+			};
+		});
+	};
 
 	const splitRows = (items, count, total) => {
 		const target = total / count;
@@ -534,64 +619,145 @@
 		if (row.length) rows.push(row);
 		return rows;
 	};
+	const rowWidth = (row) => row.reduce((sum, item, position) => sum + item.width + (position ? item.gap : 0), 0);
 
-	/** A line's words in up to four rows, centred on the line's origin. */
-	const layoutBlock = (line, ctx, options) => {
-		const { size, maxLength, emph = EMPTY_SET, emphScale = 1.3, light = false, align = "center" } = options;
-		const items = line.words.map((word, index) => {
-			const isEmph = emph.has(index);
-			const role = light && !isEmph ? "light" : "display";
-			const wordSize = size * (isEmph ? emphScale : 1) * (role === "light" ? 0.94 : 1);
-			return {
-				index,
-				role,
-				emph: isEmph,
-				size: wordSize,
-				width: ctx.measure(word.text, wordSize, role),
-				// Words the segmenter split from one unspaced run stay close.
-				gap: index ? size * (word.joined ? 0.05 : 0.27) : 0,
-			};
-		});
-		const rowWidth = (row) => row.reduce((sum, item, position) => sum + item.width + (position ? item.gap : 0), 0);
+	/** Items in up to `most` rows no wider than maxLength, and the scale that makes them fit. */
+	const fitRows = (items, maxLength, most) => {
 		const total = rowWidth(items);
 		let rows = [items];
 		if (total > maxLength && items.length > 1) {
-			for (let count = 2; count <= Math.min(4, items.length); count += 1) {
+			for (let count = 2; count <= Math.min(most, items.length); count += 1) {
 				rows = splitRows(items, count, total);
 				if (Math.max(...rows.map(rowWidth)) <= maxLength) break;
 			}
 		}
 		const widest = Math.max(...rows.map(rowWidth));
-		const scale = widest > maxLength ? maxLength / widest : 1;
-		const metrics = rows.map((row) => {
-			const tallest = Math.max(...row.map((item) => item.size)) * scale;
-			const lineHeight = row.some((item) => item.role === "display") ? FONT_ROLES.display.lineHeight : FONT_ROLES.light.lineHeight;
-			return { row, width: rowWidth(row) * scale, height: tallest * lineHeight, tallest };
+		return { rows, scale: widest > maxLength ? maxLength / widest : 1 };
+	};
+
+	// Other voices are set smaller than the lead: background vocals much smaller, a duet partner a little.
+	const VOICE_SCALE = Object.freeze({ background: 0.56, duet: 0.8 });
+
+	/**
+	 * Rows for the other voices of a line: background vocals in the companion
+	 * face, a duet partner in the shot's face, under the lead (above it when
+	 * they start first). scale is the lead's row scale; maxLength is final px.
+	 */
+	const voiceRows = (line, ctx, options, scale, maxLength) => {
+		const above = [];
+		const below = [];
+		const info = ctx.typography[line.n] || DEFAULT_INFO;
+		let index = line.words.length;
+		(line.backing || []).forEach((voice, voiceIndex) => {
+			const duet = voice.role === "duet";
+			const role = duet ? "display" : "light";
+			const size = options.size * (VOICE_SCALE[voice.role] || VOICE_SCALE.background);
+			const items = voice.words.map((word, position) => {
+				const script = info.backing?.[voiceIndex]?.[position] || info.script;
+				const spec = ctx.font(script, options.type || "impact", role);
+				const text = casedText(word.text, script, options.upper && spec.kind === "impact");
+				const itemSize = size * spec.scale;
+				return {
+					index: index++,
+					spec,
+					text,
+					role,
+					emph: false,
+					voice: voiceIndex + 1,
+					letters: !typeLib()?.JOINED?.has(script),
+					size: itemSize,
+					width: ctx.measure(text, itemSize, spec),
+					gap: position ? size * (word.joined ? 0.05 + spec.spacing : 0.27 + spec.spacing) : 0,
+				};
+			});
+			const fit = fitRows(items, maxLength / scale, 3);
+			const target = voice.start < line.words[0].start - 250 ? above : below;
+			for (const row of fit.rows) target.push({ row, scale: scale * fit.scale });
 		});
-		const rowGap = size * scale * 0.05;
+		return { above, below };
+	};
+
+	const withVoices = (rows, scales, voices) => ({
+		rows: [...voices.above.map((entry) => entry.row), ...rows, ...voices.below.map((entry) => entry.row)],
+		scales: [...voices.above.map((entry) => entry.scale), ...scales, ...voices.below.map((entry) => entry.scale)],
+	});
+
+	/**
+	 * Rows of items stacked into a block centred on the origin. Each row has
+	 * its own scale; right-to-left lines read from the right.
+	 */
+	const stackRows = (rows, scales, align, rtl, rowGapSize) => {
+		const metrics = rows.map((row, index) => {
+			const scale = scales[index];
+			const tallest = Math.max(...row.map((item) => item.size)) * scale;
+			const lineHeight = Math.max(...row.map((item) => item.spec.lineHeight));
+			return { row, scale, width: rowWidth(row) * scale, height: tallest * lineHeight, tallest };
+		});
+		const rowGap = rowGapSize * 0.05;
 		const width = Math.max(...metrics.map((metric) => metric.width));
 		const height = metrics.reduce((sum, metric) => sum + metric.height, 0) + rowGap * (metrics.length - 1);
-		const words = new Array(items.length);
+		const words = [];
 		let top = -height / 2;
 		for (const metric of metrics) {
 			let x = align === "left" ? -width / 2 : align === "right" ? width / 2 - metric.width : -metric.width / 2;
 			metric.row.forEach((item, position) => {
-				if (position) x += item.gap * scale;
-				const itemWidth = item.width * scale;
-				const itemSize = item.size * scale;
+				if (position) x += item.gap * metric.scale;
+				const itemWidth = item.width * metric.scale;
+				const itemSize = item.size * metric.scale;
+				const center = x + itemWidth / 2;
 				words[item.index] = {
-					x: x + itemWidth / 2,
+					x: rtl ? -center : center,
 					y: top + metric.height / 2 + (metric.tallest - itemSize) * 0.3,
 					size: itemSize,
 					width: itemWidth,
 					role: item.role,
 					emph: item.emph,
+					voice: item.voice || 0,
+					spec: item.spec,
+					text: item.text,
+					letters: item.letters,
 				};
 				x += itemWidth;
 			});
 			top += metric.height + rowGap;
 		}
-		return { words, width, height, size: size * scale, rows: metrics.length };
+		return { words, width, height, rows: metrics.length };
+	};
+
+	/**
+	 * A line's words in up to four rows, centred on the line's origin, with
+	 * its other voices in smaller rows. leadWidth is the lead's own width.
+	 */
+	const layoutBlock = (line, ctx, options) => {
+		const { size, maxLength, align = "center" } = options;
+		const rtl = (ctx.typography[line.n] || DEFAULT_INFO).rtl;
+		const lead = fitRows(itemsOf(line, ctx, options), maxLength, 4);
+		const { rows, scales } = withVoices(lead.rows, lead.rows.map(() => lead.scale), voiceRows(line, ctx, options, lead.scale, maxLength));
+		const block = stackRows(rows, scales, align, rtl, size * lead.scale);
+		return { ...block, size: size * lead.scale, rtl, leadWidth: Math.max(...lead.rows.map(rowWidth)) * lead.scale };
+	};
+
+	/** A line set as a justified tower: one or two words per row, every row the same width. */
+	const towerBlock = (line, ctx, width, options) => {
+		const rtl = (ctx.typography[line.n] || DEFAULT_INFO).rtl;
+		const sized = { ...options, size: 100 };
+		const items = itemsOf(line, ctx, sized);
+		const count = items.length <= 4 ? items.length : Math.min(4, Math.ceil(items.length / 2));
+		const rows = count <= 1 ? [items] : splitRows(items, count, rowWidth(items));
+		const scaleOf = (row) => clamp(width / Math.max(1, rowWidth(row)), (ctx.F * 0.5) / 100, (ctx.F * 2.4) / 100);
+		// The other voices sit under the tower, sized from its smallest row.
+		const build = (scales) => {
+			const all = withVoices(rows, scales, voiceRows(line, ctx, sized, Math.min(...scales), width));
+			return stackRows(all.rows, all.scales, options.align || "center", rtl, ctx.F);
+		};
+		let scales = rows.map(scaleOf);
+		let block = build(scales);
+		if (block.height > ctx.H * 0.78) {
+			const shrink = (ctx.H * 0.78) / block.height;
+			scales = scales.map((scale) => scale * shrink);
+			block = build(scales);
+		}
+		return { ...block, size: 100 * Math.max(...scales), rtl };
 	};
 
 	const rotatedExtent = (block, rot) => {
@@ -623,8 +789,9 @@
 			return { x: place.x + point.x, y: place.y + point.y };
 		});
 	};
-	/** Thin type sets off the heavy emphasised words, so a line goes thin only when it has some. */
+	/** The companion face sets off the emphasised words, so a line uses it only when it has some. */
 	const lightFor = (look, line) => look.light && look.emph(line).size > 0;
+	const blockOptions = (look, line, extra) => ({ emph: look.emph(line), type: look.type, serif: look.serif, upper: look.upper, light: lightFor(look, line), ...extra });
 	/** Short lines are set larger. */
 	const boostOf = (line) => (line.chars <= 4 ? 1.36 : line.chars <= 8 ? 1.16 : 1);
 	/** The camera follows a line part of the way from the board's centre, keeping all of it in frame. */
@@ -636,13 +803,11 @@
 
 	const layoutColumn = (lines, ctx, random, look) => {
 		const align = ["left", "left", "center", "right", "stagger"][Math.floor(random() * 5)];
-		const blocks = lines.map((line, index) => layoutBlock(line, ctx, {
+		const blocks = lines.map((line, index) => layoutBlock(line, ctx, blockOptions(look, line, {
 			size: ctx.F * 0.84 * boostOf(line),
 			maxLength: ctx.W * 0.78,
-			emph: look.emph(line),
-			light: lightFor(look, line),
 			align: align === "stagger" ? (index % 2 ? "right" : "left") : align,
-		}));
+		})));
 		const columnWidth = Math.max(...blocks.map((block) => block.width));
 		const places = [];
 		let y = 0;
@@ -667,12 +832,11 @@
 		const places = [];
 		lines.forEach((line, index) => {
 			const vertical = index % 2 === 1;
-			const block = layoutBlock(line, ctx, {
+			const block = layoutBlock(line, ctx, blockOptions(look, line, {
 				size: ctx.F * 0.8 * boostOf(line),
 				maxLength: ctx.W * 0.72,
-				emph: look.emph(line),
 				light: lightFor(look, line) && vertical,
-			});
+			}));
 			const rot = vertical ? turn : 0;
 			if (!index) {
 				places.push({ x: 0, y: 0, z: 0, rot, block });
@@ -697,12 +861,10 @@
 	// Up to four lines around a square: the screen turns a quarter for each.
 	const layoutSpiral = (lines, ctx, random, look) => {
 		const direction = random() < 0.5 ? 1 : -1;
-		const blocks = lines.map((line) => layoutBlock(line, ctx, {
+		const blocks = lines.map((line) => layoutBlock(line, ctx, blockOptions(look, line, {
 			size: ctx.F * 0.72 * boostOf(line),
 			maxLength: ctx.W * 0.58,
-			emph: look.emph(line),
-			light: lightFor(look, line),
-		}));
+		})));
 		const longest = Math.max(...blocks.map((block) => block.width));
 		const thickest = Math.max(...blocks.map((block) => block.height));
 		const radius = longest / 2 + thickest * 1.12;
@@ -724,9 +886,8 @@
 		const places = [];
 		let y = 0;
 		lines.forEach((line, index) => {
-			const light = alternate && index % 2 === 1;
-			const options = { emph: look.emph(line), emphScale: 1.12, light, align };
-			const natural = layoutBlock(line, ctx, { ...options, size: 100, maxLength: Infinity }).width / 100;
+			const options = blockOptions(look, line, { emphScale: 1.12, light: alternate && index % 2 === 1, align });
+			const natural = layoutBlock(line, ctx, { ...options, size: 100, maxLength: Infinity }).leadWidth / 100;
 			const size = clamp(width / Math.max(1, natural), ctx.F * 0.42, ctx.F * 2.3);
 			// The natural width already fits; the slack keeps rounding from wrapping it.
 			const block = layoutBlock(line, ctx, { ...options, size, maxLength: width * 1.02 });
@@ -755,7 +916,7 @@
 				y: index ? between(random, -0.12, 0.12) * ctx.H : 0,
 				z: -index * TUNNEL_STEP,
 				rot: index ? between(random, -7, 7) : 0,
-				block: layoutBlock(line, ctx, { size: ctx.F * 0.9 * boostOf(line), maxLength: ctx.W * 0.76, emph: look.emph(line), light: lightFor(look, line) }),
+				block: layoutBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 0.9 * boostOf(line), maxLength: ctx.W * 0.76 })),
 			};
 		});
 		const frames = places.map((place) => ({ x: place.x, y: place.y, z: place.z, roll: place.rot }));
@@ -768,12 +929,11 @@
 		const places = [];
 		lines.forEach((line, index) => {
 			const vertical = index > 0 && line.chars <= 8 && random() < 0.24;
-			const block = layoutBlock(line, ctx, {
+			const block = layoutBlock(line, ctx, blockOptions(look, line, {
 				size: ctx.F * between(random, 0.62, 1.02) * boostOf(line),
 				maxLength: ctx.W * 0.6,
-				emph: look.emph(line),
 				light: lightFor(look, line) && random() < 0.6,
-			});
+			}));
 			const rot = vertical ? (random() < 0.5 ? 90 : -90) : between(random, -11, 11);
 			const box = rotatedExtent(block, rot);
 			const previous = placed[placed.length - 1] || null;
@@ -810,19 +970,40 @@
 	// One line filling the screen, an optional second one small beneath it.
 	const layoutHero = (lines, ctx, random, look) => {
 		const [first, second] = lines;
-		const options = { emph: look.emph(first), emphScale: 1.25 };
-		const natural = layoutBlock(first, ctx, { ...options, size: 100, maxLength: Infinity }).width / 100;
+		const options = blockOptions(look, first, { emphScale: 1.25, light: false });
+		const natural = layoutBlock(first, ctx, { ...options, size: 100, maxLength: Infinity }).leadWidth / 100;
 		const size = clamp((ctx.W * 0.84) / Math.max(1, natural), ctx.F * 0.9, ctx.F * 2.5);
 		let block = layoutBlock(first, ctx, { ...options, size, maxLength: ctx.W * 0.86 });
 		if (block.height > ctx.H * 0.56) block = layoutBlock(first, ctx, { ...options, size: (size * ctx.H * 0.56) / block.height, maxLength: ctx.W * 0.86 });
 		const places = [{ x: 0, y: 0, z: 0, rot: 0, block }];
 		if (second) {
-			const small = layoutBlock(second, ctx, { size: Math.max(ctx.F * 0.5, block.size * 0.42), maxLength: ctx.W * 0.8, emph: look.emph(second), light: true });
+			const small = layoutBlock(second, ctx, blockOptions(look, second, {
+				size: Math.max(ctx.F * 0.5, block.size * 0.42),
+				maxLength: ctx.W * 0.8,
+				light: true,
+			}));
 			places.push({ x: 0, y: block.height / 2 + ctx.F * 0.28 + small.height / 2, z: 0, rot: 0, block: small });
 			centerPlaces(places);
 		}
 		const frames = places.map((place) => ({ x: 0, y: place.y * 0.5, z: 0, roll: 0 }));
 		return { places, frames, drift: { z: 170, roll: 1.2 } };
+	};
+
+	// Each line a justified tower of its words, the lines stacked like a poster.
+	const layoutTower = (lines, ctx, random, look) => {
+		const width = ctx.W * between(random, 0.4, 0.54);
+		const align = random() < 0.5 ? "left" : "center";
+		const places = [];
+		let y = 0;
+		lines.forEach((line, index) => {
+			const block = towerBlock(line, ctx, width, blockOptions(look, line, { emphScale: 1.1, align }));
+			if (index) y += ctx.F * 0.24;
+			places.push({ x: 0, y: y + block.height / 2, z: 0, rot: 0, block });
+			y += block.height;
+		});
+		places.forEach((place) => { place.y -= y / 2; });
+		const frames = places.map((place) => ({ x: 0, y: place.y, z: Math.max(0, (place.block.height - ctx.H * 0.6) * 0.9), roll: 0 }));
+		return { places, frames, drift: { z: 110, roll: 1 } };
 	};
 
 	const LAYOUT_FNS = Object.freeze({
@@ -833,6 +1014,7 @@
 		tunnel: layoutTunnel,
 		collage: layoutCollage,
 		hero: layoutHero,
+		tower: layoutTower,
 	});
 	const BIG_MOTIFS = new Set(["ring", "halo", "sunburst", "spiral", "moon", "sun", "disc", "square", "flower", "star", "frame"]);
 	const CALM_MOTIFS = new Set(["ring", "dot", "disc", "halo", "moon", "sun"]);
@@ -857,7 +1039,7 @@
 					z: -340,
 					size: clamp(Math.max(extent.w, extent.h) * 0.78, ctx.F * 2.4, ctx.H * 0.95),
 					rot: between(random, -20, 20),
-					spin: between(random, -7, 7),
+					spin: between(random, -7, 7) * ctx.spin,
 					accent: random() < 0.5,
 					opacity: 0.2,
 				});
@@ -881,24 +1063,28 @@
 				z: between(random, -60, 40),
 				size,
 				rot: between(random, -30, 30),
-				spin: between(random, -42, 42) * (CALM_MOTIFS.has(name) ? 0.25 : 1),
+				spin: between(random, -42, 42) * (CALM_MOTIFS.has(name) ? 0.25 : 1) * ctx.spin,
 				accent: random() < 0.55,
 				opacity: 0.94,
 			});
 		});
 		let echo = null;
 		if (shot.echo) {
+			const script = typeLib()?.scriptOf?.(shot.echo, ctx.songLang) || "latin";
+			const spec = ctx.font(script, board.type, "display");
+			const text = casedText(shot.echo, script, board.upper);
 			const vertical = board.layout === "zigzag" && random() < 0.5;
-			const natural = Math.max(0.5, ctx.measure(shot.echo, 100, "display") / 100);
+			const natural = Math.max(0.5, ctx.measure(text, 100, spec) / 100);
 			const span = vertical ? Math.max(extent.h, ctx.H) * 1.05 : Math.max(extent.w, ctx.W) * 1.08;
 			echo = {
-				text: shot.echo,
+				text,
+				spec,
 				x: extent.cx,
 				y: extent.cy,
 				z: -460,
 				size: clamp(span / natural, ctx.F * 1.6, ctx.F * 5.5),
 				rot: vertical ? 90 : between(random, -4, 4),
-				drift: (random() < 0.5 ? -1 : 1) * ctx.W * between(random, 0.03, 0.07),
+				drift: (random() < 0.5 ? -1 : 1) * ctx.W * between(random, 0.03, 0.07) * (ctx.tempo === "slow" ? 1.8 : 1),
 			};
 		}
 		return { motifs, echo };
@@ -909,16 +1095,24 @@
 	// ---------------------------------------------------------------------
 
 	const MOODS = Object.freeze({
-		calm: { pace: 1.15, shake: 0.55, punch: 0.6 },
-		dreamy: { pace: 1.2, shake: 0.5, punch: 0.5 },
-		melancholic: { pace: 1.15, shake: 0.5, punch: 0.55 },
-		warm: { pace: 1, shake: 0.8, punch: 0.9 },
-		playful: { pace: 0.95, shake: 1, punch: 1 },
-		energetic: { pace: 0.88, shake: 1.15, punch: 1.25 },
-		intense: { pace: 0.85, shake: 1.35, punch: 1.45 },
-		dark: { pace: 1.05, shake: 0.9, punch: 1.1 },
+		calm: { shake: 0.55, punch: 0.6 },
+		dreamy: { shake: 0.5, punch: 0.5 },
+		melancholic: { shake: 0.5, punch: 0.55 },
+		warm: { shake: 0.8, punch: 0.9 },
+		playful: { shake: 1, punch: 1 },
+		energetic: { shake: 1.15, punch: 1.25 },
+		intense: { shake: 1.35, punch: 1.45 },
+		dark: { shake: 0.9, punch: 1.1 },
+	});
+	// How the song's tempo scales the camera: drift while a line is held, handheld shake, motif spin.
+	const TEMPO_FEEL = Object.freeze({
+		slow: { drift: 1.7, shake: 0.55, sway: 1.6, spin: 0.5, swing: 0.55 },
+		mid: { drift: 1, shake: 1, sway: 1, spin: 1, swing: 1 },
+		fast: { drift: 0.8, shake: 1.2, sway: 0.7, spin: 1.3, swing: 1.15 },
+		rap: { drift: 0.7, shake: 1.35, sway: 0.6, spin: 1.4, swing: 1.2 },
 	});
 	const moodOf = (plan) => MOODS[plan?.mood] || MOODS.warm;
+	const feelOf = (plan) => TEMPO_FEEL[plan?.tempo] || TEMPO_FEEL.mid;
 	const toWorld = (board, x, y) => {
 		const point = rotate2d(x, y, board.roll);
 		return { x: board.origin.x + point.x, y: board.origin.y + point.y };
@@ -929,6 +1123,11 @@
 		while (previous - value > 180.001) value += 360;
 		return value;
 	};
+	// Entrances that travel sideways, downwards, upwards, through depth or stay put.
+	const SIDEWAYS = new Set(["pan", "cut", "whip", "spin", "orbit", "panel"]);
+	const DOWNWARDS = new Set(["drop", "flip", "tumble"]);
+	const IN_DEPTH = { push: -PUSH_DEPTH, through: -PUSH_DEPTH, pull: PULL_DEPTH, fade: -FADE_DEPTH };
+	const HARD_CUTS = new Set(["cut", "panel"]);
 
 	/** Puts each board next to the last one, out of its way, in the direction its entrance moves. */
 	const placeBoards = (boards, ctx, seed) => {
@@ -950,8 +1149,8 @@
 				const down = rotate2d(0, 1, theta);
 				const sideways = random() < 0.5 ? 1 : -1;
 				let direction = null;
-				if (enter === "pan" || enter === "cut") direction = { x: right.x * sideways, y: right.y * sideways };
-				else if (enter === "drop" || enter === "flip") direction = down;
+				if (SIDEWAYS.has(enter)) direction = { x: right.x * sideways, y: right.y * sideways };
+				else if (DOWNWARDS.has(enter)) direction = down;
 				else if (enter === "rise") direction = { x: -down.x, y: -down.y };
 				else if (enter === "roll") {
 					const x = right.x * sideways + down.x * 0.45;
@@ -967,14 +1166,15 @@
 						const point = rotate2d(corner.x, corner.y, board.roll);
 						return (firstOffset.x - point.x) * direction.x + (firstOffset.y - point.y) * direction.y;
 					}));
-					const gap = enter === "cut" ? ctx.W * 1.6 : ctx.W * 0.16;
+					const gap = HARD_CUTS.has(enter) ? ctx.W * 1.6 : enter === "whip" ? ctx.W * 0.4 : ctx.W * 0.16;
 					const distance = Math.max(ahead + behind + gap, ctx.W * 0.85);
 					target = { x: last.x + direction.x * distance, y: last.y + direction.y * distance };
 				} else {
-					const side = rotate2d(between(random, -0.08, 0.08) * ctx.W, between(random, -0.06, 0.06) * ctx.H, theta);
+					const spread = enter === "fade" ? 0.04 : 0.08;
+					const side = rotate2d(between(random, -spread, spread) * ctx.W, between(random, -spread * 0.75, spread * 0.75) * ctx.H, theta);
 					target = { x: last.x + side.x, y: last.y + side.y };
 				}
-				const depth = enter === "push" ? -PUSH_DEPTH : enter === "pull" ? PULL_DEPTH : 0;
+				const depth = IN_DEPTH[enter] || 0;
 				board.origin = { x: target.x - firstOffset.x, y: target.y - firstOffset.y, z: last.z - firstFrame.z + depth };
 			}
 			board.cameras = board.frames.map((frame) => {
@@ -988,8 +1188,9 @@
 		});
 	};
 
-	/** Where the camera pulls back to show a whole board, keeping its roll. */
-	const revealPose = (board, roll, ctx) => {
+	/** Where the camera pulls back to show a whole board, keeping its roll (always behind where it was). */
+	const revealPose = (board, camera, ctx) => {
+		const roll = camera.roll;
 		const local = board.corners.map((corner) => rotate2d(corner.x, corner.y, -roll));
 		const xs = local.map((point) => point.x);
 		const ys = local.map((point) => point.y);
@@ -998,99 +1199,223 @@
 		const center = rotate2d((Math.max(...xs) + Math.min(...xs)) / 2, (Math.max(...ys) + Math.min(...ys)) / 2, roll);
 		const scale = clamp(Math.min((ctx.W * 0.88) / Math.max(1, width), (ctx.H * 0.82) / Math.max(1, height)), 0.34, 0.92);
 		const z = board.layout === "tunnel" ? board.cameras[board.cameras.length - 1].z + 320 : board.planeZ + PERSPECTIVE_PX * (1 / scale - 1);
-		return { x: center.x, y: center.y, z, roll };
+		return { x: center.x, y: center.y, z: Math.max(z, camera.z + 160), roll };
+	};
+
+	/** How long the camera takes to reach the next line, by move and tempo. */
+	const moveDuration = (type, gap, pace) => {
+		switch (type) {
+			case "line": return clamp((gap + 260) * pace, 300 * Math.min(1, pace), 760 * pace);
+			case "cut": return 1;
+			case "whip": return clamp((gap + 200) * 0.55 * pace, 260, 520);
+			case "panel": return clamp((gap + 300) * pace, 560, 900);
+			case "fade": return clamp((gap + 700) * pace, 800, 1800 * pace);
+			case "roll":
+			case "flip":
+			case "spin":
+			case "orbit":
+			case "tumble": return clamp((gap + 420) * pace, 560, 1150 * pace) * 1.15;
+			case "through": return clamp((gap + 420) * pace, 620, 1250 * pace) * 1.2;
+			default: return clamp((gap + 420) * pace, 520, 1150 * pace);
+		}
+	};
+
+	/** An interlude after a line: when it fades, when the lyrics return, and the camera's drift meanwhile. */
+	const restOf = (line, start, end, feel) => {
+		const seed = hashString(line.text + "\u0001" + line.n);
+		const sign = seed & 1 ? 1 : -1;
+		return {
+			start,
+			end,
+			roll: sign * (7 + (seed % 7)) * feel.swing,
+			yaw: -sign * (4 + ((seed >>> 3) % 4)),
+			pitch: ((seed >>> 5) & 1 ? 1 : -1) * 2.5,
+			zoom: 220 + ((seed >>> 7) % 120),
+		};
 	};
 
 	const timeline = (plan, ctx) => {
 		const { boards, lines } = plan;
-		const pace = moodOf(plan).pace;
+		const pace = ctx.pace;
+		const feel = feelOf(plan);
 		lines.forEach((line) => {
 			const board = boards[line.board];
 			line.local = line.n - board.first;
 			line.camera = board.cameras[line.local];
 			line.place = board.places[line.local];
 			line.worldZ = board.origin.z + line.place.z;
+			const center = toWorld(board, line.place.x, line.place.y);
+			line.center = { x: center.x, y: center.y, z: line.worldZ };
 			line.arrive = line.start - ARRIVE_LEAD_MS;
 			line.lastWordStart = Math.max(...line.words.map((word) => word.start));
-			line.drift = board.drift;
+			line.drift = { z: board.drift.z * feel.drift, roll: board.drift.roll * feel.drift };
 		});
+		const hardCut = (type) => type === "cut" || type === "panel";
 		lines.forEach((line, index) => {
 			const next = lines[index + 1];
 			if (!next) {
 				line.leave = Infinity;
 				line.move = null;
 				line.outro = line.end + 1600;
+				line.rest = restOf(line, line.end + OUTRO_REST_MS * clamp(pace, 0.85, 1.25), Infinity, feel);
 				return;
 			}
 			const sameBoard = next.board === line.board;
 			const type = sameBoard ? "line" : boards[next.board].enter;
 			const gap = next.start - line.end;
-			let duration;
-			if (type === "cut") duration = 1;
-			else if (sameBoard) duration = clamp((gap + 260) * pace, 300, 760);
-			else duration = clamp((gap + 420) * pace, 520, 1150) * (type === "roll" || type === "flip" ? 1.12 : 1);
+			const duration = moveDuration(type, gap, pace);
 			let leave = Math.max(next.arrive - duration, line.lastWordStart + 140);
 			if (type !== "cut" && next.arrive - leave < 220) leave = next.arrive - 220;
 			leave = type === "cut" ? next.arrive - 1 : leave;
 			line.leave = Math.max(leave, line.arrive + 60);
-			const distance = Math.hypot(next.camera.x - line.camera.x, next.camera.y - line.camera.y);
+			const dx = next.camera.x - line.camera.x;
+			const dy = next.camera.y - line.camera.y;
+			const distance = Math.hypot(dx, dy);
+			// The travel seen on screen, for the direction of 3D swings.
+			const seen = rotate2d(dx, dy, -line.camera.roll);
+			const sx = Math.sign(seen.x) || 1;
+			const sy = Math.sign(seen.y) || 1;
+			const swing = { yaw: 0, pitch: 0 };
+			if (type === "orbit") swing.yaw = 72 * sx;
+			else if (type === "tumble") swing.pitch = -62 * sy;
+			else if (type === "whip") swing.yaw = 20 * sx;
+			else if (!sameBoard && !hardCut(type) && type !== "fade") {
+				// Every board move swings a little in depth.
+				if (Math.abs(seen.x) >= Math.abs(seen.y)) swing.yaw = 14 * sx;
+				else swing.pitch = -11 * sy;
+			} else if (sameBoard) swing.yaw = 4 * sx;
+			swing.yaw *= feel.swing;
+			swing.pitch *= feel.swing;
 			line.move = {
 				type,
+				swing,
+				extraRoll: type === "spin" ? (sx > 0 ? 360 : -360) : 0,
 				arc: type === "line" ? clamp(distance * 0.1, 20, 150)
-					: type === "push" || type === "pull" || type === "cut" ? 0
-						: clamp(distance * 0.3, 160, 950),
+					: type === "push" || type === "pull" || hardCut(type) ? 0
+						: type === "fade" ? 0
+							: type === "orbit" ? clamp(distance * 0.4, 300, 1300)
+								: clamp(distance * 0.3, 160, 950),
+				cutAt: type === "panel" ? (line.leave + next.arrive) / 2 : type === "cut" ? next.arrive : null,
+				// Through: the camera dives into the last sung word on its way.
+				waypoint: type === "through" ? (() => {
+					const word = line.place.block.words[line.words.length - 1];
+					const point = rotate2d(word.x, word.y, line.place.rot);
+					const world = toWorld(boards[line.board], line.place.x + point.x, line.place.y + point.y);
+					return { x: world.x, y: world.y };
+				})() : null,
 			};
 			const board = boards[line.board];
 			const room = line.leave - (line.end + 250);
 			if (gap >= LONG_GAP_MS
 				|| (!sameBoard && board.layout === "wall" && room >= 900)
 				|| (!sameBoard && board.layout === "spiral" && room >= 1200)) {
-				line.reveal = { start: line.end + (gap >= LONG_GAP_MS ? 700 : 250), end: line.leave, pose: revealPose(board, line.camera.roll, ctx) };
+				line.reveal = { start: line.end + (gap >= LONG_GAP_MS ? 700 : 250), end: line.leave, pose: revealPose(board, line.camera, ctx) };
+			}
+			if (gap >= REST_GAP_MS) {
+				const start = line.end + REST_AFTER_MS * clamp(pace, 0.85, 1.25);
+				// The lyrics come back when the next board's preview would start.
+				const end = line.leave - BOARD_PREVIEW_MS * Math.min(1.3, pace);
+				if (end - (start + REST_FADE_MS) >= REST_MIN_MS) {
+					line.rest = restOf(line, start, end, feel);
+					if (sameBoard) board.rests.push(line.rest);
+				}
 			}
 		});
 		boards.forEach((board, index) => {
 			const first = lines[board.first];
+			const into = index ? lines[board.first - 1] : null;
 			if (!index) {
 				board.appear = first.arrive - INTRO_MS - 300;
+			} else if (board.enter === "cut") {
+				board.appear = first.arrive - 60;
+			} else if (board.enter === "panel") {
+				board.appear = into.move.cutAt - 40;
+			} else if (board.enter === "fade") {
+				// A dissolve: the new board fades in while the camera eases into it.
+				board.appear = into.leave - 100;
 			} else {
-				const previous = lines[board.first - 1];
-				board.appear = board.enter === "cut"
-					? first.arrive - 60
-					: Math.min(previous.leave - 120, Math.max(previous.start, previous.leave - BOARD_PREVIEW_MS));
+				board.appear = Math.min(into.leave - 120, Math.max(into.start, into.leave - BOARD_PREVIEW_MS * Math.min(1.3, pace)));
 			}
 			const next = boards[index + 1];
 			if (!next) {
-				board.fadeAt = Infinity;
-				board.fadeEnd = Infinity;
+				const rest = lines[board.last].rest;
+				board.fadeAt = rest ? rest.start : Infinity;
+				board.fadeEnd = rest ? rest.start + REST_FADE_MS : Infinity;
+				return;
+			}
+			const nextFirst = lines[next.first];
+			const out = lines[next.first - 1];
+			if (next.enter === "cut") {
+				board.fadeAt = nextFirst.arrive - 80;
+				board.fadeEnd = nextFirst.arrive + 40;
+			} else if (next.enter === "panel") {
+				board.fadeAt = out.move.cutAt - 60;
+				board.fadeEnd = out.move.cutAt + 20;
+			} else if (next.enter === "fade") {
+				board.fadeAt = out.leave;
+				board.fadeEnd = nextFirst.arrive - 40;
 			} else {
-				const nextArrive = lines[next.first].arrive;
-				board.fadeAt = next.enter === "cut" ? nextArrive - 80 : nextArrive + BOARD_LINGER_MS;
-				board.fadeEnd = next.enter === "cut" ? nextArrive + 40 : board.fadeAt + BOARD_FADE_MS;
+				board.fadeAt = nextFirst.arrive + BOARD_LINGER_MS * Math.min(1.5, pace);
+				board.fadeEnd = board.fadeAt + BOARD_FADE_MS * Math.min(1.5, pace);
+			}
+			if (out.rest) {
+				// An interlude: the board leaves with its last word, not with the next board.
+				board.fadeAt = Math.min(board.fadeAt, out.rest.start);
+				board.fadeEnd = Math.min(board.fadeEnd, out.rest.start + REST_FADE_MS);
 			}
 		});
-		plan.flashes = boards.filter((board) => board.index && board.enter === "cut").map((board) => ({ time: lines[board.first].arrive, strength: 0.6 }));
+		plan.flashes = [];
+		plan.panels = [];
+		lines.forEach((line) => {
+			const type = line.move?.type;
+			if (type === "cut") plan.flashes.push({ time: line.move.cutAt, strength: 0.6 });
+			if (type === "through") plan.flashes.push({ time: (line.leave + lines[line.n + 1].arrive) / 2, strength: 0.32 });
+			if (type === "panel") plan.panels.push({ start: line.leave, end: lines[line.n + 1].arrive, color: boards[lines[line.n + 1].board].color });
+		});
+		plan.flashes.sort((left, right) => left.time - right.time);
+		plan.bars = boards.filter((board) => board.bars).map((board) => ({
+			start: lines[board.first].arrive - 500,
+			end: Number.isFinite(lines[board.last].leave) ? lines[board.last].leave + 200 : Infinity,
+		}));
 		const slams = [];
 		lines.forEach((line) => {
-			if (line.fx !== "slam") return;
-			line.words.forEach((word, index) => slams.push({ time: word.start, strength: line.emph.has(index) ? 14 : 7 }));
+			if (line.fx !== "slam" && line.fx !== "zoom") return;
+			line.words.forEach((word, index) => slams.push({ time: word.start, strength: (line.emph.has(index) ? 14 : 7) * (line.fx === "zoom" ? 0.6 : 1) }));
 		});
 		plan.slams = slams.sort((left, right) => left.time - right.time);
 	};
 
 	/**
 	 * The edit for a song: boards in world space, the camera's path and the
-	 * timeline. Pure: the same model, direction, size and seed give the same plan.
+	 * timeline. Pure: the same model, direction, typography, size and seed
+	 * give the same plan.
 	 */
 	const compose = (model, direction, options = {}) => {
 		const W = Math.max(320, Number(options.width) || 0);
 		const H = Math.max(240, Number(options.height) || 0);
 		const F = clamp(Math.min(W * 0.068, H * 0.118), 34, 136);
-		const ctx = { W, H, F, measure: typeof options.measure === "function" ? options.measure : fallbackMeasure };
 		const seed = (Number(options.seed) >>> 0) || 1;
+		const tempo = direction?.tempo?.tempo || "mid";
+		const pace = Number(direction?.tempo?.pace) || 1;
+		const typography = Array.isArray(options.typography) ? options.typography : [];
+		const ctx = {
+			W, H, F,
+			measure: typeof options.measure === "function" ? options.measure : fallbackMeasure,
+			font: createFontBook(),
+			typography,
+			songLang: options.songLang || "",
+			tempo,
+			pace,
+			spin: (TEMPO_FEEL[tempo] || TEMPO_FEEL.mid).spin,
+		};
 		const shots = Array.isArray(direction?.shots) ? direction.shots : [];
 		const lines = model.map((line, index) => ({
 			...line,
 			n: index,
+			backing: line.backing || [],
+			// Every word on screen: the lead's, then each other voice's.
+			shown: [...line.words, ...(line.backing || []).flatMap((voice) => voice.words)],
+			info: typography[index] || DEFAULT_INFO,
 			emph: new Set(direction?.lines?.[index]?.emph || []),
 			fx: direction?.lines?.[index]?.fx || null,
 			board: -1,
@@ -1099,10 +1424,12 @@
 			const members = lines.slice(shot.from, shot.to + 1);
 			// Repeated sections are composed the same way every time they come back.
 			const random = createRandom(seed ^ hashString(shot.layout + "\u0001" + members.map((line) => line.text).join("\u0002")));
-			const look = { emph: (line) => line.emph, light: random() < 0.45 };
+			const type = shot.type || "impact";
+			const look = { emph: (line) => line.emph, light: random() < 0.4, type, serif: shot.serif === true, upper: shot.upper === true };
 			const layout = (LAYOUT_FNS[shot.layout] || layoutColumn)(members, ctx, random, look);
 			members.forEach((line) => {
-				line.fx = line.fx || shot.fx || "pop";
+				const fx = line.fx || shot.fx || "pop";
+				line.fx = line.info.joined ? JOINED_FX[fx] || fx : fx;
 				line.board = index;
 			});
 			const board = {
@@ -1110,6 +1437,11 @@
 				layout: shot.layout,
 				enter: index ? shot.enter : "push",
 				accent: shot.accent || "color",
+				type,
+				serif: shot.serif === true,
+				upper: shot.upper === true,
+				bars: shot.bars === true,
+				rule: shot.rule === true,
 				dutch: Number(shot.dutch) || 0,
 				first: shot.from,
 				last: shot.to,
@@ -1117,6 +1449,7 @@
 				frames: layout.frames,
 				drift: layout.drift,
 				color: index % 2,
+				rests: [],
 			};
 			board.localCorners = board.places.flatMap(cornersOf);
 			Object.assign(board, decorate(board, ctx, random, shot, direction || {}));
@@ -1125,12 +1458,14 @@
 		const plan = {
 			W, H, F,
 			mood: direction?.mood || "warm",
+			tempo,
+			pace,
 			source: direction?.source || "local",
 			boards,
 			lines: lines.filter((line) => line.board >= 0),
 			pulses: pulsesInMs(options.analysis),
 		};
-		if (!plan.lines.length) return { ...plan, flashes: [], slams: [] };
+		if (!plan.lines.length) return { ...plan, flashes: [], slams: [], panels: [], bars: [] };
 		placeBoards(boards, ctx, seed);
 		timeline(plan, ctx);
 		return plan;
@@ -1187,6 +1522,17 @@
 			const amount = easeInOutCubic(clamp01((time - line.reveal.start) / Math.max(1, Math.min(1700, line.reveal.end - line.reveal.start))));
 			pose = mixPose(pose, line.reveal.pose, amount);
 		}
+		if (line.rest && time > line.rest.start) {
+			// Over an interlude the camera turns, swings and pushes into the video, and settles back before it moves on.
+			const rest = line.rest;
+			const until = Number.isFinite(line.leave) ? line.leave : rest.start + OUTRO_DRIFT_MS;
+			const k = clamp01((time - rest.start) / Math.max(1, until - rest.start));
+			const swell = Math.sin(Math.PI * k);
+			pose.roll += rest.roll * easeInOutSine(k);
+			pose.yaw = rest.yaw * swell;
+			pose.pitch = rest.pitch * swell;
+			pose.dolly = -rest.zoom * swell;
+		}
 		if (!Number.isFinite(line.leave) && time > line.outro) pose.z += 700 * easeInOutCubic(clamp01((time - line.outro) / 4200));
 		return pose;
 	};
@@ -1219,48 +1565,76 @@
 		return { index, since: time - times[index], strength: pulses.strengths[index] || 0 };
 	};
 
+	/** The camera on its way from one line to the next. */
+	const movePose = (plan, index, time) => {
+		const line = plan.lines[index];
+		const next = plan.lines[index + 1];
+		const move = line.move;
+		const u = clamp01((time - line.leave) / Math.max(1, next.arrive - line.leave));
+		const from = holdPose(plan, index, line.leave);
+		const to = holdPose(plan, index + 1, next.arrive);
+		const type = move.type;
+		if (type === "cut" || type === "panel") {
+			const pose = time >= move.cutAt ? to : from;
+			return { ...pose, yaw: 0, pitch: 0, dolly: 0, sway: null, u };
+		}
+		let eased;
+		if (type === "line") eased = easeInOutQuart(u);
+		else if (type === "whip") eased = easeInOutExpo(u);
+		else if (type === "fade") eased = easeInOutSine(u);
+		else if (type === "push" || type === "pull" || type === "through" || type === "orbit" || type === "tumble") eased = easeInOutCubic(u);
+		else eased = easeInOutExpo(u);
+		const pose = mixPose(from, to, eased);
+		if (type === "through" && move.waypoint) {
+			// Head for the last sung word first, so the camera flies through it.
+			const half = u < 0.5 ? easeInOutCubic(u / 0.5) : easeInOutCubic((u - 0.5) / 0.5);
+			const a = u < 0.5 ? from : move.waypoint;
+			const b = u < 0.5 ? move.waypoint : to;
+			pose.x = lerp(a.x, b.x, half);
+			pose.y = lerp(a.y, b.y, half);
+		}
+		const rollEase = type === "line" ? eased : type === "fade" ? easeInOutSine(u) : easeInOutQuint(u);
+		pose.roll = lerp(from.roll, to.roll + move.extraRoll, rollEase);
+		const dolly = move.arc * Math.sin(Math.PI * u);
+		pose.z += dolly;
+		const bell = Math.sin(Math.PI * clamp01(type === "whip" ? u : easeInOutSine(u)));
+		return {
+			...pose,
+			yaw: move.swing.yaw * bell,
+			pitch: move.swing.pitch * bell,
+			dolly,
+			sway: { u, dx: to.x - from.x, dy: to.y - from.y, board: type !== "line", whip: type === "whip" },
+			u,
+		};
+	};
+
 	/**
-	 * Camera pose at a playback position: the planned path plus a settling
-	 * overshoot, a handheld drift, beat punches and slam shakes. Also reports
-	 * the dolly (pull-back) and the move in progress, for the background.
+	 * Camera pose at a playback position: the planned path plus 3D swings,
+	 * a settling overshoot, a handheld drift, beat punches and slam shakes.
+	 * Also reports the dolly (pull-back) and the move in progress, for the
+	 * background.
 	 */
 	const cameraPose = (plan, time, pulses = plan?.pulses) => {
 		const lines = plan?.lines || [];
-		if (!lines.length) return { x: 0, y: 0, z: 0, roll: 0, dolly: 0, sway: null, beat: 0 };
+		if (!lines.length) return { x: 0, y: 0, z: 0, roll: 0, yaw: 0, pitch: 0, dolly: 0, sway: null, beat: 0 };
 		let pose;
-		let dolly = 0;
-		let sway = null;
 		const first = lines[0];
 		if (time < first.arrive) {
 			const target = holdPose(plan, 0, first.arrive);
 			const start = { x: target.x, y: target.y, z: target.z + 900, roll: target.roll - 10 };
 			const amount = easeInOutCubic(clamp01((time - (first.arrive - INTRO_MS)) / INTRO_MS));
-			pose = mixPose(start, target, amount);
-			dolly = 900 * (1 - amount);
+			pose = { ...mixPose(start, target, amount), yaw: 24 * (1 - amount), pitch: -10 * (1 - amount), dolly: 900 * (1 - amount), sway: null };
 		} else {
 			const index = lineIndexAt(plan, time);
 			const line = lines[index];
 			const next = lines[index + 1];
 			if (next && time > line.leave) {
-				const u = clamp01((time - line.leave) / Math.max(1, next.arrive - line.leave));
-				const from = holdPose(plan, index, line.leave);
-				const to = holdPose(plan, index + 1, next.arrive);
-				const type = line.move.type;
-				if (type === "cut") {
-					pose = u >= 1 ? to : from;
-				} else {
-					const eased = type === "line" ? easeInOutQuart(u) : type === "push" || type === "pull" ? easeInOutCubic(u) : easeInOutExpo(u);
-					pose = mixPose(from, to, eased);
-					pose.roll = lerp(from.roll, to.roll, type === "line" ? eased : easeInOutQuint(u));
-					dolly = line.move.arc * Math.sin(Math.PI * u);
-					pose.z += dolly;
-					sway = { u, dx: to.x - from.x, dy: to.y - from.y, board: type !== "line" };
-				}
+				pose = movePose(plan, index, time);
 			} else {
-				pose = holdPose(plan, index, time);
+				pose = { yaw: 0, pitch: 0, dolly: 0, sway: null, ...holdPose(plan, index, time) };
 				const previous = lines[index - 1];
 				const since = time - line.arrive;
-				if (previous && since >= 0 && since < 700 && previous.move?.type !== "cut") {
+				if (previous && since >= 0 && since < 700 && !["cut", "panel", "fade"].includes(previous.move?.type)) {
 					const k = since / 700;
 					const spring = Math.sin(k * Math.PI * 2.2) * Math.exp(-k * 4.5);
 					const dx = line.camera.x - previous.camera.x;
@@ -1270,13 +1644,20 @@
 					pose.x += (dx / distance) * push;
 					pose.y += (dy / distance) * push;
 					pose.roll += clamp((line.camera.roll - previous.camera.roll) * 0.04, -3.5, 3.5) * spring;
+					pose.yaw -= (previous.move?.swing?.yaw || 0) * 0.08 * spring;
+					pose.pitch -= (previous.move?.swing?.pitch || 0) * 0.08 * spring;
 				}
 			}
 		}
 		const mood = moodOf(plan);
-		let shakeX = (Math.sin(time * 0.00071 + 1.3) * 0.6 + Math.sin(time * 0.00153 + 0.4) * 0.4) * 5 * mood.shake;
-		let shakeY = (Math.sin(time * 0.00063 + 2.1) * 0.6 + Math.sin(time * 0.00117) * 0.4) * 4 * mood.shake;
-		pose.roll += Math.sin(time * 0.00043 + 0.7) * 0.32 * mood.shake;
+		const feel = feelOf(plan);
+		const shake = mood.shake * feel.shake;
+		let shakeX = (Math.sin(time * 0.00071 + 1.3) * 0.6 + Math.sin(time * 0.00153 + 0.4) * 0.4) * 5 * shake;
+		let shakeY = (Math.sin(time * 0.00063 + 2.1) * 0.6 + Math.sin(time * 0.00117) * 0.4) * 4 * shake;
+		pose.roll += Math.sin(time * 0.00043 + 0.7) * 0.32 * shake;
+		// A slow handheld orbit gives the layers depth even while a line is held.
+		pose.yaw += Math.sin(time * 0.00029 + 0.3) * 2.2 * feel.sway;
+		pose.pitch += Math.sin(time * 0.00023 + 1.9) * 1.5 * feel.sway;
 		const slam = recentEvent(plan.slams, time, 220);
 		if (slam) {
 			const k = 1 - slam.since / 220;
@@ -1284,9 +1665,9 @@
 			shakeY += Math.cos(slam.since * 0.13) * slam.strength * k * 0.7;
 			pose.roll += Math.sin(slam.since * 0.08) * 0.09 * slam.strength * k;
 		}
-		const shake = rotate2d(shakeX, shakeY, pose.roll);
-		pose.x += shake.x;
-		pose.y += shake.y;
+		const offset = rotate2d(shakeX, shakeY, pose.roll);
+		pose.x += offset.x;
+		pose.y += offset.y;
 		let beatAmount = 0;
 		const beat = beatAt(pulses, time);
 		if (beat) {
@@ -1294,17 +1675,50 @@
 			pose.z -= 46 * beat.strength * mood.punch * Math.exp(-beat.since / 130);
 			pose.roll += (beat.index % 2 ? 1 : -1) * 0.5 * beat.strength * mood.punch * Math.exp(-beat.since / 160);
 		}
-		pose.dolly = dolly;
-		pose.sway = sway;
 		pose.beat = beatAmount;
 		return pose;
 	};
 
+	/** How far in front of the viewer's focal plane a world point is (CSS z after the camera turns). */
+	const viewDepth = (pose, point) => {
+		const radians = (-pose.roll * Math.PI) / 180;
+		const x0 = point.x - pose.x;
+		const y0 = point.y - pose.y;
+		const z0 = point.z - pose.z;
+		const x1 = x0 * Math.cos(radians) - y0 * Math.sin(radians);
+		const y1 = x0 * Math.sin(radians) + y0 * Math.cos(radians);
+		const yaw = ((pose.yaw || 0) * Math.PI) / 180;
+		const pitch = ((pose.pitch || 0) * Math.PI) / 180;
+		const z2 = -x1 * Math.sin(yaw) + z0 * Math.cos(yaw);
+		return y1 * Math.sin(pitch) + z2 * Math.cos(pitch);
+	};
+
 	const boardVisibility = (board, time) => {
-		const fadeIn = board.index && board.enter === "cut" ? 120 : 450;
+		const fadeIn = board.index && (board.enter === "cut" || board.enter === "panel") ? 120 : board.enter === "fade" ? 650 : 450;
 		const into = easeOutCubic(clamp01((time - board.appear) / fadeIn));
 		const out = Number.isFinite(board.fadeAt) ? 1 - easeInOutCubic(clamp01((time - board.fadeAt) / Math.max(1, board.fadeEnd - board.fadeAt))) : 1;
-		return into * out;
+		// An interlude inside a board hides it until its lyrics return.
+		let rest = 1;
+		for (const window of board.rests || []) {
+			if (time <= window.start || time >= window.end + REST_RETURN_MS) continue;
+			const away = 1 - easeInOutCubic(clamp01((time - window.start) / REST_FADE_MS));
+			const back = easeInOutCubic(clamp01((time - window.end) / REST_RETURN_MS));
+			rest = Math.min(rest, Math.max(away, back));
+		}
+		return into * out * rest;
+	};
+
+	/** How far the edit is into an interlude, the intro or the outro (0: lyrics on screen, 1: only the video). */
+	const restAt = (plan, time) => {
+		const lines = plan?.lines || [];
+		if (!lines.length) return 0;
+		const index = lineIndexAt(plan, time);
+		if (index < 0) return 1 - easeInOutCubic(clamp01((time - plan.boards[0].appear) / 900));
+		const rest = lines[index].rest;
+		if (!rest || time <= rest.start) return 0;
+		const away = easeInOutCubic(clamp01((time - rest.start) / REST_FADE_MS));
+		const back = Number.isFinite(rest.end) ? easeInOutCubic(clamp01((time - rest.end) / REST_RETURN_MS)) : 0;
+		return away * (1 - back);
 	};
 
 	const levelAt = (stops, distance) => {
@@ -1325,43 +1739,88 @@
 	/** Outline and solid opacity of a line (distance = playback progress − line number). */
 	const lineLevels = (distance) => ({ ghost: levelAt(GHOST_STOPS, distance), solid: levelAt(SOLID_STOPS, distance) });
 
-	const FX_DURATION = Object.freeze({ pop: 380, slide: 420, rise: 440, slam: 230, flip: 480, type: 1, assemble: 1, drop: 1, wave: 1 });
-	const CHAR_FX = new Set(["type", "assemble", "drop", "wave"]);
+	const FX_DURATION = Object.freeze({
+		pop: 380, slide: 420, rise: 440, slam: 230, flip: 480, blur: 560, wipe: 520, glitch: 340, spin: 560, zoom: 480,
+		type: 1, assemble: 1, drop: 1, wave: 1, track: 1, bounce: 1, flicker: 1,
+	});
+	const CHAR_FX = new Set(["type", "assemble", "drop", "wave", "track", "bounce", "flicker"]);
+	const fxPaceOf = (pace) => clamp(Number(pace) || 1, 0.75, 1.5);
 
 	/** Entrance progress of a sung word's solid type (0 before it starts). */
-	const wordEntrance = (fx, word, time) => {
-		const duration = fx === "stretch" ? clamp(word.end - word.start, 280, 1400) : FX_DURATION[fx] || 380;
-		return clamp01((time - (word.start - (fx === "slam" ? 20 : 50))) / duration);
+	const wordEntrance = (fx, word, time, pace = 1) => {
+		const duration = fx === "stretch" ? clamp(word.end - word.start, 280, 1400) : (FX_DURATION[fx] || 380) * fxPaceOf(pace);
+		const lead = fx === "slam" ? 20 : fx === "zoom" || fx === "blur" ? 90 : 50;
+		return clamp01((time - (word.start - lead)) / duration);
 	};
 
-	/** The solid word's opacity and transform for its entrance. */
-	const solidFrame = (fx, progress) => {
-		if (progress <= 0) return { opacity: 0, transform: "none" };
-		if (progress >= 1 || CHAR_FX.has(fx)) return { opacity: 1, transform: "none" };
+	const SETTLED = Object.freeze({ opacity: 1, transform: "none", filter: "", clip: "", shadow: "" });
+	const HIDDEN = Object.freeze({ opacity: 0, transform: "none", filter: "", clip: "", shadow: "" });
+	const frame = (values) => ({ filter: "", clip: "", shadow: "", ...values });
+
+	/** The solid word's opacity, transform, filter, clip and shadow for its entrance. */
+	const solidFrame = (fx, progress, seed = 0, rtl = false) => {
+		if (progress <= 0) return HIDDEN;
+		if (progress >= 1 || CHAR_FX.has(fx)) return SETTLED;
 		switch (fx) {
 			case "slide": {
 				const k = easeOutExpo(progress);
-				return { opacity: clamp01(progress * 2.5), transform: "translateX(" + round((1 - k) * -0.55, 3) + "em) skewX(" + round((1 - k) * -14, 1) + "deg)" };
+				const side = rtl ? -1 : 1;
+				return frame({ opacity: clamp01(progress * 2.5), transform: "translateX(" + round((1 - k) * -0.55 * side, 3) + "em) skewX(" + round((1 - k) * -14 * side, 1) + "deg)" });
 			}
 			case "rise": {
 				const k = easeOutCubic(progress);
-				return { opacity: clamp01(progress * 2), transform: "translateY(" + round((1 - k) * 0.42, 3) + "em)" };
+				return frame({ opacity: clamp01(progress * 2), transform: "translateY(" + round((1 - k) * 0.42, 3) + "em)" });
 			}
 			case "slam": {
 				const k = easeOutCubic(progress);
-				return { opacity: clamp01(progress * 3), transform: "scale(" + round(1 + (1 - k) * 1.5, 3) + ")" };
+				return frame({ opacity: clamp01(progress * 3), transform: "scale(" + round(1 + (1 - k) * 1.5, 3) + ")" });
 			}
 			case "stretch": {
 				const k = easeOutCubic(progress);
-				return { opacity: clamp01(progress * 5), transform: "scale(" + round(0.5 + 0.5 * k, 3) + "," + round(1.18 - 0.18 * k, 3) + ")" };
+				return frame({ opacity: clamp01(progress * 5), transform: "scale(" + round(0.5 + 0.5 * k, 3) + "," + round(1.18 - 0.18 * k, 3) + ")" });
 			}
 			case "flip": {
 				const k = easeOutBack(progress);
-				return { opacity: clamp01(progress * 2.2), transform: "rotateX(" + round((1 - k) * 88, 1) + "deg)" };
+				return frame({ opacity: clamp01(progress * 2.2), transform: "perspective(5em) rotateX(" + round((1 - k) * 88, 1) + "deg)" });
+			}
+			case "spin": {
+				const k = easeOutBack(progress);
+				return frame({ opacity: clamp01(progress * 2.4), transform: "perspective(6em) rotateY(" + round((1 - k) * -250, 1) + "deg) scale(" + round(0.8 + 0.2 * easeOutCubic(progress), 3) + ")" });
+			}
+			case "blur": {
+				const k = easeOutCubic(progress);
+				const blur = (1 - k) * 16;
+				return frame({ opacity: clamp01(progress * 1.8), transform: "scale(" + round(1.14 - 0.14 * k, 3) + ")", filter: blur > 0.3 ? "blur(" + round(blur, 1) + "px)" : "" });
+			}
+			case "zoom": {
+				const k = easeOutExpo(progress);
+				const blur = (1 - k) * 7;
+				return frame({ opacity: clamp01(progress * 3), transform: "scale(" + round(3.4 - 2.4 * k, 3) + ")", filter: blur > 0.3 ? "blur(" + round(blur, 1) + "px)" : "" });
+			}
+			case "wipe": {
+				const k = easeInOutCubic(progress);
+				const hidden = round((1 - k) * 112, 1);
+				return frame({
+					opacity: 1,
+					transform: "translateX(" + round((1 - k) * (rtl ? -0.1 : 0.1), 3) + "em)",
+					clip: rtl ? "inset(-30% -12% -30% " + hidden + "%)" : "inset(-30% " + hidden + "% -30% -12%)",
+				});
+			}
+			case "glitch": {
+				const bucket = Math.floor(progress * 9);
+				const random = createRandom((seed + bucket * 2654435761) >>> 0);
+				const decay = 1 - progress;
+				const off = progress < 0.12 || (random() < 0.2 && progress < 0.7);
+				const split = round(0.012 + 0.07 * decay, 3);
+				return frame({
+					opacity: off ? (progress < 0.12 ? 0 : 0.35) : 1,
+					transform: "translate(" + round((random() * 2 - 1) * 0.12 * decay, 3) + "em," + round((random() * 2 - 1) * 0.05 * decay, 3) + "em) skewX(" + round((random() * 2 - 1) * 18 * decay, 1) + "deg)",
+					shadow: split + "em 0 0 rgba(255, 46, 99, 0.85), " + (-split) + "em 0 0 rgba(46, 226, 255, 0.85)",
+				});
 			}
 			default: {
 				const k = easeOutBack(progress);
-				return { opacity: clamp01(progress * 2.4), transform: "scale(" + round(0.55 + 0.45 * k, 3) + ")" };
+				return frame({ opacity: clamp01(progress * 2.4), transform: "scale(" + round(0.55 + 0.45 * k, 3) + ")" });
 			}
 		}
 	};
@@ -1370,18 +1829,31 @@
 		const random = createRandom(seed);
 		return { x: (random() * 2 - 1) * 1.7, y: (random() * 2 - 1) * 1.25, r: (random() * 2 - 1) * 75, s: random() * 0.7 };
 	};
+	const easeOutElastic = (t) => {
+		if (t <= 0) return 0;
+		if (t >= 1) return 1;
+		return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1;
+	};
+	const LETTER_SETTLED = Object.freeze({ opacity: 1, transform: "none" });
+	const LETTER_HIDDEN = Object.freeze({ opacity: 0, transform: "none" });
 
-	/** A character's state for the letter-by-letter effects (sway: how much "wave" still floats). */
-	const charFrame = (fx, char, index, time, seed = 0, sway = 1) => {
+	/**
+	 * A character's state for the letter-by-letter effects. context: count
+	 * (letters in the word), wordStart, seed, sway (how much "wave" still
+	 * floats) and pace.
+	 */
+	const charFrame = (fx, char, index, time, context = {}) => {
+		const { count = 1, wordStart = char.start, seed = 0, sway = 1, pace = 1 } = context;
+		const slow = fxPaceOf(pace);
 		switch (fx) {
 			case "type": {
 				const e = clamp01((time - (char.start - 30)) / 140);
 				return { opacity: e, transform: e <= 0 || e >= 1 ? "none" : "scale(" + round(1.35 - 0.35 * easeOutCubic(e), 3) + ")" };
 			}
 			case "assemble": {
-				const e = clamp01((time - (char.start - 380)) / 440);
-				if (e <= 0) return { opacity: 0, transform: "none" };
-				if (e >= 1) return { opacity: 1, transform: "none" };
+				const e = clamp01((time - (char.start - 380)) / (440 * slow));
+				if (e <= 0) return LETTER_HIDDEN;
+				if (e >= 1) return LETTER_SETTLED;
 				const k = easeOutCubic(e);
 				const scatter = scatterOf((seed + index * 2654435761) >>> 0);
 				return {
@@ -1391,24 +1863,48 @@
 				};
 			}
 			case "drop": {
-				const e = clamp01((time - (char.start - 60)) / 420);
-				if (e <= 0) return { opacity: 0, transform: "none" };
+				const e = clamp01((time - (char.start - 60)) / (420 * slow));
+				if (e <= 0) return LETTER_HIDDEN;
 				return { opacity: clamp01(e * 4), transform: e >= 1 ? "none" : "translateY(" + round((1 - easeOutBounce(e)) * -0.9, 3) + "em)" };
 			}
 			case "wave": {
-				const e = clamp01((time - (char.start - 40)) / 260);
-				if (e <= 0) return { opacity: 0, transform: "none" };
+				const e = clamp01((time - (char.start - 40)) / (260 * slow));
+				if (e <= 0) return LETTER_HIDDEN;
 				const bob = Math.sin(time * 0.0052 + index * 0.65) * 0.07 * sway;
 				const offset = (1 - easeOutBack(e)) * 0.35 + bob;
 				return { opacity: e, transform: Math.abs(offset) < 0.001 ? "none" : "translateY(" + round(offset, 3) + "em)" };
 			}
+			case "track": {
+				// Letters close in from wide tracking (the whole word at once).
+				const e = clamp01((time - (wordStart - 90)) / (680 * slow));
+				if (e <= 0) return LETTER_HIDDEN;
+				if (e >= 1) return LETTER_SETTLED;
+				const k = easeOutCubic(e);
+				return { opacity: clamp01(e * 1.6), transform: "translateX(" + round((index - (count - 1) / 2) * 0.62 * (1 - k), 3) + "em)" };
+			}
+			case "bounce": {
+				const e = clamp01((time - (char.start - 40)) / (560 * slow));
+				if (e <= 0) return LETTER_HIDDEN;
+				if (e >= 1) return LETTER_SETTLED;
+				const lift = (1 - easeOutElastic(e)) * 0.7;
+				return { opacity: clamp01(e * 5), transform: "translateY(" + round(lift, 3) + "em) scale(" + round(1 + Math.min(0, lift) * -0.4, 3) + "," + round(1 - Math.min(0, lift) * -0.3, 3) + ")" };
+			}
+			case "flicker": {
+				const from = char.start - 170;
+				if (time < from) return LETTER_HIDDEN;
+				if (time >= char.start + 40) return LETTER_SETTLED;
+				const bucket = Math.floor((time - from) / 38);
+				const random = createRandom((seed + index * 977 + bucket * 2654435761) >>> 0);
+				const chance = (time - from) / 210;
+				return { opacity: random() < chance ? 1 : random() * 0.25, transform: "none" };
+			}
 			default:
-				return time >= char.start ? { opacity: 1, transform: "none" } : { opacity: 0, transform: "none" };
+				return time >= char.start ? LETTER_SETTLED : LETTER_HIDDEN;
 		}
 	};
 
 	/**
-	 * Smallest scale at which a width x height layer, turned by `degrees` and
+	 * Smallest scale at which a width x height layer, turned by degrees and
 	 * moved by (x, y), still covers a screen of the same size.
 	 */
 	const coverScale = (degrees, width, height, x = 0, y = 0) => {
@@ -1420,7 +1916,11 @@
 		return scale;
 	};
 
-	/** Rotation, zoom and offset of the video background so it moves like the far plane of the same camera. */
+	/**
+	 * Rotation, zoom and offset of the video background so it moves like the
+	 * far plane of the same camera: it turns with the roll, slides against
+	 * 3D swings and travel, and zooms with the dolly and the beat.
+	 */
 	const backgroundFrame = (plan, pose) => {
 		let x = 0;
 		let y = 0;
@@ -1428,17 +1928,37 @@
 			const move = rotate2d(pose.sway.dx, pose.sway.dy, -pose.roll);
 			const length = Math.hypot(move.x, move.y);
 			if (length > 1) {
-				const amount = Math.sin(Math.PI * pose.sway.u) * plan.W * (pose.sway.board ? 0.06 : 0.02);
+				const amount = Math.sin(Math.PI * pose.sway.u) * plan.W * (pose.sway.whip ? 0.1 : pose.sway.board ? 0.06 : 0.02);
 				x = (-move.x / length) * amount;
 				y = (-move.y / length) * amount;
 			}
 		}
-		// The far plane zooms a little with the dolly and the beat, but never
-		// shows its edges, whatever the turn and offset.
+		x -= Math.sin(((pose.yaw || 0) * Math.PI) / 180) * plan.W * 0.42;
+		y += Math.sin(((pose.pitch || 0) * Math.PI) / 180) * plan.H * 0.42;
 		const dolly = PERSPECTIVE_PX / (PERSPECTIVE_PX + (pose.dolly || 0) * 0.45);
 		const wanted = coverScale(-pose.roll, plan.W, plan.H) * 1.14 * dolly * (1 + (pose.beat || 0) * 0.025);
 		const scale = Math.max(wanted, coverScale(-pose.roll, plan.W, plan.H, x, y) * 1.01);
 		return { rotate: -pose.roll, scale, x, y };
+	};
+
+	/** Opacity of the letterbox bars at a time. */
+	const barsLevel = (plan, time) => {
+		let level = 0;
+		for (const window of plan?.bars || []) {
+			if (time < window.start || time > window.end + 500) continue;
+			const into = easeInOutCubic(clamp01((time - window.start) / 500));
+			const out = Number.isFinite(window.end) ? 1 - easeInOutCubic(clamp01((time - window.end) / 500)) : 1;
+			level = Math.max(level, into * out);
+		}
+		return level;
+	};
+
+	/** The colour panel sweeping across the screen, as a -1..1 position (null when none). */
+	const panelAt = (plan, time) => {
+		for (const panel of plan?.panels || []) {
+			if (time >= panel.start && time <= panel.end) return { position: lerp(-1, 1, easeInOutCubic((time - panel.start) / Math.max(1, panel.end - panel.start))), color: panel.color };
+		}
+		return null;
 	};
 
 	const pure = Object.freeze({
@@ -1451,18 +1971,23 @@
 		modelSignature,
 		lineEnergies,
 		paletteFrom,
+		fontNeeds,
 		layoutBlock,
 		compose,
 		lineIndexAt,
 		progressAt,
 		cameraPose,
+		viewDepth,
 		boardVisibility,
+		restAt,
 		lineLevels,
 		wordEntrance,
 		solidFrame,
 		charFrame,
 		backgroundFrame,
 		coverScale,
+		barsLevel,
+		panelAt,
 	});
 
 	// ---------------------------------------------------------------------
@@ -1480,7 +2005,7 @@
 	 * provider, { status: "off" } without a motion-capable provider, or
 	 * { status: "failed", error }.
 	 */
-	const requestDirection = ({ trackUri, model, title = "", artist = "" }) => {
+	const requestDirection = ({ trackUri, model, title = "", artist = "", tempo = null, songLang = "" }) => {
 		const director = root.ivLyricsMotionDirector;
 		if (!director || !trackUri || !model?.length) return Promise.resolve({ status: "off" });
 		const sourceHash = hashString(modelSignature(model)).toString(36) + "-v" + director.VERSION;
@@ -1503,6 +2028,8 @@
 				artist,
 				lines: director.promptLines(model),
 				vocabulary: director.vocabulary(),
+				tempo: tempo || director.tempoOf(model),
+				language: songLang,
 			});
 			const checked = director.normalizeDirection(raw, model, {});
 			if (checked.coverage < 0.5) throw new Error("The AI direction covered too few lines");
@@ -1533,8 +2060,15 @@
 		return String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
 	};
 	const pad2 = (value) => String(Math.max(0, value)).padStart(2, "0");
+	const applyFont = (element, spec) => {
+		element.style.fontFamily = spec.family;
+		element.style.fontWeight = String(spec.weight);
+		element.style.fontStyle = spec.style;
+		if (spec.spacing) element.style.letterSpacing = spec.spacing + "em";
+	};
+	const BOX_ACCENTS = new Set(["box", "underline", "mark"]);
 
-	const createEngine = ({ stage, viewport, camera, wash, flash, subtitle, live, hudShot, hudTime }) => {
+	const createEngine = ({ stage, viewport, camera, scrim, wash, flash, panel, bars, subtitle, live, hudShot, hudTime }) => {
 		const document = root.document;
 		const shapes = root.ivLyricsMotionShapes;
 		let plan = null;
@@ -1555,7 +2089,7 @@
 		let lastFrameAt = 0;
 		let swapFlashAt = -Infinity;
 		const mounted = new Map();
-		const cache = { camera: {}, viewport: {}, flash: {}, wash: {}, background: {}, hud: {} };
+		const cache = { camera: {}, viewport: {}, flash: {}, wash: {}, background: {}, hud: {}, panel: {}, bars: {}, rest: {} };
 		const write = (store, key, value, apply) => {
 			if (store[key] === value) return;
 			store[key] = value;
@@ -1604,10 +2138,60 @@
 			currentBoard = -2;
 		};
 
+		const mountWord = (board, line, word, wordIndex, spot, lineEl) => {
+			const wordEl = document.createElement("div");
+			const kind = spot.spec?.kind;
+			const voice = spot.voice ? line.backing[spot.voice - 1] : null;
+			wordEl.className = "ivlyrics-motion-word"
+				+ (kind === "light" ? " is-light" : kind === "serif" ? " is-serif" : "")
+				+ (spot.emph ? " is-emph" : "")
+				+ (voice ? " is-voice is-" + voice.role : "");
+			wordEl.style.fontSize = round(spot.size) + "px";
+			wordEl.style.transform = "translate3d(" + round(spot.x) + "px," + round(spot.y) + "px,0) translate(-50%,-56%)";
+			applyFont(wordEl, spot.spec || FALLBACK_SPEC);
+			if (line.info.rtl) wordEl.dir = "rtl";
+			const ghost = document.createElement("span");
+			ghost.className = "ivlyrics-motion-ghost";
+			ghost.textContent = spot.text || word.text;
+			wordEl.appendChild(ghost);
+			let box = null;
+			let spark = null;
+			if (spot.emph && BOX_ACCENTS.has(board.accent)) {
+				box = document.createElement("span");
+				box.className = "ivlyrics-motion-box is-" + board.accent;
+				wordEl.appendChild(box);
+			}
+			const solid = document.createElement("span");
+			solid.className = "ivlyrics-motion-solid";
+			let chars = null;
+			if (CHAR_FX.has(line.fx) && spot.letters !== false) {
+				const cased = (spot.text || word.text) !== word.text;
+				chars = word.chars.map((char) => {
+					const charEl = document.createElement("span");
+					charEl.className = "ivlyrics-motion-char";
+					charEl.textContent = cased ? char.ch.toLocaleUpperCase() : char.ch;
+					solid.appendChild(charEl);
+					return { el: charEl, char, cache: {} };
+				});
+			} else {
+				solid.textContent = spot.text || word.text;
+			}
+			wordEl.appendChild(solid);
+			if (spot.emph && board.accent === "spark" && shapes?.createSvg) {
+				spark = document.createElement("span");
+				spark.className = "ivlyrics-motion-spark";
+				const drawn = shapes.createSvg(document, shapes.motifOf("burst"), spot.size * 1.9);
+				spark.appendChild(drawn.svg);
+				wordEl.appendChild(spark);
+			}
+			lineEl.appendChild(wordEl);
+			return { el: wordEl, solid, box, spark, chars, word, index: wordIndex, emph: spot.emph, cache: {} };
+		};
+
 		const mountBoard = (index) => {
 			const board = plan.boards[index];
 			const el = document.createElement("div");
-			el.className = "ivlyrics-motion-board accent-" + board.accent;
+			el.className = "ivlyrics-motion-board accent-" + board.accent + " type-" + board.type + (board.serif ? " has-serif" : "");
 			el.style.transform = "translate3d(" + round(board.origin.x) + "px," + round(board.origin.y) + "px," + round(board.origin.z) + "px) rotateZ(" + round(board.roll, 2) + "deg)";
 			let echo = null;
 			if (board.echo) {
@@ -1615,6 +2199,7 @@
 				echoEl.className = "ivlyrics-motion-echo";
 				echoEl.textContent = board.echo.text;
 				echoEl.style.fontSize = round(board.echo.size) + "px";
+				applyFont(echoEl, board.echo.spec || FALLBACK_SPEC);
 				el.appendChild(echoEl);
 				echo = { el: echoEl, cache: {} };
 			}
@@ -1632,47 +2217,32 @@
 				const line = plan.lines[board.first + local];
 				const lineEl = document.createElement("div");
 				lineEl.className = "ivlyrics-motion-line";
+				if (line.info.lang) lineEl.lang = line.info.lang;
 				lineEl.style.transform = "translate3d(" + round(place.x) + "px," + round(place.y) + "px," + round(place.z) + "px) rotateZ(" + round(place.rot, 2) + "deg)";
-				const letters = CHAR_FX.has(line.fx);
-				const words = line.words.map((word, wordIndex) => {
-					const spot = place.block.words[wordIndex];
-					const wordEl = document.createElement("div");
-					wordEl.className = "ivlyrics-motion-word" + (spot.role === "light" ? " is-light" : "") + (spot.emph ? " is-emph" : "");
-					wordEl.style.fontSize = round(spot.size) + "px";
-					wordEl.style.transform = "translate3d(" + round(spot.x) + "px," + round(spot.y) + "px,0) translate(-50%,-56%)";
-					const ghost = document.createElement("span");
-					ghost.className = "ivlyrics-motion-ghost";
-					ghost.textContent = word.text;
-					wordEl.appendChild(ghost);
-					let box = null;
-					if (spot.emph && board.accent === "box") {
-						box = document.createElement("span");
-						box.className = "ivlyrics-motion-box";
-						wordEl.appendChild(box);
-					}
-					const solid = document.createElement("span");
-					solid.className = "ivlyrics-motion-solid";
-					let chars = null;
-					if (letters) {
-						chars = word.chars.map((char) => {
-							const charEl = document.createElement("span");
-							charEl.className = "ivlyrics-motion-char";
-							charEl.textContent = char.ch;
-							solid.appendChild(charEl);
-							return { el: charEl, char, cache: {} };
-						});
-					} else {
-						solid.textContent = word.text;
-					}
-					wordEl.appendChild(solid);
-					lineEl.appendChild(wordEl);
-					return { el: wordEl, solid, box, chars, word, emph: spot.emph, cache: {} };
-				});
+				let rule = null;
+				if (board.rule) {
+					rule = document.createElement("div");
+					rule.className = "ivlyrics-motion-rule";
+					const width = place.block.width + plan.F * 0.9;
+					rule.style.width = round(width) + "px";
+					rule.style.transform = "translate(" + round(-width / 2) + "px," + round(place.block.height / 2 + plan.F * 0.14) + "px)";
+					rule.style.transformOrigin = line.info.rtl ? "100% 50%" : "0 50%";
+					lineEl.appendChild(rule);
+				}
+				const words = line.shown.map((word, wordIndex) => mountWord(board, line, word, wordIndex, place.block.words[wordIndex], lineEl));
 				el.appendChild(lineEl);
-				return { el: lineEl, line, words, cache: {}, settled: null };
+				return { el: lineEl, line, words, rule, cache: {}, settled: null };
 			});
 			camera.appendChild(el);
 			return { el, board, lines, motifs, echo };
+		};
+
+		const writeSolid = (word, frameState) => {
+			write(word.cache, "opacity", round(frameState.opacity, 3), (value) => word.solid.style.setProperty("--e", String(value)));
+			write(word.cache, "transform", frameState.transform, (value) => { word.solid.style.transform = value; });
+			write(word.cache, "filter", frameState.filter, (value) => { word.solid.style.filter = value; });
+			write(word.cache, "clip", frameState.clip, (value) => { word.solid.style.clipPath = value; });
+			write(word.cache, "shadow", frameState.shadow, (value) => { word.solid.style.textShadow = value; });
 		};
 
 		const settleLine = (entry, sung) => {
@@ -1680,10 +2250,10 @@
 			if (entry.settled === state) return;
 			entry.settled = state;
 			for (const word of entry.words) {
-				write(word.cache, "opacity", sung ? 1 : 0, (value) => word.solid.style.setProperty("--e", String(value)));
-				write(word.cache, "transform", "none", (value) => { word.solid.style.transform = value; });
+				writeSolid(word, sung ? SETTLED : HIDDEN);
 				write(word.cache, "active", false, (value) => word.el.classList.toggle("is-active", value));
 				if (word.box) write(word.cache, "box", sung ? 1 : 0, (value) => word.box.style.setProperty("--b", String(value)));
+				if (word.spark) write(word.cache, "spark", "hidden", (value) => { word.spark.style.visibility = value; });
 				if (word.chars) {
 					for (const char of word.chars) {
 						write(char.cache, "opacity", 1, (value) => { char.el.style.opacity = String(value); });
@@ -1691,6 +2261,7 @@
 					}
 				}
 			}
+			if (entry.rule) write(entry.cache, "rule", sung ? 1 : 0, (value) => entry.rule.style.setProperty("--r", String(value)));
 		};
 
 		const paintWords = (entry, time, distance) => {
@@ -1698,36 +2269,55 @@
 			const line = entry.line;
 			const sway = clamp01(1 - (distance - 0.3) / 0.9);
 			const seed = hashString(line.text);
+			const pace = plan.pace;
 			for (const word of entry.words) {
-				const progress = wordEntrance(line.fx, word.word, time);
-				const frame = solidFrame(line.fx, progress);
-				write(word.cache, "opacity", round(frame.opacity, 3), (value) => word.solid.style.setProperty("--e", String(value)));
-				write(word.cache, "transform", frame.transform, (value) => { word.solid.style.transform = value; });
+				const progress = wordEntrance(line.fx, word.word, time, pace);
+				writeSolid(word, solidFrame(line.fx, progress, seed + word.index * 7919, line.info.rtl));
 				write(word.cache, "active", time >= word.word.start && time < word.word.end, (value) => word.el.classList.toggle("is-active", value));
 				if (word.box) {
-					write(word.cache, "box", round(easeOutCubic(clamp01((time - word.word.start + 40) / 280)), 3), (value) => word.box.style.setProperty("--b", String(value)));
+					write(word.cache, "box", round(easeOutCubic(clamp01((time - word.word.start + 40) / (300 * fxPaceOf(pace)))), 3), (value) => word.box.style.setProperty("--b", String(value)));
+				}
+				if (word.spark) {
+					const since = time - word.word.start;
+					const visible = since >= 0 && since < 560;
+					write(word.cache, "spark", visible ? "visible" : "hidden", (value) => { word.spark.style.visibility = value; });
+					if (visible) {
+						const k = easeOutCubic(since / 560);
+						write(word.cache, "sparkTransform", "translate(-50%,-50%) scale(" + round(0.55 + k * 0.85, 3) + ") rotate(" + round((seed % 40) - 20 + k * 25, 1) + "deg)",
+							(value) => { word.spark.style.transform = value; });
+						write(word.cache, "sparkOpacity", round(1 - k, 3), (value) => { word.spark.style.opacity = String(value); });
+					}
 				}
 				if (word.chars) {
+					const context = { count: word.chars.length, wordStart: word.word.start, seed: seed + word.index * 131, sway, pace };
 					word.chars.forEach((char, index) => {
-						const state = charFrame(line.fx, char.char, index, time, seed + index, sway);
+						const state = charFrame(line.fx, char.char, index, time, context);
 						write(char.cache, "opacity", round(state.opacity, 3), (value) => { char.el.style.opacity = String(value); });
 						write(char.cache, "transform", state.transform, (value) => { char.el.style.transform = value; });
 					});
 				}
 			}
+			if (entry.rule) {
+				const k = easeInOutCubic(clamp01((time - line.start + 220) / (900 * fxPaceOf(pace))));
+				write(entry.cache, "rule", round(k, 3), (value) => entry.rule.style.setProperty("--r", String(value)));
+			}
 		};
 
-		const paintBoard = (entry, time, pose, progress, beat) => {
+		const paintBoard = (entry, time, pose, progress, beat, through) => {
 			const board = entry.board;
 			const visibility = boardVisibility(board, time);
+			// Diving through a line lets it grow much closer before it fades.
+			const near = through === board.index ? [600, 980, 0.97] : [240, 660, 0.86];
 			for (const lineEntry of entry.lines) {
 				const line = lineEntry.line;
 				const distance = progress - line.n;
-				const depth = line.worldZ - pose.z;
-				const near = depth > PERSPECTIVE_PX * 0.86 ? 0 : 1 - clamp01((depth - 240) / 420);
-				const levels = lineLevels(distance);
-				const ghost = round(levels.ghost * visibility * near, 3);
-				const solid = round(levels.solid * visibility * near, 3);
+				const depth = viewDepth(pose, line.center);
+				const closeness = depth > PERSPECTIVE_PX * near[2] ? 0 : 1 - clamp01((depth - near[0]) / (near[1] - near[0]));
+				// A line still being sung (overlapping the next one: a duet, an echo) stays bright.
+				const singing = distance > 0 && time >= line.start && time < line.end + 150;
+				const levels = lineLevels(singing ? Math.min(distance, 0.2) : distance);
+				const ghost = round(levels.ghost * visibility * closeness, 3);
+				const solid = round(levels.solid * visibility * closeness, 3);
 				write(lineEntry.cache, "ghost", ghost, (value) => lineEntry.el.style.setProperty("--lg", String(value)));
 				write(lineEntry.cache, "solid", solid, (value) => lineEntry.el.style.setProperty("--ls", String(value)));
 				write(lineEntry.cache, "visibility", ghost <= 0.002 && solid <= 0.002 ? "hidden" : "visible", (value) => { lineEntry.el.style.visibility = value; });
@@ -1743,7 +2333,7 @@
 				}
 				write(item.cache, "visibility", "visible", (value) => { item.el.style.visibility = value; });
 				const since = time - startAt;
-				const entrance = clamp01(since / 520);
+				const entrance = clamp01(since / (520 * fxPaceOf(plan.pace)));
 				const lineDistance = motif.line === null ? 0 : progress - (board.first + motif.line);
 				const fade = motif.line === null ? 1 : lineDistance > 1.5 ? 0.6 : 1;
 				const scale = Math.max(0, easeOutBack(entrance)) * (1 + beat * 0.12);
@@ -1752,7 +2342,7 @@
 				write(item.cache, "transform",
 					"translate3d(" + round(motif.x) + "px," + round(motif.y) + "px," + round(motif.z) + "px) translate(-50%,-50%) rotate(" + round(rotation, 1) + "deg) scale(" + round(scale, 3) + ")",
 					(value) => { item.el.style.transform = value; });
-				const draw = round(1 - easeOutCubic(clamp01(since / 760)), 3);
+				const draw = round(1 - easeOutCubic(clamp01(since / (760 * fxPaceOf(plan.pace)))), 3);
 				write(item.cache, "draw", draw, (value) => {
 					for (const path of item.paths) if (path.mode === "stroke") path.el.style.strokeDashoffset = String(value);
 				});
@@ -1785,14 +2375,22 @@
 			const next = lines[index + 1];
 			const betweenBoards = !!(line && next && time > line.leave && next.board !== line.board);
 			const beforeSong = !lines.length || time < lines[0].arrive - 400;
-			if (!playing || beforeSong || betweenBoards || at - planSetAt < 1500 || at - pending.since > 15000) {
-				const quiet = at - planSetAt < 1500 || beforeSong || !playing;
+			// Nothing to cut away from while only the video plays.
+			const resting = restAt(plan, time) > 0.95;
+			if (!playing || beforeSong || betweenBoards || resting || at - planSetAt < 1500 || at - pending.since > 15000) {
+				const quiet = at - planSetAt < 1500 || beforeSong || resting || !playing;
 				plan = pending.plan;
 				pending = null;
 				planSetAt = at;
 				unmountAll();
 				if (!quiet) swapFlashAt = at;
 			}
+		};
+
+		const throughBoard = (time) => {
+			const index = lineIndexAt(plan, time);
+			const line = plan.lines[index];
+			return line?.move?.type === "through" && time > line.leave ? line.board : -1;
 		};
 
 		const render = (time) => {
@@ -1805,15 +2403,18 @@
 			swapIfDue(time, at);
 			const pose = cameraPose(plan, time, pulses);
 			write(cache.camera, "transform",
-				"rotateZ(" + round(-pose.roll, 3) + "deg) translate3d(" + round(-pose.x) + "px," + round(-pose.y) + "px," + round(-pose.z) + "px)",
+				"rotateX(" + round(pose.pitch || 0, 2) + "deg) rotateY(" + round(pose.yaw || 0, 2) + "deg) rotateZ(" + round(-pose.roll, 3) + "deg) translate3d(" + round(-pose.x) + "px," + round(-pose.y) + "px," + round(-pose.z) + "px)",
 				(value) => { camera.style.transform = value; });
 
 			// Motion blur while the camera whips between boards.
 			let blur = 0;
 			if (playing && lastPose && at - lastFrameAt > 0 && at - lastFrameAt < 90) {
 				const elapsed = at - lastFrameAt;
-				const travel = Math.hypot(pose.x - lastPose.x, pose.y - lastPose.y) + (Math.abs(pose.roll - lastPose.roll) * Math.PI / 180) * plan.W * 0.45;
-				blur = clamp((travel / elapsed - 1.7) * 1.3, 0, 6);
+				let turn = Math.abs(pose.roll - lastPose.roll) % 360;
+				turn = Math.min(turn, 360 - turn);
+				const swing = Math.abs((pose.yaw || 0) - (lastPose.yaw || 0)) + Math.abs((pose.pitch || 0) - (lastPose.pitch || 0));
+				const travel = Math.hypot(pose.x - lastPose.x, pose.y - lastPose.y) + ((turn + swing) * Math.PI / 180) * plan.W * 0.45;
+				blur = clamp((travel / elapsed - 1.7) * 1.3, 0, 7);
 			}
 			lastPose = pose;
 			lastFrameAt = at;
@@ -1822,14 +2423,15 @@
 
 			const backdrop = findBackground(at);
 			if (backdrop) {
-				const frame = backgroundFrame(plan, pose);
-				write(cache.background, "rotate", round(frame.rotate, 2) + "deg", (value) => { backdrop.style.rotate = value; });
-				write(cache.background, "scale", String(round(frame.scale, 4)), (value) => { backdrop.style.scale = value; });
-				write(cache.background, "translate", round(frame.x) + "px " + round(frame.y) + "px", (value) => { backdrop.style.translate = value; });
+				const frameState = backgroundFrame(plan, pose);
+				write(cache.background, "rotate", round(frameState.rotate, 2) + "deg", (value) => { backdrop.style.rotate = value; });
+				write(cache.background, "scale", String(round(frameState.scale, 4)), (value) => { backdrop.style.scale = value; });
+				write(cache.background, "translate", round(frameState.x) + "px " + round(frameState.y) + "px", (value) => { backdrop.style.translate = value; });
 				write(cache.background, "filter", blur >= 1 ? "blur(" + round(blur * 0.5, 1) + "px)" : "", (value) => { backdrop.style.filter = value; });
 			}
 
 			const progress = progressAt(plan, time);
+			const through = throughBoard(time);
 			const wanted = new Set();
 			plan.boards.forEach((board, index) => {
 				if (time >= board.appear - 60 && time <= board.fadeEnd + 60) wanted.add(index);
@@ -1837,7 +2439,7 @@
 			for (const index of [...mounted.keys()]) if (!wanted.has(index)) unmount(index);
 			for (const index of wanted) {
 				if (!mounted.has(index)) mounted.set(index, mountBoard(index));
-				paintBoard(mounted.get(index), time, pose, progress, pose.beat || 0);
+				paintBoard(mounted.get(index), time, pose, progress, pose.beat || 0, through);
 			}
 
 			const index = Math.max(0, lineIndexAt(plan, time));
@@ -1851,7 +2453,26 @@
 					write(cache.wash, "color", plan.boards[board]?.color ? "is-alt" : "", (value) => { wash.classList.toggle("is-alt", value === "is-alt"); });
 				}
 			}
+			// Interludes, intro and outro: the video comes forward and the subtitle steps aside.
+			const rest = round(restAt(plan, time), 2);
+			write(cache.rest, "level", rest, (value) => {
+				if (scrim) scrim.style.opacity = String(round(1 - value * 0.5, 2));
+				subtitle.classList.toggle("is-resting", value > 0.5);
+			});
 			write(cache.hud, "time", timecode(time), (value) => { if (hudTime) hudTime.textContent = value; });
+
+			const sweep = panelAt(plan, time);
+			write(cache.panel, "visibility", sweep ? "visible" : "hidden", (value) => { if (panel) panel.style.visibility = value; });
+			if (sweep && panel) {
+				write(cache.panel, "transform", "translateX(" + round(sweep.position * 135, 2) + "%) skewX(-14deg)", (value) => { panel.style.transform = value; });
+				write(cache.panel, "color", sweep.color ? "is-alt" : "", (value) => { panel.classList.toggle("is-alt", value === "is-alt"); });
+			}
+			const barLevel = round(barsLevel(plan, time), 3);
+			write(cache.bars, "level", barLevel, (value) => {
+				if (!bars) return;
+				bars.style.visibility = value > 0.001 ? "visible" : "hidden";
+				for (const bar of bars.children) bar.style.transform = "scaleY(" + value + ")";
+			});
 
 			let flashLevel = 0;
 			const cut = recentEvent(plan.flashes, time, 320);
@@ -1890,8 +2511,9 @@
 
 		return {
 			/**
-			 * soft: a new edit of the same song (the AI direction arrived) waits
-			 * for a cut between boards; anything else (size, fonts) applies now.
+			 * soft: a new edit of the same song (the AI direction or a late
+			 * font arrived) waits for a cut between boards; anything else
+			 * (size, a new song) applies now.
 			 */
 			setPlan(nextPlan, nextTrackUri, options = {}) {
 				const uri = nextTrackUri || "";
@@ -1940,8 +2562,11 @@
 			const rootRef = useRef(null);
 			const viewportRef = useRef(null);
 			const cameraRef = useRef(null);
+			const scrimRef = useRef(null);
 			const washRef = useRef(null);
 			const flashRef = useRef(null);
+			const panelRef = useRef(null);
+			const barsRef = useRef(null);
 			const subtitleRef = useRef(null);
 			const liveRef = useRef(null);
 			const hudShotRef = useRef(null);
@@ -1949,7 +2574,7 @@
 			const engineRef = useRef(null);
 			const measureRef = useRef(null);
 			const [size, setSize] = useState({ width: 0, height: 0 });
-			const [fontEpoch, setFontEpoch] = useState(0);
+			const [fonts, setFonts] = useState({ key: "", epoch: 0 });
 			const [analysis, setAnalysis] = useState({ uri: "", status: "loading", data: null, planned: false });
 			const [ai, setAi] = useState({ key: "", status: "idle", raw: null });
 			const [showFailure, setShowFailure] = useState(false);
@@ -1957,11 +2582,21 @@
 			const model = useMemo(() => {
 				const lines = buildModel(lyrics);
 				const signature = trackUri + "\u0002" + modelSignature(lines);
-				if (signature !== modelRef.current.signature) modelRef.current = { signature, lines };
+				const shape = signature + "\u0003" + voicesSignature(lines);
+				if (shape !== modelRef.current.shape) modelRef.current = { signature, shape, lines };
 				return modelRef.current.lines;
 			}, [lyrics, trackUri]);
 			const signature = modelRef.current.signature;
 			const aiKey = String(hashString(signature));
+			// The song's language decides Han characters (Japanese, Simplified or Traditional faces).
+			const songLang = useMemo(() => {
+				try {
+					return String(root.LyricsService?.detectLanguage?.(lyrics) || root.Utils?.detectLanguage?.(lyrics) || "");
+				} catch {
+					return "";
+				}
+			}, [signature]);
+			const typography = useMemo(() => typeLib()?.typographyOf?.(model, songLang) || [], [model, songLang]);
 
 			useLayoutEffect(() => {
 				const element = rootRef.current;
@@ -1980,8 +2615,11 @@
 					stage: element,
 					viewport: viewportRef.current,
 					camera: cameraRef.current,
+					scrim: scrimRef.current,
 					wash: washRef.current,
 					flash: flashRef.current,
+					panel: panelRef.current,
+					bars: barsRef.current,
 					subtitle: subtitleRef.current,
 					live: liveRef.current,
 					hudShot: hudShotRef.current,
@@ -1993,17 +2631,6 @@
 					engineRef.current = null;
 				};
 			}, []);
-
-			useEffect(() => {
-				let cancelled = false;
-				const sample = model.map((line) => line.text).join("");
-				ensureFonts(root.document, sample).then(() => {
-					if (cancelled) return;
-					measureRef.current = createMeasurer(root.document);
-					setFontEpoch((value) => value + 1);
-				});
-				return () => { cancelled = true; };
-			}, [signature]);
 
 			useEffect(() => {
 				let cancelled = false;
@@ -2028,12 +2655,15 @@
 				};
 			}, [trackUri]);
 
+			const planAnalysis = analysis.planned ? analysis.data : null;
+			const tempo = useMemo(() => root.ivLyricsMotionDirector?.tempoOf?.(model, pulsesInMs(planAnalysis)) || null, [model, planAnalysis]);
+
 			useEffect(() => {
 				if (!model.length || !trackUri) return undefined;
 				let cancelled = false;
 				setAi({ key: aiKey, status: "loading", raw: null });
 				setShowFailure(false);
-				requestDirection({ trackUri, model, title, artist }).then((result) => {
+				requestDirection({ trackUri, model, title, artist, tempo, songLang }).then((result) => {
 					if (cancelled) return;
 					setAi({ key: aiKey, status: result.status, raw: result.raw || null });
 					if (result.status === "failed") {
@@ -2050,16 +2680,41 @@
 				return () => root.clearTimeout(timer);
 			}, [showFailure]);
 
-			const planAnalysis = analysis.planned ? analysis.data : null;
 			const direction = useMemo(() => {
 				const director = root.ivLyricsMotionDirector;
 				if (!director || !model.length) return null;
-				const options = { seed: hashString(trackUri), energy: lineEnergies(model, planAnalysis) };
+				const options = { seed: hashString(trackUri), energy: lineEnergies(model, planAnalysis), tempo };
 				return ai.key === aiKey && ai.raw ? director.normalizeDirection(ai.raw, model, options) : director.localDirection(model, options);
-			}, [ai, aiKey, model, trackUri, planAnalysis]);
+			}, [ai, aiKey, model, trackUri, planAnalysis, tempo]);
 			const palette = useMemo(() => paletteFrom(accent, direction?.palette), [accent, direction]);
 
-			const planReady = analysis.uri === trackUri && analysis.status !== "loading" && fontEpoch > 0;
+			// The faces this direction sets load before it is composed (bounded),
+			// and a face that arrives later re-measures the edit at the next cut.
+			const needs = useMemo(() => (direction ? fontNeeds(model, direction, typography) : new Map()), [direction, typography]);
+			const needsKey = useMemo(() => [...needs.keys()].sort().join("\u0001"), [needs]);
+			useEffect(() => {
+				let cancelled = false;
+				const document = root.document;
+				typeLib()?.ensureFonts?.(document, needs).then(() => {
+					if (cancelled) return;
+					measureRef.current = typeLib()?.createMeasurer?.(document) || null;
+					setFonts((current) => ({ key: needsKey, epoch: current.epoch + 1 }));
+				});
+				const fontSet = document?.fonts;
+				const late = () => {
+					if (cancelled) return;
+					measureRef.current = typeLib()?.createMeasurer?.(document) || null;
+					setFonts((current) => (current.key === needsKey ? { key: needsKey, epoch: current.epoch + 1 } : current));
+				};
+				fontSet?.addEventListener?.("loadingdone", late);
+				return () => {
+					cancelled = true;
+					fontSet?.removeEventListener?.("loadingdone", late);
+				};
+			}, [needsKey]);
+
+			const fontsReady = fonts.key === needsKey && fonts.epoch > 0;
+			const planReady = analysis.uri === trackUri && analysis.status !== "loading" && fontsReady;
 			const plan = useMemo(() => {
 				if (!planReady || !size.width || !size.height || !direction) return null;
 				return compose(model, direction, {
@@ -2068,14 +2723,18 @@
 					seed: hashString(trackUri),
 					analysis: planAnalysis,
 					measure: measureRef.current,
+					typography,
+					songLang,
 				});
-			}, [planReady, direction, size.width, size.height, fontEpoch, planAnalysis]);
+			}, [planReady, direction, size.width, size.height, fonts.epoch, planAnalysis, typography]);
 
 			useEffect(() => { engineRef.current?.setLyrics(lyrics); }, [lyrics]);
-			const shownDirectionRef = useRef(null);
+			const shownRef = useRef({ direction: null, size: "" });
 			useEffect(() => {
-				const soft = !!plan && !!shownDirectionRef.current && shownDirectionRef.current !== direction;
-				if (plan) shownDirectionRef.current = direction;
+				// A new direction or a late face for the same song and size waits for a cut.
+				const sizeKey = size.width + "x" + size.height;
+				const soft = !!plan && !!shownRef.current.direction && shownRef.current.size === sizeKey;
+				if (plan) shownRef.current = { direction, size: sizeKey };
 				engineRef.current?.setPlan(plan, trackUri, { soft });
 			}, [plan, trackUri]);
 			useEffect(() => { engineRef.current?.setPulses(pulsesInMs(analysis.data)); }, [analysis.data]);
@@ -2091,19 +2750,23 @@
 				ref: rootRef,
 				className: "ivlyrics-motion-stage",
 				"data-mood": direction?.mood || "warm",
+				"data-tempo": direction?.tempo?.tempo || "mid",
 				"data-source": direction?.source || "local",
 				style: {
 					"--iv-motion-accent": palette[0],
 					"--iv-motion-accent-2": palette[1],
 					"--iv-motion-perspective": PERSPECTIVE_PX + "px",
-					"--iv-motion-display": DISPLAY_FONT,
-					"--iv-motion-light": LIGHT_FONT,
+					"--iv-motion-ui": UI_FONT,
 				},
 			},
-				e("div", { className: "ivlyrics-motion-scrim", "aria-hidden": "true" }),
+				e("div", { ref: scrimRef, className: "ivlyrics-motion-scrim", "aria-hidden": "true" }),
 				e("div", { ref: washRef, className: "ivlyrics-motion-wash", "aria-hidden": "true" }),
 				e("div", { ref: viewportRef, className: "ivlyrics-motion-viewport", "aria-hidden": "true" },
 					e("div", { ref: cameraRef, className: "ivlyrics-motion-camera" })),
+				e("div", { ref: panelRef, className: "ivlyrics-motion-panel", "aria-hidden": "true" }),
+				e("div", { ref: barsRef, className: "ivlyrics-motion-bars", "aria-hidden": "true" },
+					e("div", { className: "ivlyrics-motion-bar is-top" }),
+					e("div", { className: "ivlyrics-motion-bar is-bottom" })),
 				e("div", { ref: flashRef, className: "ivlyrics-motion-flash", "aria-hidden": "true" }),
 				e("div", { className: "ivlyrics-motion-hud", "aria-hidden": "true" },
 					e("div", { className: "ivlyrics-motion-hud-title" },
@@ -2126,6 +2789,7 @@
 		initialized: true,
 		...pure,
 		requestDirection,
+		createEngine,
 		Stage: react ? createStage(react) : null,
 	});
 })(typeof window !== "undefined" ? window : globalThis);
