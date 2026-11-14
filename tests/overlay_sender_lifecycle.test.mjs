@@ -16,6 +16,7 @@ const serial = value => JSON.parse(JSON.stringify(value));
 
 function load(text) {
   const trace = [], timers = new Map(), workers = [], values = new Map(), pendingFetches = [];
+  const clock = {now: 1_000_000};
   let nextId = 0, removePlayerThrows = false;
   const surface = name => {
     const listeners = new Map();
@@ -45,6 +46,7 @@ function load(text) {
     // recovery changes interfere with the lifecycle scheduling assertions.
     fetch: (url, options) => { trace.push(['fetch', url, JSON.parse(options.body)]); return new Promise((resolve, reject) => pendingFetches.push({resolve, reject})); },
     AbortSignal: {timeout: ms => ({timeout: ms})},
+    Date: class extends Date { static now() { return clock.now; } },
   });
   vm.runInContext(section(text, '    const cleanupWorker =', '    serviceDebug("[LyricsService] Initializing')
     + section(text, '    const LYRICS_SEND_RETRY_DELAYS =', '    window.LyricsService = LyricsService;')
@@ -59,7 +61,7 @@ function load(text) {
       runtimeEnabled: s._runtimeEnabledState, settingsOpen: s._isSettingsOpen})),
     listeners: [window.counts(), document.counts(), player.counts()], timers: [...timers].map(([id, t]) => [id, t.ms]),
   });
-  return {overlay, helper, window, player, trace, state, workers, values, pendingFetches,
+  return {overlay, helper, window, player, trace, state, workers, values, pendingFetches, clock,
     timerCallbacks: ms => [...timers.values()].filter(timer => timer.ms === ms).map(timer => timer.fn),
     removePlayerThrows: value => { removePlayerThrows = value; },
     runTimer(ms) { const entry = [...timers].find(([, t]) => t.ms === ms); assert.ok(entry); timers.delete(entry[0]); entry[1].fn(); },
@@ -210,6 +212,22 @@ test('paused progress is deduplicated without losing heartbeat, seek, track or q
   h.helper.stopProgressSync();
   await h.helper.sendProgressPayload('/lyrics/progress', payload, 'one');
   assert.equal(sent.length, 10);
+});
+
+test('a long pause keeps the overlay heartbeat and still sends paused seeks at once', async () => {
+  const h = load(source), sent = [];
+  Object.defineProperty(h.overlay, 'sendToEndpoint', {value: async (endpoint, payload) => { sent.push(payload); return true; }});
+  const paused = {source: 'ivlyrics', position: 1000, isPlaying: false};
+  await h.overlay.sendProgressPayload('/progress', paused, 'one');
+  for (let elapsed = 250; elapsed <= 10000; elapsed += 250) {
+    h.clock.now += 250;
+    await h.overlay.sendProgressPayload('/progress', paused, 'one');
+  }
+  assert.equal(sent.length, 6, 'the overlay keeps a paused display while its two-second heartbeat continues');
+  h.clock.now += 250;
+  await h.overlay.sendProgressPayload('/progress', {...paused, position: 20000}, 'one');
+  assert.equal(sent.length, 7);
+  assert.equal(sent.at(-1).position, 20000, 'a seek during a long pause reaches the overlay at once');
 });
 
 test('helper reuses lifecycle methods without changing its own property descriptors or state isolation', () => {

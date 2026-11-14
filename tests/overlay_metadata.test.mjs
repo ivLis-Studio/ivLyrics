@@ -224,6 +224,18 @@ test('effective title and artist changes bypass lyric dedupe while identical met
 	h.dispose();
 });
 
+test('overlay packets name ivLyrics as their source while helper packets keep the helper format', async () => {
+	const h = load();
+	await Promise.all([h.overlay.sendLyrics(track(), lyrics()), h.helper.sendLyrics(track(), lyrics())]);
+	await h.overlay._worker.onmessage();
+	await h.helper._worker.onmessage();
+	assert.equal(h.packets().at(-1).payload.source, 'ivlyrics');
+	assert.equal(h.packets('/progress').at(-1).payload.source, 'ivlyrics');
+	assert.equal('source' in h.packets('/lyrics/sender').at(-1).payload, false);
+	assert.equal('source' in h.packets('/lyrics/progress').at(-1).payload, false);
+	h.dispose();
+});
+
 test('next-track progress applies only the overlay option and updates paused progress after each toggle', async () => {
 	const h = load();
 	await Promise.all([h.overlay.sendLyrics(track(), lyrics()), h.helper.sendLyrics(track(), lyrics())]);
