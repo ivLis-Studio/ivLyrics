@@ -85,6 +85,40 @@ test("a lone lead fills the line row and parallel voices fill their own rows", (
 	assert.equal(background[0].phoneticUnits, undefined);
 });
 
+test("a sung unit keeps the colour of the range it was sung on", () => {
+	const { api } = load();
+	const line = {
+		startTime: 0,
+		originalText: "Aa bb",
+		phoneticText: "aa bb",
+		syllables: [
+			{ ...syllable("Aa ", 0, 500), inlineStyle: true, styleSpeaker: "MALE 1" },
+			{ ...syllable("bb", 500, 1000), inlineStyle: true, styleSpeaker: "CUSTOM", styleSpeakerColor: "#123456", styleSpeakerFallback: "FEMALE 1" },
+		],
+	};
+	const [filled] = api.applyFillToLines([line]);
+	assert.deepEqual(plain(filled.phoneticUnits[0]), {
+		text: "aa ", startTime: 0, endTime: 500, inlineStyle: true, styleSpeaker: "MALE 1",
+	});
+	assert.deepEqual(plain(filled.phoneticUnits[1]), {
+		text: "bb", startTime: 500, endTime: 1000, inlineStyle: true,
+		styleSpeaker: "CUSTOM", styleSpeakerColor: "#123456", styleSpeakerFallback: "FEMALE 1",
+	});
+	assert.equal(filled.phoneticText, "aa bb", "the pronunciation row text is unchanged");
+	const noRanges = karaokeLine();
+	const [plainLine] = api.applyFillToLines([noRanges]);
+	assert.equal(plain(plainLine.phoneticUnits).map((unit) => unit.text).join(""), noRanges.phoneticText);
+	assert.ok(plainLine.phoneticUnits.every((unit) => unit.inlineStyle === undefined),
+		"lines without coloured ranges keep the lean units");
+	const effector = [{
+		originalText: "cc", phoneticText: "cc",
+		syllables: [{ ...syllable("cc", 0, 500), inlineStyle: true, styleKind: "glow" }],
+	}];
+	const [effectLine] = api.applyFillToLines(effector);
+	assert.deepEqual(plain(effectLine.phoneticUnits), [syllable("cc", 0, 500)], "an effect-only range carries no colour");
+});
+
+
 +test("an AI split keeps the pronunciation's own spaces and never its changed letters", () => {
 	const { api } = load();
 	assert.deepEqual(plain(api.alignParts(["와라우", "요오", "니 나", "쿠"], "와라우 요오니 나쿠")), ["와라우 ", "요오", "니 나", "쿠"]);
@@ -147,12 +181,16 @@ const renderHarness = () => {
 		useEffect: () => {},
 		performance: { now: () => 0 },
 		CONFIG: { visual: { "inactive-color": "gray" } },
+		window: {},
 		applyKaraokeFillCorrectionCurve: (value) => value,
 		attached,
 	});
 	vm.runInContext([
 		extract("getKaraokeFillSoftEdge"), extract("getKaraokeLiveFill"), extract("setKaraokeLiveValue"),
 		extract("paintKaraokeLiveUnit"), extract("paintKaraokeLiveEntry"),
+		extract("PAGES_IV_LYRICS_SPEAKER_CLASS_CONTRACT"), extract("getKaraokeSpeakerPresentation"),
+		extract("normalizeKaraokeSpeakerClass"),
+		extract("getKaraokeSpeakerStyle"),
 		"const KaraokeLivePainter = { attach: (entry) => attached.push(entry), release: () => {} };",
 		block,
 		"globalThis.api = { getPhoneticFillUnits, PhoneticFillText, renderPhoneticFillSubLine, paintKaraokeLiveEntry };",
@@ -186,6 +224,31 @@ test("the singing row shows unit states; other rows keep the row color", () => {
 	assert.equal(live[1].props.style, null, "a live row leaves the fill edge to the painter");
 });
 
+test("a fill unit borrows its range speaker colour, never its effects", () => {
+	const { api } = renderHarness();
+	const styled = [
+		{ ...syllable("aa", 0, 100), inlineStyle: true, styleSpeaker: "MALE 1" },
+		{ ...syllable("bb", 100, 200), inlineStyle: true, styleSpeaker: "CUSTOM", styleSpeakerColor: "#123456", styleSpeakerFallback: "FEMALE 1" },
+		{ ...syllable("cc", 200, 300), inlineStyle: true, styleSpeaker: "MALE 2", styleKind: "glow" },
+		{ ...syllable("dd", 300, 400), inlineStyle: true, styleKind: "glow" },
+	];
+	const idle = spans(api.PhoneticFillText({ units: styled, position: 0, active: false }));
+	assert.equal(idle[0].props.className, "lyrics-phonetic-fill-unit ivlyrics-karaoke-range-style speaker-male-1");
+	assert.equal(idle[0].props.style, null, "a palette speaker keeps its colour in the stylesheet");
+	assert.equal(idle[1].props.className, "lyrics-phonetic-fill-unit ivlyrics-karaoke-range-style speaker-female-1");
+	assert.equal(idle[1].props.style["--lyrics-color-active"], "#123456", "a creator colour is written inline");
+	assert.match(idle[1].props.style["--lyrics-color-inactive"], /#123456/);
+	assert.equal(idle[2].props.className, "lyrics-phonetic-fill-unit ivlyrics-karaoke-range-style speaker-male-2");
+	assert.doesNotMatch(idle[2].props.className, /glow/, "the fill repeats no range effect");
+	assert.equal(idle[3].props.className, "lyrics-phonetic-fill-unit", "an effect-only range keeps the row colour");
+	assert.equal(idle[3].props.style, null);
+	const singing = spans(api.PhoneticFillText({ units: styled, position: 150, active: true }));
+	assert.equal(singing[1].props.className,
+		"lyrics-phonetic-fill-unit lyrics-phonetic-fill-unit--active ivlyrics-karaoke-range-style speaker-female-1");
+	assert.equal(singing[1].props.style["--lyrics-color-active"], "#123456");
+	assert.ok(singing[1].props.style["--karaoke-char-fill"], "the fill edge stays on the unit");
+});
+
 test("the live painter writes the active unit's fill edge from the clock", () => {
 	const { api, effects, attached } = renderHarness();
 	let clock = 1450;
@@ -209,6 +272,7 @@ test("the live painter writes the active unit's fill edge from the clock", () =>
 test("styles, settings, defaults and wiring are present", () => {
 	assert.match(styles, /\.lyrics-phonetic-fill-unit--active::after \{[^}]*content: attr\(data-text\);[^}]*text-shadow: none;[^}]*mask-image/s);
 	assert.match(styles, /\.lyrics-phonetic-fill-unit--done \{\s*color: var\(--lyrics-color-active\);/);
+	assert.match(styles, /\.lyrics-phonetic-fill-unit\.ivlyrics-karaoke-range-style \{\s*display: inline;/);
 	assert.match(settings, /"pronunciation-karaoke-fill": false/);
 	assert.match(settings, /key: "pronunciation-karaoke-fill",\s*type: ConfigSlider/);
 	assert.match(index, /"pronunciation-karaoke-fill": StorageManager\.get\(\s*"ivLyrics:visual:pronunciation-karaoke-fill",\s*false/);
