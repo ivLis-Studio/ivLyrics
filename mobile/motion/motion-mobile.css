@@ -44,5 +44,5 @@ body {
   /* A phone on its side is short: the translation sits at the very bottom, clear of the lines. */
   bottom: calc(var(--iv-inset-bottom, 0px) + 10px);
   max-width: 88vw;
-  font-size: clamp(13px, 2vw, 20px);
+  font-size: clamp(13px, 1.8vw, 18px);
 }
