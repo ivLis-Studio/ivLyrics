@@ -1,0 +1,48 @@
+/* The mobile motion lyrics page (see MotionLyricsMobileHost.js): a transparent
+   page over the app's own background. The motion rules themselves come from
+   style.css; these set the page and move the small print inside the safe area. */
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#ivlyrics-motion-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ivlyrics-motion-hud {
+  inset:
+    calc(var(--iv-inset-top, 0px) + 12px)
+    calc(var(--iv-inset-right, 0px) + 16px)
+    calc(var(--iv-inset-bottom, 0px) + 12px)
+    calc(var(--iv-inset-left, 0px) + 16px);
+  font-size: 10px;
+}
+
+.no-hud .ivlyrics-motion-hud {
+  display: none;
+}
+
+.ivlyrics-motion-status {
+  top: calc(var(--iv-inset-top, 0px) + 40px);
+  max-width: calc(100% - 32px);
+}
+
+.ivlyrics-motion-subtitle {
+  /* A phone on its side is short: the translation sits at the very bottom, clear of the lines. */
+  bottom: calc(var(--iv-inset-bottom, 0px) + 10px);
+  max-width: 88vw;
+  font-size: clamp(13px, 2vw, 20px);
+}
