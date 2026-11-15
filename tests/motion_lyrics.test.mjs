@@ -491,6 +491,8 @@ test("the AI manager asks providers for a motion direction and rejects answers w
 	const context = vm.createContext({ window, console, setTimeout, clearTimeout, Intl, localStorage: window.localStorage, Spicetify: { LocalStorage: { get: () => null, set() {} } } });
 	context.globalThis = context;
 	vm.runInContext(read("AIAddonManager.js"), context);
+	// The director writes the prompt the manager sends.
+	window.ivLyricsMotionDirector = load().director;
 	const manager = window.AIAddonManager;
 	const calls = [];
 	const provider = (id, answer) => ({
@@ -884,15 +886,15 @@ test("every accent has its look, and the AI is told about every composition and 
 	const context = vm.createContext({ window, console, setTimeout, clearTimeout, Intl, localStorage: window.localStorage, Spicetify: { LocalStorage: { get: () => null, set() {} } } });
 	context.globalThis = context;
 	vm.runInContext(read("AIAddonManager.js"), context);
-	// Without the director's vocabulary the prompt falls back to the manager's own copy: both must agree.
-	const fallback = window.AIAddonManager.buildMotionDirectionPrompt({ lines: [] });
-	const informed = window.AIAddonManager.buildMotionDirectionPrompt({ lines: [], vocabulary: director.vocabulary() });
-	for (const prompt of [fallback, informed]) {
-		for (const name of director.LAYOUTS) assert.ok(prompt.includes(name + " = "), "the prompt explains " + name);
-		for (const name of director.ACCENTS) assert.ok(prompt.includes(name + " = "), "the prompt explains " + name);
-		assert.ok(prompt.includes("(" + director.ACCENTS.join("|") + ")"));
-		for (const [name, most] of Object.entries(director.MAX_LINES)) if (most < 6) assert.ok(prompt.includes(name + " at most " + most), name + " limit");
-	}
+	// The director writes the prompt from its own vocabulary (the mobile apps use it too); the manager passes it on.
+	assert.throws(() => window.AIAddonManager.buildMotionDirectionPrompt({ lines: [] }), /director is unavailable/);
+	window.ivLyricsMotionDirector = director;
+	const prompt = window.AIAddonManager.buildMotionDirectionPrompt({ lines: [] });
+	assert.equal(prompt, director.buildPrompt({ lines: [] }));
+	for (const name of director.LAYOUTS) assert.ok(prompt.includes(name + " = "), "the prompt explains " + name);
+	for (const name of director.ACCENTS) assert.ok(prompt.includes(name + " = "), "the prompt explains " + name);
+	assert.ok(prompt.includes("(" + director.ACCENTS.join("|") + ")"));
+	for (const [name, most] of Object.entries(director.MAX_LINES)) if (most < 6) assert.ok(prompt.includes(name + " at most " + most), name + " limit");
 	assert.equal(director.VERSION, 4, "older cached directions are asked for again");
 	assert.equal(typeof motion.strokeLevel, "function");
 });
