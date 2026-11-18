@@ -3459,6 +3459,16 @@ const normalizeKaraokeSpeakerClass = (speaker, speakerColor = "", speakerFallbac
 	return getKaraokeSpeakerPresentation(speaker, speakerColor, speakerFallback).speakerClass;
 };
 
+// The shared speaker helper has no NORMAL palette entry, so a NORMAL range
+// resolves to an empty class. Keep an explicit class anyway: the range still
+// has to reset the line speaker's colour (style.css .speaker-normal), and
+// without a class the renderer drops the range entirely.
+const getKaraokeInlineSpeakerClass = (speaker, speakerColor = "", speakerFallback = "") => {
+	const resolved = normalizeKaraokeSpeakerClass(speaker, speakerColor, speakerFallback);
+	if (resolved) return resolved;
+	return String(speaker || "").trim().toLowerCase().replace(/[_\s]+/g, "-").replace(/[^a-z0-9-]/g, "");
+};
+
 const getKaraokeSpeakerStyle = (speaker, speakerColor = "", speakerFallback = "") => {
 	const creatorColor = getKaraokeSpeakerPresentation(speaker, speakerColor, speakerFallback).creatorColor;
 	return creatorColor ? {
@@ -5135,7 +5145,7 @@ const getKaraokeInlineStylePresentation = (charInfo) => {
 
 	const kind = String(charInfo?.styleKind || "").trim().toLowerCase();
 	const kindClasses = getKaraokeKindClassParts(kind);
-	const speakerClass = normalizeKaraokeSpeakerClass(
+	const speakerClass = getKaraokeInlineSpeakerClass(
 		charInfo?.styleSpeaker,
 		charInfo?.styleSpeakerColor,
 		charInfo?.styleSpeakerFallback
@@ -5598,7 +5608,7 @@ const getKaraokeTextRunPresentation = (segment) => {
 	if (segment.styleKind || segment.styleSpeaker) {
 		const kindClasses = getKaraokeKindClassParts(segment.styleKind);
 		className = ` ivlyrics-karaoke-range-style${kindClasses.length ? ` ${kindClasses.join(' ')}` : ''}`;
-		const speakerClass = normalizeKaraokeSpeakerClass(
+		const speakerClass = getKaraokeInlineSpeakerClass(
 			segment.styleSpeaker, segment.styleSpeakerColor, segment.styleSpeakerFallback
 		);
 		if (speakerClass) className += ` speaker-${speakerClass}`;
@@ -10733,6 +10743,7 @@ window.ivLyricsLyricRendererPrimitives = Object.freeze({
 	buildLyricDisplayState,
 	getKaraokeLineMetaClass,
 	getKaraokeSpeakerStyle,
+	getLyricsTypographyStyleVariables,
 	getInterludeHandoffState,
 	isInterludeMotionEnabled,
 });
