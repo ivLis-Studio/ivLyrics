@@ -1588,6 +1588,11 @@
                 const [testStatus, setTestStatus] = useState('');
                 const [availableModels, setAvailableModels] = useState([]);
                 const [modelsLoading, setModelsLoading] = useState(false);
+                // Remount token for the additional-provider list after a chain
+                // swap, plus a re-render nudge so this card's move control
+                // follows provider list edits made inside that list.
+                const [providersToken, setProvidersToken] = useState(0);
+                const [, refreshChainState] = useState(0);
                 // 모델 목록 로드
                 const loadModels = useCallback(async () => {
                     const keys = getApiKeys();
@@ -1648,10 +1653,14 @@
                     loadModels();
                 }, [loadModels]);
 
+                // Endpoint-scoped: this card tests only its own endpoint. Real
+                // requests still fall back through the chain, but the test must
+                // never report a passing primary when a backup answered.
                 const handleTest = useCallback(async () => {
+                    const keys = getApiKeys();
                     setTestStatus(aiText('testingConnection', 'Testing...'));
                     try {
-                        await callChatGPTAPIRaw('Reply with just "OK" if you receive this.');
+                        await testSingleTarget({ baseUrl: getBaseUrl(), apiKey: keys[0], model: getSelectedModel() });
                         setTestStatus('✓ ' + aiText('connectionSuccess', 'Connection successful.'));
                     } catch (e) {
                         setTestStatus(`✗ ${e.message}`);
@@ -1660,6 +1669,8 @@
 
                 const isModelInList = availableModels.find(m => m.id === model);
                 const hasApiKey = getApiKeys().length > 0;
+                const primaryModel = getSelectedModel() || '';
+                const hasFallbacks = getFallbackProviders().length > 0;
 
                 const [primaryCapabilities, setPrimaryCapabilitiesState] = useState(() => getPrimaryCapabilities());
 
@@ -1670,6 +1681,53 @@
                         return next;
                     });
                 }, []);
+
+                // The primary keeps its own settings keys, so reordering works by
+                // swapping values with the provider below: the chain order changes
+                // and pressing this again swaps back. Removing the primary promotes
+                // that provider into its place and drops the old entry, so the chain
+                // never drops below one provider.
+                const replacePrimaryWithNext = useCallback(keepDemoted => {
+                    const connections = getFallbackProviders();
+                    const promoted = connections[0];
+                    if (!promoted) return;
+                    const promotedKeys = parseConnectionKeys(promoted.apiKeys);
+                    const promotedKeysValue = promotedKeys.length > 1 ? JSON.stringify(promotedKeys) : promotedKeys[0] || '';
+                    const promotedBaseUrl = normalizeBaseUrl(promoted.baseUrl) || DEFAULT_OPENAI_BASE_URL;
+                    const promotedModel = String(promoted.model || '').trim()
+                        || (promoted.inheritPrimaryModel ? getSelectedModel() || '' : '');
+                    const promotedCapabilities = promoted.capabilities && typeof promoted.capabilities === 'object'
+                        ? { ...promoted.capabilities }
+                        : {};
+                    const demoted = keepDemoted
+                        ? normalizeProviderConnection({
+                            name: t('misc.default', 'Default'),
+                            baseUrl: getBaseUrl(),
+                            apiKeys: getApiKeys(),
+                            model: getSelectedModel() || '',
+                            capabilities: getPrimaryCapabilities(),
+                            enabled: true
+                        }, 0)
+                        : null;
+                    if (demoted) demoted.id = createEndpointId();
+                    setSetting('fallback-providers', demoted ? [demoted, ...connections.slice(1)] : connections.slice(1));
+                    setSetting('api-keys', promotedKeysValue);
+                    setSetting('base-url', promotedBaseUrl);
+                    setSetting('model', promotedModel);
+                    setSetting('custom-model', '');
+                    setPrimaryCapabilities(promotedCapabilities);
+                    setApiKeys(promotedKeysValue);
+                    setBaseUrl(promotedBaseUrl);
+                    setModel(promotedModel);
+                    setCustomModel('');
+                    setPrimaryCapabilitiesState(promotedCapabilities);
+                    setTestStatus('');
+                    setProvidersToken(value => value + 1);
+                    refreshChainState(value => value + 1);
+                }, []);
+
+                const movePrimaryDown = useCallback(() => replacePrimaryWithNext(true), [replacePrimaryWithNext]);
+                const removePrimary = useCallback(() => replacePrimaryWithNext(false), [replacePrimaryWithNext]);
 
                 const renderApiKeyRow = () => React.createElement('div', { className: 'ai-addon-setting ai-addon-connection-field' },
                         React.createElement('label', { htmlFor: `${ADDON_INFO.id}-primary-apiKeys` }, aiText('apiKey', 'API Key(s)')),
@@ -1728,6 +1786,11 @@
                             heading: React.createElement('div', { className: 'ai-addon-connection-enabled' },
                                 React.createElement('span', null, `1. ${t('misc.default', 'Default')}`)
                             ),
+                            actions: React.createElement('div', { className: 'ai-addon-connection-actions' },
+                                iconButton(aiText('moveUp', 'Move up'), '↑', () => {}, true),
+                                iconButton(aiText('moveDown', 'Move down'), '↓', movePrimaryDown, !hasFallbacks),
+                                iconButton(aiText('removeConnection', 'Remove provider'), '×', removePrimary, !hasFallbacks)
+                            ),
                             fields: [
                                 renderApiKeyRow(),
                                 renderBaseUrlRow(),
@@ -1738,7 +1801,8 @@
                             onToggle: togglePrimaryCapability,
                             blockedByMaster: capability => !isMasterCapabilityEnabled(capability),
                             testButton: React.createElement('button', {
-                                type: 'button', onClick: handleTest, className: 'ai-addon-btn ai-addon-btn-secondary'
+                                type: 'button', onClick: handleTest, className: 'ai-addon-btn ai-addon-btn-secondary',
+                                disabled: !hasApiKey || !primaryModel
                             }, aiText('testConnection', 'Test Connection')),
                             status: testStatus && React.createElement('small', {
                                 role: 'status', 'aria-live': 'polite',
@@ -1746,11 +1810,22 @@
                             }, testStatus)
                         })
                     ),
-                    React.createElement(FallbackProvidersSection),
+                    React.createElement(FallbackProvidersSection, {
+                        key: providersToken,
+                        onSaved: () => refreshChainState(value => value + 1),
+                        onPromote: movePrimaryDown
+                    }),
                     // Advanced API Parameters
                     React.createElement(AdvancedParamsSection)
                 );
             };
+
+            function iconButton(label, glyph, onClick, disabled = false) {
+                return React.createElement('button', {
+                    type: 'button', className: 'ai-addon-btn ai-addon-btn-secondary ai-addon-connection-icon',
+                    onClick, disabled, 'aria-label': label, title: label
+                }, glyph);
+            }
 
             // Share presentation only: the primary keeps its original settings and handlers.
             function renderConnectionCard({ heading, actions, fields, capabilities, onToggle, blockedByMaster, testButton, status }) {
@@ -1784,13 +1859,16 @@
                 );
             }
 
-            function FallbackProvidersSection() {
+            function FallbackProvidersSection({ onSaved, onPromote }) {
                 const [connections, setConnections] = useState(getFallbackProviders);
-                const save = update => setConnections(previous => {
-                    const next = typeof update === 'function' ? update(previous) : update;
-                    setSetting('fallback-providers', next);
-                    return next;
-                });
+                const save = update => {
+                    setConnections(previous => {
+                        const next = typeof update === 'function' ? update(previous) : update;
+                        setSetting('fallback-providers', next);
+                        return next;
+                    });
+                    onSaved();
+                };
                 const move = (id, delta) => save(previous => {
                     const index = previous.findIndex(connection => connection.id === id);
                     const target = index + delta;
@@ -1807,7 +1885,8 @@
                         connection, index, count: connections.length,
                         onChange: patch => save(previous => previous.map(item => item.id === connection.id ? { ...item, ...patch } : item)),
                         onRemove: () => save(previous => previous.filter(item => item.id !== connection.id)),
-                        onMove: delta => move(connection.id, delta)
+                        onMove: delta => move(connection.id, delta),
+                        onPromote
                     })),
                     React.createElement('button', {
                         type: 'button', className: 'ai-addon-btn ai-addon-btn-secondary',
@@ -1819,7 +1898,7 @@
                 );
             }
 
-            function ConnectionEditor({ connection, index, count, onChange, onRemove, onMove }) {
+            function ConnectionEditor({ connection, index, count, onChange, onRemove, onMove, onPromote }) {
                 const [models, setModels] = useState([]);
                 const [loading, setLoading] = useState(false);
                 const [revision, setRevision] = useState(0);
@@ -1852,10 +1931,6 @@
                         })
                     );
                 };
-                const iconButton = (label, glyph, onClick, disabled = false) => React.createElement('button', {
-                    type: 'button', className: 'ai-addon-btn ai-addon-btn-secondary ai-addon-connection-icon',
-                    onClick, disabled, 'aria-label': label, title: label
-                }, glyph);
                 return renderConnectionCard({
                     heading: React.createElement('label', { className: 'ai-addon-connection-enabled' },
                         React.createElement('input', {
@@ -1865,7 +1940,9 @@
                         React.createElement('span', null, `${index + 2}. ${connection.name || 'API'}`)
                     ),
                     actions: React.createElement('div', { className: 'ai-addon-connection-actions' },
-                        iconButton(aiText('moveUp', 'Move up'), '↑', () => onMove(-1), index === 0),
+                        // The first provider sits right below the primary, so its move-up
+                        // promotes it into the primary slot, mirroring the primary's move-down.
+                        iconButton(aiText('moveUp', 'Move up'), '↑', index === 0 ? onPromote : () => onMove(-1)),
                         iconButton(aiText('moveDown', 'Move down'), '↓', () => onMove(1), index === count - 1),
                         iconButton(aiText('removeConnection', 'Remove provider'), '×', onRemove)
                     ),
