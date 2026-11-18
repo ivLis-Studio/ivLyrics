@@ -401,7 +401,9 @@
 
 	// Units of one pronunciation row: the part of the pronunciation sung
 	// during each karaoke unit, with that unit's timing. Empty parts are
-	// left out; joined, the units give the row's pronunciation.
+	// left out; joined, the units give the row's pronunciation. A unit also
+	// carries the range speaker of the syllable it was sung on, so the
+	// pronunciation keeps the line's per-range colours.
 	const buildFillUnits = (syllables, parts) => {
 		const units = [];
 		syllables.forEach((syllable, index) => {
@@ -410,7 +412,19 @@
 			const startTime = Number(syllable?.startTime);
 			const endTime = Number(syllable?.endTime ?? syllable?.startTime);
 			if (!Number.isFinite(startTime)) return;
-			units.push({ text, startTime, endTime: Number.isFinite(endTime) ? Math.max(startTime, endTime) : startTime });
+			const unit = {
+				text,
+				startTime,
+				endTime: Number.isFinite(endTime) ? Math.max(startTime, endTime) : startTime,
+			};
+			const speaker = syllable?.inlineStyle === true ? String(syllable?.styleSpeaker || "").trim() : "";
+			if (speaker) {
+				unit.inlineStyle = true;
+				unit.styleSpeaker = speaker;
+				if (syllable.styleSpeakerColor) unit.styleSpeakerColor = String(syllable.styleSpeakerColor);
+				if (syllable.styleSpeakerFallback) unit.styleSpeakerFallback = String(syllable.styleSpeakerFallback);
+			}
+			units.push(unit);
 		});
 		return units;
 	};

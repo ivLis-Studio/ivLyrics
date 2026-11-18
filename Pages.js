@@ -9747,6 +9747,23 @@ const getPhoneticFillUnits = (units, text) => {
 	return joined === normalizePhoneticFillText(text) ? units : null;
 };
 
+// A fill unit inherits the range colour of the syllable it was sung on, so
+// the pronunciation row keeps the line's multi-vocal and creator colours.
+// Text effects are not repeated: the fill only paints colour.
+const getPhoneticFillUnitColor = (unit) => {
+	if (unit?.inlineStyle !== true) return null;
+	const speaker = String(unit?.styleSpeaker || "").trim();
+	if (!speaker) return null;
+	// Same class the original text's range gets, so a NORMAL range inside a
+	// coloured line resets the fill to the page colours as the text does.
+	const speakerClass = getKaraokeInlineSpeakerClass(speaker, unit?.styleSpeakerColor, unit?.styleSpeakerFallback);
+	if (!speakerClass) return null;
+	return {
+		className: "ivlyrics-karaoke-range-style speaker-" + speakerClass,
+		style: getKaraokeSpeakerStyle(speaker, unit?.styleSpeakerColor, unit?.styleSpeakerFallback),
+	};
+};
+
 const usePhoneticFillPainting = (liveClock, livePositionMap, rootRef, units) => {
 	const entryRef = useRef(null);
 	(react.useLayoutEffect || useEffect)(() => {
@@ -9812,12 +9829,18 @@ const PhoneticFillText = react.memo(({ units, position = 0, active = false, live
 					state = "pending";
 				}
 			}
+			const color = getPhoneticFillUnitColor(unit);
+			const colorStyle = color?.style && Object.keys(color.style).length ? color.style : null;
 			return react.createElement("span", {
 				key: index,
-				className: state ? "lyrics-phonetic-fill-unit lyrics-phonetic-fill-unit--" + state : "lyrics-phonetic-fill-unit",
+				className: [
+					"lyrics-phonetic-fill-unit",
+					state ? "lyrics-phonetic-fill-unit--" + state : "",
+					color?.className,
+				].filter(Boolean).join(" "),
 				[PHONETIC_FILL_ATTRIBUTE]: index,
 				"data-text": state === "active" ? unit.text : undefined,
-				style,
+				style: colorStyle ? { ...colorStyle, ...(style || {}) } : style,
 			}, unit.text);
 		})
 	);
