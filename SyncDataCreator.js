@@ -3860,6 +3860,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const [characterPronunciationProgress, setCharacterPronunciationProgress] = useState(null);
 	const [showCharacterPronunciationConsent, setShowCharacterPronunciationConsent] = useState(false);
 	const [mode, setMode] = useState('idle');
+	// Set synchronously by manual line navigation so the preview polling loop
+	// cannot snap the line back before React runs its effect cleanup.
+	const manualPreviewExitRef = useRef(false);
 	const [syncGranularity, setSyncGranularity] = useState(SYNC_CREATOR_DEFAULT_GRANULARITY);
 	const [positionStore] = useState(() => createSyncCreatorPositionStore(0));
 	const setPosition = positionStore.set;
@@ -6416,7 +6419,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				setPosition(pos);
 			}
 
-			if (mode === 'preview') {
+			if (mode === 'preview' && !manualPreviewExitRef.current) {
 				const lineIndex = getSyncCreatorPlaybackLineIndex(playbackTimeline, pos);
 				if (lineIndex >= 0 && lineIndex !== currentLineIndex) {
 					setCurrentLineIndex(lineIndex);
@@ -9512,6 +9515,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			}
 			clearLyricTextSelection();
 			clearOffsetSelection();
+			manualPreviewExitRef.current = false;
 			setMode(newMode);
 			if (!Spicetify.Player.isPlaying()) Spicetify.Player.play();
 		}
@@ -9763,21 +9767,31 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
 	}, [syncCreatorDraftStore]);
 
+	// Preview follows playback on its own. Any manual line navigation means the
+	// user wants to edit that line, so it leaves preview before moving. The ref
+	// covers the window before the preview polling effect is torn down.
+	const leavePreviewForLineNavigation = useCallback(() => {
+		if (mode === 'preview') manualPreviewExitRef.current = true;
+		setMode(prev => (prev === 'preview' ? 'idle' : prev));
+	}, [mode]);
+
 	const goToPrevLine = useCallback(() => {
+		leavePreviewForLineNavigation();
 		if (previousNavigableLineIndex >= 0) {
 			claimSessionForLocalEditing();
 			setCurrentLineIndex(previousNavigableLineIndex);
 			if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
 		}
-	}, [claimSessionForLocalEditing, previousNavigableLineIndex]);
+	}, [claimSessionForLocalEditing, leavePreviewForLineNavigation, previousNavigableLineIndex]);
 
 	const goToNextLine = useCallback(() => {
+		leavePreviewForLineNavigation();
 		if (nextNavigableLineIndex >= 0) {
 			claimSessionForLocalEditing();
 			setCurrentLineIndex(nextNavigableLineIndex);
 			if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
 		}
-	}, [claimSessionForLocalEditing, nextNavigableLineIndex]);
+	}, [claimSessionForLocalEditing, leavePreviewForLineNavigation, nextNavigableLineIndex]);
 
 	const goToSyncTarget = useCallback((lineIndex, edge = 'first') => {
 		if (lineIndex < 0 || lineIndex >= lyricsLines.length) return;
@@ -9790,6 +9804,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	}, [claimSessionForLocalEditing, lyricsLines.length, resetCurrentSyncInput]);
 
 	const goToPreviousSyncTarget = useCallback(() => {
+		leavePreviewForLineNavigation();
 		const currentPartIndex = currentParallelParts.findIndex(part => part.id === activeParallelTargetId);
 		if (currentPartIndex > 0) {
 			selectParallelPart(currentParallelParts[currentPartIndex - 1].id);
@@ -9801,11 +9816,13 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		activeParallelTargetId,
 		currentParallelParts,
 		goToSyncTarget,
+		leavePreviewForLineNavigation,
 		previousNavigableLineIndex,
 		selectParallelPart
 	]);
 
 	const goToNextSyncTarget = useCallback(() => {
+		leavePreviewForLineNavigation();
 		const currentPartIndex = currentParallelParts.findIndex(part => part.id === activeParallelTargetId);
 		if (currentPartIndex >= 0 && currentPartIndex < currentParallelParts.length - 1) {
 			selectParallelPart(currentParallelParts[currentPartIndex + 1].id);
@@ -9817,6 +9834,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		activeParallelTargetId,
 		currentParallelParts,
 		goToSyncTarget,
+		leavePreviewForLineNavigation,
 		nextNavigableLineIndex,
 		selectParallelPart
 	]);
@@ -9844,10 +9862,11 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	}, [goToNextSyncTarget, goToPreviousSyncTarget, lyricsLines.length, lyricsText]);
 
 	const goToFirstLine = useCallback(() => {
+		leavePreviewForLineNavigation();
 		claimSessionForLocalEditing();
 		setCurrentLineIndex(0);
 		if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
-	}, [claimSessionForLocalEditing]);
+	}, [claimSessionForLocalEditing, leavePreviewForLineNavigation]);
 
 	const handleSeek = useCallback((e) => {
 		const rect = e.currentTarget.getBoundingClientRect();
