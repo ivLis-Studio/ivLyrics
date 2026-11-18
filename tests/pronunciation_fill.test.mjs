@@ -190,6 +190,7 @@ const renderHarness = () => {
 		extract("paintKaraokeLiveUnit"), extract("paintKaraokeLiveEntry"),
 		extract("PAGES_IV_LYRICS_SPEAKER_CLASS_CONTRACT"), extract("getKaraokeSpeakerPresentation"),
 		extract("normalizeKaraokeSpeakerClass"),
+		extract("getKaraokeInlineSpeakerClass"),
 		extract("getKaraokeSpeakerStyle"),
 		"const KaraokeLivePainter = { attach: (entry) => attached.push(entry), release: () => {} };",
 		block,
@@ -247,6 +248,18 @@ test("a fill unit borrows its range speaker colour, never its effects", () => {
 		"lyrics-phonetic-fill-unit lyrics-phonetic-fill-unit--active ivlyrics-karaoke-range-style speaker-female-1");
 	assert.equal(singing[1].props.style["--lyrics-color-active"], "#123456");
 	assert.ok(singing[1].props.style["--karaoke-char-fill"], "the fill edge stays on the unit");
+});
+
+test("a NORMAL range in a coloured line fills in the page colours, as its text does", () => {
+	const { api } = renderHarness();
+	const [unit] = spans(api.PhoneticFillText({
+		units: [{ ...syllable("aa", 0, 100), inlineStyle: true, styleSpeaker: "NORMAL" }],
+		position: 0,
+		active: false,
+	}));
+	assert.equal(unit.props.className, "lyrics-phonetic-fill-unit ivlyrics-karaoke-range-style speaker-normal");
+	assert.match(styles, /\.ivlyrics-karaoke-range-style\.speaker-normal \{[^}]*--lyrics-color-active: var\(--iv-page-lyrics-color-active\)/,
+		"speaker-normal resets the colours the fill paints with");
 });
 
 test("the live painter writes the active unit's fill edge from the clock", () => {

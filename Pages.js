@@ -9754,7 +9754,9 @@ const getPhoneticFillUnitColor = (unit) => {
 	if (unit?.inlineStyle !== true) return null;
 	const speaker = String(unit?.styleSpeaker || "").trim();
 	if (!speaker) return null;
-	const speakerClass = normalizeKaraokeSpeakerClass(speaker, unit?.styleSpeakerColor, unit?.styleSpeakerFallback);
+	// Same class the original text's range gets, so a NORMAL range inside a
+	// coloured line resets the fill to the page colours as the text does.
+	const speakerClass = getKaraokeInlineSpeakerClass(speaker, unit?.styleSpeakerColor, unit?.styleSpeakerFallback);
 	if (!speakerClass) return null;
 	return {
 		className: "ivlyrics-karaoke-range-style speaker-" + speakerClass,
