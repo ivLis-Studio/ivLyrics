@@ -534,7 +534,8 @@ window.LANG_ID = {
         "lyricsStudy": "Belajar",
         "characterPronunciation": "Pelafalan per karakter",
         "culturalAnnotations": "Konteks budaya",
-        "wordSupplements": "Detail kata"
+        "wordSupplements": "Detail kata",
+        "motionDirection": "Arahan motion"
       },
       "noEnabledProviders": "Tidak ada penyedia AI yang diaktifkan. Harap aktifkan setidaknya satu penyedia di pengaturan.",
       "noPronunciationProviders": "Tidak ada penyedia AI aktif yang dapat membuat pelafalan. Aktifkan “Pelafalan” untuk salah satu penyedia di pengaturan Penyedia AI.",
@@ -2641,7 +2642,13 @@ window.LANG_ID = {
       "compactLabel": "Mode CD",
       "compactDescription": "Tampilkan sampul album bundar dengan lubang tengah dan visualisator di sekelilingnya.",
       "videoLabel": "Panggung video",
-      "videoDescription": "Tampilkan video YouTube tersinkron dengan lirik aktif besar di bagian bawah."
+      "videoDescription": "Tampilkan video YouTube tersinkron dengan lirik aktif besar di bagian bawah.",
+      "motionLabel": "Gerak",
+      "motionDescription": "Suntingan tipografi kinetik yang diarahkan AI bila tersedia: baris-baris berbagi layar, setiap kata muncul saat dinyanyikan, dan kamera terbang serta berputar bersama video. Untuk lagu dengan sinkronisasi per kata atau karakter.",
+      "motionUnavailable": "Lirik gerak berfungsi untuk lagu dengan sinkronisasi per kata atau karakter. Lagu ini menampilkan lirik panggung video.",
+      "motionReducedMotion": "Kurangi gerakan aktif, jadi lirik panggung video ditampilkan sebagai ganti lirik gerak.",
+      "motionDirecting": "AI sedang mengarahkan animasi…",
+      "motionDirectFailed": "Arahan AI gagal. Menggunakan arahan bawaan."
     },
     "settings": {
       "subtitle": "Sesuaikan ukuran, animasi, dan tipografi lirik bawah pada mode vinil.",

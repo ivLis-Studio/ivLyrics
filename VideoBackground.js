@@ -2219,16 +2219,17 @@ const VideoBackground = ({ trackUri, firstLyricTime, brightness, blurAmount, cov
             isolation: "isolate",
         }
     },
-        renderFallback(),
-
-
-        showStats && renderStatsPanel(),
-
-        // 헬퍼 모드: HTML5 video 태그
-        useHelper && renderHelperVideo(),
-        // 일반 모드: YouTube IFrame 컨테이너
-        !useHelper && renderYouTubeContainer(),
-        renderBrightnessOverlay()
+        // Everything that fills the frame sits in one layer that motion lyrics
+        // turns and zooms with its camera (it stays put everywhere else).
+        react.createElement("div", { className: "ivlyrics-video-background-camera" },
+            renderFallback(),
+            // 헬퍼 모드: HTML5 video 태그
+            useHelper && renderHelperVideo(),
+            // 일반 모드: YouTube IFrame 컨테이너
+            !useHelper && renderYouTubeContainer(),
+            renderBrightnessOverlay()
+        ),
+        showStats && renderStatsPanel()
     );
 };
 

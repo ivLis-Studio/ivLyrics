@@ -52,7 +52,8 @@
             researchWebSearch: true,
             lyricsStudy: true,
             characterPronunciation: true,
-            culturalAnnotations: true
+            culturalAnnotations: true,
+            motionDirection: true
         },
         models: [] // API에서 동적으로 로드
     };
@@ -1145,6 +1146,17 @@
                 requestTimeoutMs,
                 progressParser ? chunk => progressParser.push(chunk) : null
             );
+        },
+
+        async generateMotionDirection(params) {
+            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
+                throw new Error('No lyrics lines provided');
+            }
+            const prompt = params.motionDirectionPrompt;
+            if (!prompt) {
+                throw new Error('[Pollinations.ai] Central motion direction prompt is unavailable.');
+            }
+            return await callPollinationsAPI(prompt);
         },
 
         async generateLyricsStudy(params) {

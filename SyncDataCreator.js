@@ -92,6 +92,21 @@ const SYNC_CREATOR_PROGRESS_COLOR = 'rgb(var(--spice-rgb-accent, 30, 215, 96))';
 const SYNC_CREATOR_PROGRESS_BACKGROUND = 'rgba(var(--spice-rgb-accent, 30, 215, 96), 0.18)';
 const SYNC_CREATOR_SYNCED_BACKGROUND = 'rgba(255, 255, 255, 0.055)';
 const SYNC_CREATOR_RECORDING_BACKGROUND = 'rgba(255, 152, 0, 0.6)';
+// The sync creator hides the lyric page behind the editor and pins these to
+// neutral values on the page container (index.js). Copying them into the
+// preview would disable the karaoke glow and flatten the lyric colours the
+// preview exists to show, so the preview keeps the shared typography
+// contract's and CONFIG's values instead.
+const SYNC_CREATOR_PREVIEW_CONTAINER_VAR_EXCLUSIONS = new Set([
+	'--lyrics-text-shadow',
+	'--lyrics-shadow-enabled',
+	'--lyrics-text-drop-shadow',
+	'--lyrics-color-active',
+	'--lyrics-color-inactive',
+	'--lyrics-original-opacity',
+	'--lyrics-translation-opacity',
+	'--lyrics-phonetic-opacity'
+]);
 const SYNC_CREATOR_PRONUNCIATION_TARGET_STORAGE_KEY = 'ivLyrics:syncCreator:pronunciation-target-mode';
 const SYNC_CREATOR_PRONUNCIATION_TARGET_MODES = new Set(['latin', 'translation']);
 const SYNC_CREATOR_CHARACTER_PRONUNCIATION_CONSENT_KEY = 'ivLyrics:syncCreator:character-pronunciation-token-consent:v1';
@@ -2107,8 +2122,16 @@ const getSyncCreatorSpeakerTextColor = (value, speakerColor = '', speakerFallbac
 	const fallbackSpeaker = isSyncCreatorCustomSpeaker(speaker)
 		? sanitizeSyncCreatorSpeakerFallback(speaker, speakerFallback, true, value)
 		: speaker;
-	return sanitizeSyncCreatorSpeakerColor(speaker, speakerColor)
-		|| window.ivLyricsSpeakerColors?.getTextColor?.(fallbackSpeaker)
+	const customColor = sanitizeSyncCreatorSpeakerColor(speaker, speakerColor);
+	if (customColor) return customColor;
+	// The lyric pages have no NORMAL palette entry: a NORMAL line is painted with
+	// the listener's active lyric colour. Resolve the same value here so the
+	// editor field shows the colour the preview and the app show, instead of the
+	// hardcoded palette white the pages never use.
+	if (fallbackSpeaker === 'NORMAL') {
+		return window.CONFIG?.visual?.['active-color'] || 'var(--spice-text)';
+	}
+	return window.ivLyricsSpeakerColors?.getTextColor?.(fallbackSpeaker)
 		|| SYNC_CREATOR_SPEAKER_TEXT_COLORS[fallbackSpeaker]
 		|| 'var(--spice-text)';
 };
@@ -3860,6 +3883,9 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const [characterPronunciationProgress, setCharacterPronunciationProgress] = useState(null);
 	const [showCharacterPronunciationConsent, setShowCharacterPronunciationConsent] = useState(false);
 	const [mode, setMode] = useState('idle');
+	// Set synchronously by manual line navigation so the preview polling loop
+	// cannot snap the line back before React runs its effect cleanup.
+	const manualPreviewExitRef = useRef(false);
 	const [syncGranularity, setSyncGranularity] = useState(SYNC_CREATOR_DEFAULT_GRANULARITY);
 	const [positionStore] = useState(() => createSyncCreatorPositionStore(0));
 	const setPosition = positionStore.set;
@@ -6416,7 +6442,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				setPosition(pos);
 			}
 
-			if (mode === 'preview') {
+			if (mode === 'preview' && !manualPreviewExitRef.current) {
 				const lineIndex = getSyncCreatorPlaybackLineIndex(playbackTimeline, pos);
 				if (lineIndex >= 0 && lineIndex !== currentLineIndex) {
 					setCurrentLineIndex(lineIndex);
@@ -9512,6 +9538,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 			}
 			clearLyricTextSelection();
 			clearOffsetSelection();
+			manualPreviewExitRef.current = false;
 			setMode(newMode);
 			if (!Spicetify.Player.isPlaying()) Spicetify.Player.play();
 		}
@@ -9763,21 +9790,31 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
 	}, [syncCreatorDraftStore]);
 
+	// Preview follows playback on its own. Any manual line navigation means the
+	// user wants to edit that line, so it leaves preview before moving. The ref
+	// covers the window before the preview polling effect is torn down.
+	const leavePreviewForLineNavigation = useCallback(() => {
+		if (mode === 'preview') manualPreviewExitRef.current = true;
+		setMode(prev => (prev === 'preview' ? 'idle' : prev));
+	}, [mode]);
+
 	const goToPrevLine = useCallback(() => {
+		leavePreviewForLineNavigation();
 		if (previousNavigableLineIndex >= 0) {
 			claimSessionForLocalEditing();
 			setCurrentLineIndex(previousNavigableLineIndex);
 			if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
 		}
-	}, [claimSessionForLocalEditing, previousNavigableLineIndex]);
+	}, [claimSessionForLocalEditing, leavePreviewForLineNavigation, previousNavigableLineIndex]);
 
 	const goToNextLine = useCallback(() => {
+		leavePreviewForLineNavigation();
 		if (nextNavigableLineIndex >= 0) {
 			claimSessionForLocalEditing();
 			setCurrentLineIndex(nextNavigableLineIndex);
 			if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
 		}
-	}, [claimSessionForLocalEditing, nextNavigableLineIndex]);
+	}, [claimSessionForLocalEditing, leavePreviewForLineNavigation, nextNavigableLineIndex]);
 
 	const goToSyncTarget = useCallback((lineIndex, edge = 'first') => {
 		if (lineIndex < 0 || lineIndex >= lyricsLines.length) return;
@@ -9790,6 +9827,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	}, [claimSessionForLocalEditing, lyricsLines.length, resetCurrentSyncInput]);
 
 	const goToPreviousSyncTarget = useCallback(() => {
+		leavePreviewForLineNavigation();
 		const currentPartIndex = currentParallelParts.findIndex(part => part.id === activeParallelTargetId);
 		if (currentPartIndex > 0) {
 			selectParallelPart(currentParallelParts[currentPartIndex - 1].id);
@@ -9801,11 +9839,13 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		activeParallelTargetId,
 		currentParallelParts,
 		goToSyncTarget,
+		leavePreviewForLineNavigation,
 		previousNavigableLineIndex,
 		selectParallelPart
 	]);
 
 	const goToNextSyncTarget = useCallback(() => {
+		leavePreviewForLineNavigation();
 		const currentPartIndex = currentParallelParts.findIndex(part => part.id === activeParallelTargetId);
 		if (currentPartIndex >= 0 && currentPartIndex < currentParallelParts.length - 1) {
 			selectParallelPart(currentParallelParts[currentPartIndex + 1].id);
@@ -9817,6 +9857,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		activeParallelTargetId,
 		currentParallelParts,
 		goToSyncTarget,
+		leavePreviewForLineNavigation,
 		nextNavigableLineIndex,
 		selectParallelPart
 	]);
@@ -9844,10 +9885,11 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	}, [goToNextSyncTarget, goToPreviousSyncTarget, lyricsLines.length, lyricsText]);
 
 	const goToFirstLine = useCallback(() => {
+		leavePreviewForLineNavigation();
 		claimSessionForLocalEditing();
 		setCurrentLineIndex(0);
 		if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
-	}, [claimSessionForLocalEditing]);
+	}, [claimSessionForLocalEditing, leavePreviewForLineNavigation]);
 
 	const handleSeek = useCallback((e) => {
 		const rect = e.currentTarget.getBoundingClientRect();
@@ -14854,58 +14896,41 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 	const previewFuriganaCacheRef = useRef({ maps: new Map() });
 	const editorGlyphSize = Number.parseInt(s.charSpan?.fontSize, 10) || 32;
 	const previewGlyphSize = editorGlyphSize || 32;
+	const previewSettingsRevisionRef = useRef(0);
+	const previewSettingsSignatureRef = useRef('');
+	const previewVisualSignature = showLivePreview
+		? JSON.stringify(window.CONFIG?.visual || {})
+		: '';
+	if (previewSettingsSignatureRef.current !== previewVisualSignature) {
+		previewSettingsSignatureRef.current = previewVisualSignature;
+		previewSettingsRevisionRef.current += 1;
+	}
+	// Same revision the page renderer receives: cache invalidation follows the
+	// visual settings instead of a frozen 0.
+	const previewSettingsRevision = previewSettingsRevisionRef.current;
 	const livePreviewLyricVars = useMemo(() => {
 		const visualConfig = window.CONFIG?.visual || {};
-		// Same size source as the outside renderer (Pages.js lyric vars):
-		// main defaults to 32, original defaults to 44. The preview previously
-		// forced both to the editor glyph size (32), so originals rendered
-		// smaller than outside and any user font-size setting was ignored.
-		const parseLyricPx = (value, fallback) => {
-			const numeric = Number.parseInt(value, 10);
-			return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
-		};
-		const outsideFontSize = parseLyricPx(visualConfig['font-size'], editorGlyphSize || 32);
-		// Full row typography contract from the outside renderer
-		// (Pages.js getLyricsTypographyStyleVariables): every glyph, ruby and
-		// auxiliary-line metric the shared LyricsLineBlock CSS consumes.
-		const num = (value, fallback) => {
-			const parsed = Number(value);
-			return Number.isFinite(parsed) ? parsed : fallback;
-		};
-		const baseFontFamily = visualConfig['font-family'] || 'var(--font-family)';
+		// The shared typography contract (Pages.js getLyricsTypographyStyleVariables)
+		// owns every font, ruby and auxiliary-line metric, the text shadow, and the
+		// --lyrics-shadow-enabled switch the karaoke glow reads. Duplicating that
+		// table here is how the preview drifted from the app's classic/expressive
+		// rules, so the preview consumes the same function the page does.
+		const primitives = window.ivLyricsLyricRendererPrimitives;
+		const typographyVars = typeof primitives?.getLyricsTypographyStyleVariables === 'function'
+			? primitives.getLyricsTypographyStyleVariables(visualConfig)
+			: {};
 		const vars = {
+			...typographyVars,
 			'--lyrics-color-active': visualConfig['active-color'] || 'var(--spice-text, #ffffff)',
-			'--lyrics-color-inactive': visualConfig['inactive-color'] || 'var(--spice-subtext, rgba(255, 255, 255, 0.58))',
-			'--lyrics-font-size': `${outsideFontSize}px`,
-			'--lyrics-font-family': baseFontFamily,
-			'--lyrics-original-font-family': visualConfig['original-font-family'] || baseFontFamily,
-			'--lyrics-original-font-size': `${editorGlyphSize || 32}px`,
-			'--lyrics-original-font-weight': num(visualConfig['original-font-weight'], 600),
-			'--lyrics-original-opacity': num(visualConfig['original-opacity'], 95) / 100,
-			'--lyrics-original-letter-spacing': `${num(visualConfig['original-letter-spacing'], 0)}px`,
-			'--lyrics-phonetic-font-family': visualConfig['phonetic-font-family'] || baseFontFamily,
-			'--lyrics-phonetic-font-size': `${num(visualConfig['phonetic-font-size'], 16)}px`,
-			'--lyrics-phonetic-font-weight': num(visualConfig['phonetic-font-weight'], 100),
-			'--lyrics-phonetic-opacity': num(visualConfig['phonetic-opacity'], 70) / 100,
-			'--lyrics-phonetic-spacing': `${num(visualConfig['phonetic-spacing'], -1)}px`,
-			'--lyrics-phonetic-letter-spacing': `${num(visualConfig['phonetic-letter-spacing'], 0)}px`,
-			'--lyrics-translation-font-family': visualConfig['translation-font-family'] || baseFontFamily,
-			'--lyrics-translation-font-size': `${num(visualConfig['translation-font-size'], 22)}px`,
-			'--lyrics-translation-font-weight': num(visualConfig['translation-font-weight'], 300),
-			'--lyrics-translation-opacity': num(visualConfig['translation-opacity'], 85) / 100,
-			'--lyrics-translation-spacing': `${num(visualConfig['translation-spacing'], 0)}px`,
-			'--lyrics-translation-letter-spacing': `${num(visualConfig['translation-letter-spacing'], 0)}px`,
-			'--lyrics-furigana-font-size': `${num(visualConfig['furigana-font-size'], 14)}px`,
-			'--lyrics-furigana-font-weight': num(visualConfig['furigana-font-weight'], 300),
-			'--lyrics-furigana-opacity': num(visualConfig['furigana-opacity'], 80) / 100,
-			'--lyrics-furigana-spacing': `${num(visualConfig['furigana-spacing'], 2)}px`,
-			'--lyrics-line-spacing': `${num(visualConfig['line-spacing'], 8)}px`
+			'--lyrics-color-inactive': visualConfig['inactive-color'] || 'var(--spice-subtext, rgba(255, 255, 255, 0.58))'
 		};
+		if (!vars['--lyrics-font-size']) vars['--lyrics-font-size'] = `${editorGlyphSize || 32}px`;
 		try {
 			const container = document.querySelector('.lyrics-lyricsContainer-LyricsContainer');
 			if (container) {
 				const computed = window.getComputedStyle(container);
 				for (const key of Object.keys(vars)) {
+					if (SYNC_CREATOR_PREVIEW_CONTAINER_VAR_EXCLUSIONS.has(key)) continue;
 					const liveValue = computed.getPropertyValue(key)?.trim();
 					if (liveValue) vars[key] = liveValue;
 				}
@@ -14918,7 +14943,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		// readings carry their own fixed styling, so no phonetic pin needed.
 		vars['--lyrics-original-font-size'] = `${editorGlyphSize || 32}px`;
 		return vars;
-	}, [showLivePreview]);
+	}, [showLivePreview, previewVisualSignature]);
 	// Error boundary so a failing karaoke preview can never crash the editor.
 	// Remounted via key whenever the previewed line or its timing changes.
 	const SyncCreatorPreviewBoundary = useMemo(() => (
@@ -15038,7 +15063,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					isEffectLive: isRowActive,
 					furiganaMapOverride,
 					charReadings: charReadingsOverride,
-					settingsRevision: 0,
+					settingsRevision: previewSettingsRevision,
 					globalCharOffset: 0,
 					activeGlobalCharIndex: -1,
 					singleLineScroll: false
@@ -15178,7 +15203,7 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 					isActive: true,
 					delay: leadingPreludeDurationMs / 3,
 					durationMs: leadingPreludeDurationMs,
-					settingsRevision: 0
+					settingsRevision: previewSettingsRevision
 				});
 			} catch (error) {
 				previewBody = null;
@@ -15246,21 +15271,25 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 				className: 'sync-creator-live-preview-exact',
 				style: { position: 'relative', zIndex: 1, display: 'block', width: '100%', boxSizing: 'border-box', minHeight: '132px', maxHeight: '360px', overflowY: 'auto', overflowX: 'hidden', textAlign: 'center', padding: '28px 20px', flex: '1 0 auto' }
 			},
+				// The preview renders the production page markup, so every
+				// page-scoped lyric rule (line colour, line transition, past-line
+				// colour share, karaoke glow) applies exactly as it does in the app.
 				react.createElement('div', {
-					style: {
-						position: 'relative', zIndex: 1, width: '100%',
-						// Same row typography as the outside synced view. The
-						// outside row font-size rule lives under
-						// .lyrics-lyricsContainer-SyncedLyrics, which the editor
-						// preview is not inside of, so mirror it here.
-						fontSize: 'var(--lyrics-original-font-size, var(--lyrics-font-size))',
-						fontWeight: 'var(--lyrics-original-font-weight, 700)',
-						fontFamily: 'var(--lyrics-original-font-family, var(--lyrics-font-family, var(--font-family)))',
-						letterSpacing: 'var(--lyrics-original-letter-spacing, 0px)',
-						lineHeight: 1,
-						...livePreviewLyricVars
-					}
-				}, safePreviewBody)
+					className: `sync-creator-live-preview-stage lyrics-lyricsContainer-SyncedLyricsPage is-karaoke${window.CONFIG?.visual?.['karaoke-line-transition'] === false ? '' : ' karaoke-line-transition-enabled'}`,
+					style: { position: 'relative', zIndex: 1, width: '100%', minHeight: 0, ...livePreviewLyricVars }
+				},
+					react.createElement('div', {
+						className: 'sync-creator-live-preview-rows lyrics-lyricsContainer-SyncedLyrics',
+						style: {
+							position: 'relative', zIndex: 1, width: '100%',
+							fontSize: 'var(--lyrics-original-font-size, var(--lyrics-font-size))',
+							fontWeight: 'var(--lyrics-original-font-weight, 700)',
+							fontFamily: 'var(--lyrics-original-font-family, var(--lyrics-font-family, var(--font-family)))',
+							letterSpacing: 'var(--lyrics-original-letter-spacing, 0px)',
+							lineHeight: 1
+						}
+					}, safePreviewBody)
+				)
 			)
 		);
 	};

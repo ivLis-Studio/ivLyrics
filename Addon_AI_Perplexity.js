@@ -51,7 +51,8 @@
             researchWebSearch: true,
             lyricsStudy: true,
             characterPronunciation: true,
-            culturalAnnotations: true
+            culturalAnnotations: true,
+            motionDirection: true
         },
         models: [] // Dynamic from API
     };
@@ -923,6 +924,17 @@
                 progressParser ? chunk => progressParser.push(chunk) : null,
                 { webSearch: webSearch !== false }
             );
+        },
+
+        async generateMotionDirection(params) {
+            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
+                throw new Error('No lyrics lines provided');
+            }
+            const prompt = params.motionDirectionPrompt;
+            if (!prompt) {
+                throw new Error('[Perplexity] Central motion direction prompt is unavailable.');
+            }
+            return await callPerplexityAPI(prompt);
         },
 
         async generateLyricsStudy(params) {

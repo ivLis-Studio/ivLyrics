@@ -534,7 +534,8 @@ window.LANG_IT = {
         "lyricsStudy": "Apprendimento",
         "characterPronunciation": "Pronuncia per carattere",
         "culturalAnnotations": "Contesto culturale",
-        "wordSupplements": "Dettagli parole"
+        "wordSupplements": "Dettagli parole",
+        "motionDirection": "Regia motion"
       },
       "noEnabledProviders": "Nessun fornitore AI abilitato. Abilita almeno un fornitore nelle impostazioni.",
       "noPronunciationProviders": "Nessun provider AI attivo può generare la pronuncia. Attiva «Pronuncia» per un provider nelle impostazioni Provider AI.",
@@ -2641,7 +2642,13 @@ window.LANG_IT = {
       "compactLabel": "Modalità CD",
       "compactDescription": "Mostra la copertina circolare con un foro centrale e un visualizzatore intorno.",
       "videoLabel": "Scena video",
-      "videoDescription": "Mostra il video YouTube sincronizzato e il testo attivo grande in basso."
+      "videoDescription": "Mostra il video YouTube sincronizzato e il testo attivo grande in basso.",
+      "motionLabel": "Movimento",
+      "motionDescription": "Un montaggio di tipografia cinetica, diretto dall’IA quando disponibile: le righe condividono lo schermo, ogni parola compare quando viene cantata e la telecamera vola e ruota con il video. Per brani con sincronizzazione per parola o carattere.",
+      "motionUnavailable": "I testi in movimento funzionano con brani sincronizzati per parola o carattere. Questo brano mostra il testo del palco video.",
+      "motionReducedMotion": "Riduci movimento è attivo, quindi viene mostrato il testo del palco video al posto dei testi in movimento.",
+      "motionDirecting": "L’IA sta curando la regia dell’animazione…",
+      "motionDirectFailed": "La regia IA non è riuscita. Viene usata la regia integrata."
     },
     "settings": {
       "subtitle": "Personalizza dimensioni, animazioni e tipografia inferiore della modalità vinile.",

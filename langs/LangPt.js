@@ -534,7 +534,8 @@ window.LANG_PT = {
         "lyricsStudy": "Aprendizagem",
         "characterPronunciation": "Pronúncia por caractere",
         "culturalAnnotations": "Contexto cultural",
-        "wordSupplements": "Detalhes das palavras"
+        "wordSupplements": "Detalhes das palavras",
+        "motionDirection": "Direção de movimento"
       },
       "noEnabledProviders": "Nenhum provedor de IA habilitado. Por favor, habilite pelo menos um nas configurações.",
       "noPronunciationProviders": "Nenhum provedor de IA habilitado pode gerar a pronúncia. Ative “Pronúncia” em um provedor nas configurações de Provedores de IA.",
@@ -2641,7 +2642,13 @@ window.LANG_PT = {
       "compactLabel": "Modo CD",
       "compactDescription": "Mostra a capa circular com um furo central e um visualizador ao redor.",
       "videoLabel": "Palco de vídeo",
-      "videoDescription": "Mostra o vídeo sincronizado do YouTube e a letra ativa grande na parte inferior."
+      "videoDescription": "Mostra o vídeo sincronizado do YouTube e a letra ativa grande na parte inferior.",
+      "motionLabel": "Movimento",
+      "motionDescription": "Uma edição de tipografia cinética dirigida por IA quando disponível: as linhas dividem a tela, cada palavra surge ao ser cantada e a câmera voa e gira com o vídeo. Para músicas com sincronização por palavra ou caractere.",
+      "motionUnavailable": "As letras em movimento funcionam com músicas sincronizadas por palavra ou caractere. Esta música mostra a letra do palco de vídeo.",
+      "motionReducedMotion": "Reduzir movimento está ativado, então a letra do palco de vídeo é exibida no lugar das letras em movimento.",
+      "motionDirecting": "A IA está dirigindo a animação…",
+      "motionDirectFailed": "A direção por IA falhou. Usando a direção integrada."
     },
     "settings": {
       "subtitle": "Personalize o tamanho, as animações e a tipografia inferior do modo vinil.",

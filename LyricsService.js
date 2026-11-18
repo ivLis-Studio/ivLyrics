@@ -2073,7 +2073,8 @@
             metadata: 365,
             sync: 365,
             youtube: 365,
-            tmi: 365
+            tmi: 365,
+            motion: 365
         },
 
         _db: null,
@@ -2415,6 +2416,50 @@
 
         _getWordSupplementsKey(trackId, targetLang, sourceLang, kind, sourceHash) {
             return `${trackId}:${targetLang}:word:${kind}:${sourceLang || 'auto'}:${sourceHash || 'unknown'}`;
+        },
+
+        // Motion lyrics direction (the AI's edit of the song). The key starts
+        // with the track id, so clearing a track's cache clears it too.
+        _getMotionDirectionKey(trackId, sourceHash) {
+            return `${trackId}:motion:${sourceHash || 'unknown'}`;
+        },
+
+        async getMotionDirection(trackId, sourceHash) {
+            try {
+                const db = await this._openDB();
+                const tx = db.transaction('translations', 'readonly');
+                const store = tx.objectStore('translations');
+                const result = await awaitIdbRequest(store.get(this._getMotionDirectionKey(trackId, sourceHash)));
+                if (result && !this._isExpired(result.cachedAt, 'motion')) {
+                    return result.data;
+                }
+                return null;
+            } catch (error) {
+                console.error('[LyricsCache] getMotionDirection error:', error);
+                return null;
+            }
+        },
+
+        async setMotionDirection(trackId, sourceHash, data) {
+            try {
+                const db = await this._openDB();
+                const tx = db.transaction('translations', 'readwrite');
+                const store = tx.objectStore('translations');
+                store.put(this._withSize({
+                    cacheKey: this._getMotionDirectionKey(trackId, sourceHash),
+                    trackId,
+                    sourceHash,
+                    type: 'motion',
+                    data,
+                    cachedAt: Date.now()
+                }));
+                await awaitIdbTransaction(tx);
+                this._scheduleSizeEnforcement();
+                return true;
+            } catch (error) {
+                console.error('[LyricsCache] setMotionDirection error:', error);
+                return false;
+            }
         },
 
         async getWordSupplements(trackId, targetLang, sourceLang, kind, sourceHash) {

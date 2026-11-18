@@ -534,7 +534,8 @@ window.LANG_DE = {
         "lyricsStudy": "Lernen",
         "characterPronunciation": "Zeichen-Aussprache",
         "culturalAnnotations": "Kultureller Kontext",
-        "wordSupplements": "Wortdetails"
+        "wordSupplements": "Wortdetails",
+        "motionDirection": "Motion-Regie"
       },
       "noEnabledProviders": "Keine KI-Anbieter aktiviert. Bitte aktiviere mindestens einen Anbieter in den Einstellungen.",
       "noPronunciationProviders": "Kein aktivierter KI-Anbieter kann die Aussprache erzeugen. Aktivieren Sie „Aussprache“ für einen Anbieter in den Einstellungen unter KI-Anbieter.",
@@ -2641,7 +2642,13 @@ window.LANG_DE = {
       "compactLabel": "CD-Modus",
       "compactDescription": "Zeigt ein rundes Albumcover mit Mittelloch und einer Visualisierung rundherum.",
       "videoLabel": "Videobühne",
-      "videoDescription": "Zeigt das synchronisierte YouTube-Video und die große aktive Textzeile unten."
+      "videoDescription": "Zeigt das synchronisierte YouTube-Video und die große aktive Textzeile unten.",
+      "motionLabel": "Bewegung",
+      "motionDescription": "Ein Kinetic-Typography-Edit, wenn möglich von der KI inszeniert: Zeilen teilen sich den Bildschirm, jedes Wort erscheint, sobald es gesungen wird, und die Kamera fliegt und dreht sich mit dem Video. Für Songs mit Wort- oder Zeichen-Timing.",
+      "motionUnavailable": "Bewegte Songtexte funktionieren bei Songs mit Wort- oder Zeichen-Timing. Dieser Song zeigt den Songtext der Videobühne.",
+      "motionReducedMotion": "„Bewegung reduzieren“ ist aktiv, daher wird statt der bewegten Songtexte der Songtext der Videobühne angezeigt.",
+      "motionDirecting": "Die KI inszeniert die Animation …",
+      "motionDirectFailed": "KI-Regie fehlgeschlagen. Die integrierte Regie wird verwendet."
     },
     "settings": {
       "subtitle": "Passe Größe, Animationen und die untere Liedtext-Typografie des Vinylmodus an.",

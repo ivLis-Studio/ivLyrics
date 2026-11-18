@@ -66,7 +66,8 @@
         TMI: 'tmi',                // 기존 Addon 설정 호환용 별칭
         LYRICS_STUDY: 'lyricsStudy', // 가사 기반 학습 모드 생성
         CHARACTER_PRONUNCIATION: 'characterPronunciation', // 문자별 발음
-        CULTURAL_ANNOTATIONS: 'culturalAnnotations' // 번역만으로 전달되지 않는 문화적 배경 설명
+        CULTURAL_ANNOTATIONS: 'culturalAnnotations', // 번역만으로 전달되지 않는 문화적 배경 설명
+        MOTION_DIRECTION: 'motionDirection' // 모션 가사 연출
     };
 
     const TRANSLATION_STYLES = Object.freeze({
@@ -1868,6 +1869,18 @@ Input lines:
 ${JSON.stringify(payload)}`;
     }
 
+    /**
+     * Motion lyrics direction prompt. MotionLyricsDirector.js writes it, next to
+     * the vocabulary it checks the answer against.
+     */
+    function buildMotionDirectionPrompt(params = {}) {
+        const director = window.ivLyricsMotionDirector;
+        if (typeof director?.buildPrompt !== 'function') {
+            throw new Error('[AIAddonManager] The motion lyrics director is unavailable.');
+        }
+        return director.buildPrompt(params);
+    }
+
     function buildCulturalAnnotationsPrompt({ sourceLang = 'auto', targetLang = 'ko', lines = [] } = {}) {
         const targetLangInfo = getProviderPromptLanguageInfo(targetLang || 'ko');
         const payload = (Array.isArray(lines) ? lines : [])
@@ -2251,6 +2264,43 @@ ${normalizedText}
             return buildLyricsStudyPrompt(params);
         }
 
+        buildMotionDirectionPrompt(params = {}) {
+            return buildMotionDirectionPrompt(params);
+        }
+
+        /**
+         * Motion lyrics direction (활성화된 Provider 순서대로 시도). Returns the
+         * provider's JSON direction; MotionLyricsDirector validates it.
+         * @param {{title: string, artist: string, lines: Object[], vocabulary?: Object}} params
+         */
+        async generateMotionDirection(params = {}) {
+            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
+                throw new Error('No lyrics lines provided');
+            }
+            const providers = this.getEnabledProvidersFor('motionDirection');
+            if (providers.length === 0) {
+                throw new Error(this._t('aiProviders.noEnabledProviders', 'No AI providers enabled. Please enable at least one provider in settings.'));
+            }
+            this.emit('ai:request:start', {
+                type: 'motionDirection',
+                providers: providers.map((provider) => provider.id),
+                params: { title: params.title, artist: params.artist, lineCount: params.lines.length }
+            });
+            const motionDirectionPrompt = this.buildMotionDirectionPrompt(params);
+            return this._runProviderFallback(providers, 'generateMotionDirection', 'motionDirection', async (addon) => {
+                window.__ivLyricsDebugLog?.('[AIAddonManager] Trying motion direction provider: ' + addon.id);
+                const result = await this._callProvider(addon, 'generateMotionDirection', { ...params, motionDirectionPrompt });
+                const direction = result && typeof result === 'object' && result.direction && typeof result.direction === 'object'
+                    ? result.direction
+                    : result;
+                if (!direction || typeof direction !== 'object' || !Array.isArray(direction.shots) || direction.shots.length === 0) {
+                    throw new Error('[AIAddonManager] Provider ' + addon.id + ' returned a motion direction without shots');
+                }
+                this.emit('ai:request:success', { type: 'motionDirection', provider: addon.id });
+                return direction;
+            });
+        }
+
         buildCulturalAnnotationsPrompt(params = {}) {
             return buildCulturalAnnotationsPrompt(params);
         }
@@ -2402,8 +2452,14 @@ ${normalizedText}
                     tmi: typeof addon.generateResearch === 'function' || typeof addon.generateTMI === 'function',
                     lyricsStudy: typeof addon.generateLyricsStudy === 'function',
                     characterPronunciation: typeof addon.generateCharacterPronunciation === 'function',
-                    culturalAnnotations: typeof addon.generateCulturalAnnotations === 'function'
+                    culturalAnnotations: typeof addon.generateCulturalAnnotations === 'function',
+                    motionDirection: typeof addon.generateMotionDirection === 'function'
                 };
+            }
+            // Addons written before motion direction keep their supports map;
+            // the method alone is enough to opt in.
+            if (addon.supports.motionDirection === undefined) {
+                addon.supports.motionDirection = typeof addon.generateMotionDirection === 'function';
             }
             // Line pronunciation used to share the translate capability. Addons
             // written before it became its own capability keep generating it

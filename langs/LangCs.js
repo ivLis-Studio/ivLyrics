@@ -534,7 +534,8 @@ window.LANG_CS = {
         "lyricsStudy": "Učení",
         "characterPronunciation": "Výslovnost znaků",
         "culturalAnnotations": "Kulturní kontext",
-        "wordSupplements": "Podrobnosti slov"
+        "wordSupplements": "Podrobnosti slov",
+        "motionDirection": "Režie animace"
       },
       "noEnabledProviders": "Nejsou povoleni žádní poskytovatelé AI. Povolte v nastavení alespoň jednoho poskytovatele.",
       "noPronunciationProviders": "Žádný zapnutý poskytovatel AI neumí vytvořit výslovnost. V nastavení Poskytovatelé AI zapněte u některého poskytovatele „Výslovnost“.",
@@ -2641,7 +2642,13 @@ window.LANG_CS = {
       "compactLabel": "Režim CD",
       "compactDescription": "Zobrazí kruhový obal alba se středovým otvorem a vizualizací kolem něj.",
       "videoLabel": "Videorežim",
-      "videoDescription": "Zobrazí synchronizované video YouTube a velký aktivní řádek dole."
+      "videoDescription": "Zobrazí synchronizované video YouTube a velký aktivní řádek dole.",
+      "motionLabel": "Pohyb",
+      "motionDescription": "Kinetická typografie, kterou podle možností režíruje AI: řádky sdílejí obrazovku, každé slovo se objeví ve chvíli, kdy zazní, a kamera létá a otáčí se s videem. Pro skladby s časováním slov nebo znaků.",
+      "motionUnavailable": "Pohyblivé texty fungují u skladeb se synchronizací po slovech nebo znacích. U této skladby se zobrazí text video scény.",
+      "motionReducedMotion": "Je zapnuté omezení pohybu, takže se místo pohyblivých textů zobrazí text video scény.",
+      "motionDirecting": "AI připravuje režii animace…",
+      "motionDirectFailed": "Režie AI selhala. Používá se vestavěná režie."
     },
     "settings": {
       "subtitle": "Přizpůsobte velikost, animace a typografii spodního textu ve vinylovém režimu.",

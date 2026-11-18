@@ -534,7 +534,8 @@ window.LANG_TR = {
         "lyricsStudy": "Öğrenme",
         "characterPronunciation": "Karakter okunuşu",
         "culturalAnnotations": "Kültürel bağlam",
-        "wordSupplements": "Kelime ayrıntıları"
+        "wordSupplements": "Kelime ayrıntıları",
+        "motionDirection": "Hareket yönetimi"
       },
       "noEnabledProviders": "Etkin YZ sağlayıcısı yok. Lütfen ayarlardan en az bir sağlayıcıyı etkinleştirin.",
       "noPronunciationProviders": "Etkin hiçbir YZ sağlayıcısı telaffuz oluşturamıyor. Yapay Zeka Sağlayıcıları ayarlarından bir sağlayıcı için “Telaffuz” seçeneğini açın.",
@@ -2641,7 +2642,13 @@ window.LANG_TR = {
       "compactLabel": "CD modu",
       "compactDescription": "Ortası delik yuvarlak albüm kapağını, çevresinde bir görselleştiriciyle gösterir.",
       "videoLabel": "Video sahnesi",
-      "videoDescription": "Senkronize YouTube videosunu ve altta büyük etkin şarkı sözü satırını gösterir."
+      "videoDescription": "Senkronize YouTube videosunu ve altta büyük etkin şarkı sözü satırını gösterir.",
+      "motionLabel": "Hareket",
+      "motionDescription": "Mümkün olduğunda yapay zekânın yönettiği kinetik tipografi kurgusu: satırlar ekranı paylaşır, her kelime söylendiği anda belirir ve kamera videoyla birlikte uçar ve döner. Kelime veya karakter zamanlaması olan şarkılarda çalışır.",
+      "motionUnavailable": "Hareketli sözler, kelime veya karakter senkronu olan şarkılarda çalışır. Bu şarkıda video sahnesi sözleri gösteriliyor.",
+      "motionReducedMotion": "Hareketi azalt açık olduğu için hareketli sözler yerine video sahnesi sözleri gösteriliyor.",
+      "motionDirecting": "Yapay zekâ hareketi yönetiyor…",
+      "motionDirectFailed": "Yapay zekâ yönetimi başarısız oldu. Yerleşik yönetim kullanılıyor."
     },
     "settings": {
       "subtitle": "Plak modunun boyutunu, animasyonlarını ve alttaki şarkı sözü yazı tipini özelleştirin.",

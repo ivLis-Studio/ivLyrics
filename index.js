@@ -1184,6 +1184,7 @@ const IVLYRICS_FULLSCREEN_PRESENTATION_IDS = Object.freeze([
   "vinyl",
   "compact-vinyl",
   "video",
+  "motion",
 ]);
 const IVLYRICS_FULLSCREEN_PRESENTATION_STORAGE_KEY =
   "ivLyrics:visual:fullscreen-presentation";
@@ -11339,7 +11340,8 @@ class LyricsContainer extends react.Component {
       : "standard";
     const isFocusedFullscreenPresentation =
       fullscreenPresentation === "vinyl"
-      || fullscreenPresentation === "video";
+      || fullscreenPresentation === "video"
+      || fullscreenPresentation === "motion";
     const computeActiveLyricsPage = () => syncCreatorPlainPage || (window.LyricsPageRenderer
       ? react.createElement(window.LyricsPageRenderer, {
         playbackOnly: isFocusedFullscreenPresentation && this.state.fullscreenFocusedLyricsActive,
@@ -11441,14 +11443,15 @@ class LyricsContainer extends react.Component {
     const currentTrackInfo = this.getCurrentPlayerTrackInfo();
     const renderTrackUri = currentTrackInfo?.uri || this.currentTrackUri || this.state.uri || "";
     const isLocalTrack = !!renderTrackUri && !Utils.extractTrackId(renderTrackUri);
+    // Motion lyrics fly over the same unblurred video as the video stage.
     const isVideoStagePresentation =
-      fullscreenPresentation === "video";
+      fullscreenPresentation === "video" || fullscreenPresentation === "motion";
     const shouldUseVideoBackground =
       !isSyncCreatorActive &&
       !this.state.isFADMode &&
       (
         effectiveBackgroundMode === "video-background" ||
-        fullscreenPresentation === "video"
+        isVideoStagePresentation
       );
     const shouldRenderStaticBackground = !shouldUseVideoBackground;
 

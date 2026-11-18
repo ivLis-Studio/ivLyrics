@@ -78,7 +78,7 @@ test('primary and additional providers share a card layout with each test inside
     const root = h.render();
     const card = primary(root);
     const list = one(root, node => node.type?.name === 'FallbackProvidersSection');
-    const editor = one(h.render(list.type), node => node.type?.name === 'ConnectionEditor');
+    const editor = one(h.render(list.type, { onSaved() {} }), node => node.type?.name === 'ConnectionEditor');
     const additional = h.render(editor.type, editor.props);
     const layout = node => node.children.map(child => child.type?.name || child.props.className);
     assert.deepEqual(layout(card), layout(additional));
@@ -93,7 +93,9 @@ test('primary and additional providers share a card layout with each test inside
     assert.equal(one(card, hasClass('ai-addon-connection-header')).children[0].children[0].children[0], '1. Default');
     assert.strictEqual(one(card, hasClass('ai-addon-connection-footer')).children[0], testButton(root));
     assert.equal(testButton(root).props.className, one(additional, node => node.children.includes('Test this provider')).props.className);
-    assert.equal(nodes(card, node => node.props.type === 'checkbox' || hasClass('ai-addon-connection-actions')(node)).length, 0);
+    assert.equal(nodes(card, node => node.props.type === 'checkbox').length, 0, 'the primary keeps its master switch semantics');
+    const actions = one(one(card, hasClass('ai-addon-connection-header')), hasClass('ai-addon-connection-actions'));
+    assert.deepEqual(nodes(actions, node => node.type === 'button').map(button => button.props['aria-label']), ['Move up', 'Move down', 'Remove provider']);
     const fields = one(card, hasClass('ai-addon-connection-fields')).children;
     assert.deepEqual(fields.map(row => row.children[0].children[0]), ['API Key(s)', 'Base URL', 'Model', 'Custom Model ID']);
     assert.ok(fields.every(hasClass('ai-addon-connection-field')));
@@ -150,7 +152,7 @@ test('primary capability order, inherited pronunciation and saved additional cap
     const before = chips();
     assert.deepEqual(before.map(chip => chip.children[0]), [
         'Pronunciation', 'Translation', 'Metadata', 'TMI', 'Research web search', 'Learning',
-        'Character pronunciation', 'Cultural context', 'Word details'
+        'Character pronunciation', 'Cultural context', 'Word details', 'Motion direction'
     ]);
     assert.equal(before[0].props['aria-pressed'], false);
     before[1].props.onClick();
@@ -161,7 +163,7 @@ test('primary capability order, inherited pronunciation and saved additional cap
     assert.deepEqual(h.writes.map(write => write.key), ['primary-capabilities', 'primary-capabilities']);
 });
 
-test('primary test retains ordered failover and announces pending/success within its card', async () => {
+test('primary test probes only its own endpoint instead of failing over to a saved provider', async () => {
     const h = harness({}, request => request.url.includes('primary')
         ? Response.json({ error: { message: 'fixture failure' } }, { status: 503 })
         : Response.json({ choices: [{ message: { content: 'OK' }, finish_reason: 'stop' }] }));
@@ -170,12 +172,11 @@ test('primary test retains ordered failover and announces pending/success within
     await pending;
     const root = h.render();
     assert.deepEqual(h.requests.map(request => [request.url, request.authorization, request.body.model]), [
-        ['https://primary.test/v1/chat/completions', 'Bearer primary-key', 'primary-model'],
-        ['https://backup.test/v1/chat/completions', 'Bearer backup-key', 'backup-model']
-    ]);
-    assert.equal(status(root).children[0], '✓ Connection successful.');
+        ['https://primary.test/v1/chat/completions', 'Bearer primary-key', 'primary-model']
+    ], 'a backup answering does not turn a failing primary endpoint into a passing test');
+    assert.match(status(root).children[0], /^✗ .*fixture failure/);
+    assert.ok(hasClass('error')(status(root)));
     assert.equal(status(root).props['aria-live'], 'polite');
-    assert.ok(hasClass('success')(status(root)));
     assert.ok(one(primary(root), hasClass('ai-addon-connection-footer')).children.includes(status(root)));
     assert.deepEqual(h.writes, []);
 });
@@ -189,12 +190,10 @@ test('primary test reports exhausted errors inside the primary card', async () =
     assert.equal(h.requests.length, 1);
 });
 
-test('an unconfigured primary still permits testing the existing fallback chain', async () => {
+test('an unconfigured primary disables its own test instead of silently testing the chain', () => {
     const h = harness({ 'api-keys': '', model: '' });
-    assert.notEqual(testButton(h.render()).props.disabled, true);
-    await testButton(h.render()).props.onClick();
-    assert.deepEqual(h.requests.map(request => request.url), ['https://backup.test/v1/chat/completions']);
-    assert.equal(status(h.render()).children[0], '✓ Connection successful.');
+    assert.equal(testButton(h.render()).props.disabled, true);
+    assert.deepEqual(h.requests, []);
 });
 
 test('primary heading and controls use existing I18n keys', () => {

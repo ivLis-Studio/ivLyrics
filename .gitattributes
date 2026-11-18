@@ -4,3 +4,5 @@
 /local-db/** export-ignore
 /third_party export-ignore
 /third_party/** export-ignore
+/mobile export-ignore
+/mobile/** export-ignore

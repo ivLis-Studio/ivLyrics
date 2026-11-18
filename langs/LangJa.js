@@ -534,7 +534,8 @@ window.LANG_JA = {
         "lyricsStudy": "学習",
         "characterPronunciation": "文字発音",
         "culturalAnnotations": "文化的背景",
-        "wordSupplements": "単語詳細"
+        "wordSupplements": "単語詳細",
+        "motionDirection": "モーション演出"
       },
       "noEnabledProviders": "有効なAIプロバイダーがありません。設定で少なくとも1つのプロバイダーを有効にしてください。",
       "noPronunciationProviders": "発音を生成できるAIプロバイダーが有効になっていません。AIプロバイダー設定で、プロバイダーの「発音」をオンにしてください。",
@@ -2641,7 +2642,13 @@ window.LANG_JA = {
       "compactLabel": "CDモード",
       "compactDescription": "アルバムカバーを中央に穴のある丸いCDとして表示し、周りにビジュアライザーを配置します。",
       "videoLabel": "ビデオステージ",
-      "videoDescription": "同期されたYouTube動画と画面下部の大きなアクティブ歌詞を表示します。"
+      "videoDescription": "同期されたYouTube動画と画面下部の大きなアクティブ歌詞を表示します。",
+      "motionLabel": "モーション",
+      "motionDescription": "AIが演出するキネティックタイポグラフィ。複数の行が同じ画面に配置され、歌われた瞬間に単語が現れ、カメラが映像とともに飛び回り回転します。単語・文字単位の同期がある曲で再生されます。",
+      "motionUnavailable": "モーション歌詞は単語・文字単位の同期がある曲で再生されます。この曲はビデオステージの歌詞で表示します。",
+      "motionReducedMotion": "動きを減らす設定がオンのため、モーション歌詞の代わりにビデオステージの歌詞を表示します。",
+      "motionDirecting": "AIがモーション演出を作成中…",
+      "motionDirectFailed": "AI演出を作成できなかったため、標準の演出で表示します。"
     },
     "settings": {
       "subtitle": "LP モードのサイズ、アニメーション、下部歌詞のフォントを調整します。",

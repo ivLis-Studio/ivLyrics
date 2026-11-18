@@ -50,3 +50,13 @@ test('fullscreen presence selectors do not invalidate the Spotify or lyrics ance
     assert.match(rules, /\):has\(~ \.fullscreen-vinyl-overlay\)/, 'overlay after lyric siblings');
     assert.match(source, /constructor\(\)\s*{\s*super\(\);\s*watchFullscreenContainerBodyClass\(\);/);
 });
+
+test('videos covered by the fullscreen layer stop pinning the frame rate', () => {
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    // Spotify's Now Playing Canvas lives under #main; ivLyrics' own videos
+    // render inside #lyrics-fullscreen-container, which is not under #main.
+    const rule = rules.match(/body\.ivlyrics-fullscreen-container-mounted #main video\s*{([^}]*)}/);
+    assert.ok(rule, 'covered Spotify videos are taken out of rendering');
+    assert.match(rule[1], /visibility:\s*hidden\s*!important/);
+    assert.match(source, /document\.body\.append\(this\.fullscreenContainer\)/, 'the fullscreen container is a body child, outside #main');
+});
