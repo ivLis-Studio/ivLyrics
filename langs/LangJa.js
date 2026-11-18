@@ -121,7 +121,7 @@ window.LANG_JA = {
       "aiTasks": {
         "title": "機能ごとのプロバイダー"
       },
-      "vinylTypography": "レコードの文字設定",
+      "vinylTypography": "LPモードの文字設定",
       "lyricLayers": {
         "title": "歌詞レイヤー",
         "subtitle": "原文・発音・翻訳・ふりがなのフォントを一画面で見比べながら調整します。"
