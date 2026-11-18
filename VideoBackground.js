@@ -62,7 +62,7 @@ const VIDEO_DRIFT_BACKOFF_CORRECTIONS = 4;
 const VIDEO_DRIFT_BACKOFF_WINDOW_MS = 30000;
 // A seek can take well over a second to resume on a slow connection; the
 // lead must be able to cover that or every seek lands behind again.
-const VIDEO_DRIFT_MAX_LEAD_SECONDS = 3;
+const VIDEO_DRIFT_MAX_LEAD_SECONDS = 6;
 // After a seek the player buffers before it plays again. When that took longer
 // than drift needs to cross the seek threshold (about 0.75 s), the next tick
 // seeked again and restarted the buffering: the video never played and the
@@ -70,6 +70,15 @@ const VIDEO_DRIFT_MAX_LEAD_SECONDS = 3;
 // twice as long each time it still has not resumed.
 const VIDEO_DRIFT_SEEK_GRACE_MS = 2500;
 const VIDEO_DRIFT_MAX_SEEK_GRACE_MS = 10000;
+// A YouTube background plays as a muted autoplay embed, where every seek is a
+// positioned reload: the picture is black until the load plays. On a slow
+// connection that takes seconds, and reloading for drift the reload itself
+// caused, or while the video was only buffering, kept the background black
+// almost all the time. A reload is only worth it for more drift than one
+// costs (up to this much), and a load still buffering gets this long.
+const VIDEO_RELOAD_MAX_TOLERANCE_SECONDS = 5;
+const VIDEO_RELOAD_GRACE_MS = 6000;
+const VIDEO_RELOAD_MAX_GRACE_MS = 20000;
 const VIDEO_DRIFT_MAX_RATE_DELTA = 0.05;
 // Keep the outgoing artwork briefly while a new track's background is being
 // resolved.  This avoids a black flash when YouTube or the helper takes a
@@ -291,10 +300,14 @@ const createVideoDriftState = () => ({
     lastTargetAt: NaN,
     lastTargetPlaying: false,
     pendingSeekTargetTime: NaN,
+    // How long a reload takes to play on this player and connection.
+    seekCostSeconds: 0,
+    // When a reloading player started buffering on its own (not after a seek).
+    stalledSince: NaN,
 });
 
 // A new video starts with fresh samples; the learned seek lead depends on the
-// player and connection, so it carries over.
+// player and connection, so it carries over, as does the cost of a reload.
 const resetVideoDriftState = (state) => {
     if (!state) return;
     state.samples = [];
@@ -309,6 +322,7 @@ const resetVideoDriftState = (state) => {
     state.lastTargetAt = NaN;
     state.lastTargetPlaying = false;
     state.pendingSeekTargetTime = NaN;
+    state.stalledSince = NaN;
 };
 
 // A Spotify seek, mapped skip or loop wrap changes the requested timeline,
@@ -365,6 +379,9 @@ const planVideoDriftCorrection = (state, {
     // (see syncYouTubePlayerTimeline). Only drift past the seek threshold is
     // worth that.
     allowSoftSeek = true,
+    // True when every seek reloads the video (a YouTube background). Such a
+    // seek blanks the picture for as long as the reload takes to play.
+    reloadsOnSeek = false,
     durationSeconds = 0,
 }) => {
     if (!state || !Number.isFinite(targetTime)) return { type: "none" };
@@ -379,23 +396,55 @@ const planVideoDriftCorrection = (state, {
     if (state.awaitingResume && isPlaying) {
         if (!isSteady) {
             // Still buffering the last seek: seeking again would restart it.
-            if (!state.seekRequested && now - state.lastSeekAt < state.seekGraceMs) {
+            // A reload gets at least as long as reloads take here.
+            const graceMs = reloadsOnSeek
+                ? Math.max(state.seekGraceMs, VIDEO_RELOAD_GRACE_MS, state.seekCostSeconds * 1500)
+                : state.seekGraceMs;
+            if (!state.seekRequested && now - state.lastSeekAt < graceMs) {
                 return canAdjustRate ? { type: "rate", rate: 1 } : { type: "none" };
             }
-            state.seekGraceMs = Math.min(VIDEO_DRIFT_MAX_SEEK_GRACE_MS, state.seekGraceMs * 2);
+            state.seekGraceMs = Math.min(reloadsOnSeek ? VIDEO_RELOAD_MAX_GRACE_MS : VIDEO_DRIFT_MAX_SEEK_GRACE_MS,
+                graceMs * 2);
         } else {
             // Playing again. However long the seek took to resume shows up as
             // the video trailing; aim that much further ahead from now on.
             state.awaitingResume = false;
+            if (reloadsOnSeek && Number.isFinite(state.lastSeekAt)) {
+                const cost = Math.max(0, (now - state.lastSeekAt) / 1000);
+                state.seekCostSeconds = state.seekCostSeconds > 0 ? (state.seekCostSeconds + cost) / 2 : cost;
+            }
             if (Number.isFinite(drift) && Math.abs(drift) > VIDEO_SYNC_SEEK_THRESHOLD_SECONDS) {
                 state.leadSeconds = Math.min(VIDEO_DRIFT_MAX_LEAD_SECONDS, Math.max(0, state.leadSeconds - drift));
+                // Learned once per seek: the settled samples would count this lag again.
+                state.measureLeadAfterSeek = false;
             } else {
                 state.seekGraceMs = VIDEO_DRIFT_SEEK_GRACE_MS;
             }
         }
     }
-    if (state.seekRequested || Math.abs(drift) > VIDEO_SYNC_SEEK_THRESHOLD_SECONDS) {
+    // A reloading video that stalls while playing (resuming after a pause, or a
+    // slow connection) is left to buffer: a reload now would only restart the
+    // download from a black picture.
+    if (reloadsOnSeek && isPlaying && !isSteady && !state.awaitingResume && !state.seekRequested
+        && !targetJumped && Number.isFinite(drift)) {
+        if (!Number.isFinite(state.stalledSince)) state.stalledSince = now;
+        if (now - state.stalledSince < state.seekGraceMs) {
+            state.samples = [];
+            return { type: "none" };
+        }
+    } else {
+        state.stalledSince = NaN;
+    }
+    // A paused background is hidden and a Spotify seek moves the target itself,
+    // so both are matched at once. Otherwise a reload is only sent for drift
+    // comparable to the black picture it costs (its learned lead then lands it
+    // on time), never to chase each small lag a slow connection leaves.
+    const seekThreshold = reloadsOnSeek && isPlaying && !targetJumped
+        ? Math.max(VIDEO_SYNC_SEEK_THRESHOLD_SECONDS, Math.min(VIDEO_RELOAD_MAX_TOLERANCE_SECONDS, state.seekCostSeconds * 0.8))
+        : VIDEO_SYNC_SEEK_THRESHOLD_SECONDS;
+    if (state.seekRequested || Math.abs(drift) > seekThreshold) {
         state.seekRequested = false;
+        state.stalledSince = NaN;
         const seekTime = Math.max(0, targetTime + (isPlaying ? state.leadSeconds : 0));
         noteVideoDriftSeek(state, now, isPlaying, seekTime);
         return { type: "seek", time: seekTime };
@@ -515,6 +564,7 @@ const syncYouTubePlayerTimeline = ({
                 // for 0.3-0.9 s. Correcting a 0.2 s drift that way costs far more
                 // than the drift, and every such reload lags a little again.
                 allowSoftSeek: false,
+                reloadsOnSeek: true,
                 durationSeconds: Number(player.getDuration?.()) || 0,
             });
             if (correction.type === "seek") player.seekTo(wrapVideoSyncTime(correction.time, player.getDuration?.()), true);

@@ -408,3 +408,95 @@ test("the drift planner leaves soft corrections to players that can take them", 
     assert.deepEqual({ ...planVideoDriftCorrection(state, { currentTime: 5, targetTime: 20, now: 0, isPlaying: true, allowSoftSeek: false }) },
         { type: "seek", time: 20.4 });
 });
+
+// A YouTube background is a muted autoplay embed: every seek is a positioned
+// reload, black until it plays. Mid-play stalls model a slow connection.
+function simulateReloads({ seconds = 120, reloadSeconds, stallEvery = 0, stallSeconds = 0, startDrift = 0, reloadsOnSeek = true }) {
+    const state = createVideoDriftState();
+    let spotify = 10;
+    let video = spotify + startDrift;
+    let loadingUntil = -Infinity;
+    let stallUntil = -Infinity;
+    let reloads = 0;
+    let blackMs = 0;
+    for (let now = 0; now <= seconds * 1000; now += TICK_MS) {
+        if (stallEvery && now > 0 && now % (stallEvery * 1000) === 0 && now >= loadingUntil) stallUntil = now + stallSeconds * 1000;
+        const action = planVideoDriftCorrection(state, {
+            currentTime: video, targetTime: spotify, now, isPlaying: true,
+            isSteady: now >= loadingUntil && now >= stallUntil,
+            allowSoftSeek: false, reloadsOnSeek, durationSeconds: 600,
+        });
+        if (action.type === "seek") {
+            reloads++;
+            video = action.time;
+            loadingUntil = now + reloadSeconds * 1000;
+            stallUntil = -Infinity;
+        }
+        if (now < loadingUntil) blackMs += TICK_MS;
+        else if (now >= stallUntil) video += TICK_MS / 1000;
+        spotify += TICK_MS / 1000;
+    }
+    return { state, reloads, black: blackMs / (seconds * 1000), finalDrift: video - spotify };
+}
+
+test("a slow connection no longer keeps a YouTube background black with reload after reload", () => {
+    // GitHub #153. Reloading for half a second of drift, also while the video
+    // only buffered, restarted the download each time: 28 reloads in 2 min and
+    // a black background 91% of the time (still over half of it without
+    // knowing what a reload costs).
+    const before = simulateReloads({ reloadSeconds: 4, stallEvery: 10, stallSeconds: 2, reloadsOnSeek: false });
+    assert.ok(before.reloads > 15 && before.black > 0.5, `unaware of reloads: ${before.reloads} reloads, ${Math.round(before.black * 100)}% black`);
+    const after = simulateReloads({ reloadSeconds: 4, stallEvery: 10, stallSeconds: 2 });
+    assert.ok(after.reloads <= 8, `${after.reloads} reloads`);
+    assert.ok(after.black <= 0.25, `${Math.round(after.black * 100)}% black`);
+    assert.ok(Math.abs(after.finalDrift) <= 0.5, `final drift ${after.finalDrift.toFixed(2)} s`);
+    assert.ok(Math.abs(after.state.leadSeconds - 4) <= 0.5, `learned lead ${after.state.leadSeconds} s`);
+});
+
+test("resuming after a pause on a slow connection reloads once more at most, then holds sync", () => {
+    const { reloads, finalDrift, state } = simulateReloads({ seconds: 60, reloadSeconds: 3, startDrift: -1.2 });
+    assert.ok(reloads <= 2, `${reloads} reloads`);
+    assert.ok(Math.abs(finalDrift) <= 0.1, `final drift ${finalDrift.toFixed(2)} s`);
+    assert.ok(Math.abs(state.leadSeconds - 3) <= 0.3, `the reload's lag is learned once (${state.leadSeconds} s)`);
+});
+
+test("on a fast connection a reloading background is corrected as before", () => {
+    for (const scenario of [
+        { reloadSeconds: 0.6, stallEvery: 20, stallSeconds: 1 },
+        { reloadSeconds: 0.8, startDrift: -2 },
+        { reloadSeconds: 0.4, stallEvery: 12, stallSeconds: 0.7 },
+    ]) {
+        const before = simulateReloads({ ...scenario, reloadsOnSeek: false });
+        const after = simulateReloads(scenario);
+        assert.equal(after.reloads, before.reloads, JSON.stringify(scenario));
+        assert.ok(Math.abs(after.finalDrift - before.finalDrift) < 1e-9, JSON.stringify(scenario));
+    }
+});
+
+test("a reloading background that only stalls is left to buffer; a pause or a Spotify seek still lands at once", () => {
+    const state = createVideoDriftState();
+    state.seekCostSeconds = 4;
+    const plan = (options) => ({ ...planVideoDriftCorrection(state, {
+        allowSoftSeek: false, reloadsOnSeek: true, durationSeconds: 600, ...options,
+    }) });
+    // Playing steadily in sync, then the stream stalls for two seconds.
+    assert.equal(plan({ currentTime: 20, targetTime: 20, now: 0, isPlaying: true, isSteady: true }).type, "none");
+    for (let now = 250; now <= 2000; now += 250) {
+        assert.equal(plan({ currentTime: 20.25, targetTime: 20 + now / 1000, now, isPlaying: true, isSteady: false }).type, "none",
+            `no reload while buffering at ${now} ms`);
+    }
+    // It plays two seconds behind: less than a 4 s reload costs, so it is kept.
+    assert.equal(plan({ currentTime: 20.5, targetTime: 22.5, now: 2250, isPlaying: true, isSteady: true }).type, "none");
+    // Paused, the hidden background is matched at once.
+    assert.equal(plan({ currentTime: 20.5, targetTime: 22.5, now: 2500, isPlaying: false, isSteady: false }).type, "seek");
+    // A Spotify seek moves the target and is followed at once.
+    const jumpState = createVideoDriftState();
+    jumpState.seekCostSeconds = 4;
+    planVideoDriftCorrection(jumpState, { currentTime: 30, targetTime: 30, now: 0, isPlaying: true, isSteady: true, allowSoftSeek: false, reloadsOnSeek: true });
+    assert.equal(planVideoDriftCorrection(jumpState, { currentTime: 30.25, targetTime: 32, now: 250, isPlaying: true, isSteady: true,
+        allowSoftSeek: false, reloadsOnSeek: true }).type, "seek");
+});
+
+test("the YouTube sync marks its seeks as reloads", () => {
+    assert.match(source, /allowSoftSeek: false,\s*reloadsOnSeek: true,/);
+});
