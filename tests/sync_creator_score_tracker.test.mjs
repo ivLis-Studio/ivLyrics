@@ -18,7 +18,7 @@ const snapshot = (count, granularity = 'character') => ({
     lyricsFingerprint: 'lrclib-abc-123', lineCharCounts: Array(50).fill(2), lineCount: 50, textCharCount: 100 },
   lines: Array.from({ length: count }, (_, index) => ({ start: index * 2, end: index * 2 + 1, granularity, chars: [index + 1, index + 1.5] }))
 });
-function fixture({ initial = snapshot(0), saved = null, request, load, save, repairSnapshot } = {}) {
+function fixture({ initial = snapshot(0), saved = null, request, load, save, repairSnapshot, codec } = {}) {
   let clock = 0;
   let active = true;
   let authorized = true;
@@ -28,6 +28,7 @@ function fixture({ initial = snapshot(0), saved = null, request, load, save, rep
     accountId: 'account-A', isrc: 'USAAA2600001', initialSyncData: initial,
     now: () => clock, setInterval: false,
     repairSnapshot,
+    ...(codec ? { codec } : {}),
     isActive: () => active, isAuthorized: () => authorized,
     storage: {
       getScoreWork: async () => load ? load() : copy(stored),
@@ -758,5 +759,48 @@ test('a queued part outside its saved row is repaired as import provenance inste
   assert.equal(value.sent[1].target, undefined);
   assert.equal(value.sent[1].activeSeconds, 0);
   assert.deepEqual(receipt, { workSessionId: 'server-session', workSequence: 4 });
+  value.tracker.stop();
+});
+
+// Overlapping line ranges, as an older editor queued after splitting and merging
+// a line. The codec rejects them before anything is sent ("line offset").
+const overlappingSnapshot = () => {
+  const value = snapshot(2);
+  value.lines[1] = { start: 1, end: 3, granularity: 'character', chars: [2, 2.2, 2.4] };
+  return value;
+};
+const codecAcknowledging = event => ({ success: true, sessionId: 'server-session', sequence: event.sequence, contentHash: event.resultHash });
+
+test('a queued snapshot the codec cannot encode is superseded by the next encodable one instead of blocking every submission', async () => {
+  const codec = require('../SyncDataCodec.js');
+  assert.throws(() => codec.encode(overlappingSnapshot()), /line offset/);
+  const broken = { eventId: 'legacy-overlap', action: 'record', syncData: overlappingSnapshot(), activeSeconds: 40,
+    target: { start: 0, end: 1, granularity: 'character', inputCount: 2, inputIndexes: [0, 1], ranges: [{ start: 0, end: 1 }] } };
+  const later = { eventId: 'later-record', action: 'record', syncData: snapshot(2), activeSeconds: 20,
+    target: { start: 2, end: 3, granularity: 'character', inputCount: 2, inputIndexes: [2, 3], ranges: [{ start: 2, end: 3 }] } };
+  const value = fixture({ codec, saved: legacyWork([broken, later]), request: codecAcknowledging });
+  const receipt = await value.tracker.submission(snapshot(3));
+  assert.deepEqual(value.sent.map(event => event.action), ['import', 'record', 'checkpoint']);
+  assert.equal(value.sent[0].eventId, 'legacy-overlap', 'the broken event keeps its ID and place');
+  assert.equal(value.sent[0].target, undefined, 'it claims no manual input');
+  assert.equal(value.sent[0].activeSeconds, 0);
+  assert.equal(codec.decode(codec.applyPatch(codec.encode(snapshot(0)), value.sent[0].patch)).lines.length, 2,
+    'it carries the next snapshot that encodes');
+  assert.equal(value.sent[1].eventId, 'later-record', 'later manual evidence is kept');
+  assert.equal(value.sent[1].activeSeconds, 20);
+  assert.deepEqual(receipt, { workSessionId: 'server-session', workSequence: 5 });
+  value.tracker.stop();
+});
+
+test('with no encodable snapshot anywhere the queue stays stopped and keeps its evidence', async () => {
+  const codec = require('../SyncDataCodec.js');
+  const broken = { eventId: 'legacy-overlap', action: 'record', syncData: overlappingSnapshot(), activeSeconds: 40 };
+  const saved = legacyWork([broken]);
+  const value = fixture({ codec, initial: overlappingSnapshot(), saved, request: codecAcknowledging });
+  await assert.rejects(value.tracker.flush(), /Invalid work snapshot: Line timing: line offset/);
+  assert.deepEqual(value.sent, []);
+  assert.deepEqual(value.tracker.__test.getState().queue.map(event => [event.eventId, event.action, event.activeSeconds]),
+    [['legacy-overlap', 'record', 40]]);
+  value.setAuthorized(false);
   value.tracker.stop();
 });

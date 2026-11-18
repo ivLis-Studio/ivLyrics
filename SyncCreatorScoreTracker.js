@@ -162,6 +162,32 @@
           await persist();
           return true;
         };
+        // A snapshot the codec cannot encode never reached the server, so it
+        // holds no evidence the server could have verified. An older editor
+        // could queue such a snapshot (for example overlapping line ranges after
+        // a split and merge), and it then blocked every later edit and every
+        // submission, even after the line was redone. The first later snapshot
+        // that encodes (queued, or the editor's current one) takes its place as
+        // import provenance. With none, the queue stays stopped.
+        const supersedeUnencodableSnapshot = async next => {
+          if (!codec) return false;
+          const encodable = value => { try { return codec.encode(value); } catch { return null; } };
+          let replacement = null;
+          for (const event of state.queue.slice(1)) {
+            replacement = encodable(event.syncData);
+            if (replacement) break;
+          }
+          replacement = replacement || encodable(latest);
+          if (!replacement) return false;
+          if (!isAuthorized()) throw new Error('Sync scoring account changed.');
+          const superseded = { ...next, syncData: replacement,
+            action: next.action === 'start' ? 'start' : 'import', activeSeconds: 0, snapshotRepaired: true };
+          delete superseded.target;
+          delete superseded.request;
+          state.queue[0] = superseded;
+          await persist();
+          return true;
+        };
         // Recover from a 409 conflict: resume the server session, discard only
         // acknowledged events, then let the caller retry the current event.
         const resolveScoreConflict = async (next, error) => {
@@ -245,6 +271,7 @@
             } catch (error) {
               const rejection = Object.assign(new Error('Invalid work snapshot: Line timing: ' + error.message.replace(/^Invalid sync v6: /, '')), { status: 400 });
               if (await repairInvalidSnapshot(next, rejection)) continue;
+              if (await supersedeUnencodableSnapshot(next)) continue;
               rejectedWorkError = rejection; throw rejection;
             }
           }
