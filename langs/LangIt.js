@@ -121,6 +121,7 @@ window.LANG_IT = {
       "aiTasks": {
         "title": "Fornitori per attività"
       },
+      "vinylTypography": "Tipografia del vinile",
       "lyricLayers": {
         "title": "Livelli del testo",
         "subtitle": "Confronta e regola i caratteri di originale, pronuncia, traduzione e furigana in un’unica vista."

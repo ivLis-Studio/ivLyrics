@@ -121,6 +121,7 @@ window.LANG_CS = {
       "aiTasks": {
         "title": "Poskytovatelé podle úlohy"
       },
+      "vinylTypography": "Typografie vinylu",
       "lyricLayers": {
         "title": "Vrstvy textu",
         "subtitle": "Porovnejte a upravte písma originálu, výslovnosti, překladu a furigany v jednom zobrazení."

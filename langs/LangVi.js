@@ -121,6 +121,7 @@ window.LANG_VI = {
       "aiTasks": {
         "title": "Nhà cung cấp theo tác vụ"
       },
+      "vinylTypography": "Kiểu chữ đĩa than",
       "lyricLayers": {
         "title": "Các lớp lời bài hát",
         "subtitle": "So sánh và điều chỉnh phông chữ của lời gốc, phiên âm, bản dịch và furigana trong một màn hình."

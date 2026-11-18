@@ -121,6 +121,7 @@ window.LANG_KO = {
       "aiTasks": {
         "title": "작업별 제공자"
       },
+      "vinylTypography": "LP 모드 텍스트",
       "lyricLayers": {
         "title": "가사 레이어",
         "subtitle": "원문, 발음, 번역, 후리가나의 글꼴을 한 화면에서 비교하며 조정합니다."

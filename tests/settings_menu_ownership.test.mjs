@@ -21,7 +21,7 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
 const elements = (node) => Array.isArray(node) ? node.flatMap(elements)
   : node?.props ? [node, ...elements(node.props.children)] : [];
 
-function harness(overrides = {}, initial = {}) {
+function harness(overrides = {}, initial = {}, options = {}) {
   // Only the modal's final return is instrumented. All menu definitions,
   // catalog/search construction, registry traversal and save/reset handlers
   // are production code; host APIs and React's renderer are replaced below.
@@ -31,10 +31,26 @@ function harness(overrides = {}, initial = {}) {
   const modalApi = `
     return { sidebarTabs, renderTabContent, buildSettingsRegistry,
       resetChangedEntries, renderChangedView, searchableSettings,
+      getDeclaredSearchSettings, getDeclaredSearchRouting,
+      searchResults, handleSearchChange,
+      tree: globalThis.__settingsTree,
       navigateToDestination, pickSearchResult, pendingTabScrollRef, activeTab,
       handlePerformanceSettingChange, handleVisualConfigChange,
       handleAppearancePreviewChange };
   `;
+  // Effects only run when the modal tree is built, because refs and the DOM
+  // scan live in that tree. The default harness stops before building it.
+  const injected = options.runEffects
+    ? (() => {
+      const treeSource = source.slice(rootReturn, end);
+      const closing = treeSource.lastIndexOf("\n};");
+      const assignment = treeSource.slice(0, closing).replace(
+        "\n  return ",
+        "\n  globalThis.__settingsTree = "
+      );
+      return assignment + modalApi + treeSource.slice(closing);
+    })()
+    : modalApi + source.slice(rootReturn, end);
   let frame = { slots: [], cursor: 0 };
   const useState = (initialValue) => {
     const current = frame, index = current.cursor++;
@@ -52,13 +68,22 @@ function harness(overrides = {}, initial = {}) {
     }
     return current.slots[index].value;
   };
+  const effects = [];
+  const searchContainer = {
+    querySelectorAll: () => [],
+    addEventListener() {}, removeEventListener() {},
+    scrollTo() {}, getBoundingClientRect: () => ({ top: 0, height: 0 }),
+  };
   const react = {
-    createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
+    createElement: (type, props, ...children) => {
+      if (options.runEffects && props?.ref) props.ref.current = searchContainer;
+      return { type, props: { ...props, children } };
+    },
     Fragment: Symbol("Fragment"), memo: (component) => component,
     useState, useMemo,
     useRef: (current) => useMemo(() => ({ current }), []),
     useCallback: (callback, deps) => useMemo(() => callback, deps),
-    useEffect: () => { frame.cursor++; },
+    useEffect: (effect) => { frame.cursor++; if (options.runEffects) effects.push(effect); },
     useLayoutEffect: () => { frame.cursor++; },
   };
   const saves = [], events = [], errors = [], updates = [];
@@ -75,15 +100,28 @@ function harness(overrides = {}, initial = {}) {
       dispatchEvent: (event) => events.push(event),
       addEventListener() {}, removeEventListener() {}, confirm: () => true,
     },
-    document: { getElementById: () => null, querySelector: () => null },
-    localStorage: { getItem: () => "dark" },
+    document: {
+      getElementById: () => null,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+      createElement: () => ({
+        style: {}, classList: { add() {}, remove() {}, toggle() {} },
+        setAttribute() {}, appendChild() {}, addEventListener() {}, removeEventListener() {},
+      }),
+      addEventListener() {}, removeEventListener() {},
+    },
+    localStorage: { getItem: () => "dark", setItem() {}, removeItem() {} },
+    MutationObserver: class { observe() {} disconnect() {} },
     navigator: { language: "en-US", languages: ["en-US"], platform: "MacIntel" },
+    requestAnimationFrame: (callback) => { callback(); return 0; },
+    cancelAnimationFrame: () => {},
     thresholdSizeLimit: { min: 0, max: 100, step: 5 },
     lyricContainerUpdate: () => updates.push("lyrics"),
+    SETTINGS_MODAL_CSS: "",
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     console: { warn: (...args) => errors.push(args), error: (...args) => errors.push(args) },
   });
-  vm.runInContext(source.slice(0, rootReturn) + modalApi + source.slice(rootReturn, end) + `
+  vm.runInContext(source.slice(0, rootReturn) + injected + `
     globalThis.fixture = { ConfigModal, OptionList, SettingsSection, SettingsLayerMatrix,
       ConfigButton, ConfigSlider, ConfigSliderRange, SettingsLoadMeter, SettingsChoiceCards,
       hasSettingDefault, getSettingDefaultValue, isSettingChanged,
@@ -108,11 +146,156 @@ function harness(overrides = {}, initial = {}) {
       frame = { slots: [], cursor: 0 };
       try { return type(props); } finally { frame = previous; }
     },
+    runEffects() {
+      for (const effect of effects.splice(0)) {
+        try { effect(); } catch (error) { errors.push(error); }
+      }
+    },
     clearCalls() { saves.length = events.length = updates.length = errors.length = 0; },
   };
   h.render();
   return h;
 }
+
+// The search panel can only read settings from the active tab's DOM, so the
+// hand-maintained index is the only cross-tab source. Anything missing there
+// cannot be found without first opening its menu.
+test("search index reaches every setting from any tab", () => {
+  const h = harness();
+  const indexed = new Map(
+    [...h.api.searchableSettings, ...h.api.getDeclaredSearchSettings()]
+      .map((entry) => [`${entry.sectionKey}:${entry.settingKey}`, entry])
+  );
+  const routing = h.api.getDeclaredSearchRouting();
+  const missing = [...new Set(allDeclarations(h)
+    .filter(({ item }) => item.key && item.searchable !== false && h.hasSettingDefault(item.key))
+    .filter(({ item, tabId }) => {
+      const entry = indexed.get(`${tabId}:${item.key}`);
+      if (entry && (entry.name || entry.desc)) return false;
+      // Layer table cells are searchable through their column's group entry.
+      const group = indexed.get(routing.get(`${tabId}:${item.key}`));
+      return !group || !(group.name || group.desc);
+    })
+    .map(({ item, tabId }) => `${tabId}:${item.key}`))].sort();
+  assert.deepEqual(missing, [], `settings missing from search: ${missing.join(", ")}`);
+});
+
+test("every layer table collapses into one search entry per layer", () => {
+  const h = harness();
+  const entries = Array.from(h.api.getDeclaredSearchSettings());
+  const routing = h.api.getDeclaredSearchRouting();
+  const tables = [
+    { tabId: "appearance", sectionKey: "lyric-layers" },
+    { tabId: "fullscreen", sectionKey: "vinyl-typography" },
+    { tabId: "nowplaying", sectionKey: "panel-lyrics-general" },
+    { tabId: "ai-providers", sectionKey: "cultural-annotations" },
+  ];
+  for (const { tabId, sectionKey } of tables) {
+    const matrices = elements(h.api.renderTabContent(tabId))
+      .filter((node) => node.type === h.SettingsLayerMatrix);
+    assert.ok(matrices.length > 0, `${tabId} has no layer table`);
+    for (const matrix of matrices) {
+      for (const column of matrix.props.columns) {
+        const groupEntries = entries.filter((entry) => entry.settingKey === column.anchor);
+        assert.equal(groupEntries.length, 1, `${column.anchor} should have exactly one search entry`);
+        const entry = groupEntries[0];
+        assert.ok(entry.name.endsWith(` - ${column.label}`), `${entry.name} should name its layer`);
+        assert.equal(entry.navItemId, sectionKey);
+        const searchText = [entry.name, entry.desc, ...entry.directKeywords].join(" ").toLowerCase();
+        for (const item of column.items) {
+          assert.ok(!entries.some((candidate) => candidate.settingKey === item.key),
+            `${item.key} must not have its own search entry`);
+          assert.equal(routing.get(`${tabId}:${item.key}`), entry.resultKey,
+            `${item.key} should route to ${entry.resultKey}`);
+          assert.ok(searchText.includes(item.key.toLowerCase()),
+            `${entry.resultKey} should keep ${item.key} searchable`);
+        }
+        assert.equal(routing.get(`${tabId}:${column.anchor}`), entry.resultKey);
+        if (column.toggle) {
+          assert.equal(routing.get(`${tabId}:${column.toggle.key}`), entry.resultKey);
+        }
+      }
+    }
+  }
+});
+
+test("layer table search entries use the table title and selected layer", () => {
+  const h = harness();
+  const entries = new Map(Array.from(h.api.getDeclaredSearchSettings())
+    .map((entry) => [entry.settingKey, entry]));
+  assert.equal(entries.get("pronunciation-style").name, "Lyric layers - Pronunciation");
+  assert.equal(entries.get("furigana-style").name, "Lyric layers - Furigana");
+  assert.equal(entries.get("vinyl-pronunciation-style").name, "Vinyl typography - Pronunciation");
+  assert.equal(entries.get("vinyl-original-style").name, "Vinyl typography - Original");
+  assert.match(entries.get("pronunciation-style").desc, /pronunciationStyle\.subtitle/);
+});
+
+test("search panel lists one result per layer and still matches property words", () => {
+  const h = harness({}, {}, { runEffects: true });
+  h.runEffects();
+  h.render();
+  const search = (query) => {
+    h.api.handleSearchChange({ target: { value: query } });
+    h.render();
+    return h.api.searchResults;
+  };
+  const names = (results) => results.map((result) => result.name);
+
+  const pronunciation = search("pronun");
+  assert.ok(names(pronunciation).includes("Lyric layers - Pronunciation"), names(pronunciation).join(" | "));
+  assert.equal(names(pronunciation).filter((name) => name === "Lyric layers - Pronunciation").length, 1);
+
+  // The layer table cells themselves must not surface as separate results.
+  const matrix = elements(h.api.renderTabContent("appearance"))
+    .find((node) => node.type === h.SettingsLayerMatrix);
+  const cellKeys = new Set(matrix.props.columns.flatMap((column) => column.items.map((item) => item.key)));
+  assert.ok(!pronunciation.some((result) => cellKeys.has(result.settingKey)),
+    "layer cells must not be separate results");
+
+  const outline = search("outline");
+  assert.ok(names(outline).some((name) => name.startsWith("Lyric layers - ")), names(outline).join(" | "));
+
+  // Panel and annotation tables group the same way.
+  const panelMatrix = elements(h.api.renderTabContent("nowplaying"))
+    .find((node) => node.type === h.SettingsLayerMatrix);
+  const panelCellKeys = new Set(panelMatrix.props.columns.flatMap((column) => column.items.map((item) => item.key)));
+  assert.ok(!outline.some((result) => panelCellKeys.has(result.settingKey)),
+    "panel cells must not be separate results");
+  assert.ok(names(outline).includes("Panel Lyrics - Pronunciation"), names(outline).join(" | "));
+
+  const vinyl = search("vinyl");
+  assert.ok(names(vinyl).includes("Vinyl typography - Pronunciation"), names(vinyl).join(" | "));
+});
+
+test("off-tab search entries carry a readable name, section and destination", () => {
+  const h = harness();
+  const entries = new Map(h.api.getDeclaredSearchSettings()
+    .map((entry) => [`${entry.sectionKey}:${entry.settingKey}`, entry]));
+  for (const key of ["synced-pronunciation", "pronunciation-karaoke-fill"]) {
+    const entry = entries.get(`lyrics:${key}`);
+    assert.ok(entry, `${key} has no search entry`);
+    assert.match(entry.name, /pronunciation/i, `${key} name is not searchable`);
+    assert.equal(entry.navItemId, "karaoke-mode");
+    assert.equal(entry.section, h.api.sidebarTabs.find((tab) => tab.id === "lyrics").label);
+  }
+});
+
+test("manual and generated search entries merge into one result per destination", () => {
+  const h = harness();
+  const resultKeysByDestination = new Map();
+  for (const entry of [...h.api.searchableSettings, ...h.api.getDeclaredSearchSettings()]) {
+    if (!entry.settingKey) continue;
+    const destination = h.canonical(entry.sectionKey, entry.settingKey);
+    const destinationKey = `${destination.tabId}:${destination.settingKey}`;
+    const resultKeys = resultKeysByDestination.get(destinationKey) || new Set();
+    resultKeys.add(`${entry.sectionKey}:${entry.settingKey}`);
+    resultKeysByDestination.set(destinationKey, resultKeys);
+  }
+  const duplicates = [...resultKeysByDestination]
+    .filter(([, resultKeys]) => resultKeys.size > 1)
+    .map(([destination]) => destination);
+  assert.deepEqual(duplicates, [], `duplicate search destinations: ${duplicates.join(", ")}`);
+});
 
 // Unlike buildSettingsRegistry, this deliberately does not deduplicate keys:
 // a correct registry must not hide a second physical editor in another tab.

@@ -121,6 +121,7 @@ window.LANG_ID = {
       "aiTasks": {
         "title": "Penyedia per tugas"
       },
+      "vinylTypography": "Tipografi vinil",
       "lyricLayers": {
         "title": "Lapisan lirik",
         "subtitle": "Bandingkan dan atur font teks asli, pelafalan, terjemahan, dan furigana dalam satu tampilan."

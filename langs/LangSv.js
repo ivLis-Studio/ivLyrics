@@ -121,6 +121,7 @@ window.LANG_SV = {
       "aiTasks": {
         "title": "Leverantörer per uppgift"
       },
+      "vinylTypography": "Vinyltypografi",
       "lyricLayers": {
         "title": "Textlager",
         "subtitle": "Jämför och justera typsnitten för original, uttal, översättning och furigana i en och samma vy."
