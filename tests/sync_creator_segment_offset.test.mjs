@@ -27,6 +27,7 @@ const callbacks = [
     slice('\tconst adjustCurrentLineOffset =', '\tconst resetFromStart ='),
     slice('\tconst materializeSyncCreatorParallelDrafts =', '\tconst handleRevertToPublished ='),
     slice('\tconst buildSyncCreatorSessionRecord =', '\tconst syncSessionUiFromRecord ='),
+    slice('\tconst lyricsTextLrclibShape =', '\tconst lrclibCandidateVariantsForLyrics ='),
     slice('\tconst buildScoreSnapshot =', '\tconst scoreCurrentSnapshot ='),
     slice('\tconst applySyncCreatorSessionRecord =', '\tconst saveSessionCheckpoint ='),
     slice('\tconst handleSubmit =', '\t// 싱크 데이터 내보내기'),

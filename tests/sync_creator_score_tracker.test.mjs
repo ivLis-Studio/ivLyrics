@@ -804,3 +804,54 @@ test('with no encodable snapshot anywhere the queue stays stopped and keeps its 
   value.setAuthorized(false);
   value.tracker.stop();
 });
+
+// The source of an older version of the lyrics: the server checks it against
+// LRCLIB and rejects the event, which used to stop every later submission.
+const staleSourced = (count) => {
+  const value = snapshot(count);
+  value.source = { ...value.source, lyricsFingerprint: 'lrclib-old-120', lineCharCounts: Array(60).fill(2), lineCount: 60, textCharCount: 120 };
+  return value;
+};
+const sourceRejection = () => Object.assign(
+  new Error('The lyric source has changed or its line boundaries do not match LRCLIB. Reload the source lyrics.'), { status: 400 });
+
+test('a queued snapshot with an unverifiable LRCLIB source gives way to the current one instead of blocking every submission', async () => {
+  const codec = require('../SyncDataCodec.js');
+  const stale = { eventId: 'stale-record', action: 'record', syncData: staleSourced(1), activeSeconds: 30,
+    target: { start: 0, end: 1, granularity: 'character', inputCount: 2, inputIndexes: [0, 1], ranges: [{ start: 0, end: 1 }] } };
+  const staleLater = { eventId: 'stale-later', action: 'record', syncData: staleSourced(2), activeSeconds: 20 };
+  const value = fixture({ codec, saved: legacyWork([stale, staleLater]),
+    request: event => {
+      if (event.eventId.startsWith('stale') && event.action === 'record') throw sourceRejection();
+      return codecAcknowledging(event);
+    }
+  });
+  const receipt = await value.tracker.submission(snapshot(3));
+  assert.deepEqual(value.sent.map(event => [event.eventId, event.action]),
+    [['stale-record', 'record'], ['stale-record', 'import'], [value.sent[2].eventId, 'checkpoint']]);
+  const superseded = codec.decode(codec.applyPatch(codec.encode(snapshot(0)), value.sent[1].patch));
+  assert.equal(superseded.source.lyricsFingerprint, 'lrclib-abc-123', 'the current snapshot with its matching source');
+  assert.equal(value.sent[1].target, undefined, 'it claims no manual input');
+  assert.equal(value.sent[1].activeSeconds, 0);
+  assert.ok(!value.sent.some(event => event.eventId === 'stale-later'), 'later events on the same stale source go with it');
+  assert.deepEqual(receipt, { workSessionId: 'server-session', workSequence: 4 });
+  value.tracker.stop();
+});
+
+test('when the current snapshot names the same unverifiable source the queue stops with the reload message', async () => {
+  const stale = { eventId: 'stale-record', action: 'record', syncData: staleSourced(1), activeSeconds: 30 };
+  const value = fixture({ initial: staleSourced(0), saved: legacyWork([stale]), request: () => { throw sourceRejection(); } });
+  await assert.rejects(value.tracker.submission(staleSourced(2)), /Reload the source lyrics/);
+  assert.equal(value.sent.length, 1, 'one request, no loop');
+  assert.equal(value.tracker.__test.getState().queue[0].eventId, 'stale-record');
+  value.setAuthorized(false);
+  value.tracker.stop();
+});
+
+test('the creator keeps a carried source only when it was made from the shown lyrics', () => {
+  const start = creatorSource.indexOf('const buildScoreSnapshot = useCallback((data) => {');
+  const body = creatorSource.slice(start, creatorSource.indexOf('const repairScoreSnapshot', start));
+  assert.match(body, /if \(doesSyncCreatorLrclibSourceMatchShape\(raw\.source, lyricsTextLrclibShape\)\) expanded\.source = raw\.source;/);
+  assert.match(body, /lyricsTextLrclibShape, trackDurationMs\]\)/);
+});
+

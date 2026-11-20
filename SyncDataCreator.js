@@ -10000,11 +10000,15 @@ const SyncDataCreator = ({ trackInfo, initialData, onClose }) => {
 		));
 		const expanded = attachSelectedLrclibSource(raw);
 		if (!expanded) return null;
-		if (isCompleteSyncCreatorLrclibSource(raw.source)) expanded.source = raw.source;
+		// A source the data already carries stays, but only one made from the
+		// lyrics these timings are on: an older version's source (a restored
+		// draft, an earlier load) would be rejected by the server and stop the
+		// work queue. Otherwise the source matched to the shown lyrics is used.
+		if (doesSyncCreatorLrclibSourceMatchShape(raw.source, lyricsTextLrclibShape)) expanded.source = raw.source;
 		return compactSyncCreatorSyncData({
 			...expanded, ...(trackDurationMs > 0 ? { trackDurationMs } : {})
 		}, lyricsFullTextChars, lyricsLanguage || undefined);
-	}, [attachSelectedLrclibSource, lyricsFullTextChars, lyricsLanguage, trackDurationMs]);
+	}, [attachSelectedLrclibSource, lyricsFullTextChars, lyricsLanguage, lyricsTextLrclibShape, trackDurationMs]);
 	const repairScoreSnapshot = useCallback((data) => {
 		try {
 			const repaired = sanitizeSyncCreatorLastCharEnds(clipSyncCreatorSyncDataToLineBounds(prepareSyncCreatorWorkSnapshot(data)));

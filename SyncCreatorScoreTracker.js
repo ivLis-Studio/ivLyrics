@@ -22,6 +22,11 @@
   // timing: backwards marks, and parts/ranges a stale layout left outside their
   // saved row. Other validation failures keep the queue stopped as evidence.
   const REPAIRABLE_SNAPSHOT_ERROR = /^Invalid work snapshot: .+: (?:time goes backwards|.+ is outside the parent line(?: interior)?)$/;
+  // The server checks a snapshot's LRCLIB source against LRCLIB before it
+  // takes any work. These say the queued snapshot names a source it cannot
+  // match (a version of the lyrics loaded earlier, or recorded by an older
+  // editor); replaying it can never succeed.
+  const UNVERIFIABLE_SOURCE_ERROR = /^(?:The lyric source has changed or its line boundaries do not match LRCLIB|Sync lines must stay within the verified lyric source|The LRCLIB source does not contain supported lyrics)/;
 
   // This queue records editor actions, never decides points. Imported files and
   // recovered drafts contain no trusted evidence; only the server owns credit.
@@ -80,6 +85,7 @@
     let conflictError = null;
     let rejectedWorkError = null;
     const attemptedSnapshotRepairs = new Set();
+    const attemptedSourceRecoveries = new Set();
     const isAuthorized = () => options.isAuthorized?.() !== false;
     const persist = () => {
       const snapshot = packState(state);
@@ -188,6 +194,35 @@
           await persist();
           return true;
         };
+        // A queued snapshot whose LRCLIB source the server cannot verify holds
+        // no evidence it could accept, yet it stopped every later edit and
+        // every submission, even when the editor's lyrics and source were
+        // right. The editor's current snapshot takes its place as import
+        // provenance (a start stays the start), and later queued snapshots that
+        // name the same unverifiable source go with it. When the current
+        // snapshot names that source too, nothing changes and the queue stops.
+        const supersedeUnverifiableSource = async (next, error) => {
+          if (error?.status !== 400 || typeof error.message !== 'string'
+            || !UNVERIFIABLE_SOURCE_ERROR.test(error.message) || attemptedSourceRecoveries.has(next.eventId)) return false;
+          attemptedSourceRecoveries.add(next.eventId);
+          const sourceKey = value => {
+            let source = null;
+            try { source = (codec ? codec.decode(value) : value)?.source || null; } catch { source = value?.source || null; }
+            return source ? JSON.stringify([String(source.lrclibId ?? ''), source.preferredLyricsSource || '',
+              source.lyricsFingerprint || '', source.lineCharCounts || []]) : '';
+          };
+          const rejected = sourceKey(next.syncData);
+          const current = latest && sourceKey(latest);
+          if (!current || current === rejected) return false;
+          if (!isAuthorized()) throw new Error('Sync scoring account changed.');
+          const superseded = { ...next, syncData: clone(latest),
+            action: next.action === 'start' ? 'start' : 'import', activeSeconds: 0, snapshotRepaired: true };
+          delete superseded.target;
+          delete superseded.request;
+          state.queue = [superseded, ...state.queue.slice(1).filter(event => sourceKey(event.syncData) !== rejected)];
+          await persist();
+          return true;
+        };
         // Recover from a 409 conflict: resume the server session, discard only
         // acknowledged events, then let the caller retry the current event.
         const resolveScoreConflict = async (next, error) => {
@@ -282,6 +317,7 @@
             result = await options.request(payload);
           } catch (error) {
             if (await repairInvalidSnapshot(next, error)) continue;
+            if (await supersedeUnverifiableSource(next, error)) continue;
             // A validation rejection cannot recover by replaying the identical
             // event. Keep the FIFO evidence and local drafts, but stop automatic
             // retries (including heartbeat, edits, submission and close).
