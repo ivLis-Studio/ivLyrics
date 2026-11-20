@@ -3030,6 +3030,9 @@ const CONFIG = {
       "ivLyrics:visual:fullscreen-vinyl-lyrics-enabled",
       true
     ),
+    // Motion lyrics fly over the song's video, or over the track background used elsewhere.
+    "fullscreen-motion-background":
+      StorageManager.getItem("ivLyrics:visual:fullscreen-motion-background") === "track" ? "track" : "video",
     "fullscreen-cd-disc-size": Number(StorageManager.getItem("ivLyrics:visual:fullscreen-cd-disc-size") ?? 100),
     "fullscreen-cd-rotation-enabled": StorageManager.get("ivLyrics:visual:fullscreen-cd-rotation-enabled", true),
     "fullscreen-cd-rotation-speed": Number(StorageManager.getItem("ivLyrics:visual:fullscreen-cd-rotation-speed") ?? 100),
@@ -11451,9 +11454,13 @@ class LyricsContainer extends react.Component {
     const currentTrackInfo = this.getCurrentPlayerTrackInfo();
     const renderTrackUri = currentTrackInfo?.uri || this.currentTrackUri || this.state.uri || "";
     const isLocalTrack = !!renderTrackUri && !Utils.extractTrackId(renderTrackUri);
-    // Motion lyrics fly over the same unblurred video as the video stage.
+    // Motion lyrics fly over the same unblurred video as the video stage, unless
+    // the user chose the track background for them (no video found, YouTube
+    // blocked or age-restricted, or simply the cover they prefer).
+    const motionUsesTrackBackground = fullscreenPresentation === "motion"
+      && CONFIG.visual["fullscreen-motion-background"] === "track";
     const isVideoStagePresentation =
-      fullscreenPresentation === "video" || fullscreenPresentation === "motion";
+      fullscreenPresentation === "video" || (fullscreenPresentation === "motion" && !motionUsesTrackBackground);
     const shouldUseVideoBackground =
       !isSyncCreatorActive &&
       !this.state.isFADMode &&
@@ -11733,7 +11740,11 @@ class LyricsContainer extends react.Component {
     const renderStaticGradientBackground = () => (
         shouldRenderStaticBackground && react.createElement("div", {
           id: "ivLyrics-gradient-background",
-          className: !isSyncCreatorActive && effectiveBackgroundMode === "blur-gradient-background" ? "color-gradient-bg" : "",
+          className: [
+            !isSyncCreatorActive && effectiveBackgroundMode === "blur-gradient-background" ? "color-gradient-bg" : "",
+            // Motion lyrics turn and zoom this layer with their camera, as they do the video.
+            motionUsesTrackBackground ? "ivlyrics-video-background-camera" : "",
+          ].filter(Boolean).join(" "),
           style: backgroundStyle,
         },
           // 블러 그라데이션일 때 여러 블롭 생성

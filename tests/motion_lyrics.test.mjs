@@ -1196,6 +1196,72 @@ test("editorial compositions: a wave, a star chart, a grid and the corners", () 
 	assert.ok(chart.strokes.every((stroke, index) => stroke.stops.indexOf(1) > index), "each drawn as the next line is sung");
 });
 
+test("a long sideways stretch turns the background back to landscape, and it follows the camera again after", () => {
+	const { motion, director, type } = load();
+	const lyrics = [];
+	for (let index = 0; index < 12; index += 1) lyrics.push(line(["side" + index, "ways", "line"], 2000 + index * 2200, { step: 500 }));
+	const model = motion.buildModel(lyrics);
+	// A quarter turn into a long board (about 14 seconds sideways), then a quarter turn back.
+	const raw = { shots: [
+		{ from: 0, to: 1, layout: "column", enter: "pan", dutch: 0 },
+		{ from: 2, to: 7, layout: "column", enter: "roll", dutch: 0 },
+		{ from: 8, to: 11, layout: "column", enter: "roll", dutch: 0 },
+	] };
+	const checked = director.normalizeDirection(raw, model, { seed: 2 });
+	const direction = { ...checked, shots: checked.shots.map((shot, index) => ({ ...shot, ...raw.shots[index] })) };
+	const plan = compose(motion, type, model, direction, 2);
+	const sideways = (roll) => { const turn = ((roll % 180) + 180) % 180; return Math.min(turn, 180 - turn); };
+	assert.ok(sideways(plan.lines[3].camera.roll) > 80, "the middle board is on its side");
+	assert.equal(plan.uprights.length, 1, "one sideways stretch is long enough");
+	const [upright] = plan.uprights;
+	assert.equal(upright.from, plan.lines[2].arrive + 7000);
+	assert.equal(upright.to, plan.lines[8].arrive);
+	const at = (time) => motion.backgroundFrame(plan, motion.cameraPose(plan, time, null), time);
+	assert.ok(sideways(at(upright.from - 100).rotate) > 80, "it turns with the camera at first");
+	const righted = at(upright.from + 1500);
+	assert.ok(sideways(righted.rotate) < 1, "then rights itself: " + righted.rotate);
+	assert.ok(righted.scale < at(upright.from - 100).scale, "and covers the screen with less zoom");
+	assert.ok(sideways(at(upright.to + 1000).rotate) < 15, "back on landscape lines it follows the camera again");
+	assert.equal(motion.uprightAt(plan, upright.to + 1000), null);
+	assert.equal(motion.backgroundFrame(plan, motion.cameraPose(plan, upright.from + 1500, null)).rotate,
+		-motion.cameraPose(plan, upright.from + 1500, null).roll, "without a time it is the plain camera turn");
+});
+
+test("lyrics text breaks the words even when the syllables differ from it a little", () => {
+	const { motion } = load();
+	// The syllables carry no spaces and leave out the dash the text has.
+	const syllables = timed(["Ко", "ти", "ки", "17", "SEVEN", "TEEN"], 0, 300);
+	const words = motion.buildWords({ originalText: "Котики - 17 SEVENTEEN", syllables }).map((word) => word.text);
+	assert.deepEqual(plain(words), ["Котики", "17", "SEVENTEEN"], "not one long word: " + words);
+	const cased = motion.buildWords({ originalText: "hold ON tight", syllables: timed(["Hold", "on", "tight,"], 0, 300) }).map((word) => word.text);
+	assert.deepEqual(plain(cased), ["Hold", "on", "tight,"], "case and a trailing comma do not stop the match");
+	const other = motion.buildWords({ originalText: "something else entirely", syllables: timed(["ab", "cd"], 0, 300) }).map((word) => word.text);
+	assert.deepEqual(plain(other), ["abcd"], "an unrelated text adds no breaks");
+});
+
+test("motion colours follow the cover, the AI only adds a second colour apart from it", () => {
+	const { motion } = load();
+	const hue = (hex) => {
+		const [r, g, b] = [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16) / 255);
+		const max = Math.max(r, g, b);
+		const min = Math.min(r, g, b);
+		const d = max - min;
+		const h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+		return h / 6;
+	};
+	const blueCover = "#1d3f8a";
+	const [first, second] = motion.paletteFrom(blueCover, ["#ff3b7a", "#ff5c8a"]);
+	assert.ok(Math.abs(hue(first) - hue(blueCover)) < 0.02, "a blue cover stays blue: " + first);
+	assert.ok(Math.abs(hue(second) - hue("#ff3b7a")) < 0.02, "the AI's pink is kept as the second colour");
+	const [, own] = motion.paletteFrom(blueCover, ["#2a4fa0"]);
+	assert.ok(Math.abs(hue(own) - hue(blueCover)) > 0.3, "an AI colour too close to the cover is not used twice: " + own);
+	const [grey] = motion.paletteFrom("#777777", []);
+	assert.ok(hue(grey) > 0.5 && hue(grey) < 0.7, "a grey cover gets a quiet blue, not a pink: " + grey);
+	assert.ok(Math.abs(hue(motion.paletteFrom("var(--spice-button-active, #ff809d)", ["#33cc88"])[0]) - hue("#33cc88")) < 0.02,
+		"without a cover colour the AI leads");
+});
+
+
 
 
 

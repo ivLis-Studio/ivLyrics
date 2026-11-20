@@ -43,6 +43,13 @@
 	const BOARD_FADE_MS = 900;
 	// After a voice sung into the next line ends, the camera takes this long to settle on the new line.
 	const SHARE_RETURN_MS = 520;
+	// The background turns with the camera, so a sideways shot shows the video
+	// on its side (portrait on a wide screen, small and blurry once scaled to
+	// cover it). After this long sideways it turns back to landscape, and it
+	// follows the camera again once the camera is back.
+	const SIDEWAYS_HOLD_MS = 7000;
+	const UPRIGHT_TURN_MS = 1400;
+	const UPRIGHT_RETURN_MS = 900;
 	const TUNNEL_STEP = 1500;
 	const PUSH_DEPTH = 2300;
 	const PULL_DEPTH = 1900;
@@ -181,28 +188,81 @@
 		&& Array.isArray(lines)
 		&& lines.some((line) => leadSyllablesOf(line).length > 0);
 
+	/** Word starts (offsets in the spaceless text) of a text that spells the syllables exactly. */
+	const exactBreaks = (lineText) => {
+		const breaks = new Set();
+		let index = 0;
+		let pending = false;
+		for (const codePoint of lineText) {
+			if (SPACE_RE.test(codePoint)) {
+				pending = index > 0;
+				continue;
+			}
+			if (pending) breaks.add(index);
+			pending = false;
+			index += codePoint.length;
+		}
+		return breaks;
+	};
+
+	const foldLetter = (value) => value.normalize("NFKC").toLocaleLowerCase();
+	// How far ahead in the syllables a letter of the text may be found (letters only the syllables have).
+	const ALIGN_LOOKAHEAD = 3;
+
+	/**
+	 * Word starts from a text that spells the syllables with small differences:
+	 * each text letter is found in the syllables (a few letters ahead at most),
+	 * letters only the text has are passed over, and a space between two found
+	 * letters breaks the words. Empty when too little of the text matches.
+	 */
+	const alignedBreaks = (lineText, plain) => {
+		const breaks = new Set();
+		if (!lineText || !plain || !SPACE_RE.test(lineText)) return breaks;
+		const letters = [];
+		for (let offset = 0; offset < plain.length;) {
+			const codePoint = String.fromCodePoint(plain.codePointAt(offset));
+			letters.push({ offset, letter: foldLetter(codePoint) });
+			offset += codePoint.length;
+		}
+		let next = 0;
+		let pending = false;
+		let matched = 0;
+		for (const codePoint of lineText) {
+			if (SPACE_RE.test(codePoint)) {
+				pending = next > 0;
+				continue;
+			}
+			const letter = foldLetter(codePoint);
+			let found = -1;
+			for (let ahead = next; ahead < Math.min(letters.length, next + ALIGN_LOOKAHEAD); ahead += 1) {
+				if (letters[ahead].letter === letter) {
+					found = ahead;
+					break;
+				}
+			}
+			// A letter the syllables do not have (a dash, a symbol) keeps a pending break.
+			if (found < 0) continue;
+			if (pending) breaks.add(letters[found].offset);
+			pending = false;
+			matched += found === next ? 1 : 0;
+			next = found + 1;
+		}
+		return matched >= letters.length * 0.8 ? breaks : new Set();
+	};
+
 	/**
 	 * Characters of a line with the time each is sung. Word breaks come from
 	 * the voice's text when it spells the same letters (some sources leave the
-	 * spaces out of the syllables), otherwise from the syllables' own spaces.
+	 * spaces out of the syllables). When the text and the syllables differ a
+	 * little (a dash or punctuation only one of them has, another case), the
+	 * text is matched letter by letter and its spaces still break the words:
+	 * otherwise a whole line whose syllables carry no spaces ran together into
+	 * one long word. The syllables' own spaces always break too.
 	 */
 	const buildChars = (lineText, syllables) => {
 		const plain = syllables.map((syllable) => syllable.text).join("").replace(/\s+/gu, "");
 		const useLineSpaces = lineText.replace(/\s+/gu, "") === plain;
-		const breaks = new Set();
-		if (useLineSpaces) {
-			let index = 0;
-			let pending = false;
-			for (const codePoint of lineText) {
-				if (SPACE_RE.test(codePoint)) {
-					pending = index > 0;
-					continue;
-				}
-				if (pending) breaks.add(index);
-				pending = false;
-				index += codePoint.length;
-			}
-		}
+		const breaks = useLineSpaces ? exactBreaks(lineText) : alignedBreaks(lineText, plain);
 		const chars = [];
 		const pushSpace = () => {
 			if (chars.length && !chars[chars.length - 1].space) chars.push({ ch: " ", space: true });
@@ -218,7 +278,7 @@
 					if (!useLineSpaces) pushSpace();
 					continue;
 				}
-				if (useLineSpaces && breaks.has(plainIndex)) pushSpace();
+				if (breaks.has(plainIndex)) pushSpace();
 				const start = syllable.start + slice * position;
 				chars.push({ ch: piece, start, end: start + slice, syl: syllableIndex });
 				position += 1;
@@ -503,19 +563,29 @@
 		};
 		return "#" + [channel(0), channel(8), channel(4)].map((value) => value.toString(16).padStart(2, "0")).join("");
 	};
-	/** Two accent colours that stay vivid and readable over video. */
+	/**
+	 * Two accent colours that stay vivid and readable over video. The cover's
+	 * colour leads: the AI palette (which favoured pinks and reds whatever the
+	 * cover) only leads when the cover has no colour to give (missing, or grey),
+	 * and otherwise may only add a second colour clearly apart from it.
+	 */
 	const paletteFrom = (accent, aiPalette) => {
 		const readable = (rgb) => {
 			const [hue, saturation, light] = rgbToHsl(rgb);
-			const vivid = saturation < 0.08 ? [0.93, 0.72, 0.66] : [hue, Math.max(saturation, 0.62), clamp(light, 0.58, 0.72)];
-			return hslToHex(vivid);
+			return hslToHex([hue, Math.max(saturation, 0.62), clamp(light, 0.58, 0.72)]);
 		};
-		const fromAi = (Array.isArray(aiPalette) ? aiPalette : []).map(parseColor).filter(Boolean).map(readable);
-		if (fromAi.length >= 2) return fromAi.slice(0, 2);
-		const base = fromAi.length ? parseColor(fromAi[0]) : (parseColor(accent) || [255, 92, 160]);
-		const first = fromAi[0] || readable(base);
+		const colourful = (rgb) => !!rgb && rgbToHsl(rgb)[1] >= 0.08;
+		const fromAi = (Array.isArray(aiPalette) ? aiPalette : []).map(parseColor).filter(colourful).map(readable);
+		const cover = parseColor(accent);
+		// A grey cover with no AI colour gets a cool, quiet blue rather than a loud pink.
+		const first = colourful(cover) ? readable(cover) : fromAi[0] || hslToHex([0.6, 0.62, 0.68]);
 		const [hue, saturation] = rgbToHsl(parseColor(first));
-		return [first, hslToHex([(hue + 0.42) % 1, Math.max(0.62, saturation), 0.66])];
+		const apart = (colour) => {
+			const distance = Math.abs(rgbToHsl(parseColor(colour))[0] - hue);
+			return Math.min(distance, 1 - distance) >= 0.12;
+		};
+		const second = fromAi.find((colour) => colour !== first && apart(colour));
+		return [first, second || hslToHex([(hue + 0.42) % 1, Math.max(0.62, saturation), 0.66])];
 	};
 
 	/** A palette colour deepened into a ground (cards, colour fields) that white type reads on. */
@@ -1982,6 +2052,47 @@
 		};
 	};
 
+	/** How far a roll is from landscape: 0 upright or upside down, 90 on its side. */
+	const sidewaysOf = (roll) => {
+		const turn = ((roll % 180) + 180) % 180;
+		return Math.min(turn, 180 - turn);
+	};
+
+	/**
+	 * Stretches of the song the camera spends on its side for longer than
+	 * SIDEWAYS_HOLD_MS: from then on the background turns to the landscape
+	 * orientation the camera comes back to (target, a camera roll), until the
+	 * camera has come back (to; Infinity when it never does).
+	 */
+	const uprightsOf = (lines) => {
+		const uprights = [];
+		let run = null;
+		const close = (to, roll) => {
+			if (to - run.start > SIDEWAYS_HOLD_MS) uprights.push({ from: run.start + SIDEWAYS_HOLD_MS, to, target: Math.round(roll / 180) * 180 });
+			run = null;
+		};
+		lines.forEach((line) => {
+			const sideways = sidewaysOf(line.camera.roll) > 45;
+			if (sideways && !run) run = { start: line.arrive };
+			else if (!sideways && run) close(line.arrive, line.camera.roll);
+		});
+		if (run) close(Infinity, lines[lines.length - 1].camera.roll);
+		return uprights;
+	};
+
+	/** How far the background has turned to landscape at a time: { weight 0..1, target roll }, or null. */
+	const uprightAt = (plan, time) => {
+		if (!Number.isFinite(time)) return null;
+		for (const upright of plan?.uprights || []) {
+			if (time <= upright.from || time >= upright.to + UPRIGHT_RETURN_MS) continue;
+			const turned = easeInOutCubic(clamp01((time - upright.from) / UPRIGHT_TURN_MS));
+			const back = Number.isFinite(upright.to) ? 1 - easeInOutCubic(clamp01((time - upright.to) / UPRIGHT_RETURN_MS)) : 1;
+			return { weight: Math.min(turned, back), target: upright.target };
+		}
+		return null;
+	};
+
+
 	/** How long the camera takes to reach the next line, by move and tempo. */
 	const moveDuration = (type, gap, pace) => {
 		switch (type) {
@@ -2176,6 +2287,7 @@
 		});
 		plan.flashes = [];
 		plan.panels = [];
+		plan.uprights = uprightsOf(lines);
 		// Colour fields (posters): one per line, opening from a band and cutting from colour to colour.
 		plan.floods = [];
 		lines.forEach((line) => {
@@ -2838,9 +2950,10 @@
 	/**
 	 * Rotation, zoom and offset of the video background so it moves like the
 	 * far plane of the same camera: it turns with the roll, slides against
-	 * 3D swings and travel, and zooms with the dolly and the beat.
+	 * 3D swings and travel, and zooms with the dolly and the beat. Given the
+	 * time, a long sideways stretch turns it back to landscape (uprightAt).
 	 */
-	const backgroundFrame = (plan, pose) => {
+	const backgroundFrame = (plan, pose, time = NaN) => {
 		let x = 0;
 		let y = 0;
 		if (pose.sway) {
@@ -2858,9 +2971,11 @@
 		x -= Math.sin((yaw * Math.PI) / 180) * plan.W * 0.42;
 		y += Math.sin((pitch * Math.PI) / 180) * plan.H * 0.42;
 		const dolly = PERSPECTIVE_PX / (PERSPECTIVE_PX + (pose.dolly || 0) * 0.45);
-		const wanted = coverScale(-pose.roll, plan.W, plan.H) * 1.14 * dolly * (1 + (pose.beat || 0) * 0.025);
-		const scale = Math.max(wanted, coverScale(-pose.roll, plan.W, plan.H, x, y) * 1.01);
-		return { rotate: -pose.roll, scale, x, y };
+		const upright = uprightAt(plan, time);
+		const roll = upright ? pose.roll + (upright.target - pose.roll) * upright.weight : pose.roll;
+		const wanted = coverScale(-roll, plan.W, plan.H) * 1.14 * dolly * (1 + (pose.beat || 0) * 0.025);
+		const scale = Math.max(wanted, coverScale(-roll, plan.W, plan.H, x, y) * 1.01);
+		return { rotate: -roll, scale, x, y };
 	};
 
 	/** Opacity of the letterbox bars at a time. */
@@ -2965,6 +3080,7 @@
 		solidFrame,
 		charFrame,
 		backgroundFrame,
+		uprightAt,
 		coverScale,
 		barsLevel,
 		panelAt,
@@ -3539,7 +3655,7 @@
 
 			const backdrop = findBackground(at);
 			if (backdrop) {
-				const frameState = backgroundFrame(plan, pose);
+				const frameState = backgroundFrame(plan, pose, time);
 				write(cache.background, "rotate", round(frameState.rotate, 2) + "deg", (value) => { backdrop.style.rotate = value; });
 				write(cache.background, "scale", String(round(frameState.scale, 4)), (value) => { backdrop.style.scale = value; });
 				write(cache.background, "translate", round(frameState.x) + "px " + round(frameState.y) + "px", (value) => { backdrop.style.translate = value; });
