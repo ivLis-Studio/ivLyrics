@@ -10495,9 +10495,12 @@
     const SENDER_PROBE_DELAYS = [5000, 10000, 20000, 40000, 60000];
     const SENDER_PROBE_TIMEOUT_MS = 1500;
     const SENDER_FOREGROUND_PROBE_GAP_MS = 10000;
-    // Overlays that interpolate playback (protocol 2) need progress only when
-    // the playback state changes, the position jumps, or a heartbeat is due.
-    // Older overlays and the helper read every 250 ms anchor while playing.
+    // Overlays that run their own clock for every kind of lyrics (protocol 3)
+    // need progress only when the playback state changes, the position jumps,
+    // or a heartbeat is due. Protocol 2 overlays (1.3.0 and 1.3.1) run it only
+    // for word-timed lyrics: line-timed ones moved only when progress arrived,
+    // late and skipping lines, so they keep every 250 ms anchor while playing,
+    // as do older overlays and the helper.
     const PROGRESS_DRIFT_TOLERANCE_MS = 250;
     const PROGRESS_HEARTBEAT_MS = { playing: 2000, paused: 10000 };
     const LEGACY_PAUSED_HEARTBEAT_MS = 2000;
@@ -11360,6 +11363,9 @@
         getProgressHeartbeat(isPlaying) {
             if (this.CONTINUOUS_PROGRESS || this._receiverProtocol < 2) {
                 return isPlaying ? 0 : LEGACY_PAUSED_HEARTBEAT_MS;
+            }
+            if (this._receiverProtocol < 3) {
+                return isPlaying ? 0 : PROGRESS_HEARTBEAT_MS.paused;
             }
             return isPlaying ? PROGRESS_HEARTBEAT_MS.playing : PROGRESS_HEARTBEAT_MS.paused;
         },

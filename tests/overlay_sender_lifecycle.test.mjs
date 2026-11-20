@@ -281,7 +281,7 @@ test('any HTTP answer connects, and only a status body announces protocol 2', as
   assert.deepEqual(h.trace.filter(([kind]) => kind === 'fetch').at(-1), ['fetch', 'http://localhost:15123/lyrics/health', 'GET']);
 });
 
-test('protocol 2 overlays get progress on changes, jumps and announced heartbeats only', async () => {
+test('protocol 3 overlays get progress on changes, jumps and announced heartbeats only', async () => {
   const run = async protocol => {
     const h = load(source), sent = [];
     h.overlay._receiverProtocol = protocol;
@@ -302,12 +302,18 @@ test('protocol 2 overlays get progress on changes, jumps and announced heartbeat
     for (let t = 10500; t <= 35000; t += 250) await send(t, {position: 60250, isPlaying: false});
     return {playing, sent};
   };
-  const modern = await run(2);
+  const modern = await run(3);
   assert.equal(modern.playing, 5, 'ten seconds of playback need a heartbeat every two seconds');
   assert.deepEqual(modern.sent.slice(5, 7).map(({payload}) => [payload.position, payload.isPlaying, payload.heartbeatMs]),
     [[60000, true, 2000], [60250, false, 10000]], 'a seek and a pause go out at once');
   assert.equal(modern.sent.length, 9, 'a long pause repeats every ten seconds');
   assert.ok(modern.sent.every(({receipt}) => receipt === true));
+
+  // 1.3.0 and 1.3.1 move line-timed lyrics only when progress arrives.
+  const interim = await run(2);
+  assert.equal(interim.playing, 40, 'protocol 2 overlays keep every 250 ms anchor while playing');
+  assert.ok(interim.sent.slice(0, 40).every(({payload, receipt}) => payload.heartbeatMs === 0 && receipt === true));
+  assert.equal(interim.sent.length, 44, 'and still pause on the ten-second heartbeat with receipts');
 
   const legacy = await run(1);
   assert.equal(legacy.playing, 40, 'older overlays still get every 250 ms anchor while playing');
