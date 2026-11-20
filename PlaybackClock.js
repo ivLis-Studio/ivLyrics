@@ -17,6 +17,12 @@
     const DEFAULT_DISCONTINUITY_THRESHOLD_MS = 1000;
     const DEFAULT_DISCONTINUITY_CONFIRMATION_MS = 120;
     const DEFAULT_SMOOTHING_TIME_CONSTANT_MS = 300;
+    // While playing, a correction may speed the shown position up or slow it
+    // down by at most this share of the elapsed time. Unbounded, a reading a
+    // few hundred milliseconds behind (Spotify re-anchors its state now and
+    // then) froze or even rewound the karaoke fill for a moment, and one
+    // ahead made it race to catch up: the fill stalled and then jumped.
+    const DEFAULT_MAX_CORRECTION_RATE = 0.3;
     const DEFAULT_LOCAL_SAMPLE_INTERVAL_MS = 50;
     const DEFAULT_IDLE_SAMPLE_INTERVAL_MS = 500;
 
@@ -151,6 +157,10 @@
         const smoothingTimeConstantMs = Math.max(1, toNonNegativeNumber(
             options.smoothingTimeConstantMs,
             DEFAULT_SMOOTHING_TIME_CONSTANT_MS
+        ));
+        const maxCorrectionRate = Math.min(0.9, toNonNegativeNumber(
+            options.maxCorrectionRate,
+            DEFAULT_MAX_CORRECTION_RATE
         ));
         const localSampleIntervalMs = Math.max(16, toNonNegativeNumber(
             options.localSampleIntervalMs,
@@ -375,7 +385,11 @@
                 predicted = safeMeasured;
             } else {
                 const alpha = 1 - Math.exp(-elapsed / smoothingTimeConstantMs);
-                predicted += error * alpha;
+                const correction = error * alpha;
+                // Playing, the position keeps moving forward at a steady pace
+                // while it converges; it never stops or runs backwards.
+                const limit = predictedProgress.isPlaying ? elapsed * maxCorrectionRate : Infinity;
+                predicted += Math.max(-limit, Math.min(limit, correction));
             }
 
             predicted = clampToDuration(predicted, context.duration);
