@@ -5397,9 +5397,17 @@ class LyricsContainer extends react.Component {
     // Mouse idle timer for auto-hiding controls
     this.mouseIdleTimer = null;
     this.isMouseActive = true;
+    this._lastPointerPosition = null;
 
     // Mouse event handlers for auto-hide controls (defined here so ref can use them)
-    this._handleMouseMove = () => {
+    this._handleMouseMove = (event) => {
+      // The page changing under a still pointer (a new song's layout) can send
+      // a mousemove without movement: only a pointer that moved wakes the controls.
+      if (event && Number.isFinite(event.screenX) && Number.isFinite(event.screenY)) {
+        const last = this._lastPointerPosition;
+        this._lastPointerPosition = { x: event.screenX, y: event.screenY };
+        if (last && last.x === event.screenX && last.y === event.screenY) return;
+      }
       this.isMouseActive = true;
       const container = this.containerRef.current;
       if (container) {
@@ -11842,7 +11850,10 @@ class LyricsContainer extends react.Component {
         className: `lyrics-lyricsContainer-LyricsContainer${CONFIG.visual["fade-blur"] ? " blur-enabled" : ""
           }${Number(CONFIG.visual["lyrics-side-margin"]) > 0 ? " lyrics-side-margin-enabled" : ""
           }${Number(CONFIG.visual["lyrics-backdrop-blur"]) > 0 ? " lyrics-backdrop-blur-enabled" : ""
-          }${CONFIG.visual["highlight-mode"] ? " highlight-mode-enabled" : ""}${fadLyricsContainer ? " fad-enabled" : ""}${fullscreenClasses}${shouldReduceMotion ? " motion-reduced" : ""}${this.state.isPlaybackPaused ? " playback-paused" : ""}${isSyncCreatorActive ? " sync-creator-minimal" : ""}`,
+          }${CONFIG.visual["highlight-mode"] ? " highlight-mode-enabled" : ""}${fadLyricsContainer ? " fad-enabled" : ""}${fullscreenClasses}${shouldReduceMotion ? " motion-reduced" : ""}${this.state.isPlaybackPaused ? " playback-paused" : ""}${isSyncCreatorActive ? " sync-creator-minimal" : ""
+          // The idle timer sets these on the element; a render that rewrites the
+          // class list (a new song, a pause) keeps them instead of waking the controls.
+          }${this.isMouseActive === false ? " controls-hidden ui-hidden" : ""}`,
         style: this.styleVariables,
         // Spotify's OverlayScrollbars wrapper skips mutations inside elements
         // marked scroll-size contained. Without it, every lyric DOM change

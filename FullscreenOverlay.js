@@ -2079,7 +2079,14 @@ const FullscreenOverlay = (() => {
                 return;
             }
 
-            const handleMouseMove = () => {
+            let lastPointer = null;
+            const handleMouseMove = (event) => {
+                // A still pointer over a page that changed under it (a new song) is not activity.
+                if (event && Number.isFinite(event.screenX) && Number.isFinite(event.screenY)) {
+                    const last = lastPointer;
+                    lastPointer = { x: event.screenX, y: event.screenY };
+                    if (last && last.x === event.screenX && last.y === event.screenY) return;
+                }
                 if (!uiVisibleRef.current) {
                     uiVisibleRef.current = true;
                     setUiVisible(true);
