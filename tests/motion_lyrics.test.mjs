@@ -64,12 +64,17 @@ const plans = (seed) => {
 	return { motion, director, type, model, direction, plan: compose(motion, type, model, direction, seed) };
 };
 
-/** A song where every shot uses the given entrance. */
+/**
+ * A song where every shot uses the given entrance, staged as asked: the
+ * director's restraint and range (tested on their own) would otherwise
+ * swap most of them.
+ */
 const forced = (enter, extra = {}) => {
 	const { motion, director, type } = load();
 	const model = motion.buildModel(song());
 	const raw = { shots: model.map((_, index) => ({ from: index, to: index, layout: "column", enter, fx: "pop", ...extra })) };
-	const direction = director.normalizeDirection(raw, model, { seed: 4 });
+	const checked = director.normalizeDirection(raw, model, { seed: 4 });
+	const direction = { ...checked, shots: checked.shots.map((shot) => ({ ...shot, layout: "column", enter, fx: "pop", ...extra })) };
 	return { motion, model, direction, plan: compose(motion, type, model, direction, 4) };
 };
 
@@ -301,7 +306,7 @@ test("boards share the world without overlapping, and every line is read upright
 		plan.boards.slice(1).forEach((board, offset) => {
 			const previous = plan.boards[offset];
 			const last = previous.cameras[previous.cameras.length - 1];
-			if (["push", "pull", "through", "fade"].includes(board.enter)) {
+			if (["push", "pull", "through", "fade", "corkscrew"].includes(board.enter)) {
 				assert.ok(Math.abs(board.cameras[0].z - last.z) >= 300, "a dolly or dissolve entrance moves the camera in depth");
 				return;
 			}
@@ -418,7 +423,8 @@ test("the next board waits faintly before the camera leaves, and the last one li
 test("sung words enter with their effect and settle exactly in place", () => {
 	const { motion, director } = load();
 	const word = { start: 1000, end: 1600 };
-	assert.equal(director.FX.length, 18);
+	assert.equal(director.FX.length, 28);
+	assert.equal(new Set(director.FX).size, 28);
 	for (const fx of director.FX) {
 		for (const pace of [0.72, 1, 1.4]) {
 			assert.deepEqual(plain(motion.solidFrame(fx, motion.wordEntrance(fx, word, 0, pace))), { opacity: 0, transform: "none", filter: "", clip: "", shadow: "" }, fx + " waits");
@@ -438,6 +444,19 @@ test("sung words enter with their effect and settle exactly in place", () => {
 	assert.ok(motion.solidFrame("glitch", 0.5, 7).shadow.includes("rgba"), "glitch splits colour");
 	assert.ok(motion.wordEntrance("blur", word, 1300, 1.4) < motion.wordEntrance("blur", word, 1300, 1), "slow songs enter slower");
 	assert.ok(motion.charFrame("track", { start: 1000 }, 0, 1100, { count: 5, wordStart: 1000 }).transform.startsWith("translateX(-"), "track closes in");
+	// The newer entrances: clean reveals, hinged turns and letters that fall, ripple or spiral in.
+	assert.ok(motion.solidFrame("lift", 0.3).clip.startsWith("inset(") && motion.solidFrame("lift", 0.3).transform.startsWith("translateY("), "lift rises out of a mask");
+	assert.ok(motion.solidFrame("swing", 0.3).transform.startsWith("translateX(-50%) rotate("), "swing hangs from its first letter");
+	assert.ok(motion.solidFrame("swing", 0.3, 0, true).transform.startsWith("translateX(50%)"), "from its last in right-to-left lines");
+	assert.ok(motion.solidFrame("door", 0.3).transform.includes("rotateY("), "door turns in");
+	assert.ok(motion.solidFrame("smear", 0.2).filter.startsWith("blur(") && motion.solidFrame("smear", 0.2).transform.includes("scaleX("), "smear stretches");
+	assert.ok(motion.solidFrame("open", 0.3).clip.startsWith("inset(-40% "), "open reveals from the middle");
+	assert.ok(motion.solidFrame("glide", 0.3).opacity < motion.solidFrame("pop", 0.3).opacity, "glide comes in softer than a pop");
+	assert.ok(motion.wordEntrance("glide", word, 1300) < motion.wordEntrance("pop", word, 1300), "and takes its time");
+	assert.ok(motion.charFrame("cascade", { start: 1000 }, 0, 960, { count: 3 }).transform.startsWith("translateY(-"), "cascade letters fall in");
+	assert.ok(motion.charFrame("ripple", { start: 1000 }, 0, 1050, { count: 3 }).transform.includes("scaleY("), "ripple letters grow up");
+	assert.ok(motion.charFrame("swirl", { start: 1000 }, 0, 1000, { count: 3 }).transform.includes("rotate(-"), "swirl letters spiral in");
+	for (const fx of ["cascade", "ripple", "swirl"]) assert.ok(director.LETTER_FX.includes(fx), fx + " moves letters");
 });
 
 test("the background turns with the camera and never shows an edge", () => {
@@ -475,9 +494,14 @@ test("the plan reports the slams and cuts the camera reacts to", () => {
 	const { motion, director, type } = load();
 	const model = motion.buildModel(song());
 	const raw = { shots: [{ from: 0, to: 2, layout: "column", fx: "slam" }, { from: 3, to: 9, layout: "tunnel", enter: "cut" }], lines: [{ n: 0, emph: [1] }] };
-	const plan = compose(motion, type, model, director.normalizeDirection(raw, model, { seed: 1 }), 1);
-	assert.ok(plan.slams.length >= model.slice(0, 3).reduce((sum, line) => sum + line.words.length, 0));
-	assert.equal(plan.slams.find((slam) => slam.time === model[0].words[1].start).strength, 14, "an emphasised slam hits harder");
+	const checked = director.normalizeDirection(raw, model, { seed: 1 });
+	// Staged as asked (the director rations slams and cuts on its own).
+	const direction = { ...checked, shots: checked.shots.map((shot) => (shot.to <= 2 ? { ...shot, fx: "slam" } : shot.from === 3 ? { ...shot, layout: "tunnel", enter: "cut" } : { ...shot, enter: "pan" })) };
+	const plan = compose(motion, type, model, direction, 1);
+	assert.equal(plan.slams.length, 4, "the camera takes the hit on each line's first word and the emphasised one, not on every word");
+	assert.equal(plan.slams.find((slam) => slam.time === model[0].words[1].start).strength, 12, "an emphasised slam hits harder");
+	assert.equal(plan.slams.find((slam) => slam.time === model[0].words[0].start).strength, 6);
+	assert.ok(!plan.slams.some((slam) => slam.time === model[0].words[2].start), "the words between land without a shake");
 	assert.equal(plan.flashes.length, 1);
 	const cut = plan.lines[2];
 	assert.equal(cut.move.type, "cut");
@@ -703,8 +727,8 @@ const seenFrom = (motion, pose, point) => {
 
 test("every composition sets its lines where the camera reads them", () => {
 	const { motion, director, type } = load();
-	assert.equal(director.LAYOUTS.length, 23);
-	assert.equal(new Set(director.LAYOUTS).size, 23);
+	assert.equal(director.LAYOUTS.length, 27);
+	assert.equal(new Set(director.LAYOUTS).size, 27);
 	assert.deepEqual(Object.keys(director.MAX_LINES).sort(), [...director.LAYOUTS].sort());
 	const model = motion.buildModel(song());
 	for (const layout of director.LAYOUTS) {
@@ -762,11 +786,24 @@ test("every composition sets its lines where the camera reads them", () => {
 				assert.ok(Math.abs(turns[1] - turns[0]) >= 50 && Math.abs(Math.abs(turns[1] - turns[0]) - 90) > 1, "spokes, not a square: " + turns);
 			}
 			for (const board of plan.boards) {
-				assert.equal(board.strokes.length, { strip: 1, split: 1, slot: 2 }[board.layout] || 0, board.layout + " strokes");
+				const lineCount = board.places.length;
+				if (board.layout === "constellation") {
+					// A line drawn from each star to the next, when they are far enough apart to show one.
+					assert.ok(board.strokes.length <= lineCount - 1, "constellation strokes");
+					assert.ok(lineCount < 3 || board.strokes.length >= 1, "constellation joins its lines");
+				} else if (board.layout === "grid") {
+					const columns = lineCount <= 1 ? 1 : 2;
+					assert.equal(board.strokes.length, (columns > 1 ? 1 : 0) + Math.ceil(lineCount / columns) - 1, "grid rules");
+				} else {
+					assert.equal(board.strokes.length, { strip: 1, split: 1, slot: 2 }[board.layout] || 0, board.layout + " strokes");
+				}
 				for (const stroke of board.strokes) {
 					assert.equal(stroke.stops.length, board.places.length);
-					assert.ok(stroke.stops.every((stop, index) => stop > 0 && stop <= 1 && (!index || stop >= stroke.stops[index - 1] - 1e-9)), layout + " stops: " + stroke.stops);
-					assert.equal(stroke.rot, board.layout === "strip" ? 0 : 90);
+					assert.ok(stroke.stops.every((stop, index) => stop >= 0 && stop <= 1 && (!index || stop >= stroke.stops[index - 1] - 1e-9)), layout + " stops: " + stroke.stops);
+					assert.ok(stroke.stops[stroke.stops.length - 1] > 0, layout + " is drawn by the end");
+					if (board.layout === "strip") assert.equal(stroke.rot, 0);
+					else if (board.layout === "grid") assert.ok([0, 90, 180].includes(stroke.rot));
+					else if (board.layout !== "constellation") assert.equal(stroke.rot, 90);
 					const first = plan.lines[board.first];
 					const last = plan.lines[board.last];
 					assert.equal(motion.strokeLevel(plan, board, stroke, first.start - 400), 0, "nothing drawn before the first line");
@@ -895,7 +932,7 @@ test("every accent has its look, and the AI is told about every composition and 
 	for (const name of director.ACCENTS) assert.ok(prompt.includes(name + " = "), "the prompt explains " + name);
 	assert.ok(prompt.includes("(" + director.ACCENTS.join("|") + ")"));
 	for (const [name, most] of Object.entries(director.MAX_LINES)) if (most < 6) assert.ok(prompt.includes(name + " at most " + most), name + " limit");
-	assert.equal(director.VERSION, 4, "older cached directions are asked for again");
+	assert.equal(director.VERSION, 5, "older cached directions are asked for again");
 	assert.equal(typeof motion.strokeLevel, "function");
 });
 
@@ -997,6 +1034,168 @@ test("accents after typography edits: handwriting, a giant word and drawn marks"
 	const [, , light] = [0, 0, parseInt(motion.deepOf("#ff9ec4").slice(1, 3), 16) + parseInt(motion.deepOf("#ff9ec4").slice(3, 5), 16) + parseInt(motion.deepOf("#ff9ec4").slice(5, 7), 16)];
 	assert.ok(light < 440, "a ground is deep enough for white type");
 });
+test("a voice sung on into the next line keeps both lines on screen, even on a phone", () => {
+	const { motion, director, type } = load();
+	const spaced = (parts) => parts.map((part, index) => (index < parts.length - 1 ? part + " " : part));
+	// Some lines end with an answer (an echo, a call and response) that is still sung when the next line comes in.
+	const answered = new Set([1, 4, 6]);
+	const lyrics = [];
+	let start = 2000;
+	for (let index = 0; index < 8; index += 1) {
+		const lead = ["call", "me", "line" + index];
+		const entry = { startTime: start, text: "mixed", vocals: { lead: { text: lead.join(" "), role: "lead", speaker: "v1", syllables: timed(spaced(lead), start, 320) }, background: [] } };
+		if (answered.has(index)) entry.vocals.background.push({ role: "background", text: "oh yeah", syllables: timed(spaced(["oh", "yeah"]), start + 900, 340) });
+		lyrics.push(entry);
+		start += answered.has(index) ? 1250 : 2200;
+	}
+	const model = motion.buildModel(lyrics);
+	model.slice(0, -1).forEach((line, index) => assert.equal(director.singsInto(line, model[index + 1]), answered.has(index), "line " + index));
+	// An AI that cuts right after each answered line, in one-at-a-time compositions.
+	const raw = { shots: [{ from: 0, to: 1, layout: "slot" }, { from: 2, to: 4, layout: "poster" }, { from: 5, to: 6, layout: "spread" }, { from: 7, to: 7, layout: "hero" }] };
+	const direction = director.normalizeDirection(raw, model, { seed: 2 });
+	const shotOf = (index) => direction.shots.findIndex((shot) => shot.from <= index && index <= shot.to);
+	for (const index of answered) assert.equal(shotOf(index), shotOf(index + 1), "no cut between line " + index + " and the line it is sung into");
+	const plan = motion.compose(model, direction, { width: 844, height: 390, seed: 2, measure, typography: type.typographyOf(model, "en"), songLang: "en" });
+	for (const index of answered) assert.equal(plan.boards[plan.lines[index].board].solo, false, "one-at-a-time compositions give way");
+	let checked = 0;
+	for (const index of answered) {
+		const line = plan.lines[index];
+		const board = plan.boards[line.board];
+		line.shown.slice(line.words.length).forEach((word, offset) => {
+			const spot = line.place.block.words[line.words.length + offset];
+			for (let time = word.start + 20; time < word.end; time += 50) {
+				const seen = seenFrom(motion, motion.cameraPose(plan, time, null), onLine(board, line.place, spot.x, spot.y));
+				const solid = motion.boardVisibility(board, time) * motion.levelsOn(board, line, motion.progressAt(plan, time) - line.n, time).solid;
+				assert.ok(Math.abs(seen.x) <= 422 && Math.abs(seen.y) <= 195, "line " + index + " '" + word.text + "' in frame at " + time + ": " + Math.round(seen.x) + ", " + Math.round(seen.y));
+				assert.ok(solid >= 0.35, "and solid: " + solid);
+				checked += 1;
+			}
+		});
+		assert.ok(plan.lines[index + 1].share, "the next line shares the frame while the answer is sung");
+	}
+	assert.ok(checked > 20);
+	// Once the answer is over the camera settles on the new line (before it moves on).
+	const next = plan.lines[2];
+	const shared = motion.cameraPose(plan, next.share.until - 1, null);
+	const settled = motion.cameraPose(plan, Math.min(next.leave - 5, next.share.until + 520), null);
+	assert.ok(Math.hypot(settled.x - next.camera.x, settled.y - next.camera.y) < Math.hypot(shared.x - next.camera.x, shared.y - next.camera.y), "and turns back to the new line");
+	assert.ok(Math.hypot(settled.x - next.camera.x, settled.y - next.camera.y) < 60, "settling on it");
+});
+
+test("hits stay rare, quiet songs have none, and the AI's choices keep moving within the song's palette", () => {
+	const { motion, director } = load();
+	const lyrics = [];
+	let start = 2000;
+	for (let index = 0; index < 48; index += 1) {
+		lyrics.push(line(["word" + index, "keeps", "moving", "on"], start, { step: 380 }));
+		start += 4 * 380 + (index % 4 === 3 ? 2400 : 500);
+	}
+	const model = motion.buildModel(lyrics);
+	const energy = model.map((_, index) => (index % 6 === 0 ? 0.92 : 0.4));
+	// An AI that slams every word, flash-cuts every shot and repeats one look.
+	const lazy = { shots: [], lines: model.map((_, n) => ({ n, fx: "slam" })) };
+	for (let from = 0; from < model.length; from += 3) lazy.shots.push({ from, to: Math.min(model.length - 1, from + 2), layout: "column", enter: "cut", fx: "slam", accent: "stamp" });
+	for (const tempo of ["slow", "mid", "fast"]) {
+		const direction = director.normalizeDirection({ ...lazy, mood: tempo === "slow" ? "melancholic" : "energetic" }, model, { seed: 5, tempo: { tempo, pace: 1 }, energy });
+		const shots = direction.shots;
+		const count = shots.length;
+		const hits = shots.filter((shot) => director.HARD_FX.includes(shot.fx));
+		const limit = tempo === "slow" ? 0 : Math.max(1, Math.floor(count / (tempo === "mid" ? 12 : 8)));
+		assert.ok(hits.length <= limit, tempo + ": " + hits.length + " slams or zooms in " + count + " shots");
+		const lineHits = Object.values(direction.lines).filter((entry) => director.HARD_FX.includes(entry.fx)).length;
+		assert.ok(lineHits <= (tempo === "slow" ? 0 : Math.max(1, Math.floor(model.length / 16))), tempo + " line slams: " + lineHits);
+		const cuts = shots.filter((shot, index) => index && director.HARD_ENTERS.includes(shot.enter));
+		assert.ok(cuts.length <= Math.max(1, Math.floor(count / (tempo === "slow" ? 10 : 6))), tempo + " cuts: " + cuts.length);
+		for (const shot of cuts) assert.ok(model[shot.from].start - model[shot.from - 1].end >= 1200, "a cut only after a pause");
+		assert.ok(shots.filter((shot) => shot.accent === "stamp").length <= Math.max(1, Math.floor(count / 6)), tempo + " stamps");
+		shots.forEach((shot, index) => {
+			const previous = shots[index - 1];
+			if (!previous) return;
+			for (const kind of ["layout", "fx", "accent"]) assert.notEqual(shot[kind], previous[kind], tempo + " shot " + index + ": " + kind + " follows itself");
+			assert.ok(!(director.HARD_FX.includes(shot.fx) && (director.HARD_FX.includes(previous.fx) || director.PUNCHY_FX.includes(previous.fx))), "never two hits running");
+		});
+		for (const kind of ["layout", "enter", "fx", "accent"]) {
+			const share = { layout: 0.16, enter: 0.22, fx: 0.2, accent: 0.2 }[kind];
+			const tally = new Map();
+			shots.forEach((shot, index) => { if (kind !== "enter" || index) tally.set(shot[kind], (tally.get(shot[kind]) || 0) + 1); });
+			const most = Math.max(...tally.values());
+			assert.ok(most <= Math.max(2, Math.ceil(count * share)), tempo + " " + kind + " used " + most + " times in " + count + " shots");
+		}
+		assert.ok(new Set(shots.map((shot) => shot.layout)).size >= 8, tempo + " compositions");
+		assert.ok(new Set(shots.map((shot) => shot.fx)).size >= 6, tempo + " word effects");
+		if (tempo === "slow") {
+			assert.ok(shots.every((shot) => !director.HARD_FX.includes(shot.fx)), "a ballad never slams");
+			assert.ok(shots.filter((shot) => director.PUNCHY_FX.includes(shot.fx)).length <= Math.max(1, Math.ceil(count * 0.08)), "and barely pops");
+		}
+	}
+	// A returning section keeps the look the AI gave it the first time, as refined.
+	const chorus = motion.buildModel([
+		line(["sing", "it", "loud"], 1000), line(["all", "night", "long"], 2600),
+		line(["verse", "goes", "on"], 6000), line(["and", "on", "again"], 7600),
+		line(["sing", "it", "loud"], 11000), line(["all", "night", "long"], 12600),
+	]);
+	const look = { layout: "column", enter: "pan", fx: "slam", accent: "stamp" };
+	const back = director.normalizeDirection({ shots: [{ from: 0, to: 1, ...look }, { from: 2, to: 3, ...look }, { from: 4, to: 5, ...look }] }, chorus, { seed: 3, tempo: { tempo: "mid", pace: 1 } });
+	for (const kind of ["layout", "fx", "accent"]) assert.equal(back.shots[2][kind], back.shots[0][kind], "the chorus comes back with its " + kind);
+	assert.notEqual(back.shots[1].layout, back.shots[0].layout);
+});
+
+test("the newer camera moves: twist, crane, swoop, corkscrew, hop and drift", () => {
+	const mid = (plan, index) => (plan.lines[index].leave + plan.lines[index + 1].arrive) / 2;
+	// Over the long pause after line 4, where neither move is held back by the words.
+	const duration = (plan) => plan.lines[5].arrive - plan.lines[4].leave;
+	const twist = forced("twist", { dutch: 0 });
+	const turn = Math.abs(twist.plan.boards[1].roll - twist.plan.boards[0].roll);
+	assert.ok(Math.abs(turn - 45) < 1e-6, "a twist turns the screen 45 degrees: " + turn);
+	const crane = forced("crane");
+	assert.ok(Math.abs(crane.motion.cameraPose(crane.plan, mid(crane.plan, 1), null).pitch) > 20, "a crane lifts and tilts over");
+	const swoop = forced("swoop");
+	const banked = swoop.motion.cameraPose(swoop.plan, mid(swoop.plan, 1), null);
+	assert.ok(Math.abs(banked.yaw) > 20 && Math.abs(banked.pitch) > 12, "a swoop banks down and round");
+	const corkscrew = forced("corkscrew");
+	assert.equal(Math.abs(corkscrew.plan.lines[1].move.extraRoll), 360, "a corkscrew turns a full circle");
+	assert.ok(Math.abs(corkscrew.plan.boards[1].cameras[0].z - corkscrew.plan.boards[0].cameras[0].z) >= 300, "while it dollies in");
+	const hop = forced("hop");
+	const lifted = hop.motion.cameraPose(hop.plan, mid(hop.plan, 1), null);
+	assert.ok(lifted.z - hop.plan.lines[1].camera.z > 350, "a hop leaps back to see both boards");
+	const pan = forced("pan");
+	const drift = forced("drift");
+	assert.ok(duration(drift.plan) > duration(pan.plan), "a drift takes its time");
+	for (const entrance of ["drift", "crane", "twist", "swoop", "corkscrew", "hop"]) {
+		const { motion, plan } = forced(entrance);
+		for (let time = plan.lines[0].arrive - 3000; time < plan.lines[plan.lines.length - 1].end; time += 97) {
+			const pose = motion.cameraPose(plan, time, null);
+			assert.ok([pose.x, pose.y, pose.z, pose.roll, pose.yaw, pose.pitch].every(Number.isFinite), entrance + " at " + time);
+		}
+		const landed = motion.cameraPose(plan, plan.lines[2].arrive + 1, null);
+		const off = ((landed.roll - plan.lines[2].camera.roll) % 360 + 540) % 360 - 180;
+		assert.ok(Math.abs(off) < 6, entrance + " lands upright: " + off);
+	}
+});
+
+test("editorial compositions: a wave, a star chart, a grid and the corners", () => {
+	const { motion, director, type } = load();
+	const model = motion.buildModel(song());
+	const stage = (layout, from = 0, to = 3) => {
+		const checked = director.normalizeDirection({ shots: [{ from, to, layout, enter: "pan" }] }, model, { seed: 6 });
+		return compose(motion, type, model, checked, 6).boards.find((board) => board.layout === layout);
+	};
+	const wave = stage("wave", 0, 4);
+	const turns = wave.places.map((place) => place.rot);
+	assert.ok(turns.some((rot) => Math.abs(rot) > 2) && turns.every((rot) => Math.abs(rot) <= 11), "lines tilt with the wave: " + turns);
+	assert.ok(new Set(wave.places.map((place) => Math.sign(Math.round(place.y)))).size >= 2, "above and below the middle");
+	const corners = stage("corners");
+	const quarters = new Set(corners.places.map((place) => Math.sign(place.x) + ":" + Math.sign(place.y)));
+	assert.equal(quarters.size, 4, "one line in each corner");
+	assert.ok(corners.places.every((place) => place.block.size < model[0].words.length * 1000), "set small");
+	const grid = stage("grid");
+	const lefts = new Set(grid.places.map((place) => Math.round(place.x - place.block.width / 2)));
+	assert.equal(lefts.size, 2, "two columns aligned on their left edges");
+	const chart = stage("constellation", 0, 4);
+	assert.ok(chart.strokes.length >= 2, "lines drawn between the stars");
+	assert.ok(chart.strokes.every((stroke, index) => stroke.stops.indexOf(1) > index), "each drawn as the next line is sung");
+});
+
 
 
 

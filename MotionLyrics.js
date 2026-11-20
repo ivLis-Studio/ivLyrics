@@ -4,20 +4,22 @@
 // A director (MotionLyricsDirector.js, written by AI when a provider is
 // available) groups the lines into shots and paces them to the song's tempo;
 // each shot becomes a board, a composition of several lines in 3D space
-// (twenty-three kinds: flat ones like columns, stairs, strips and spokes,
+// (twenty-seven kinds: flat ones like columns, stairs, strips and spokes,
 // ones in depth like tunnels, drums the lines wrap around and a tilted
 // crawl, and ones after typography edits that show one thought at a time on
 // bands, colour cards and colour fields, bend type round a circle or stand
-// it upright), set in the faces of its script (MotionLyricsType.js). A camera
+// it upright, or set it on a wave, a star chart, a grid or in the corners),
+// set in the faces of its script (MotionLyricsType.js). A camera
 // flies, rolls, orbits and dollies across the boards and turns to face the
 // lines on drums: upcoming lines wait as faint outlines, each word lands as
 // solid type with its effect as it is sung (emphasised words in one of
-// eighteen accents), and
+// sixteen accents), and
 // sung lines stay as dim echoes until their board drifts out of view. Motifs,
 // a giant background word, colour panels and letterbox bars animate with each
 // board, and the video background turns and zooms with the camera. Other
 // voices (background vocals, a duet partner) sing in smaller rows of their
-// own line, on their own timing. In interludes the board fades soon after
+// own line, on their own timing; while one is still sung into the next
+// line the camera keeps both in frame. In interludes the board fades soon after
 // its last word and the camera keeps turning over the video until the
 // lyrics return.
 // Everything is planned once per song and read by playback position, so
@@ -39,6 +41,8 @@
 	const BOARD_PREVIEW_MS = 1800;
 	const BOARD_LINGER_MS = 650;
 	const BOARD_FADE_MS = 900;
+	// After a voice sung into the next line ends, the camera takes this long to settle on the new line.
+	const SHARE_RETURN_MS = 520;
 	const TUNNEL_STEP = 1500;
 	const PUSH_DEPTH = 2300;
 	const PULL_DEPTH = 1900;
@@ -61,6 +65,7 @@
 	const clamp01 = (value) => clamp(value, 0, 1);
 	const lerp = (from, to, amount) => from + (to - from) * amount;
 	const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+	const easeOutQuint = (t) => 1 - Math.pow(1 - t, 5);
 	const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 	const easeInOutQuart = (t) => (t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2);
 	const easeInOutQuint = (t) => (t < 0.5 ? 16 * Math.pow(t, 5) : 1 - Math.pow(-2 * t + 2, 5) / 2);
@@ -529,7 +534,7 @@
 	const fallbackMeasure = (text, size) => graphemesOf(text).reduce((sum, piece) => sum + (CJK_RE.test(piece) || /\p{Script=Hangul}/u.test(piece) ? 1 : 0.56), 0) * size;
 	const DEFAULT_INFO = Object.freeze({ script: "latin", rtl: false, joined: false, lang: "", words: [] });
 	// Word-level stand-ins for letter effects in scripts whose letters join.
-	const JOINED_FX = Object.freeze({ type: "wipe", assemble: "blur", drop: "rise", wave: "rise", track: "wipe", bounce: "pop", flicker: "wipe" });
+	const JOINED_FX = Object.freeze({ type: "wipe", assemble: "blur", drop: "rise", wave: "rise", track: "wipe", bounce: "pop", flicker: "wipe", cascade: "lift", ripple: "rise", swirl: "blur" });
 
 	const createFontBook = () => {
 		const specs = new Map();
@@ -1548,8 +1553,140 @@
 		return { places, frames, drift: { z: 90, roll: 0.6 } };
 	};
 
+	// Lines riding a long wave across the screen: each tilts with the slope under it and the camera rolls along the swell.
+	const layoutWave = (lines, ctx, random, look) => {
+		const side = (ctx.typography[lines[0].n] || DEFAULT_INFO).rtl ? -1 : 1;
+		const blocks = lines.map((line) => layoutBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 0.84 * boostOf(line), maxLength: ctx.W * 0.56 })));
+		const gap = ctx.F * 0.75;
+		const amplitude = ctx.H * between(random, 0.1, 0.16);
+		const phase = random() < 0.5 ? 0 : Math.PI;
+		const places = [];
+		let x = 0;
+		blocks.forEach((block, index) => {
+			if (index) x += blocks[index - 1].width / 2 + gap + block.width / 2;
+			places.push({ x, y: 0, z: 0, rot: 0, block });
+		});
+		// About one and a half swells over the shot, however long it is.
+		const wavelength = Math.max(ctx.W * 0.9, x / 1.5);
+		places.forEach((place) => {
+			const angle = (2 * Math.PI * place.x) / wavelength + phase;
+			const slope = ((amplitude * 2 * Math.PI) / wavelength) * Math.cos(angle) * side;
+			place.y = amplitude * Math.sin(angle);
+			place.rot = clamp((Math.atan(slope) * 180) / Math.PI, -11, 11);
+			place.x *= side;
+		});
+		centerPlaces(places);
+		const frames = places.map((place) => ({ x: place.x, y: place.y, z: 0, roll: place.rot }));
+		return { places, frames, drift: { z: 80, roll: 0.9 } };
+	};
+
+	// Lines scattered wide like stars on a chart, a thin line drawn from each to the next as it is sung.
+	const layoutConstellation = (lines, ctx, random, look) => {
+		const places = [];
+		let side = random() < 0.5 ? 1 : -1;
+		lines.forEach((line, index) => {
+			const block = layoutBlock(line, ctx, blockOptions(look, line, { size: ctx.F * between(random, 0.66, 0.92) * boostOf(line), maxLength: ctx.W * 0.5 }));
+			if (!index) {
+				places.push({ x: 0, y: 0, z: 0, rot: 0, block });
+				return;
+			}
+			side = -side;
+			const previous = places[index - 1];
+			// Across and up or down from the last line, far enough apart for the line between them to read.
+			const x = previous.x + side * (previous.block.width / 2 + block.width / 2 + ctx.W * between(random, 0.05, 0.14));
+			const y = previous.y + (random() < 0.5 ? -1 : 1) * (previous.block.height / 2 + block.height / 2 + ctx.H * between(random, 0.08, 0.2));
+			places.push({ x, y, z: between(random, -90, 60), rot: 0, block });
+		});
+		centerPlaces(places);
+		const strokes = [];
+		places.forEach((place, index) => {
+			const next = places[index + 1];
+			if (!next) return;
+			const dx = next.x - place.x;
+			const dy = next.y - place.y;
+			const length = Math.hypot(dx, dy) || 1;
+			const ux = dx / length;
+			const uy = dy / length;
+			// From the edge of one line's box to the edge of the next.
+			const reach = (target) => Math.min(target.block.width / 2 / Math.max(0.001, Math.abs(ux)), target.block.height / 2 / Math.max(0.001, Math.abs(uy))) + ctx.F * 0.3;
+			const from = reach(place);
+			const span = length - from - reach(next);
+			if (span < ctx.F * 0.6) return;
+			strokes.push({
+				x: place.x + ux * from,
+				y: place.y + uy * from,
+				z: Math.max(place.z, next.z),
+				length: span,
+				rot: (Math.atan2(dy, dx) * 180) / Math.PI,
+				stops: places.map((_, local) => (local > index ? 1 : 0)),
+			});
+		});
+		const frames = places.map((place) => ({ x: place.x, y: place.y, z: place.z, roll: 0 }));
+		return { places, frames, drift: { z: 90, roll: 1.1 }, strokes };
+	};
+
+	// A modular poster grid: each line set tight in its own cell, the rules between the cells drawn as they fill.
+	const layoutGrid = (lines, ctx, random, look) => {
+		const side = (ctx.typography[lines[0].n] || DEFAULT_INFO).rtl ? -1 : 1;
+		const columns = lines.length <= 1 ? 1 : 2;
+		const rows = Math.ceil(lines.length / columns);
+		const cellWidth = ctx.W * (columns === 1 ? 0.72 : 0.4);
+		const pad = ctx.F * 0.32;
+		const blocks = lines.map((line) => layoutBlock(line, ctx, blockOptions(look, line, {
+			size: ctx.F * 0.8 * boostOf(line),
+			maxLength: cellWidth - pad * 2,
+			align: side > 0 ? "left" : "right",
+		})));
+		// Reading along the rows, or down the columns first.
+		const down = lines.length > 2 && random() < 0.4;
+		const cellOf = (index) => (down ? { column: Math.floor(index / rows), row: index % rows } : { column: index % columns, row: Math.floor(index / columns) });
+		const rowHeights = Array.from({ length: rows }, (_, row) => Math.max(...blocks.filter((_, index) => cellOf(index).row === row).map((block) => block.height)) + pad * 2);
+		const tops = rowHeights.map((_, row) => rowHeights.slice(0, row).reduce((sum, height) => sum + height, 0));
+		const height = tops[rows - 1] + rowHeights[rows - 1];
+		const width = cellWidth * columns;
+		const places = blocks.map((block, index) => {
+			const { column, row } = cellOf(index);
+			const left = -width / 2 + column * cellWidth + pad;
+			return { x: side * (left + block.width / 2), y: -height / 2 + tops[row] + pad + block.height / 2, z: 0, rot: 0, block };
+		});
+		const strokes = [];
+		if (columns > 1) {
+			// The rule between the columns grows down as the lines are sung.
+			strokes.push({ x: 0, y: -height / 2, z: 0, length: height, rot: 90, stops: places.map((_, local) => clamp01((local + 1) / places.length)) });
+		}
+		for (let row = 1; row < rows; row += 1) {
+			const first = places.findIndex((_, index) => cellOf(index).row === row);
+			strokes.push({ x: side * (-width / 2), y: -height / 2 + tops[row], z: 0, length: width, rot: side > 0 ? 0 : 180, stops: places.map((_, local) => (local >= first ? 1 : 0)) });
+		}
+		const frames = places.map((place) => ({ x: frameX(place, ctx, 0.6), y: place.y * 0.8, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 70, roll: 0.6 }, strokes };
+	};
+
+	// Lines set small in the corners of a wide frame with the middle left open; the camera barely moves.
+	const layoutCorners = (lines, ctx, random, look) => {
+		const order = random() < 0.5 ? [[-1, -1], [1, 1], [1, -1], [-1, 1]] : [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+		// Inside the frame from wherever the camera stands (it moves only a little towards each line).
+		const reachX = ctx.W * 0.37;
+		const reachY = ctx.H * 0.31;
+		const places = lines.map((line, index) => {
+			const [sx, sy] = order[index % order.length];
+			const block = layoutBlock(line, ctx, blockOptions(look, line, {
+				size: ctx.F * 0.72 * boostOf(line),
+				maxLength: ctx.W * 0.4,
+				align: sx < 0 ? "left" : "right",
+			}));
+			return { x: sx * Math.max(block.width / 2, reachX - block.width / 2), y: sy * Math.max(block.height / 2 + ctx.F * 0.2, reachY - block.height / 2), z: 0, rot: 0, block };
+		});
+		const frames = places.map((place) => ({ x: place.x * 0.16, y: place.y * 0.16, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 24, roll: 0.4 } };
+	};
+
 	// Compositions that show one line at a time: lines sung over each other cannot share them.
 	const SOLO_LAYOUTS = new Set(["slot", "poster", "spread"]);
+	/** A line still sung when the next comes in (MotionLyricsDirector.singsInto: overlapping lines, or another voice singing on). */
+	const singsInto = (line, next) => (root.ivLyricsMotionDirector?.singsInto
+		? root.ivLyricsMotionDirector.singsInto(line, next)
+		: !!line && !!next && next.start < line.end - 150);
 	// Accents that still read on upright type.
 	const UPRIGHT_ACCENTS = new Set(["color", "outline", "glow", "gradient", "extrude", "sticker", "giant", "script", "spark"]);
 
@@ -1577,6 +1714,10 @@
 		arch: layoutArch,
 		spread: layoutSpread,
 		pillar: layoutPillar,
+		wave: layoutWave,
+		constellation: layoutConstellation,
+		grid: layoutGrid,
+		corners: layoutCorners,
 	});
 	const BIG_MOTIFS = new Set(["ring", "halo", "sunburst", "spiral", "moon", "sun", "disc", "square", "flower", "star", "frame"]);
 	const CALM_MOTIFS = new Set(["ring", "dot", "disc", "halo", "moon", "sun"]);
@@ -1686,13 +1827,18 @@
 		while (previous - value > 180.001) value += 360;
 		return value;
 	};
-	// Entrances that travel sideways, downwards, upwards, through depth or stay put.
-	const SIDEWAYS = new Set(["pan", "cut", "whip", "spin", "orbit", "panel"]);
+	// Entrances that travel sideways, downwards, upwards, on a slant, through depth or stay put.
+	const SIDEWAYS = new Set(["pan", "cut", "whip", "spin", "orbit", "panel", "hop"]);
 	const DOWNWARDS = new Set(["drop", "flip", "tumble"]);
-	const IN_DEPTH = { push: -PUSH_DEPTH, through: -PUSH_DEPTH, pull: PULL_DEPTH, fade: -FADE_DEPTH };
+	const UPWARDS = new Set(["rise", "crane"]);
+	// How far down a slanting entrance goes for every step sideways.
+	const SLANTED = Object.freeze({ roll: 0.45, twist: 0.45, drift: 0.55, swoop: 0.85 });
+	const IN_DEPTH = { push: -PUSH_DEPTH, through: -PUSH_DEPTH, pull: PULL_DEPTH, fade: -FADE_DEPTH, corkscrew: -PUSH_DEPTH * 0.85 };
 	const HARD_CUTS = new Set(["cut", "panel"]);
+	// Moves eased evenly in and out (the others accelerate hard).
+	const CUBIC_MOVES = new Set(["push", "pull", "through", "orbit", "tumble", "crane", "swoop", "corkscrew", "hop"]);
 	// Compositions the camera pulls back from at the end, to show them whole.
-	const REVEALED = new Set(["spiral", "radial", "carousel", "strip", "split"]);
+	const REVEALED = new Set(["spiral", "radial", "carousel", "strip", "split", "constellation", "grid", "wave"]);
 	const FORWARD = Object.freeze({ x: 0, y: 0, z: -1 });
 
 	const toRadians = (degrees) => (degrees * Math.PI) / 180;
@@ -1729,7 +1875,9 @@
 				const last = previous.cameras[previous.cameras.length - 1];
 				const theta = last.roll - previous.dutch;
 				const enter = board.enter;
-				const turn = enter === "roll" ? (random() < 0.5 ? 90 : -90) : enter === "flip" ? (random() < 0.5 ? 180 : -180) : 0;
+				const turn = enter === "roll" ? (random() < 0.5 ? 90 : -90)
+					: enter === "flip" ? (random() < 0.5 ? 180 : -180)
+						: enter === "twist" ? (random() < 0.5 ? 45 : -45) : 0;
 				board.roll = theta + turn - firstFrame.roll;
 				const right = rotate2d(1, 0, theta);
 				const down = rotate2d(0, 1, theta);
@@ -1737,10 +1885,10 @@
 				let direction = null;
 				if (SIDEWAYS.has(enter)) direction = { x: right.x * sideways, y: right.y * sideways };
 				else if (DOWNWARDS.has(enter)) direction = down;
-				else if (enter === "rise") direction = { x: -down.x, y: -down.y };
-				else if (enter === "roll") {
-					const x = right.x * sideways + down.x * 0.45;
-					const y = right.y * sideways + down.y * 0.45;
+				else if (UPWARDS.has(enter)) direction = { x: -down.x, y: -down.y };
+				else if (SLANTED[enter]) {
+					const x = right.x * sideways + down.x * SLANTED[enter];
+					const y = right.y * sideways + down.y * SLANTED[enter];
 					const length = Math.hypot(x, y);
 					direction = { x: x / length, y: y / length };
 				}
@@ -1752,7 +1900,7 @@
 						const point = rotate2d(corner.x, corner.y, board.roll);
 						return (firstOffset.x - point.x) * direction.x + (firstOffset.y - point.y) * direction.y;
 					}));
-					const gap = HARD_CUTS.has(enter) ? ctx.W * 1.6 : enter === "whip" ? ctx.W * 0.4 : ctx.W * 0.16;
+					const gap = HARD_CUTS.has(enter) ? ctx.W * 1.6 : enter === "whip" || enter === "hop" ? ctx.W * 0.4 : ctx.W * 0.16;
 					const distance = Math.max(ahead + behind + gap, ctx.W * 0.85);
 					target = { x: last.x + direction.x * distance, y: last.y + direction.y * distance };
 				} else {
@@ -1800,6 +1948,40 @@
 		return { x: center.x, y: center.y, z: Math.max(z, camera.z + 160), roll };
 	};
 
+	/**
+	 * Where the camera holds while the line before is still being sung into
+	 * this one on the same board (an echo, an answer, a duet): both lines in
+	 * frame, pulled back when they need the room, turned as the new line
+	 * reads and never closer than either line's own view.
+	 */
+	const sharedPose = (board, previous, line, ctx) => {
+		const camera = line.camera;
+		const roll = camera.roll;
+		const local = [previous.place, line.place].flatMap(cornersOf).map((corner) => {
+			const world = toWorld(board, corner.x, corner.y);
+			return rotate2d(world.x, world.y, -roll);
+		});
+		const xs = local.map((point) => point.x);
+		const ys = local.map((point) => point.y);
+		const width = Math.max(...xs) - Math.min(...xs);
+		const height = Math.max(...ys) - Math.min(...ys);
+		const center = rotate2d((Math.max(...xs) + Math.min(...xs)) / 2, (Math.max(...ys) + Math.min(...ys)) / 2, roll);
+		const scale = clamp(Math.min((ctx.W * 0.9) / Math.max(1, width), (ctx.H * 0.84) / Math.max(1, height)), 0.4, 1);
+		const plane = Math.max(previous.worldZ, line.worldZ);
+		const yaw = ((previous.camera.yaw || 0) + (camera.yaw || 0)) / 2;
+		const pitch = ((previous.camera.pitch || 0) + (camera.pitch || 0)) / 2;
+		return {
+			x: center.x,
+			y: center.y,
+			z: Math.max(camera.z, previous.camera.z, plane + PERSPECTIVE_PX * (1 / scale - 1)),
+			roll,
+			yaw,
+			pitch,
+			faceYaw: yaw,
+			facePitch: pitch,
+		};
+	};
+
 	/** How long the camera takes to reach the next line, by move and tempo. */
 	const moveDuration = (type, gap, pace) => {
 		switch (type) {
@@ -1812,8 +1994,14 @@
 			case "flip":
 			case "spin":
 			case "orbit":
-			case "tumble": return clamp((gap + 420) * pace, 560, 1150 * pace) * 1.15;
-			case "through": return clamp((gap + 420) * pace, 620, 1250 * pace) * 1.2;
+			case "tumble":
+			case "twist":
+			case "crane":
+			case "swoop": return clamp((gap + 420) * pace, 560, 1150 * pace) * 1.15;
+			case "through":
+			case "corkscrew": return clamp((gap + 420) * pace, 620, 1250 * pace) * 1.2;
+			case "drift": return clamp((gap + 640) * pace, 720, 1500 * pace);
+			case "hop": return clamp((gap + 420) * pace, 640, 1250 * pace) * 1.1;
 			default: return clamp((gap + 420) * pace, 520, 1150 * pace);
 		}
 	};
@@ -1845,7 +2033,8 @@
 			const center = toWorld(board, line.place.x, line.place.y);
 			line.center = { x: center.x, y: center.y, z: line.worldZ };
 			line.arrive = line.start - ARRIVE_LEAD_MS;
-			line.lastWordStart = Math.max(...line.words.map((word) => word.start));
+			// Every voice's last word: the camera waits for an echo or an answer when it has the time.
+			line.lastWordStart = Math.max(...line.shown.map((word) => word.start));
 			line.drift = { z: board.drift.z * feel.drift, roll: board.drift.roll * feel.drift };
 		});
 		boards.forEach((board) => {
@@ -1883,7 +2072,14 @@
 			if (type === "orbit") swing.yaw = 72 * sx;
 			else if (type === "tumble") swing.pitch = -62 * sy;
 			else if (type === "whip") swing.yaw = 20 * sx;
-			else if (!sameBoard && !hardCut(type) && type !== "fade") {
+			else if (type === "crane") swing.pitch = -34 * sy;
+			else if (type === "swoop") {
+				// Down and round: the camera banks into the turn.
+				swing.yaw = 38 * sx;
+				swing.pitch = -24 * sy;
+			} else if (type === "drift") swing.yaw = 7 * sx;
+			else if (type === "hop") swing.yaw = 10 * sx;
+			else if (!sameBoard && !hardCut(type) && type !== "fade" && type !== "corkscrew") {
 				// Every board move swings a little in depth.
 				if (Math.abs(seen.x) >= Math.abs(seen.y)) swing.yaw = 14 * sx;
 				else swing.pitch = -11 * sy;
@@ -1893,12 +2089,16 @@
 			line.move = {
 				type,
 				swing,
-				extraRoll: type === "spin" ? (sx > 0 ? 360 : -360) : 0,
+				extraRoll: type === "spin" || type === "corkscrew" ? (sx > 0 ? 360 : -360) : 0,
 				arc: type === "line" ? clamp(distance * 0.1, 20, 150)
-					: type === "push" || type === "pull" || hardCut(type) ? 0
+					: type === "push" || type === "pull" || type === "corkscrew" || hardCut(type) ? 0
 						: type === "fade" ? 0
 							: type === "orbit" ? clamp(distance * 0.4, 300, 1300)
-								: clamp(distance * 0.3, 160, 950),
+								// A hop leaps back to see both boards on its way; a crane lifts; a drift barely leaves the plane.
+								: type === "hop" ? clamp(distance * 0.75, 520, 1500)
+									: type === "crane" ? clamp(distance * 0.45, 300, 1100)
+										: type === "drift" ? clamp(distance * 0.12, 60, 260)
+											: clamp(distance * 0.3, 160, 950),
 				cutAt: type === "panel" ? (line.leave + next.arrive) / 2 : type === "cut" ? next.arrive : null,
 				// Through: the camera dives into the last sung word on its way.
 				waypoint: type === "through" ? (() => {
@@ -1924,6 +2124,12 @@
 					if (sameBoard) board.rests.push(line.rest);
 				}
 			}
+		});
+		// A line still sung into the next one on its board keeps both in frame until its last voice ends.
+		lines.forEach((line, index) => {
+			const previous = lines[index - 1];
+			if (!previous || previous.board !== line.board || boards[line.board].solo || !singsInto(previous, line)) return;
+			line.share = { pose: sharedPose(boards[line.board], previous, line, ctx), until: previous.end + 120 };
 		});
 		boards.forEach((board, index) => {
 			const first = lines[board.first];
@@ -1995,7 +2201,11 @@
 		const slams = [];
 		lines.forEach((line) => {
 			if (line.fx !== "slam" && line.fx !== "zoom") return;
-			line.words.forEach((word, index) => slams.push({ time: word.start, strength: (line.emph.has(index) ? 14 : 7) * (line.fx === "zoom" ? 0.6 : 1) }));
+			// The camera takes the hit on the line's first word and its emphasised ones, not on every word.
+			line.words.forEach((word, index) => {
+				if (index && !line.emph.has(index)) return;
+				slams.push({ time: word.start, strength: (line.emph.has(index) ? 12 : 6) * (line.fx === "zoom" ? 0.5 : 1) });
+			});
 		});
 		plan.slams = slams.sort((left, right) => left.time - right.time);
 	};
@@ -2040,15 +2250,15 @@
 			// Repeated sections are composed the same way every time they come back.
 			const random = createRandom(seed ^ hashString(shot.layout + "\u0001" + members.map((line) => line.text).join("\u0002")));
 			const type = shot.type || "impact";
-			// One-at-a-time compositions cannot hold lines sung over each other, and only some scripts stand upright.
+			// One-at-a-time compositions cannot hold lines sung over (or into) each other, and only some scripts stand upright.
 			let name = LAYOUT_FNS[shot.layout] ? shot.layout : "column";
-			if (SOLO_LAYOUTS.has(name) && members.some((line, offset) => offset > 0 && line.start < members[offset - 1].end - 150)) name = "split";
+			if (SOLO_LAYOUTS.has(name) && members.some((line, offset) => offset > 0 && singsInto(members[offset - 1], line))) name = "split";
 			if (name === "pillar" && !members.every(standsUpright)) name = "column";
 			const accent = name === "pillar" && !UPRIGHT_ACCENTS.has(shot.accent) ? "color" : shot.accent || "color";
 			const look = { emph: (line) => line.emph, light: random() < 0.4, type, serif: shot.serif === true, upper: shot.upper === true, accent };
 			const layout = LAYOUT_FNS[name](members, ctx, random, look);
 			members.forEach((line) => {
-				const fx = line.fx || shot.fx || "pop";
+				const fx = line.fx || shot.fx || "rise";
 				line.fx = line.info.joined ? JOINED_FX[fx] || fx : fx;
 				line.board = index;
 			});
@@ -2155,6 +2365,10 @@
 			faceYaw: camera.yaw || 0,
 			facePitch: camera.pitch || 0,
 		};
+		if (line.share && time < line.share.until + SHARE_RETURN_MS) {
+			// The line before still sings into this one: both stay in frame, then the camera settles on this line.
+			pose = mixPose(line.share.pose, pose, easeInOutCubic(clamp01((time - line.share.until) / SHARE_RETURN_MS)));
+		}
 		if (line.reveal && time > line.reveal.start) {
 			const amount = easeInOutCubic(clamp01((time - line.reveal.start) / Math.max(1, Math.min(1700, line.reveal.end - line.reveal.start))));
 			pose = mixPose(pose, line.reveal.pose, amount);
@@ -2218,8 +2432,8 @@
 		let eased;
 		if (type === "line") eased = easeInOutQuart(u);
 		else if (type === "whip") eased = easeInOutExpo(u);
-		else if (type === "fade") eased = easeInOutSine(u);
-		else if (type === "push" || type === "pull" || type === "through" || type === "orbit" || type === "tumble") eased = easeInOutCubic(u);
+		else if (type === "fade" || type === "drift") eased = easeInOutSine(u);
+		else if (CUBIC_MOVES.has(type)) eased = easeInOutCubic(u);
 		else eased = easeInOutExpo(u);
 		const pose = mixPose(from, to, eased);
 		if (type === "through" && move.waypoint) {
@@ -2230,7 +2444,7 @@
 			pose.x = lerp(a.x, b.x, half);
 			pose.y = lerp(a.y, b.y, half);
 		}
-		const rollEase = type === "line" ? eased : type === "fade" ? easeInOutSine(u) : easeInOutQuint(u);
+		const rollEase = type === "line" ? eased : type === "fade" || type === "drift" ? easeInOutSine(u) : type === "corkscrew" ? easeInOutCubic(u) : easeInOutQuint(u);
 		pose.roll = lerp(from.roll, to.roll + move.extraRoll, rollEase);
 		const dolly = move.arc * Math.sin(Math.PI * u);
 		pose.z += dolly;
@@ -2380,15 +2594,16 @@
 
 	const FX_DURATION = Object.freeze({
 		pop: 380, slide: 420, rise: 440, slam: 230, flip: 480, blur: 560, wipe: 520, glitch: 340, spin: 560, zoom: 480,
-		type: 1, assemble: 1, drop: 1, wave: 1, track: 1, bounce: 1, flicker: 1,
+		lift: 620, swing: 640, smear: 360, door: 620, glide: 760, skew: 500, open: 560,
+		type: 1, assemble: 1, drop: 1, wave: 1, track: 1, bounce: 1, flicker: 1, cascade: 1, ripple: 1, swirl: 1,
 	});
-	const CHAR_FX = new Set(["type", "assemble", "drop", "wave", "track", "bounce", "flicker"]);
+	const CHAR_FX = new Set(["type", "assemble", "drop", "wave", "track", "bounce", "flicker", "cascade", "ripple", "swirl"]);
 	const fxPaceOf = (pace) => clamp(Number(pace) || 1, 0.75, 1.5);
 
 	/** Entrance progress of a sung word's solid type (0 before it starts). */
 	const wordEntrance = (fx, word, time, pace = 1) => {
 		const duration = fx === "stretch" ? clamp(word.end - word.start, 280, 1400) : (FX_DURATION[fx] || 380) * fxPaceOf(pace);
-		const lead = fx === "slam" ? 20 : fx === "zoom" || fx === "blur" ? 90 : 50;
+		const lead = fx === "slam" ? 20 : fx === "zoom" || fx === "blur" || fx === "glide" ? 90 : fx === "lift" || fx === "door" ? 70 : 50;
 		return clamp01((time - (word.start - lead)) / duration);
 	};
 
@@ -2456,6 +2671,47 @@
 					transform: "translate(" + round((random() * 2 - 1) * 0.12 * decay, 3) + "em," + round((random() * 2 - 1) * 0.05 * decay, 3) + "em) skewX(" + round((random() * 2 - 1) * 18 * decay, 1) + "deg)",
 					shadow: split + "em 0 0 rgba(255, 46, 99, 0.85), " + (-split) + "em 0 0 rgba(46, 226, 255, 0.85)",
 				});
+			}
+			case "lift": {
+				// Rises out of a mask at its own baseline (the part still below it is cut off).
+				const k = easeOutExpo(progress);
+				const depth = (1 - k) * 1.05;
+				return frame({ opacity: clamp01(progress * 4), transform: "translateY(" + round(depth, 3) + "em)", clip: "inset(-40% -14% " + round(depth - 0.2, 3) + "em -14%)" });
+			}
+			case "swing": {
+				// Hangs from its first letter and swings down into place.
+				const k = easeOutBack(progress);
+				const hinge = rtl ? ["translateX(50%)", "translateX(-50%)"] : ["translateX(-50%)", "translateX(50%)"];
+				return frame({ opacity: clamp01(progress * 3), transform: hinge[0] + " rotate(" + round((1 - k) * (rtl ? -32 : 32), 2) + "deg) " + hinge[1] });
+			}
+			case "smear": {
+				// A fast motion smear that snaps into shape.
+				const k = easeOutExpo(progress);
+				const side = rtl ? 1 : -1;
+				const blur = (1 - k) * 4;
+				return frame({ opacity: clamp01(progress * 3.2), transform: "translateX(" + round((1 - k) * 0.6 * side, 3) + "em) scaleX(" + round(1 + (1 - k) * 0.85, 3) + ")", filter: blur > 0.3 ? "blur(" + round(blur, 1) + "px)" : "" });
+			}
+			case "door": {
+				// Turns in from its first letter like a door swinging shut towards the viewer.
+				const k = easeOutCubic(progress);
+				const hinge = rtl ? ["translateX(50%)", "translateX(-50%)"] : ["translateX(-50%)", "translateX(50%)"];
+				return frame({ opacity: clamp01(progress * 2.6), transform: "perspective(7em) " + hinge[0] + " rotateY(" + round((1 - k) * (rtl ? 86 : -86), 1) + "deg) " + hinge[1] });
+			}
+			case "glide": {
+				// Drifts in slowly from the side, a breath rather than a hit.
+				const k = easeOutQuint(progress);
+				return frame({ opacity: clamp01(progress * 1.5), transform: "translateX(" + round((1 - k) * (rtl ? 0.42 : -0.42), 3) + "em)" });
+			}
+			case "skew": {
+				// Leans in from below like a brush stroke and straightens up.
+				const k = easeOutExpo(progress);
+				return frame({ opacity: clamp01(progress * 2.4), transform: "translateY(" + round((1 - k) * 0.38, 3) + "em) skewX(" + round((1 - k) * (rtl ? 26 : -26), 1) + "deg)" });
+			}
+			case "open": {
+				// Opens from its middle outwards.
+				const k = easeInOutCubic(progress);
+				const side = round(-14 + (1 - k) * 64, 1);
+				return frame({ opacity: 1, transform: "scaleX(" + round(1.06 - 0.06 * k, 3) + ")", clip: "inset(-40% " + side + "% -40% " + side + "%)" });
 			}
 			default: {
 				const k = easeOutBack(progress);
@@ -2536,6 +2792,30 @@
 				const random = createRandom((seed + index * 977 + bucket * 2654435761) >>> 0);
 				const chance = (time - from) / 210;
 				return { opacity: random() < chance ? 1 : random() * 0.25, transform: "none" };
+			}
+			case "cascade": {
+				// Letters fall softly into place one after another, turning as they land.
+				const e = clamp01((time - (char.start - 140)) / (520 * slow));
+				if (e <= 0) return LETTER_HIDDEN;
+				if (e >= 1) return LETTER_SETTLED;
+				const k = easeOutCubic(e);
+				return { opacity: clamp01(e * 2.2), transform: "translateY(" + round((1 - k) * -0.62, 3) + "em) rotate(" + round((1 - k) * (index % 2 ? 16 : -16), 1) + "deg)" };
+			}
+			case "ripple": {
+				// Each letter grows up from its baseline as it is sung, a ripple running along the word.
+				const e = clamp01((time - (char.start - 70)) / (440 * slow));
+				if (e <= 0) return LETTER_HIDDEN;
+				if (e >= 1) return LETTER_SETTLED;
+				const k = easeOutBack(e);
+				return { opacity: clamp01(e * 3), transform: "translateY(" + round((1 - k) * 0.22, 3) + "em) scaleY(" + round(0.25 + 0.75 * k, 3) + ")" };
+			}
+			case "swirl": {
+				// Letters spiral in from behind the one before and settle upright.
+				const e = clamp01((time - (char.start - 220)) / (620 * slow));
+				if (e <= 0) return LETTER_HIDDEN;
+				if (e >= 1) return LETTER_SETTLED;
+				const k = easeOutCubic(e);
+				return { opacity: clamp01(e * 2), transform: "translate(" + round((1 - k) * -0.55, 3) + "em," + round((1 - k) * 0.32, 3) + "em) rotate(" + round((1 - k) * -150, 1) + "deg) scale(" + round(0.55 + 0.45 * k, 3) + ")" };
 			}
 			default:
 				return time >= char.start ? LETTER_SETTLED : LETTER_HIDDEN;

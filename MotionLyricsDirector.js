@@ -1,9 +1,10 @@
 // Motion lyrics director: decides how a song is staged.
 //
 // A direction groups consecutive lyric lines into shots and picks, per shot,
-// a composition (layout, one of twenty-three), how the camera reaches it
-// (enter), how sung words appear (fx), how emphasised words stand out
-// (accent, one of eighteen), the type personality
+// a composition (layout, one of twenty-seven), how the camera reaches it
+// (enter, one of twenty-one), how sung words appear (fx, one of
+// twenty-eight), how emphasised words stand out (accent, one of sixteen),
+// the type personality
 // (impact nearly always; a serif shot now and then, never two in a row and
 // at most about one in seven; round for playful shots), whether its
 // emphasised words switch to a serif, a camera tilt, letterbox bars, line
@@ -14,12 +15,16 @@
 // one (see AIAddonManager.generateMotionDirection); every AI answer is
 // checked here and anything missing or invalid falls back to the local
 // director, so the renderer always gets a complete, valid direction.
+// Whoever directs, the edit keeps its restraint and range (refineShots):
+// words that smash in are a rare spice, and no choice takes over the song,
+// with replacements drawn from the song's own tempo palette. Lines whose
+// voices are sung into the next line are never cut apart.
 (function IvLyricsMotionDirector(root) {
 	"use strict";
 
 	if (root.ivLyricsMotionDirector?.initialized) return;
 
-	const VERSION = 4;
+	const VERSION = 5;
 	const MOODS = Object.freeze(["calm", "dreamy", "melancholic", "warm", "playful", "energetic", "intense", "dark"]);
 	const TEMPOS = Object.freeze(["slow", "mid", "fast", "rap"]);
 	// Flat compositions, then three that sit in depth: carousel and reel wrap the lines round a drum, crawl lays them on a tilted plane.
@@ -28,11 +33,25 @@
 		"stairs", "strip", "split", "swell", "radial", "carousel", "reel", "crawl",
 		// After kinetic-typography edits: one thought at a time, flat colour, type as an object.
 		"slot", "cards", "poster", "wordwall", "arch", "spread", "pillar",
+		// Editorial and graphic: a swell of lines, a star chart, a modular grid, the corners of the frame.
+		"wave", "constellation", "grid", "corners",
 	]);
-	const ENTERS = Object.freeze(["pan", "drop", "rise", "roll", "flip", "push", "pull", "cut", "whip", "spin", "orbit", "tumble", "fade", "through", "panel"]);
-	const FX = Object.freeze(["pop", "slide", "rise", "slam", "stretch", "flip", "type", "assemble", "drop", "wave", "blur", "wipe", "glitch", "spin", "zoom", "track", "bounce", "flicker"]);
+	const ENTERS = Object.freeze([
+		"pan", "drop", "rise", "roll", "flip", "push", "pull", "cut", "whip", "spin", "orbit", "tumble", "fade", "through", "panel",
+		"drift", "crane", "twist", "swoop", "corkscrew", "hop",
+	]);
+	const FX = Object.freeze([
+		"pop", "slide", "rise", "slam", "stretch", "flip", "type", "assemble", "drop", "wave", "blur", "wipe", "glitch", "spin", "zoom", "track", "bounce", "flicker",
+		"lift", "swing", "smear", "door", "glide", "skew", "open", "cascade", "ripple", "swirl",
+	]);
 	// Effects that move single letters; joined scripts get a word-level equivalent.
-	const LETTER_FX = Object.freeze(["type", "assemble", "drop", "wave", "track", "bounce", "flicker"]);
+	const LETTER_FX = Object.freeze(["type", "assemble", "drop", "wave", "track", "bounce", "flicker", "cascade", "ripple", "swirl"]);
+	// Entrances that hit: a word smashed in or flying out of the lens, with the camera shaking. Strong spice, used sparingly.
+	const HARD_FX = Object.freeze(["slam", "zoom"]);
+	// Snappy entrances that still jump at the eye; a song uses them now and then.
+	const PUNCHY_FX = Object.freeze(["pop", "glitch", "flicker"]);
+	// Flash cuts and colour wipes between shots.
+	const HARD_ENTERS = Object.freeze(["cut", "panel"]);
 	const ACCENTS = Object.freeze([
 		"color", "outline", "underline", "mark", "spark", "glow", "gradient", "stamp", "circle", "extrude", "sticker",
 		"script", "giant", "trail", "scribble", "bracket",
@@ -45,6 +64,7 @@
 		column: 6, zigzag: 5, spiral: 4, wall: 6, tunnel: 6, collage: 5, hero: 2, tower: 3,
 		stairs: 5, strip: 4, split: 6, swell: 4, radial: 6, carousel: 5, reel: 6, crawl: 6,
 		slot: 4, cards: 4, poster: 3, wordwall: 4, arch: 4, spread: 3, pillar: 3,
+		wave: 5, constellation: 5, grid: 4, corners: 4,
 	});
 	const PACE = Object.freeze({ slow: 1.4, mid: 1, fast: 0.82, rap: 0.72 });
 	const MAX_PROMPT_LINES = 140;
@@ -128,6 +148,18 @@
 	});
 
 	const wordsPerSecond = (line) => line.words.length / Math.max(0.4, (line.end - line.start) / 1000);
+
+	// Another voice of a line (an echo, an answer, a duet partner) still sung
+	// this close to the next line's start would be cut off when the camera
+	// moves on for it.
+	const VOICE_CROSS_MS = 360;
+	/**
+	 * Whether a line is still being sung when the next one comes in: the two
+	 * overlap (a duet), or another voice in it sings on into the next line.
+	 * Such lines share a composition that shows several lines at once.
+	 */
+	const singsInto = (line, next) => !!line && !!next && (next.start < line.end - 150
+		|| (Array.isArray(line.backing) ? line.backing : []).some((voice) => voice.end > next.start - VOICE_CROSS_MS));
 	const JOINED_RE = /[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Devanagari}\p{Script=Bengali}]/u;
 	// Lines that can be set upright (the pillar composition): Korean, Japanese and Chinese without Latin words.
 	const UPRIGHT_RE = /^[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{P}\p{N}\s\u30fc]+$/u;
@@ -277,8 +309,11 @@
 					sectionBreak = original[index] !== original[index - 1] + 1;
 					full = starts.has(original[index]);
 				}
-				// Lines sung over each other (a duet, a call and response) stay in one composition.
-				if (gap < -200 && !sectionBreak && weight + lineWeight <= 6) full = false;
+				// Lines sung over each other (a duet, a call and response, an echo running on) stay in one composition.
+				if (singsInto(model[index - 1], line) && weight + lineWeight <= 6) {
+					sectionBreak = false;
+					full = false;
+				}
 				if (sectionBreak || full) {
 					shots.push({ from, to: index - 1, sectionBreak });
 					from = index;
@@ -304,21 +339,25 @@
 			hero: 2.2, column: 1.2, wall: 0.3, tunnel: 0.7, spiral: 0.6, zigzag: 0.4, collage: 0, tower: 0,
 			stairs: 0.9, strip: 0.7, split: 0.6, swell: 0.9, radial: 0.3, carousel: 0.9, reel: 0.8, crawl: 1.1,
 			slot: 0.9, cards: 0.4, poster: 0.6, wordwall: 0.3, arch: 1, spread: 0.8, pillar: 1.1,
+			wave: 1, constellation: 0.9, grid: 0.5, corners: 1.1,
 		},
 		mid: {
 			hero: 2, column: 0.7, wall: 0.6, tunnel: 0.8, spiral: 0.8, zigzag: 1, collage: 0.8, tower: 0.5,
 			stairs: 0.9, strip: 0.8, split: 0.7, swell: 0.9, radial: 0.8, carousel: 1, reel: 0.9, crawl: 0.8,
 			slot: 1, cards: 0.9, poster: 1, wordwall: 0.7, arch: 0.9, spread: 0.9, pillar: 0.9,
+			wave: 0.9, constellation: 0.9, grid: 0.8, corners: 0.8,
 		},
 		fast: {
 			hero: 0.8, column: 0.4, wall: 0.6, tunnel: 0.9, spiral: 0.8, zigzag: 1.1, collage: 1.2, tower: 1.1,
 			stairs: 0.9, strip: 1, split: 0.8, swell: 0.9, radial: 1, carousel: 1, reel: 1.1, crawl: 0.5,
 			slot: 1.1, cards: 1.1, poster: 1.2, wordwall: 1, arch: 0.6, spread: 0.9, pillar: 0.6,
+			wave: 0.7, constellation: 0.8, grid: 1, corners: 0.6,
 		},
 		rap: {
 			hero: 0.3, column: 0.8, wall: 0.6, tunnel: 1.1, spiral: 0.5, zigzag: 0.9, collage: 1.4, tower: 1.5,
 			stairs: 1, strip: 0.8, split: 1, swell: 0.6, radial: 0.6, carousel: 0.7, reel: 1.2, crawl: 0.6,
 			slot: 1.3, cards: 1, poster: 0.8, wordwall: 1.2, arch: 0.4, spread: 0.6, pillar: 0.3,
+			wave: 0.5, constellation: 0.6, grid: 1.2, corners: 0.5,
 		},
 	});
 	// A composition never follows itself (a returning chorus poster aside), the two before it are
@@ -326,7 +365,7 @@
 	const RECENT_PENALTY = Object.freeze([0, 0.45, 0.7]);
 	const FRESH_BOOST = 1.5;
 
-	const localLayout = (lines, energy, shot, history, tempo, random) => {
+	const localLayout = (lines, energy, shot, history, tempo, random, avoid = null) => {
 		const count = lines.length;
 		const chars = lines.reduce((sum, line) => sum + line.chars, 0);
 		const seconds = (lines[count - 1].end - lines[0].start) / 1000;
@@ -362,7 +401,13 @@
 			spread: count <= MAX_LINES.spread && longest >= 2 && longest <= 6 && !shot.voices ? base.spread : 0,
 			// Upright type suits Korean, Japanese and Chinese lines without Latin words.
 			pillar: count <= MAX_LINES.pillar && chars / count <= 14 && lines.every((line) => UPRIGHT_RE.test(line.text) && !(line.backing || []).length) ? base.pillar : 0,
+			wave: within("wave") ? base.wave : 0,
+			constellation: within("constellation") ? base.constellation * (0.8 + 0.4 * energy) : 0,
+			grid: within("grid") ? base.grid : 0,
+			// Small type in the corners leaves the screen to the video: quieter shots.
+			corners: within("corners") ? base.corners * (1.25 - 0.5 * energy) : 0,
 		};
+		if (avoid) for (const name of avoid) weights[name] = 0;
 		const open = { ...weights };
 		history.slice(-RECENT_PENALTY.length).reverse().forEach((name, back) => {
 			if (!weights[name]) return;
@@ -374,46 +419,66 @@
 
 	const ENTER_WEIGHTS = Object.freeze({
 		slow: {
-			section: { fade: 1.4, orbit: 0.9, push: 0.8, pull: 0.6, panel: 0.5, roll: 0.3 },
-			line: { pan: 1, rise: 0.9, drop: 0.6, fade: 1.1, push: 0.7, orbit: 0.4 },
+			section: { fade: 1.3, orbit: 0.8, push: 0.7, pull: 0.6, panel: 0.3, roll: 0.3, drift: 1, crane: 0.8, swoop: 0.4 },
+			line: { pan: 0.9, rise: 0.8, drop: 0.5, fade: 1, push: 0.6, orbit: 0.4, drift: 1.1, crane: 0.5 },
 		},
 		mid: {
-			section: { roll: 1, flip: 0.7, orbit: 0.9, panel: 0.7, push: 0.7, through: 0.6, tumble: 0.5, fade: 0.4 },
-			line: { pan: 1.1, drop: 0.9, rise: 0.8, roll: 0.5, push: 0.7, pull: 0.4, orbit: 0.4, whip: 0.3 },
+			section: { roll: 0.9, flip: 0.6, orbit: 0.8, panel: 0.5, push: 0.6, through: 0.6, tumble: 0.5, fade: 0.4, crane: 0.7, swoop: 0.7, twist: 0.7, corkscrew: 0.5, hop: 0.6 },
+			line: { pan: 1, drop: 0.8, rise: 0.7, roll: 0.4, push: 0.6, pull: 0.4, orbit: 0.4, whip: 0.3, drift: 0.6, twist: 0.5, hop: 0.5, swoop: 0.4 },
 		},
 		fast: {
-			section: { panel: 1, spin: 0.9, flip: 0.8, through: 0.8, tumble: 0.7, roll: 0.7, orbit: 0.5 },
-			line: { whip: 1.3, pan: 0.8, drop: 0.9, rise: 0.6, roll: 0.6, spin: 0.4, push: 0.6, tumble: 0.4 },
+			section: { panel: 0.7, spin: 0.8, flip: 0.7, through: 0.8, tumble: 0.7, roll: 0.7, orbit: 0.5, corkscrew: 0.8, twist: 0.7, swoop: 0.6, hop: 0.6 },
+			line: { whip: 1.1, pan: 0.7, drop: 0.8, rise: 0.5, roll: 0.5, spin: 0.3, push: 0.5, tumble: 0.3, twist: 0.6, hop: 0.7, swoop: 0.5 },
 		},
 	});
 
-	const localEnter = (shot, gap, energy, previous, tempo, random) => {
+	const localEnter = (shot, gap, energy, previous, tempo, random, avoid = null) => {
 		if (shot.index === 0) return "push";
 		const table = ENTER_WEIGHTS[tempo.tempo === "rap" ? "fast" : tempo.tempo] || ENTER_WEIGHTS.mid;
 		const weights = { ...(shot.sectionStart ? table.section : table.line) };
 		// Hard cuts belong to long pauses and section changes in songs with drive.
 		if (shot.sectionStart && gap >= (tempo.tempo === "slow" ? 6000 : 2400)) weights.cut = tempo.tempo === "slow" ? 0.5 : 1.1;
-		if (energy >= 0.66) for (const name of ["roll", "spin", "flip", "whip"]) if (weights[name]) weights[name] *= 1.3;
+		if (energy >= 0.66) for (const name of ["roll", "spin", "flip", "whip", "corkscrew", "twist"]) if (weights[name]) weights[name] *= 1.3;
+		if (energy < 0.3) for (const name of ["drift", "fade", "crane"]) if (weights[name]) weights[name] *= 1.3;
 		if (previous && weights[previous]) weights[previous] *= 0.3;
+		if (avoid) for (const name of avoid) delete weights[name];
 		return weightedPick(random, weights) || "pan";
 	};
 
 	const FX_WEIGHTS = Object.freeze({
-		slow: { blur: 1.3, rise: 1.1, wipe: 0.9, track: 0.9, wave: 0.7, stretch: 0.6, type: 0.4, flip: 0.2 },
-		mid: { pop: 1, rise: 0.9, flip: 0.7, drop: 0.6, assemble: 0.6, blur: 0.6, spin: 0.5, bounce: 0.5, wipe: 0.4, type: 0.5, track: 0.3 },
-		fast: { slam: 1, pop: 1, zoom: 0.9, glitch: 0.8, slide: 0.8, spin: 0.6, bounce: 0.6, flicker: 0.6, assemble: 0.5, type: 0.5 },
-		rap: { type: 1.2, slide: 1.1, glitch: 0.9, slam: 0.8, flicker: 0.8, zoom: 0.6, pop: 0.6 },
+		slow: {
+			blur: 1.1, rise: 1, wipe: 0.8, track: 0.8, wave: 0.6, stretch: 0.6, type: 0.4, flip: 0.2,
+			lift: 1.1, glide: 1.2, open: 0.7, door: 0.5, cascade: 0.6, swirl: 0.3, skew: 0.3,
+		},
+		mid: {
+			pop: 0.45, rise: 0.8, flip: 0.6, drop: 0.5, assemble: 0.6, blur: 0.6, spin: 0.4, bounce: 0.4, wipe: 0.5, type: 0.5, track: 0.4,
+			lift: 0.9, swing: 0.7, door: 0.6, skew: 0.6, open: 0.6, cascade: 0.6, ripple: 0.6, glide: 0.5, swirl: 0.4, smear: 0.4,
+		},
+		fast: {
+			slam: 0.35, pop: 0.55, zoom: 0.3, glitch: 0.55, slide: 0.8, spin: 0.5, bounce: 0.6, flicker: 0.5, assemble: 0.5, type: 0.5,
+			smear: 0.9, skew: 0.8, lift: 0.7, swing: 0.6, ripple: 0.7, door: 0.5, open: 0.5, cascade: 0.4,
+		},
+		rap: {
+			type: 1.1, slide: 1, glitch: 0.6, slam: 0.3, flicker: 0.6, zoom: 0.2, pop: 0.4,
+			smear: 1, skew: 0.8, lift: 0.7, ripple: 0.5, open: 0.5,
+		},
 	});
 
-	const localFx = (lines, energy, tempo, random) => {
+	const localFx = (lines, energy, tempo, random, avoid = null) => {
 		const charTimed = lines.every((line) => line.charTimed);
 		const joined = lines.some((line) => JOINED_RE.test(line.text));
 		const weights = { ...(FX_WEIGHTS[tempo.tempo] || FX_WEIGHTS.mid) };
 		if (weights.type) weights.type *= charTimed ? 1.6 : 0.6;
 		if (joined) for (const name of LETTER_FX) delete weights[name];
-		if (energy >= 0.66) for (const name of ["slam", "zoom", "glitch", "pop"]) if (weights[name]) weights[name] *= 1.4;
-		if (energy < 0.3) for (const name of ["blur", "rise", "wave", "wipe"]) if (weights[name]) weights[name] *= 1.3;
-		return weightedPick(random, weights) || "pop";
+		if (energy >= 0.66) {
+			for (const name of ["slam", "zoom", "glitch", "smear", "skew"]) if (weights[name]) weights[name] *= 1.25;
+		} else {
+			// Words only smash in on the loudest parts.
+			for (const name of HARD_FX) delete weights[name];
+		}
+		if (energy < 0.3) for (const name of ["blur", "rise", "wave", "wipe", "glide", "lift", "open"]) if (weights[name]) weights[name] *= 1.3;
+		if (avoid) for (const name of avoid) delete weights[name];
+		return weightedPick(random, weights) || "rise";
 	};
 
 	// Heavy display type carries the edit; the rounded face is a rare change of voice.
@@ -432,19 +497,20 @@
 			script: 0.8, giant: 0.7, trail: 0.5, scribble: 0.6, bracket: 0.5,
 		},
 		fast: {
-			spark: 1.2, color: 0.8, mark: 0.6, outline: 0.5, glow: 0.8, gradient: 0.6, stamp: 0.9, circle: 0.4, extrude: 0.9, sticker: 0.8,
+			spark: 1.1, color: 0.8, mark: 0.6, outline: 0.6, glow: 0.8, gradient: 0.6, stamp: 0.5, circle: 0.5, extrude: 0.9, sticker: 0.8,
 			giant: 1, trail: 0.9, bracket: 0.6, script: 0.5, scribble: 0.4,
 		},
 	});
 
 	/** A shot's accent: never the one just used, more often one the song has not shown yet. */
-	const localAccent = (accents, history, random) => {
+	const localAccent = (accents, history, random, avoid = null) => {
 		const weights = { ...accents };
 		[0, 0.6].forEach((penalty, back) => {
 			const name = history[history.length - 1 - back];
 			if (name && weights[name]) weights[name] *= penalty;
 		});
 		for (const name of Object.keys(weights)) if (!history.includes(name)) weights[name] *= 1.4;
+		if (avoid) for (const name of avoid) delete weights[name];
 		return weightedPick(random, weights) || "color";
 	};
 	const UPPER_CHANCE = Object.freeze({ slow: 0.15, mid: 0.4, fast: 0.6, rap: 0.6 });
@@ -498,6 +564,146 @@
 		return result;
 	};
 
+	// The largest share of a song's shots one composition, entrance, word effect or accent may take.
+	const SHARE_LIMIT = Object.freeze({ layout: 0.16, enter: 0.22, fx: 0.2, accent: 0.2 });
+	const QUIET_MOODS = new Set(["calm", "dreamy", "melancholic"]);
+
+	/**
+	 * The edit's restraint and range, whoever directed it. Words that smash
+	 * in (slam, zoom) come only on the loudest shots of songs with drive, a
+	 * few times a song and never two shots running; snappy entrances and
+	 * flash cuts are rationed the same way; no composition, entrance, word
+	 * effect or accent follows itself or takes over the song. Whatever is
+	 * replaced is picked from the song's own tempo palette, so the mood
+	 * holds, and a returning section keeps the look it had the first time.
+	 * Line effects (direction.lines) are held to the same budget.
+	 */
+	const refineShots = (shots, lineDirections, model, options = {}) => {
+		const lines = Array.isArray(model) ? model : [];
+		const count = shots.length;
+		if (!count) return { shots, lines: lineDirections };
+		const random = createRandom((Number(options.seed) >>> 0) ^ 0x3C6EF372);
+		const tempo = options.tempo?.tempo ? options.tempo : tempoOf(lines, options.pulses);
+		const energy = Array.isArray(options.energy) && options.energy.length === lines.length ? options.energy : lines.map(() => 0.5);
+		const quiet = tempo.tempo === "slow" || QUIET_MOODS.has(options.mood);
+		const accents = ACCENT_WEIGHTS[tempo.tempo === "rap" ? "fast" : tempo.tempo] || ACCENT_WEIGHTS.mid;
+		const cap = (kind) => Math.max(2, Math.ceil(count * SHARE_LIMIT[kind]));
+		const budget = {
+			hard: quiet ? 0 : Math.max(1, Math.floor(count / (tempo.tempo === "mid" ? 12 : 8))),
+			punchy: Math.max(1, Math.ceil(count * (quiet ? 0.08 : 0.15))),
+			cuts: Math.max(1, Math.floor(count / (quiet ? 10 : 6))),
+			stamps: Math.max(1, Math.floor(count / 6)),
+		};
+		const used = { hard: 0, punchy: 0, cuts: 0, stamps: 0 };
+		const counts = { layout: new Map(), enter: new Map(), fx: new Map(), accent: new Map() };
+		const tally = (kind, value) => counts[kind].set(value, (counts[kind].get(value) || 0) + 1);
+		const full = (kind) => [...counts[kind]].filter(([, times]) => times >= cap(kind)).map(([name]) => name);
+		const history = { layout: [], accent: [] };
+		const returns = new Map();
+		const result = [];
+		shots.forEach((original, index) => {
+			const { continued, ...shot } = original;
+			const previous = result[index - 1] || null;
+			const members = lines.slice(shot.from, shot.to + 1);
+			const shotEnergy = members.reduce((sum, _, offset) => sum + (energy[shot.from + offset] ?? 0.5), 0) / Math.max(1, members.length);
+			if (continued === true && previous) {
+				// The rest of a shot too long for its composition carries on as it began, but a hit is not repeated.
+				const hit = HARD_FX.includes(previous.fx) || PUNCHY_FX.includes(previous.fx);
+				shot.layout = previous.layout;
+				shot.fx = hit ? localFx(members, shotEnergy, tempo, random, new Set([...HARD_FX, ...PUNCHY_FX, ...full("fx")])) : previous.fx;
+				shot.accent = previous.accent === "stamp" && used.stamps >= budget.stamps
+					? localAccent(accents, history.accent, random, new Set(["stamp", ...full("accent")]))
+					: previous.accent;
+				if (shot.accent === "stamp") used.stamps += 1;
+				for (const kind of Object.keys(counts)) tally(kind, shot[kind]);
+				history.layout.push(shot.layout);
+				history.accent.push(shot.accent);
+				result.push(shot);
+				return;
+			}
+			const loud = shotEnergy >= 0.62;
+			const gap = index && lines[shot.from - 1] ? members[0].start - lines[shot.from - 1].end : Infinity;
+			const key = squash(members[0]?.text) + ":" + members.length;
+			const first = returns.get(key);
+			// A returning section is cut the same way: what the AI repeated is repeated as it was refined.
+			const repeats = (kind) => !!first && original[kind] === first.raw[kind];
+
+			if (repeats("layout")) shot.layout = first.final.layout;
+			else if ((previous && shot.layout === previous.layout) || (counts.layout.get(shot.layout) || 0) >= cap("layout")) {
+				const traits = { chorus: false, repeated: false, build: false, voices: members.some((line, offset) => (line.backing || []).some((voice) => voice.role === "duet") || (offset > 0 && singsInto(members[offset - 1], line))) };
+				const avoid = new Set([...full("layout"), previous?.layout].filter(Boolean));
+				shot.layout = localLayout(members, shotEnergy, traits, history.layout, tempo, random, avoid);
+			}
+
+			const hardFx = HARD_FX.includes(shot.fx);
+			const punchyFx = PUNCHY_FX.includes(shot.fx);
+			const afterHit = previous && (HARD_FX.includes(previous.fx) || PUNCHY_FX.includes(previous.fx));
+			if (repeats("fx") && !(hardFx && (quiet || used.hard >= budget.hard))) shot.fx = first.final.fx;
+			else if ((hardFx && (quiet || !loud || used.hard >= budget.hard || afterHit))
+				|| (punchyFx && (used.punchy >= budget.punchy || afterHit))
+				|| (previous && shot.fx === previous.fx)
+				|| (counts.fx.get(shot.fx) || 0) >= cap("fx")) {
+				const avoid = new Set([...full("fx"), previous?.fx].filter(Boolean));
+				if (quiet || !loud || used.hard >= budget.hard || afterHit) HARD_FX.forEach((name) => avoid.add(name));
+				if (used.punchy >= budget.punchy || afterHit) PUNCHY_FX.forEach((name) => avoid.add(name));
+				shot.fx = localFx(members, shotEnergy, tempo, random, avoid);
+			}
+			if (HARD_FX.includes(shot.fx)) used.hard += 1;
+			if (PUNCHY_FX.includes(shot.fx)) used.punchy += 1;
+
+			if (index && !repeats("enter")) {
+				const cut = HARD_ENTERS.includes(shot.enter);
+				const sectionLike = gap >= 1200;
+				if ((cut && (!sectionLike || used.cuts >= budget.cuts || HARD_ENTERS.includes(previous?.enter)))
+					|| (previous && shot.enter === previous.enter && shot.enter !== "pan")
+					|| (counts.enter.get(shot.enter) || 0) >= cap("enter")) {
+					const avoid = new Set([...full("enter"), previous?.enter].filter(Boolean));
+					if (!sectionLike || used.cuts >= budget.cuts) HARD_ENTERS.forEach((name) => avoid.add(name));
+					shot.enter = localEnter({ index, sectionStart: sectionLike }, gap, shotEnergy, previous?.enter, tempo, random, avoid);
+				}
+			} else if (index) shot.enter = first.final.enter;
+			if (index && HARD_ENTERS.includes(shot.enter)) used.cuts += 1;
+
+			if (repeats("accent")) shot.accent = first.final.accent;
+			else if ((previous && shot.accent === previous.accent)
+				|| (counts.accent.get(shot.accent) || 0) >= cap("accent")
+				|| (shot.accent === "stamp" && used.stamps >= budget.stamps)) {
+				const avoid = new Set([...full("accent"), previous?.accent].filter(Boolean));
+				if (used.stamps >= budget.stamps) avoid.add("stamp");
+				shot.accent = localAccent(accents, history.accent, random, avoid);
+			}
+			if (shot.accent === "stamp") used.stamps += 1;
+
+			tally("layout", shot.layout);
+			tally("enter", shot.enter);
+			tally("fx", shot.fx);
+			tally("accent", shot.accent);
+			history.layout.push(shot.layout);
+			history.accent.push(shot.accent);
+			if (!first) returns.set(key, { raw: original, final: shot });
+			result.push(shot);
+		});
+
+		// Line effects: a line may hit harder than its shot only on a loud line, a few times a song.
+		const refinedLines = {};
+		const lineBudget = { hard: quiet ? 0 : Math.max(1, Math.floor(lines.length / 16)), punchy: Math.max(1, Math.ceil(lines.length / 10)) };
+		const lineUsed = { hard: 0, punchy: 0 };
+		for (const [key, entry] of Object.entries(lineDirections || {})) {
+			const value = { ...entry };
+			const index = Number(key);
+			const shot = result.find((item) => item.from <= index && index <= item.to);
+			if (HARD_FX.includes(value.fx)) {
+				if (lineUsed.hard < lineBudget.hard && (energy[index] ?? 0.5) >= 0.62 && !HARD_FX.includes(shot?.fx)) lineUsed.hard += 1;
+				else delete value.fx;
+			} else if (PUNCHY_FX.includes(value.fx)) {
+				if (lineUsed.punchy < lineBudget.punchy) lineUsed.punchy += 1;
+				else delete value.fx;
+			}
+			if (Object.keys(value).length) refinedLines[key] = value;
+		}
+		return { shots: result, lines: refinedLines };
+	};
+
 	/** A complete direction made without AI, deterministic for the same song. */
 	const localDirection = (model, options = {}) => {
 		const lines = Array.isArray(model) ? model : [];
@@ -540,7 +746,7 @@
 				...shot,
 				build: groups[index + 1]?.chorus === true && !shot.chorus,
 				voices: members.some((line, offset) => (line.backing || []).some((voice) => voice.role === "duet")
-					|| (offset > 0 && line.start < members[offset - 1].end - 200)),
+					|| (offset > 0 && singsInto(members[offset - 1], line))),
 			};
 			const layout = localLayout(members, shotEnergy, traits, layoutHistory, tempo, random);
 			const serifRoom = previous?.type !== "serif" && serifShots < budget.shots && serifLines + members.length <= budget.lines;
@@ -593,13 +799,43 @@
 			}
 			if (!marked && best) lineDirections[best.index] = { emph: [best.position] };
 		}
-		return { version: VERSION, source: "local", coverage: 0, mood, tempo, palette: null, shots, lines: lineDirections, shapes: {} };
+		const refined = refineShots(shots, lineDirections, lines, { ...options, tempo, energy, mood });
+		return { version: VERSION, source: "local", coverage: 0, mood, tempo, palette: null, shots: refined.shots, lines: refined.lines, shapes: {} };
 	};
 
 
 	const toIndex = (value) => {
 		const number = Number(value);
 		return Number.isInteger(number) ? number : NaN;
+	};
+
+	/**
+	 * Moves cuts off lines sung into each other (shots in order, covering
+	 * every line): the next lines join the shot while it has room, otherwise
+	 * its last lines go over to the next shot (which is split again later, at
+	 * a cut between lines that are not sung into each other). A shot left
+	 * empty goes.
+	 */
+	const keepVoicesTogether = (shots, lines) => {
+		const result = shots.map((shot) => ({ ...shot }));
+		const room = (shot) => (MAX_LINES[shot.layout] || 6) - (shot.to - shot.from + 1);
+		for (let index = 0; index + 1 < result.length; index += 1) {
+			const before = result[index];
+			let after = result[index + 1];
+			while (after && room(before) > 0 && singsInto(lines[before.to], lines[after.from])) {
+				before.to += 1;
+				after.from += 1;
+				if (after.from > after.to) {
+					result.splice(index + 1, 1);
+					after = result[index + 1];
+				}
+			}
+			while (after && before.to > before.from && singsInto(lines[before.to], lines[after.from])) {
+				before.to -= 1;
+				after.from -= 1;
+			}
+		}
+		return result;
 	};
 	const hexColor = (value) => {
 		const text = String(value ?? "").trim();
@@ -679,16 +915,28 @@
 		}
 		if (cursor < count) pushLocal(cursor, count - 1);
 
-		// Long shots are split into compositions the layout can hold.
+		// A cut between lines sung into each other would hide the voice still
+		// singing: the line moves to the shot that has room for it.
+		const joined = keepVoicesTogether(filled, lines);
+
+		// Long shots are split into compositions the layout can hold, away from voices sung into the next line.
 		const split = [];
-		for (const shot of filled) {
+		for (const shot of joined) {
 			const limit = MAX_LINES[shot.layout] || 6;
-			for (let from = shot.from; from <= shot.to; from += limit) {
-				split.push({ ...shot, from, to: Math.min(shot.to, from + limit - 1), enter: from === shot.from ? shot.enter : "pan", continued: from !== shot.from });
+			for (let from = shot.from; from <= shot.to;) {
+				let to = Math.min(shot.to, from + limit - 1);
+				for (let end = to; to < shot.to && end > from; end -= 1) {
+					if (!singsInto(lines[end], lines[end + 1])) {
+						to = end;
+						break;
+					}
+				}
+				split.push({ ...shot, from, to, enter: from === shot.from ? shot.enter : "pan", continued: from !== shot.from });
+				from = to + 1;
 			}
 		}
 		// However the AI asked, serif shots stay rare.
-		const shots = limitSerif(split).map(({ continued: _continued, ...shot }) => shot);
+		const shots = limitSerif(split);
 		if (shots.length && shots[0].enter === "cut") shots[0].enter = "push";
 
 		const covered = new Set();
@@ -715,16 +963,19 @@
 		}
 
 		const palette = (Array.isArray(raw.palette) ? raw.palette : []).map(hexColor).filter(Boolean).slice(0, 3);
+		const mood = MOODS.includes(raw.mood) ? raw.mood : local.mood;
+		// However the AI chose, hits stay rare and the choices keep moving (within the song's tempo palette).
+		const refined = refineShots(shots, lineDirections, lines, { ...options, tempo: local.tempo, mood });
 		return {
 			version: VERSION,
 			source: covered.size ? "ai" : "local",
 			coverage: covered.size / count,
-			mood: MOODS.includes(raw.mood) ? raw.mood : local.mood,
+			mood,
 			// Tempo is measured, never taken from the AI.
 			tempo: local.tempo,
 			palette: palette.length ? palette : null,
-			shots,
-			lines: lineDirections,
+			shots: refined.shots,
+			lines: refined.lines,
 			shapes: custom,
 		};
 	};
@@ -752,10 +1003,10 @@
 
 	// What each tempo asks of the edit (part of the prompt).
 	const TEMPO_NOTES = Object.freeze({
-		slow: 'a slow song (ballad): let it breathe. Long, smooth camera moves (fade, orbit, push, pan, rise), soft entrances (blur, rise, wipe, track, wave, stretch), impact type with serif on the tender words (a serif shot or two at most), hero, column, crawl, carousel, stairs and swell shots, glow, gradient, underline and circle accents, rules and letterbox bars for the big lines; no whip, cut, glitch or slam.',
-		mid: 'a mid-tempo song: mix glides with a few bold turns (roll, flip, orbit, tumble, through, panel at section changes); pop, rise, flip, assemble, bounce, blur; impact type, serif for a few key words; move through many compositions (carousel, reel, stairs, strip, split, radial, zigzag, wall).',
-		fast: 'a fast song: snappy and punchy. Whip, spin, panel, cut, tumble and through between shots; slam, zoom, glitch, pop, slide, flicker, bounce; reel, radial, strip, collage, tower and carousel shots; impact type (often upper case), stamp, sticker, extrude and spark accents, strong tilts.',
-		rap: 'a rap or very dense song: keep up with the flow. type, slide, glitch, slam and flicker words; tower, reel, collage, split, stairs and tunnel shots; whip, panel and cut between them; impact type, stamp, extrude and spark accents.'
+		slow: 'a slow song (ballad): let it breathe. Long, smooth camera moves (drift, fade, crane, orbit, push, pan, rise), soft entrances (glide, lift, blur, rise, wipe, open, track, wave, cascade, stretch, door), impact type with serif on the tender words (a serif shot or two at most), hero, column, corners, wave, crawl, carousel, constellation, stairs and swell shots, glow, gradient, underline and circle accents, rules and letterbox bars for the big lines; no whip, cut, glitch, pop, zoom or slam.',
+		mid: 'a mid-tempo song: mix glides with a few bold turns (roll, twist, crane, swoop, orbit, tumble, through, hop, corkscrew, panel at section changes); lift, rise, swing, door, skew, open, cascade, ripple, flip, assemble, blur, wipe and only now and then pop; impact type, serif for a few key words; move through many compositions (carousel, reel, stairs, strip, split, radial, zigzag, wave, grid, constellation, corners, wall).',
+		fast: 'a fast song: snappy and driving. Whip, twist, hop, corkscrew, spin, swoop, tumble and through between shots (panel or cut only at a big section change); smear, skew, slide, ripple, lift, swing, bounce, glitch and flicker words, with slam or zoom saved for the few loudest hits; reel, radial, strip, grid, collage, tower and carousel shots; impact type (often upper case), sticker, extrude, spark and trail accents, strong tilts.',
+		rap: 'a rap or very dense song: keep up with the flow. type, slide, smear, skew, ripple, glitch and flicker words, slam only on a couple of punchlines; tower, grid, reel, collage, split, stairs and tunnel shots; whip, hop, twist and the odd cut between them; impact type, extrude, spark and sticker accents.'
 	});
 
 	/**
@@ -797,9 +1048,12 @@
 			+ '- layout, flat compositions: column = stacked lines the camera glides down (verses, storytelling); stairs = lines stepping down a diagonal staircase (a thought unfolding, descending or rising lines); strip = lines side by side on one long strip with a track drawn under them while the camera travels sideways (lists, journeys, a run of short lines; needs 2+ short lines); split = two columns facing each other across a centre line, lines alternating sides (duets, question and answer, contrasts; needs 2+ lines); swell = every line larger than the last (a build into the chorus, a rising plea; needs 2+ lines); zigzag = lines alternate horizontal and vertical and the screen turns 90 degrees each line (flowing, playful); spiral = 3 or 4 lines around a square while the screen turns a full circle (building, hypnotic); radial = 3+ lines radiating from a hub like spokes, the screen turning to read each (circling thoughts, obsession, festive); wall = a justified poster where short lines become huge (choruses, hooks, repeated phrases); collage = 3+ lines scattered with tilts and different sizes (busy, chaotic); hero = one or two short lines filling the screen (titles, punchlines, the biggest moments); tower = each line stacked one or two words per row, every row the same width (rap punchlines, chants, short hard lines).\n'
 			+ '- layout, compositions in depth: tunnel = lines one behind another and the camera flies forward through them (driving, urgent); carousel = lines around a drum turning about its upright axis, the camera swinging round to face each while its neighbours curve away (turning points, memories going round; needs 2+ lines); reel = lines on a drum that rolls like a slot-machine reel, sung lines rolling away over the top (momentum, counting, fate; needs 3+ lines); crawl = lines lying on a plane tilted into the distance like an opening crawl (storytelling, intros, cinematic verses; needs 3+ lines).\n'
 			+ '- layout, one thought at a time (after the best typography edits; use these often, they keep the screen clean and snappy): slot = one line at a time in the same place inside a dark band drawn across the screen, each line replacing the last (quick exchanges, lists, a run of short lines; needs 2+ lines); poster = one line at a time as large as the screen allows on a flat colour field that cuts to another colour with every line (hooks, shouts, the loudest lines; short lines only); spread = one line at a time with its words set apart like stepping stones across the width, each landing on its beat (lines of 2 to 6 clearly sung words); cards = each line on its own colour card, dealt one over another (snapshots, memories, lists; needs 2+ lines); wordwall = the lines repeated across the whole screen as slanted outlines, each filling in where it is sung (chants, repeated phrases, choruses; needs 2+ short lines); arch = lines bent round a great circle like the lettering on a seal while the screen turns (cycles, seasons, going round; needs 2+ lines); pillar = lines set upright like banners, read top to bottom (only lines written wholly in Korean, Japanese or Chinese; poetic, traditional, quiet or solemn lines). The one-at-a-time compositions (slot, poster, spread) cannot hold lines sung over each other.\n'
-			+ '- Use many compositions: a song of 12 or more shots uses at least 8 different layouts, and no layout comes back within three shots, except that every return of a section (a chorus) uses the same layout as its first time.\n'
-			+ '- enter (' + list(vocab.enters) + '): how the camera reaches the shot. pan = sideways, drop / rise = down / up, roll = the screen turns 90 degrees, flip = turns 180 degrees, spin = a full barrel roll, whip = a very fast blurred pan, orbit = the camera swings around in 3D, tumble = it somersaults over the top, push = dolly forward through the previous shot, pull = dolly back out, through = dive into the last sung word and come out in the next shot, fade = a slow dissolve in place, panel = a colour panel sweeps across and reveals the next shot, cut = hard cut with a flash. Big moves (roll, flip, spin, orbit, tumble, panel, cut, through) belong at section changes.\n'
-			+ '- fx (' + list(vocab.fx) + '): how sung words appear. type = letter by letter, assemble = scattered letters fly together, drop = letters bounce down, wave = letters rise and float, track = letters close in from wide spacing, bounce = letters spring up, flicker = letters flicker on like neon, pop = scale up, slide = sweep in sideways, rise = float up, slam = smash in big, zoom = fly in from the camera, stretch = grows over a held note, flip = 3D flip-up, spin = 3D card spin, blur = focus pull, wipe = revealed left to right, glitch = RGB-split glitch. Match the vocal and the tempo. Set fx per shot and override it in "lines" only where a line differs.\n'
+			+ '- layout, editorial and graphic compositions: wave = the lines ride one long wave across the screen, each tilted with the slope it sits on, the camera rolling along the swell (flowing, sea, longing, a melody that rises and falls; needs 2+ lines); constellation = the lines scattered wide like stars on a chart, a thin line drawn from each to the next as it is sung (dreams, night, memories joined up, connections; needs 2+ lines); grid = a modular poster grid, each line set tight in its own cell with rules drawn between the cells (lists, statements, cool and graphic, rap; needs 2+ lines); corners = small type in the corners of the frame with the middle left open to the video (quiet verses, intros, intimate lines, letting the video speak; needs 2+ lines).\n'
+			+ '- Use many compositions: a song of 12 or more shots uses at least 10 different layouts, no layout takes more than about one shot in six, and no layout comes back within three shots, except that every return of a section (a chorus) uses the same layout as its first time.\n'
+			+ '- enter (' + list(vocab.enters) + '): how the camera reaches the shot. pan = sideways, drop / rise = down / up, drift = a slow diagonal glide, crane = the camera lifts up and over to the next shot, roll = the screen turns 90 degrees, twist = the screen turns 45 degrees on a diagonal move, flip = turns 180 degrees, spin = a full barrel roll, corkscrew = dolly forward while turning a full circle, whip = a very fast blurred pan, hop = the camera leaps back and across, seeing both shots on its way, orbit = the camera swings around in 3D, swoop = it banks down and round into the next shot, tumble = it somersaults over the top, push = dolly forward through the previous shot, pull = dolly back out, through = dive into the last sung word and come out in the next shot, fade = a slow dissolve in place, panel = a colour panel sweeps across and reveals the next shot, cut = hard cut with a flash. Big moves (roll, twist, flip, spin, corkscrew, orbit, swoop, tumble, hop, panel, cut, through) belong at section changes.\n'
+			+ '- fx (' + list(vocab.fx) + '): how sung words appear. Gentle: glide = drifts in from the side, a breath; rise = floats up; lift = rises out of a mask at its own baseline (the classic clean reveal); blur = focus pull; wipe = revealed left to right; open = opens from its middle outwards; track = letters close in from wide spacing; wave = letters rise and float; cascade = letters fall softly into place one after another; stretch = grows over a held note. Lively: door = turns in from its first letter like a door; swing = hangs from its first letter and swings down into place; skew = leans in like a brush stroke and straightens; flip = 3D flip-up; spin = 3D card spin; slide = sweeps in sideways; smear = a fast motion smear that snaps into shape; type = letter by letter; assemble = scattered letters fly together; swirl = letters spiral in; ripple = each letter grows up from the baseline in a ripple; drop = letters bounce down; bounce = letters spring up. Hits: pop = scale up with a bounce; glitch = RGB-split glitch; flicker = letters flicker on like neon; slam = smash in big with the camera shaking; zoom = fly in from the camera. Match the vocal and the tempo. Set fx per shot and override it in "lines" only where a line differs.\n'
+			+ '- Restraint: most words should arrive smoothly and stay readable. The hits are spice: slam and zoom at most about one shot in eight, only on the loudest moments (a drop, the last chorus, a shouted punchline) of songs with drive, never in two shots running and never in calm, dreamy, melancholic or slow songs; pop, glitch and flicker at most one shot in five and never right after another hit; cut and panel only at a real section change after a pause. A word slammed in again and again stops meaning anything.\n'
+			+ '- Range: across the song use many different fx (at least 8 in a song of 12 or more shots), entrances and accents; no fx, entrance or accent takes more than about one shot in five, and none follows itself (a returning section aside). Stay inside the song\'s mood while doing it: tender parts pick among the gentle ones, driving parts among the lively ones.\n'
 			+ '- type (' + list(vocab.types) + '): the face. impact = heavy display, the default for nearly every shot (it stays readable over video); serif = elegant Myeongjo / Mincho / Didone for a whole shot, rarely: a quiet bridge or the most tender lines, at most about one shot in seven and never two shots in a row; round = soft and friendly, only for playful songs. Never ask for thin or light type.\n'
 			+ '- serif: true sets only the shot\'s emphasised words in the serif against the heavy type. Use it for a few poignant words, not every shot.\n'
 			+ '- upper: true sets Latin, Cyrillic and Greek words in capitals (impact shots, hooks). bars: true brings cinematic letterbox bars for the shot (big, emotional moments). rule: true draws a thin line under each line as it is sung (quiet, elegant shots).\n'
@@ -822,12 +1076,16 @@
 		ENTERS,
 		FX,
 		LETTER_FX,
+		HARD_FX,
+		PUNCHY_FX,
+		HARD_ENTERS,
 		ACCENTS,
 		TYPES,
 		MAX_LINES,
 		PACE,
 		tempoOf,
 		syllablesOf,
+		singsInto,
 		localDirection,
 		normalizeDirection,
 		promptLines,
