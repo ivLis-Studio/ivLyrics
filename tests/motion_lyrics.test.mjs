@@ -1024,7 +1024,7 @@ test("every accent has its look, and the AI is told about every composition and 
 	for (const name of director.ACCENTS) assert.ok(prompt.includes(name + " = "), "the prompt explains " + name);
 	assert.ok(prompt.includes("(" + director.ACCENTS.join("|") + ")"));
 	for (const [name, most] of Object.entries(director.MAX_LINES)) if (most < 6) assert.ok(prompt.includes(name + " at most " + most), name + " limit");
-	assert.equal(director.VERSION, 7, "older cached directions are asked for again");
+	assert.equal(director.VERSION, 8, "older cached directions are asked for again");
 	assert.equal(typeof motion.strokeLevel, "function");
 });
 
@@ -1849,6 +1849,89 @@ test("motion colours follow the cover, the AI only adds a second colour apart fr
 	assert.ok(hue(grey) > 0.5 && hue(grey) < 0.7, "a grey cover gets a quiet blue, not a pink: " + grey);
 	assert.ok(Math.abs(hue(motion.paletteFrom("var(--spice-button-active, #ff809d)", ["#33cc88"])[0]) - hue("#33cc88")) < 0.02,
 		"without a cover colour the AI leads");
+});
+
+test("the AI reads the song's structure and energy and directs from a concept and a kit", () => {
+	const { motion, director } = load();
+	const texts = [["city", "lights", "calling"], ["I", "run", "tonight"], ["hold", "on", "to", "me"], ["we", "burn", "so", "bright"], ["quiet", "now"], ["hold", "on", "to", "me"], ["we", "burn", "so", "bright"]];
+	let at = 2000;
+	const model = motion.buildModel(texts.map((parts, index) => {
+		const entry = line(parts, at, { step: 380 });
+		at += parts.length * 380 + (index === 3 ? 6000 : 700);
+		return entry;
+	}));
+	const energy = [0.2, 0.3, 0.8, 0.9, 0.1, 0.85, 1];
+	const lines = director.promptLines(model, { energy });
+	assert.deepEqual(plain(lines.map((entry) => entry.energy)), [2, 3, 7, 8, 1, 8, 9], "energy 0 to 9");
+	assert.deepEqual(plain(lines.map((entry) => entry.chorus)), [false, false, true, true, false, true, true], "the recurring block");
+	assert.deepEqual(plain(lines.map((entry) => entry.repeats)), [null, null, null, null, null, 2, 3], "repeated lines name the first time");
+	assert.equal(director.promptLines(model)[0].energy, null, "no energy without the analysis");
+	const cuts = director.promptShots(model);
+	assert.ok(cuts.some((cut) => cut.chorus) && cuts.some((cut) => cut.repeated), "the suggested cuts mark the chorus and its return");
+	const prompt = director.buildPrompt({ title: "Night Run", lines, cuts, tempo: { tempo: "mid" } });
+	assert.ok(prompt.includes("#5 [") && prompt.includes("{energy 8, chorus, = #2"), "each line says what the song says about it");
+	assert.ok(prompt.includes("Suggested shots from the song's structure") && /\d+-\d+ C R/.test(prompt));
+	for (const needle of ['"concept"', '"kit"', '"sections"', "1. concept", "2. kit", "3. sections", "signature look"]) assert.ok(prompt.includes(needle), "the prompt asks for " + needle);
+	for (const quota of ["at least 10 different layouts", "at least 8 in a song", "at least 5 different ones", "at least 6 different exits"]) assert.ok(!prompt.includes(quota), "no quota: " + quota);
+
+	// Whatever has to be replaced (a layout following itself, too many of one fx) comes from the AI's own kit.
+	const many = motion.buildModel(Array.from({ length: 24 }, (_, index) => line(["line" + index, "goes", "on"], 2000 + index * 2200, { step: 380 })));
+	const kit = { layouts: ["lockup", "column", "stairs", "chain", "rails", "frame"], fx: ["lift", "wipe", "blur", "rise", "track"], accents: ["underline", "circle", "color"], exits: ["sink", "fade", "dissolve"], enters: ["pan", "drift", "crane", "rise"], holds: ["drift", "grow", "float"] };
+	const shots = [];
+	for (let from = 0; from < many.length; from += 2) shots.push({ from, to: from + 1, layout: "lockup", enter: "pan", fx: "lift", accent: "underline", exit: "sink", hold: "drift" });
+	const refined = director.normalizeDirection({ concept: "a quiet diary", kit, shots }, many, { seed: 4, tempo: { tempo: "mid", pace: 1 } });
+	assert.equal(refined.concept, "a quiet diary");
+	const kitted = refined.shots.filter((shot) => shot.source === "ai");
+	assert.ok(kitted.length >= 10);
+	for (const [kind, key] of [["layout", "layouts"], ["fx", "fx"], ["accent", "accents"], ["exit", "exits"], ["hold", "holds"]]) {
+		const outside = kitted.filter((shot) => !kit[key].includes(shot[kind]));
+		assert.ok(outside.length <= Math.ceil(kitted.length * 0.2), kind + " stays in the kit: " + kitted.map((shot) => shot[kind]).join(" "));
+	}
+	refined.shots.forEach((shot, index) => { if (index) assert.notEqual(shot.layout, refined.shots[index - 1].layout, "and still never follows itself"); });
+});
+
+test("instrumental breaks, the intro and the outro play scenes of their own", () => {
+	const { motion, director, type } = load();
+	const lyrics = [];
+	let at = 9000;
+	for (let index = 0; index < 12; index += 1) {
+		lyrics.push(line(["we", "keep", "on", "going" + index], at, { step: 400 }));
+		// A long break after line 5 (twenty seconds), a short one after line 8.
+		at += 4 * 400 + (index === 5 ? 21000 : index === 8 ? 6500 : 600);
+	}
+	const model = motion.buildModel(lyrics);
+	const plan = (raw, title = "Night Run") => motion.compose(model, director.normalizeDirection(raw, model, { seed: 7 }), {
+		width: 1440, height: 900, seed: 7, measure, typography: type.typographyOf(model, ""), title, artist: "Demo",
+	});
+	const scenes = plan(null).interludes;
+	assert.ok(scenes.length >= 4, scenes.map((scene) => scene.kind + ":" + scene.style).join(" "));
+	const [first] = scenes;
+	assert.equal(first.kind, "intro");
+	assert.equal(first.style, "title", "the intro opens on the title card");
+	assert.equal(first.title.title, "NIGHT RUN", "in capitals");
+	assert.equal(first.cue, model[0].start, "and counts in the first line");
+	const breaks = scenes.filter((scene) => scene.kind === "break");
+	assert.ok(breaks.length >= 2, "a long break plays more than one scene: " + breaks.map((scene) => scene.style));
+	assert.equal(breaks[breaks.length - 1].cue, model[6].start, "the last counts in the lyrics' return");
+	assert.ok(breaks.every((scene) => motion.INTERLUDE_STYLES.includes(scene.style)));
+	scenes.forEach((scene, index) => { if (index && scenes[index - 1].kind !== "intro") assert.notEqual(scene.style, scenes[index - 1].style, "never the same scene twice running"); });
+	const outro = scenes[scenes.length - 1];
+	assert.equal(outro.kind, "outro");
+	assert.equal(outro.style, "title", "the outro ends on the title card");
+	// No scene while lyrics are sung.
+	const built = plan(null);
+	for (const scene of built.interludes) {
+		for (const piece of built.lines) assert.ok(scene.end <= piece.start - 150 || scene.start >= piece.end + 150 || scene.kind === "outro", scene.style + " overlaps line " + piece.n);
+	}
+	// The cue dots count the lyrics in one beat at a time.
+	assert.ok(built.cues.length >= 2 && built.cues.every((cue) => cue.at > cue.from && cue.step >= 380 && cue.step <= 900));
+	// The AI may name the scene for the break after its shot; without a title there is no title card or marquee.
+	const named = plan({ shots: [{ from: 0, to: 5, layout: "column", interlude: "grid" }, { from: 6, to: 11, layout: "stairs" }] });
+	assert.equal(named.interludes.find((scene) => scene.kind === "break").style, "grid");
+	const untitled = plan(null, "");
+	assert.ok(untitled.interludes.every((scene) => scene.style !== "title" && scene.style !== "marquee"));
+	assert.ok(director.INTERLUDES.every((name) => motion.INTERLUDE_STYLES.includes(name)));
+	assert.ok(director.buildPrompt({ lines: [] }).includes('"interlude"'));
 });
 
 

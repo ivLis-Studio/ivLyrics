@@ -12158,6 +12158,336 @@ html.is-lp-view-switch::view-transition-new(root) {
   white-space: nowrap;
 }
 
+/* Interludes (MotionLyrics.js, paintInterludes): while no lyrics are on screen
+   (the intro, instrumental breaks, the outro) a scene of its own plays over the
+   video. Lines and outlines only: nothing opaque stands in front of the video. */
+.ivlyrics-motion-interludes {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.ivlyrics-motion-scene {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  color: #fff;
+}
+
+.ivlyrics-motion-scene.is-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.ivlyrics-motion-scene-title {
+  max-width: 88%;
+  line-height: 0.98;
+  text-align: center;
+  text-wrap: balance;
+  text-shadow: 0 0.04em 0.3em rgba(0, 0, 0, 0.35);
+  will-change: transform;
+}
+
+.ivlyrics-motion-scene-word {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.ivlyrics-motion-scene-letter {
+  display: inline-block;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.ivlyrics-motion-scene-rule {
+  width: min(46%, 520px);
+  height: 2px;
+  margin-top: clamp(14px, 2.4svh, 26px);
+  background: linear-gradient(90deg, transparent, var(--iv-motion-accent, #fff), transparent);
+  transform: scaleX(0);
+}
+
+.ivlyrics-motion-scene-artist {
+  margin-top: clamp(10px, 1.8svh, 20px);
+  color: rgba(255, 255, 255, 0.86);
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  opacity: 0;
+}
+
+.ivlyrics-motion-scene-ring,
+.ivlyrics-motion-scene-halo,
+.ivlyrics-motion-scene-core,
+.ivlyrics-motion-scene-motif,
+.ivlyrics-motion-scene-frame,
+.ivlyrics-motion-scene-sun,
+.ivlyrics-motion-scene-marquee,
+.ivlyrics-motion-scene-stripes {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  will-change: transform, opacity;
+}
+
+.ivlyrics-motion-scene-ring {
+  border: 2px solid var(--iv-motion-accent, #fff);
+  border-radius: 50%;
+  box-shadow: 0 0 18px color-mix(in srgb, var(--iv-motion-accent, #fff) 55%, transparent), inset 0 0 12px color-mix(in srgb, var(--iv-motion-accent, #fff) 30%, transparent);
+  opacity: 0;
+}
+
+.ivlyrics-motion-scene-halo {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.ivlyrics-motion-scene-halo svg,
+.ivlyrics-motion-scene-motif svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.ivlyrics-motion-scene-core {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 24px var(--iv-motion-accent, #fff);
+}
+
+.ivlyrics-motion-scene-eq {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 50%;
+  height: 44%;
+  display: flex;
+  align-items: center;
+  gap: 0.5%;
+  transform: translateY(-50%);
+}
+
+.ivlyrics-motion-scene-bar {
+  flex: 1 1 0;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(to top, var(--iv-motion-accent-2, #fff), var(--iv-motion-accent, #fff) 50%, var(--iv-motion-accent-2, #fff));
+  opacity: 0.72;
+  transform: scaleY(0.02);
+  will-change: transform;
+}
+
+.ivlyrics-motion-scene-axis {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.ivlyrics-motion-scene-marquee {
+  width: 170%;
+  display: flex;
+  flex-direction: column;
+}
+
+.ivlyrics-motion-scene-row {
+  line-height: 1.02;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+.ivlyrics-motion-scene-row.is-outline {
+  color: transparent;
+  -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.75);
+}
+
+.ivlyrics-motion-scene-row.is-fill {
+  color: color-mix(in srgb, var(--iv-motion-accent, #fff) 55%, transparent);
+}
+
+.ivlyrics-motion-scene-motif {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.ivlyrics-motion-scene-motif.is-alt {
+  color: var(--iv-motion-accent, #fff);
+}
+
+.ivlyrics-motion-scene-stripes {
+  height: 260%;
+}
+
+.ivlyrics-motion-scene-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  will-change: transform, opacity;
+}
+
+.ivlyrics-motion-scene-band.is-a {
+  background: color-mix(in srgb, var(--iv-motion-accent, #fff) 30%, transparent);
+}
+
+.ivlyrics-motion-scene-band.is-b {
+  background: color-mix(in srgb, var(--iv-motion-accent-2, #fff) 24%, transparent);
+}
+
+.ivlyrics-motion-scene-band.is-w {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ivlyrics-motion-scene-frame {
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  opacity: 0;
+}
+
+.ivlyrics-motion-scene-sun {
+  top: 52%;
+  border-radius: 50%;
+  background: linear-gradient(to bottom, var(--iv-motion-accent, #fff), var(--iv-motion-accent-2, #fff));
+  opacity: 0;
+  transform-origin: 50% 100%;
+  -webkit-mask-image: repeating-linear-gradient(to bottom, #000 0 9%, transparent 9% 12%);
+  mask-image: repeating-linear-gradient(to bottom, #000 0 9%, transparent 9% 12%);
+}
+
+.ivlyrics-motion-scene-floor {
+  position: absolute;
+  left: -60%;
+  top: 52%;
+  width: 220%;
+  height: 80%;
+  overflow: hidden;
+  transform: perspective(520px) rotateX(74deg);
+  transform-origin: 50% 0;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 22%);
+  mask-image: linear-gradient(to bottom, transparent, #000 22%);
+}
+
+.ivlyrics-motion-scene-lines {
+  position: absolute;
+  inset: -90px 0 0;
+  background-image:
+    linear-gradient(var(--iv-motion-accent, #fff) 4px, transparent 4px),
+    linear-gradient(90deg, color-mix(in srgb, var(--iv-motion-accent, #fff) 85%, transparent) 3px, transparent 3px);
+  background-size: 90px 90px;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--iv-motion-accent, #fff) 60%, transparent));
+  will-change: transform, opacity;
+}
+
+.ivlyrics-motion-scene-horizon {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 52%;
+  height: 2px;
+  background: var(--iv-motion-accent, #fff);
+  box-shadow: 0 0 22px 4px color-mix(in srgb, var(--iv-motion-accent, #fff) 60%, transparent);
+}
+
+.ivlyrics-motion-scene-count {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  display: grid;
+  font-family: var(--iv-motion-ui, sans-serif);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+}
+
+.ivlyrics-motion-scene-digits {
+  grid-area: 1 / 1;
+  text-align: center;
+  will-change: transform, opacity;
+}
+
+.ivlyrics-motion-scene-digits.is-outline {
+  color: transparent;
+  -webkit-text-stroke: 2px rgba(255, 255, 255, 0.85);
+}
+
+.ivlyrics-motion-scene-digits.is-fill {
+  color: var(--iv-motion-accent, #fff);
+}
+
+.ivlyrics-motion-scene-rail,
+.ivlyrics-motion-scene-track {
+  position: absolute;
+  left: 50%;
+  bottom: 24%;
+  width: 56%;
+  height: 2px;
+  transform: translateX(-50%);
+}
+
+.ivlyrics-motion-scene-rail {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.ivlyrics-motion-scene-track {
+  background: rgba(255, 255, 255, 0.9);
+  transform-origin: 0 50%;
+}
+
+.ivlyrics-motion-scene-wave {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  overflow: visible;
+  filter: drop-shadow(0 0 8px currentColor);
+  will-change: transform;
+}
+
+.ivlyrics-motion-scene-wave.is-0 {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.ivlyrics-motion-scene-wave.is-1 {
+  color: var(--iv-motion-accent, #fff);
+  opacity: 0.8;
+}
+
+.ivlyrics-motion-scene-wave.is-2 {
+  color: var(--iv-motion-accent-2, #fff);
+  opacity: 0.55;
+}
+
+/* The cue dots count the lyrics in: one goes out on each beat. */
+.ivlyrics-motion-cue {
+  position: absolute;
+  left: 50%;
+  top: 74%;
+  display: flex;
+  gap: 14px;
+  opacity: 0;
+  transform: translateX(-50%);
+}
+
+.ivlyrics-motion-cue-dot {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.ivlyrics-motion-cue-dot.is-lit {
+  border-color: var(--iv-motion-accent, #fff);
+  background: var(--iv-motion-accent, #fff);
+  box-shadow: 0 0 14px var(--iv-motion-accent, #fff);
+}
+
 /* The video background turns and zooms with the motion camera. */
 .ivlyrics-video-background-camera {
   position: absolute;

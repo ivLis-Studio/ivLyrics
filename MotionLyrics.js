@@ -635,6 +635,7 @@
 	// ---------------------------------------------------------------------
 
 	const typeLib = () => root.ivLyricsMotionType;
+	const shapesLib = () => root.ivLyricsMotionShapes;
 	const UI_FONT = '"Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Hiragino Sans", sans-serif';
 	const FALLBACK_SPEC = Object.freeze({ key: "fallback", script: "latin", kind: "impact", family: UI_FONT, load: null, weight: 800, style: "normal", spacing: 0, lineHeight: 1.08, scale: 1, canvasFont: "normal 800 100px sans-serif" });
 	const fallbackMeasure = (text, size) => graphemesOf(text).reduce((sum, piece) => sum + (CJK_RE.test(piece) || /\p{Script=Hangul}/u.test(piece) ? 1 : 0.56), 0) * size;
@@ -660,7 +661,7 @@
 	 * The faces a direction will set, each with the characters it sets, so
 	 * they can load before the song is composed.
 	 */
-	const fontNeeds = (model, direction, typography) => {
+	const fontNeeds = (model, direction, typography, extra = []) => {
 		const needs = new Map();
 		const font = createFontBook();
 		const add = (spec, text) => {
@@ -689,6 +690,15 @@
 				}));
 			}
 			if (shot.echo) add(font(typeLib()?.scriptOf?.(shot.echo) || "latin", type, "display"), shot.echo);
+		}
+		// Other texts the edit sets (the title cards and marquees of the interludes) in the song's main script's faces.
+		const main = typography?.find?.(Boolean)?.script || "latin";
+		for (const text of extra) {
+			const value = String(text ?? "").trim();
+			if (!value) continue;
+			const script = typeLib()?.scriptOf?.(value, "", main) || main;
+			add(font(script, "impact", "display"), value + casedText(value, script, true));
+			add(font(script, "impact", "light"), value + casedText(value, script, true));
 		}
 		return needs;
 	};
@@ -2892,6 +2902,166 @@
 	};
 
 	// ---------------------------------------------------------------------
+	// Interludes: the intro, instrumental breaks and the outro
+	// ---------------------------------------------------------------------
+
+	// While no lyrics are on screen (the board has faded) the screen plays a
+	// scene of its own over the video, never the lyrics: the song's title
+	// card (intro and outro) or one of these (paintInterludes):
+	// pulse = rings bursting from the centre on the beat; eq = equalizer bars;
+	// marquee = the title in huge rows sliding across; orbit = the song's
+	// motifs orbiting; stripes = diagonal colour bands sweeping past a
+	// breathing frame; grid = a neon grid floor rushing at the camera;
+	// count = big numbers counting down to the lyrics; wave = oscilloscope waves.
+	const INTERLUDE_STYLES = Object.freeze(["pulse", "eq", "marquee", "orbit", "stripes", "grid", "count", "wave"]);
+	// Which scenes suit a song's mood (the AI may name one per shot: shot.interlude).
+	const INTERLUDE_WEIGHTS = Object.freeze({
+		calm: { wave: 1.4, orbit: 1.2, pulse: 1, marquee: 0.6, count: 0.5, stripes: 0.3, eq: 0.3, grid: 0.1 },
+		dreamy: { orbit: 1.4, wave: 1.3, pulse: 1, marquee: 0.6, stripes: 0.4, count: 0.4, eq: 0.3, grid: 0.3 },
+		melancholic: { wave: 1.4, pulse: 1.1, orbit: 0.8, marquee: 0.7, count: 0.5, eq: 0.3, stripes: 0.2, grid: 0.1 },
+		warm: { orbit: 1.1, wave: 1, pulse: 1, marquee: 0.9, stripes: 0.7, count: 0.6, eq: 0.6, grid: 0.3 },
+		playful: { orbit: 1.3, stripes: 1.3, marquee: 1.1, count: 0.9, eq: 0.8, pulse: 0.7, wave: 0.5, grid: 0.5 },
+		energetic: { eq: 1.3, stripes: 1.2, grid: 1.1, count: 1, marquee: 1, pulse: 0.9, orbit: 0.6, wave: 0.4 },
+		intense: { eq: 1.3, grid: 1.2, count: 1.1, stripes: 1, pulse: 1, marquee: 0.8, wave: 0.4, orbit: 0.4 },
+		dark: { grid: 1.3, pulse: 1.1, wave: 1, eq: 1, count: 0.9, marquee: 0.7, stripes: 0.5, orbit: 0.4 },
+	});
+	// Stretches shorter than this are left to the video; one longer than SCENE_MAX_MS plays several scenes.
+	const INTERLUDE_MIN_MS = 2400;
+	const SCENE_MAX_MS = 9500;
+	const SCENE_FADE_MS = 520;
+	// A long intro opens on the title card for this long; the outro's end card holds this long.
+	const TITLE_CARD_MS = 6500;
+	const END_CARD_MS = 9000;
+	// The beats counted in (cue dots) before the lyrics come back.
+	const CUE_BEATS = 3;
+	const DEFAULT_BPM = Object.freeze({ slow: 74, mid: 100, fast: 128, rap: 92 });
+	// What an orbit sends round when the direction names no motifs, by mood.
+	const ORBIT_MOTIFS = Object.freeze({
+		calm: ["moon", "sparkle", "ring", "dot"],
+		dreamy: ["sparkle", "moon", "cloud", "halo"],
+		melancholic: ["drop", "moon", "ring", "dot"],
+		warm: ["sun", "heart", "sparkle", "ring"],
+		playful: ["star", "heart", "flower", "sparkle"],
+		energetic: ["bolt", "star", "burst", "zigzag"],
+		intense: ["bolt", "flame", "cross", "burst"],
+		dark: ["eye", "moon", "cross", "spiral"],
+	});
+
+	const pickWeighted = (random, table) => {
+		const entries = Object.entries(table).filter(([, weight]) => weight > 0);
+		const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
+		let roll = random() * total;
+		for (const [name, weight] of entries) {
+			roll -= weight;
+			if (roll <= 0) return name;
+		}
+		return entries[entries.length - 1]?.[0] || null;
+	};
+
+	/**
+	 * The song's title as the interludes set it: in the display face of its
+	 * script (capitals where the script has them), the card's size, and the
+	 * marquee's repeated row with its width.
+	 */
+	const titleSetOf = (title, artist, ctx) => {
+		const name = String(title ?? "").trim();
+		if (!name) return null;
+		const by = String(artist ?? "").trim();
+		const main = ctx.typography.find(Boolean)?.script || "latin";
+		const script = typeLib()?.scriptOf?.(name, ctx.songLang, main) || main;
+		const spec = ctx.font(script, "impact", "display");
+		const cased = casedText(name, script, true);
+		const natural = Math.max(1, ctx.measure(cased, 100, spec)) / 100;
+		const size = clamp(Math.min(ctx.H * 0.23, (ctx.W * 0.84) / natural), Math.min(ctx.F * 0.8, ctx.H * 0.2), ctx.H * 0.24);
+		const artistSpec = ctx.font(typeLib()?.scriptOf?.(by, ctx.songLang, main) || main, "impact", "light");
+		const unit = cased + (by ? "  \u00b7  " + casedText(by, script, true) : "") + "  \u00b7  ";
+		const rowSize = ctx.H * 0.17;
+		return { title: cased, artist: by, spec, artistSpec, size, unit, rowSize, unitWidth: Math.max(ctx.W * 0.25, ctx.measure(unit, rowSize, spec)) };
+	};
+
+	/**
+	 * The scenes the stretches without lyrics play: the intro (a title card,
+	 * then scenes if it is long), each instrumental break (a scene per
+	 * SCENE_MAX_MS, never the same twice running) and the outro (an end
+	 * card). Each knows when the lyrics come back (cue), for the count and
+	 * the cue dots. Pure: the same plan gives the same scenes.
+	 */
+	const interludesOf = (plan, ctx, direction, options = {}) => {
+		const { lines, boards } = plan;
+		if (!lines.length) return [];
+		const random = createRandom(((Number(options.seed) >>> 0) || 1) ^ 0x51ed27);
+		const weights = INTERLUDE_WEIGHTS[plan.mood] || INTERLUDE_WEIGHTS.warm;
+		const titled = titleSetOf(options.title, options.artist, ctx);
+		const named = [...new Set((direction?.shots || []).flatMap((shot) => (Array.isArray(shot.motifs) ? shot.motifs : [])))]
+			.filter((name) => shapesLib()?.motifOf?.(name));
+		const motifs = (named.length >= 2 ? named : [...named, ...(ORBIT_MOTIFS[plan.mood] || ORBIT_MOTIFS.warm)]).slice(0, 5);
+		const beat = 60000 / clamp(Number(direction?.tempo?.bpm) || DEFAULT_BPM[plan.tempo] || 100, 60, 190);
+		const windows = [];
+		const first = lines[0];
+		// A scene plays on until shortly before the lyrics come in (over the faint preview of the next board), so the screen is never left waiting.
+		const until = (shown, next) => Math.max(shown, Math.min(next - 450, shown + 1800));
+		const introEnd = until(boards[first.board].appear + 400, first.start);
+		if (introEnd >= INTERLUDE_MIN_MS) windows.push({ kind: "intro", start: 0, end: introEnd, cue: first.start, wanted: null });
+		lines.forEach((line, index) => {
+			const rest = line.rest;
+			if (!rest) return;
+			const wanted = boards[line.board]?.interlude || null;
+			const next = lines[index + 1];
+			if (Number.isFinite(rest.end)) windows.push({ kind: "break", start: rest.start + 250, end: next ? until(rest.end + 300, next.start) : rest.end + 300, cue: next?.start ?? null, wanted });
+			else windows.push({ kind: "outro", start: rest.start + 300, end: rest.start + 300 + END_CARD_MS, cue: null, wanted });
+		});
+		const scenes = [];
+		let previous = null;
+		const pick = (wanted, counts) => {
+			const usable = (name) => INTERLUDE_STYLES.includes(name) && name !== previous && (name !== "marquee" || titled) && (name !== "count" || counts);
+			if (usable(wanted)) return wanted;
+			const table = {};
+			for (const name of INTERLUDE_STYLES) if (usable(name)) table[name] = weights[name] || 0.3;
+			return pickWeighted(random, table) || "pulse";
+		};
+		for (const window of windows) {
+			if (window.end - window.start < INTERLUDE_MIN_MS) continue;
+			const parts = [];
+			let at = window.start;
+			if (titled && (window.kind === "intro" || window.kind === "outro")) {
+				const length = window.kind === "outro" || window.end - window.start <= SCENE_MAX_MS ? window.end - window.start : TITLE_CARD_MS;
+				parts.push({ style: "title", start: at, end: at + length });
+				at += length;
+			}
+			const left = window.end - at;
+			if (left >= INTERLUDE_MIN_MS) {
+				const count = Math.max(1, Math.round(left / SCENE_MAX_MS));
+				for (let part = 0; part < count; part += 1) parts.push({ style: null, start: at + (left * part) / count, end: at + (left * (part + 1)) / count });
+			} else if (parts.length) parts[parts.length - 1].end = window.end;
+			parts.forEach((part, order) => {
+				const last = order === parts.length - 1;
+				const cue = last && Number.isFinite(window.cue) ? window.cue : null;
+				const style = part.style || pick(order === parts.length - 1 || order === 0 ? window.wanted : null, cue !== null);
+				previous = style;
+				scenes.push({
+					index: scenes.length,
+					kind: window.kind,
+					style,
+					start: part.start,
+					end: part.end,
+					cue,
+					beat,
+					seed: (random() * 0xffffffff) >>> 0,
+					motifs,
+					title: titled,
+				});
+			});
+		}
+		return scenes;
+	};
+
+	/** The cue dots before lyrics come back after an interlude: when each lights (one a beat) and when they go. */
+	const cuesOf = (scenes) => scenes.filter((scene) => scene.cue !== null).map((scene) => {
+		const step = clamp(scene.beat, 380, 900);
+		return { at: scene.cue, step, from: scene.cue - CUE_BEATS * step - 360 };
+	});
+
+	// ---------------------------------------------------------------------
 	// Pieces: a lyric line need not reach the screen all at once
 	// ---------------------------------------------------------------------
 
@@ -3157,6 +3327,8 @@
 				serif: shot.serif === true,
 				upper: shot.upper === true,
 				bars: shot.bars === true,
+				// The scene an instrumental break after the shot's last line plays (interludesOf), if the AI named one.
+				interlude: INTERLUDE_STYLES.includes(shot.interlude) ? shot.interlude : null,
 				rule: shot.rule === true,
 				// A composition that sets its own slant (a word wall) keeps it.
 				dutch: layout.tilt ?? (Number(shot.dutch) || 0),
@@ -3189,9 +3361,12 @@
 			lines: lines.filter((line) => line.board >= 0),
 			pulses: pulsesInMs(options.analysis),
 		};
-		if (!plan.lines.length) return { ...plan, flashes: [], slams: [], panels: [], bars: [] };
+		if (!plan.lines.length) return { ...plan, flashes: [], slams: [], panels: [], bars: [], interludes: [], cues: [] };
 		placeBoards(boards, ctx, seed);
 		timeline(plan, ctx);
+		// The stretches without lyrics play scenes of their own (title cards, beat scenes, a count-in).
+		plan.interludes = interludesOf(plan, ctx, direction, { seed, title: options.title, artist: options.artist });
+		plan.cues = cuesOf(plan.interludes);
 		return plan;
 	};
 
@@ -4271,6 +4446,8 @@
 		exitCharFrame,
 		EXIT_NAMES: [...EXIT_NAMES],
 		LETTER_EXITS,
+		INTERLUDE_STYLES,
+		interludesOf,
 		revealClip,
 		fillFrame,
 		travelFrame,
@@ -4293,7 +4470,7 @@
 	 * provider, { status: "off" } without a motion-capable provider, or
 	 * { status: "failed", error }.
 	 */
-	const requestDirection = ({ trackUri, model, title = "", artist = "", tempo = null, songLang = "" }) => {
+	const requestDirection = ({ trackUri, model, title = "", artist = "", tempo = null, songLang = "", energy = null }) => {
 		const director = root.ivLyricsMotionDirector;
 		if (!director || !trackUri || !model?.length) return Promise.resolve({ status: "off" });
 		const sourceHash = hashString(modelSignature(model)).toString(36) + "-v" + director.VERSION;
@@ -4314,7 +4491,9 @@
 			const raw = await manager.generateMotionDirection({
 				title,
 				artist,
-				lines: director.promptLines(model),
+				// The lines with what the song says about them (energy, choruses, repeats, held words) and the cuts its structure suggests.
+				lines: director.promptLines(model, { energy }),
+				cuts: director.promptShots?.(model) || [],
 				vocabulary: director.vocabulary(),
 				tempo: tempo || director.tempoOf(model),
 				language: songLang,
@@ -4458,7 +4637,7 @@
 		element.appendChild(shape);
 	};
 
-	const createEngine = ({ stage, viewport, camera, scrim, wash, flood, flash, panel, bars, subtitle, live, hudShot, hudTime, defs }) => {
+	const createEngine = ({ stage, viewport, camera, scrim, wash, flood, interlude, flash, panel, bars, subtitle, live, hudShot, hudTime, defs }) => {
 		const document = root.document;
 		const shapes = root.ivLyricsMotionShapes;
 		const outlineOf = createOutlines(document, defs);
@@ -4480,7 +4659,7 @@
 		let lastFrameAt = 0;
 		let swapFlashAt = -Infinity;
 		const mounted = new Map();
-		const cache = { camera: {}, viewport: {}, flash: {}, wash: {}, background: {}, hud: {}, panel: {}, bars: {}, rest: {}, flood: {} };
+		const cache = { camera: {}, viewport: {}, flash: {}, wash: {}, background: {}, hud: {}, panel: {}, bars: {}, rest: {}, flood: {}, cue: {} };
 		const write = (store, key, value, apply) => {
 			if (store[key] === value) return;
 			store[key] = value;
@@ -4527,6 +4706,411 @@
 			for (const index of [...mounted.keys()]) unmount(index);
 			currentLine = -2;
 			currentBoard = -2;
+			clearScenes();
+		};
+		// ---- Interludes: scenes over the video while no lyrics are on screen (interludesOf)
+		const scenesShown = new Map();
+		let cueEl = null;
+		const node = (tag, className, parent) => {
+			const element = document.createElement(tag);
+			if (className) element.className = className;
+			parent?.appendChild(element);
+			return element;
+		};
+		/** Beats within span ms before time, latest first: the song's analysis, or without one the tempo's. */
+		const beatsBefore = (scene, time, span) => {
+			const found = [];
+			if (pulses?.times?.length) {
+				const times = pulses.times;
+				let low = 0;
+				let high = times.length;
+				while (low < high) {
+					const middle = (low + high) >>> 1;
+					if (times[middle] <= time) low = middle + 1;
+					else high = middle;
+				}
+				for (let index = low - 1; index >= 0 && time - times[index] <= span && found.length < 16; index -= 1) {
+					found.push({ time: times[index], strength: pulses.strengths[index] || 0.5 });
+				}
+				return found;
+			}
+			const count = Math.floor((time - scene.start) / scene.beat);
+			for (let index = count; index >= 0 && time - (scene.start + index * scene.beat) <= span && found.length < 16; index -= 1) {
+				found.push({ time: scene.start + index * scene.beat, strength: index % 4 === 0 ? 1 : 0.62 });
+			}
+			return found;
+		};
+		/** How hard the beat hits now (0 to 1), dying away after each beat. */
+		const beatLevel = (scene, time) => {
+			let level = 0;
+			for (const hit of beatsBefore(scene, time, 600)) level = Math.max(level, clamp01(hit.strength * 1.15) * Math.exp(-(time - hit.time) / 190));
+			return level;
+		};
+
+		const mountScene = (scene) => {
+			const W = plan.W;
+			const H = plan.H;
+			const least = Math.min(W, H);
+			const random = createRandom(scene.seed);
+			const el = node("div", "ivlyrics-motion-scene is-" + scene.style);
+			const state = { el, cache: {} };
+			const part = (element) => ({ el: element, cache: {} });
+			const halo = (size) => {
+				const ring = node("div", "ivlyrics-motion-scene-halo", el);
+				ring.style.width = round(size) + "px";
+				ring.style.height = round(size) + "px";
+				if (shapes?.createSvg) ring.appendChild(shapes.createSvg(document, shapes.motifOf("halo"), size).svg);
+				return part(ring);
+			};
+			switch (scene.style) {
+				case "title": {
+					const set = scene.title;
+					const block = node("div", "ivlyrics-motion-scene-title", el);
+					applyFont(block, set.spec);
+					block.style.fontSize = round(set.size) + "px";
+					state.block = part(block);
+					state.letters = [];
+					for (const chunk of set.title.split(/(\s+)/u)) {
+						if (!chunk) continue;
+						if (/^\s+$/u.test(chunk)) {
+							block.appendChild(document.createTextNode(" "));
+							continue;
+						}
+						const word = node("span", "ivlyrics-motion-scene-word", block);
+						for (const grapheme of graphemesOf(chunk)) {
+							const letter = node("span", "ivlyrics-motion-scene-letter", word);
+							letter.textContent = grapheme;
+							state.letters.push(part(letter));
+						}
+					}
+					state.rule = part(node("div", "ivlyrics-motion-scene-rule", el));
+					if (set.artist) {
+						const by = node("div", "ivlyrics-motion-scene-artist", el);
+						applyFont(by, set.artistSpec);
+						by.style.fontSize = round(clamp(set.size * 0.22, 13, 42)) + "px";
+						by.textContent = set.artist;
+						state.artist = part(by);
+					}
+					break;
+				}
+				case "pulse": {
+					state.rings = Array.from({ length: 7 }, () => {
+						const ring = node("div", "ivlyrics-motion-scene-ring", el);
+						ring.style.width = round(least * 0.5) + "px";
+						ring.style.height = round(least * 0.5) + "px";
+						return part(ring);
+					});
+					state.halo = halo(least * 0.62);
+					state.core = part(node("div", "ivlyrics-motion-scene-core", el));
+					break;
+				}
+				case "eq": {
+					const row = node("div", "ivlyrics-motion-scene-eq", el);
+					state.bars = Array.from({ length: 36 }, () => part(node("div", "ivlyrics-motion-scene-bar", row)));
+					node("div", "ivlyrics-motion-scene-axis", el);
+					break;
+				}
+				case "marquee": {
+					const set = scene.title;
+					const field = node("div", "ivlyrics-motion-scene-marquee", el);
+					field.style.transform = "translate(-50%,-50%) rotate(" + round((random() < 0.5 ? -1 : 1) * between(random, 5, 9), 2) + "deg)";
+					const copies = Math.ceil((W * 1.9) / set.unitWidth) + 2;
+					state.unit = set.unitWidth;
+					state.rows = Array.from({ length: 4 }, (_, index) => {
+						const row = node("div", "ivlyrics-motion-scene-row" + (index % 2 ? " is-fill" : " is-outline"), field);
+						applyFont(row, set.spec);
+						row.style.fontSize = round(set.rowSize) + "px";
+						row.textContent = set.unit.repeat(copies);
+						return part(row);
+					});
+					break;
+				}
+				case "orbit": {
+					const names = scene.motifs.filter((name) => shapes?.motifOf?.(name));
+					state.items = Array.from({ length: 8 }, (_, index) => {
+						const item = node("div", "ivlyrics-motion-scene-motif" + (index % 3 === 1 ? " is-alt" : ""), el);
+						const size = least * between(random, 0.07, 0.14);
+						item.style.width = round(size) + "px";
+						item.style.height = round(size) + "px";
+						const motif = shapes?.motifOf?.(names[index % Math.max(1, names.length)] || "sparkle");
+						if (motif) item.appendChild(shapes.createSvg(document, motif, size).svg);
+						const entry = part(item);
+						entry.orbit = {
+							radius: least * (0.17 + 0.045 * index),
+							speed: (index % 2 ? 1 : -1) * between(random, 7, 16),
+							phase: random() * 360,
+							spin: (random() < 0.5 ? -1 : 1) * between(random, 10, 40),
+							tilt: between(random, 0.5, 0.72),
+						};
+						return entry;
+					});
+					state.halo = halo(least * 0.72);
+					break;
+				}
+				case "stripes": {
+					const count = 12;
+					state.spacing = W * 0.17;
+					const field = node("div", "ivlyrics-motion-scene-stripes", el);
+					field.style.width = round(state.spacing * count) + "px";
+					field.style.transform = "translate(-50%,-50%) rotate(" + round((random() < 0.5 ? -1 : 1) * between(random, 18, 30), 2) + "deg)";
+					state.bands = Array.from({ length: count }, (_, index) => {
+						const band = node("div", "ivlyrics-motion-scene-band is-" + ["a", "b", "w"][index % 3], field);
+						band.style.width = round(W * 0.075) + "px";
+						return part(band);
+					});
+					state.frames = [0.46, 0.32].map((share) => {
+						const frameEl = node("div", "ivlyrics-motion-scene-frame", el);
+						frameEl.style.width = round(W * share) + "px";
+						frameEl.style.height = round(H * share * 1.05) + "px";
+						return part(frameEl);
+					});
+					break;
+				}
+				case "grid": {
+					state.sun = part(node("div", "ivlyrics-motion-scene-sun", el));
+					state.sun.el.style.width = round(least * 0.46) + "px";
+					state.sun.el.style.height = round(least * 0.46) + "px";
+					const floor = node("div", "ivlyrics-motion-scene-floor", el);
+					state.lines = part(node("div", "ivlyrics-motion-scene-lines", floor));
+					node("div", "ivlyrics-motion-scene-horizon", el);
+					state.cell = 90;
+					break;
+				}
+				case "count": {
+					const digits = node("div", "ivlyrics-motion-scene-count", el);
+					digits.style.fontSize = round(H * 0.42) + "px";
+					state.outline = part(node("span", "ivlyrics-motion-scene-digits is-outline", digits));
+					state.fill = part(node("span", "ivlyrics-motion-scene-digits is-fill", digits));
+					node("div", "ivlyrics-motion-scene-rail", el);
+					state.track = part(node("div", "ivlyrics-motion-scene-track", el));
+					break;
+				}
+				case "wave":
+				default: {
+					state.waves = [0.34, 0.22, 0.47].map((share, index) => {
+						const length = W * share;
+						const amplitude = H * (0.09 + index * 0.03);
+						const width = W * 2 + length * 2;
+						const svg = document.createElementNS(SVG_NS, "svg");
+						svg.setAttribute("class", "ivlyrics-motion-scene-wave is-" + index);
+						svg.setAttribute("viewBox", "0 " + round(-amplitude * 1.6) + " " + round(width) + " " + round(amplitude * 3.2));
+						svg.setAttribute("width", String(round(width)));
+						svg.setAttribute("height", String(round(amplitude * 3.2)));
+						svg.setAttribute("preserveAspectRatio", "none");
+						svg.setAttribute("aria-hidden", "true");
+						const path = document.createElementNS(SVG_NS, "path");
+						let d = "M0 0Q" + round(length / 4) + " " + round(-amplitude) + " " + round(length / 2) + " 0";
+						for (let x = length; x <= width + 0.5; x += length / 2) d += "T" + round(x) + " 0";
+						path.setAttribute("d", d);
+						path.setAttribute("fill", "none");
+						path.setAttribute("stroke", "currentColor");
+						path.setAttribute("stroke-width", index === 1 ? "4" : "3");
+						path.setAttribute("stroke-linecap", "round");
+						path.setAttribute("vector-effect", "non-scaling-stroke");
+						svg.appendChild(path);
+						el.appendChild(svg);
+						const entry = part(svg);
+						entry.length = length;
+						return entry;
+					});
+					break;
+				}
+			}
+			return state;
+		};
+
+		const paintScene = (state, scene, time) => {
+			const W = plan.W;
+			const since = time - scene.start;
+			const span = Math.max(1, scene.end - scene.start);
+			const beat = beatLevel(scene, time);
+			const move = (entry, value) => write(entry.cache, "transform", value, (next) => { entry.el.style.transform = next; });
+			const fade = (entry, value) => write(entry.cache, "opacity", round(clamp01(value), 3), (next) => { entry.el.style.opacity = String(next); });
+			switch (scene.style) {
+				case "title": {
+					// The letters rise in one after another, drift apart as the card holds, and go before the lyrics come.
+					const count = state.letters.length;
+					const step = Math.min(55, 900 / Math.max(1, count));
+					const drift = 0.05 * easeInOutSine(clamp01(since / span));
+					state.letters.forEach((letter, index) => {
+						const k = easeOutExpo(clamp01((since - 140 - index * step) / 640));
+						const out = easeInCubic(clamp01((time - (scene.end - 950 + index * step * 0.5)) / 460));
+						fade(letter, k * (1 - out));
+						move(letter, "translate(" + round((index - (count - 1) / 2) * drift, 3) + "em," + round((1 - k) * 0.6 - out * 0.35, 3) + "em) scale(" + round(1 + (1 - k) * 0.25, 3) + ")");
+					});
+					move(state.block, "scale(" + round(1 + 0.035 * clamp01(since / span) + beat * 0.012, 4) + ")");
+					const open = easeInOutCubic(clamp01((since - 380) / 820)) * (1 - easeInCubic(clamp01((time - (scene.end - 700)) / 420)));
+					move(state.rule, "scaleX(" + round(open, 3) + ")");
+					if (state.artist) {
+						const k = easeOutCubic(clamp01((since - 650) / 600)) * (1 - clamp01((time - (scene.end - 800)) / 420));
+						fade(state.artist, k);
+						move(state.artist, "translateY(" + round((1 - k) * 0.6, 3) + "em)");
+					}
+					break;
+				}
+				case "pulse": {
+					// A ring bursts out from the centre on every beat.
+					const hits = beatsBefore(scene, time, 1800).filter((hit) => hit.strength >= 0.3);
+					state.rings.forEach((ring, index) => {
+						const hit = hits[index];
+						if (!hit) {
+							fade(ring, 0);
+							return;
+						}
+						const t = clamp01((time - hit.time) / 1800);
+						fade(ring, (0.4 + 0.5 * clamp01(hit.strength)) * Math.pow(1 - t, 1.4));
+						move(ring, "translate(-50%,-50%) scale(" + round(0.22 + 2.1 * easeOutCubic(t), 3) + ")");
+					});
+					fade(state.halo, 0.55);
+					move(state.halo, "translate(-50%,-50%) rotate(" + round((since * 0.014) % 360, 2) + "deg) scale(" + round(1 + beat * 0.07, 3) + ")");
+					move(state.core, "translate(-50%,-50%) scale(" + round(0.6 + beat * 0.9, 3) + ")");
+					break;
+				}
+				case "eq": {
+					const count = state.bars.length;
+					state.bars.forEach((bar, index) => {
+						const phase = index / count;
+						const swell = 0.5 + 0.5 * Math.sin(time * 0.0021 + phase * 6.283 + (scene.seed % 7));
+						const jitter = 0.5 + 0.5 * Math.sin(time * 0.0113 * (1 + (index % 5) * 0.17) + index * 1.7);
+						const middle = 1 - Math.abs(phase - 0.5) * 1.1;
+						const grow = easeOutCubic(clamp01((since - Math.abs(index - count / 2) * 18) / 520));
+						const height = clamp((0.05 + 0.22 * swell * middle + beat * (0.35 + 0.55 * jitter) * middle + 0.08 * jitter) * grow, 0.02, 1);
+						move(bar, "scaleY(" + round(height, 3) + ")");
+					});
+					break;
+				}
+				case "marquee": {
+					// The title in huge rows sliding past each other, outlined and filled in turn.
+					state.rows.forEach((row, index) => {
+						const way = index % 2 ? 1 : -1;
+						const travel = (way * W * (0.045 + index * 0.012) * since) / 1000 + index * state.unit * 0.37;
+						const shift = ((travel % state.unit) + state.unit) % state.unit;
+						const rise = (1 - easeOutExpo(clamp01((since - index * 110) / 760))) * 0.8;
+						move(row, "translate(" + round(shift - state.unit, 1) + "px," + round(rise, 3) + "em)");
+					});
+					break;
+				}
+				case "orbit": {
+					// The song's motifs on tilted orbits, larger and brighter as they come round to the front.
+					state.items.forEach((item, index) => {
+						const { radius, speed, phase, spin, tilt } = item.orbit;
+						const angle = ((phase + (speed * since) / 1000) * Math.PI) / 180;
+						const near = (Math.sin(angle) + 1) / 2;
+						const pop = easeOutBack(clamp01((since - index * 120) / 560));
+						const scale = Math.max(0, pop * (0.75 + 0.4 * near) * (1 + (index % 2 ? beat * 0.3 : 0)));
+						fade(item, (0.4 + 0.5 * near) * clamp01(pop));
+						move(item, "translate(-50%,-50%) translate(" + round(Math.cos(angle) * radius) + "px," + round(Math.sin(angle) * radius * tilt) + "px) rotate("
+							+ round((spin * since) / 1000 + phase, 1) + "deg) scale(" + round(scale, 3) + ")");
+					});
+					fade(state.halo, 0.5);
+					move(state.halo, "translate(-50%,-50%) rotate(" + round((-since * 0.01) % 360, 2) + "deg) scale(" + round(1 + beat * 0.05, 3) + ")");
+					break;
+				}
+				case "stripes": {
+					const total = state.spacing * state.bands.length;
+					const travel = (since / 1000) * W * 0.11;
+					state.bands.forEach((band, index) => {
+						const x = (((index * state.spacing + travel) % total) + total) % total;
+						move(band, "translateX(" + round(x) + "px)");
+						fade(band, 0.72 + (index % 2 ? beat * 0.28 : 0));
+					});
+					state.frames.forEach((frameEntry, index) => {
+						const way = index ? -1 : 1;
+						const k = easeOutExpo(clamp01((since - index * 160) / 700));
+						move(frameEntry, "translate(-50%,-50%) rotate(" + round(way * since * 0.004, 2) + "deg) scale(" + round((0.6 + 0.4 * k) * (1 + way * beat * 0.05), 3) + ")");
+						fade(frameEntry, k * 0.85);
+					});
+					break;
+				}
+				case "grid": {
+					// The floor rushes at the camera half a cell a beat; it flares on the beat.
+					const travel = (since / scene.beat) * state.cell * 0.5;
+					move(state.lines, "translateY(" + round(travel % state.cell, 1) + "px)");
+					fade(state.lines, 0.7 + beat * 0.3);
+					const rise = easeOutCubic(clamp01(since / 1200));
+					fade(state.sun, 0.62 * rise);
+					move(state.sun, "translate(-50%," + round(-100 + (1 - rise) * 30, 1) + "%) scale(" + round(1 + beat * 0.04, 3) + ")");
+					break;
+				}
+				case "count": {
+					// The seconds to the lyrics, each filling up as it runs out.
+					const target = scene.cue ?? scene.end;
+					const left = target - time;
+					const text = String(Math.max(0, Math.ceil(left / 1000)));
+					for (const entry of [state.outline, state.fill]) write(entry.cache, "text", text, (value) => { entry.el.textContent = value; });
+					const within = left > 0 ? 1 - (left % 1000) / 1000 : 1;
+					const enter = easeOutExpo(clamp01(within * 4));
+					const shape = "translateY(" + round((1 - enter) * 0.18, 3) + "em) scale(" + round(1 + beat * 0.03, 3) + ")";
+					move(state.outline, shape);
+					move(state.fill, shape);
+					write(state.fill.cache, "clip", "inset(" + round((1 - within) * 100, 1) + "% -0.2em -0.2em -0.2em)", (value) => { state.fill.el.style.clipPath = value; });
+					fade(state.outline, 0.25 + 0.75 * enter);
+					move(state.track, "translateX(-50%) scaleX(" + round(clamp01(since / Math.max(1, target - scene.start)), 4) + ")");
+					break;
+				}
+				case "wave":
+				default: {
+					state.waves.forEach((wave, index) => {
+						const travel = ((since / 1000) * W * (0.05 + index * 0.025)) % wave.length;
+						const lift = clamp(0.45 + 0.3 * Math.sin(time * 0.0009 * (index + 1) + index) + beat * (0.9 - index * 0.2), 0.15, 1.6);
+						move(wave, "translate(" + round(index === 1 ? travel - wave.length : -travel) + "px,-50%) scaleY(" + round(lift, 3) + ")");
+					});
+					break;
+				}
+			}
+		};
+
+		const clearScenes = () => {
+			for (const state of scenesShown.values()) state.el.remove();
+			scenesShown.clear();
+			cueEl?.remove();
+			cueEl = null;
+			cache.cue = {};
+		};
+
+		/** The scenes due now, faded in and out at their ends, and the cue dots counting in the lyrics. */
+		const paintInterludes = (time) => {
+			if (!interlude) return;
+			const scenes = plan.interludes || [];
+			const due = new Set();
+			for (const scene of scenes) if (time >= scene.start - 30 && time <= scene.end + 30) due.add(scene.index);
+			for (const [index, state] of scenesShown) {
+				if (due.has(index)) continue;
+				state.el.remove();
+				scenesShown.delete(index);
+			}
+			for (const index of due) {
+				const scene = scenes[index];
+				let state = scenesShown.get(index);
+				if (!state) {
+					state = mountScene(scene);
+					scenesShown.set(index, state);
+					interlude.appendChild(state.el);
+				}
+				const level = round(Math.min(clamp01((time - scene.start) / SCENE_FADE_MS), clamp01((scene.end - time) / SCENE_FADE_MS)), 3);
+				write(state.cache, "opacity", level, (value) => { state.el.style.opacity = String(value); });
+				if (level > 0) paintScene(state, scene, time);
+			}
+			const cue = (plan.cues || []).find((entry) => time >= entry.from && time <= entry.at + 260);
+			if (!cue) {
+				if (cueEl) write(cache.cue, "opacity", 0, () => { cueEl.style.opacity = "0"; });
+				return;
+			}
+			if (!cueEl) {
+				cueEl = node("div", "ivlyrics-motion-cue", interlude);
+				cueEl.dots = Array.from({ length: CUE_BEATS }, () => ({ el: node("span", "ivlyrics-motion-cue-dot", cueEl), cache: {} }));
+				cache.cue = {};
+			}
+			const shown = easeOutCubic(clamp01((time - cue.from) / 300)) * (1 - clamp01((time - cue.at) / 260));
+			write(cache.cue, "opacity", round(shown, 3), (value) => { cueEl.style.opacity = String(value); });
+			// One dot goes out on each beat; the lyrics come in as the last one does.
+			const lit = clamp(Math.ceil((cue.at - time) / cue.step), 0, CUE_BEATS);
+			cueEl.dots.forEach((dot, index) => {
+				const on = index < lit;
+				write(dot.cache, "lit", on, (value) => dot.el.classList.toggle("is-lit", value));
+				const out = time - (cue.at - index * cue.step);
+				write(dot.cache, "transform", on ? "none" : "scale(" + round(0.7 + 0.5 * Math.exp(-Math.max(0, out) / 160), 3) + ")", (value) => { dot.el.style.transform = value; });
+			});
 		};
 
 		const mountWord = (board, line, word, wordIndex, spot, lineEl) => {
@@ -5005,6 +5589,7 @@
 				if (!mounted.has(index)) mounted.set(index, mountBoard(index));
 				paintBoard(mounted.get(index), time, pose, progress, pose.beat || 0, through);
 			}
+			paintInterludes(time);
 
 			const index = Math.max(0, lineIndexAt(plan, time));
 			if (index !== currentLine) {
@@ -5147,6 +5732,7 @@
 			const scrimRef = useRef(null);
 			const washRef = useRef(null);
 			const floodRef = useRef(null);
+			const interludeRef = useRef(null);
 			const flashRef = useRef(null);
 			const panelRef = useRef(null);
 			const barsRef = useRef(null);
@@ -5202,6 +5788,7 @@
 					scrim: scrimRef.current,
 					wash: washRef.current,
 					flood: floodRef.current,
+					interlude: interludeRef.current,
 					flash: flashRef.current,
 					panel: panelRef.current,
 					bars: barsRef.current,
@@ -5244,12 +5831,16 @@
 			const planAnalysis = analysis.planned ? analysis.data : null;
 			const tempo = useMemo(() => root.ivLyricsMotionDirector?.tempoOf?.(model, pulsesInMs(planAnalysis)) || null, [model, planAnalysis]);
 
+			// The AI is asked once the song's analysis is in (or late): it reads each line's energy and the tempo with its BPM.
+			const analysisSettled = analysis.uri === trackUri && analysis.status !== "loading";
 			useEffect(() => {
-				if (!model.length || !trackUri) return undefined;
+				if (!model.length || !trackUri || !analysisSettled) return undefined;
 				let cancelled = false;
 				setAi({ key: aiKey, status: "loading", raw: null });
 				setShowFailure(false);
-				requestDirection({ trackUri, model, title, artist, tempo, songLang }).then((result) => {
+				const sound = analysis.data || null;
+				const requestTempo = root.ivLyricsMotionDirector?.tempoOf?.(model, pulsesInMs(sound)) || tempo;
+				requestDirection({ trackUri, model, title, artist, tempo: requestTempo, songLang, energy: lineEnergies(model, sound) }).then((result) => {
 					if (cancelled) return;
 					setAi({ key: aiKey, status: result.status, raw: result.raw || null });
 					if (result.status === "failed") {
@@ -5258,7 +5849,7 @@
 					}
 				});
 				return () => { cancelled = true; };
-			}, [aiKey]);
+			}, [aiKey, analysisSettled]);
 
 			useEffect(() => {
 				if (!showFailure) return undefined;
@@ -5276,7 +5867,7 @@
 
 			// The faces this direction sets load before it is composed (bounded),
 			// and a face that arrives later re-measures the edit at the next cut.
-			const needs = useMemo(() => (direction ? fontNeeds(model, direction, typography) : new Map()), [direction, typography]);
+			const needs = useMemo(() => (direction ? fontNeeds(model, direction, typography, [title, artist]) : new Map()), [direction, typography, title, artist]);
 			const needsKey = useMemo(() => [...needs.keys()].sort().join("\u0001"), [needs]);
 			useEffect(() => {
 				let cancelled = false;
@@ -5311,8 +5902,10 @@
 					measure: measureRef.current,
 					typography,
 					songLang,
+					title,
+					artist,
 				});
-			}, [planReady, direction, size.width, size.height, fonts.epoch, planAnalysis, typography]);
+			}, [planReady, direction, size.width, size.height, fonts.epoch, planAnalysis, typography, title, artist]);
 
 			useEffect(() => { engineRef.current?.setLyrics(lyrics); }, [lyrics]);
 			const shownRef = useRef({ direction: null, size: "" });
@@ -5382,6 +5975,8 @@
 				e("svg", { ref: defsRef, className: "ivlyrics-motion-defs", width: 0, height: 0, "aria-hidden": "true", focusable: "false" }),
 				e("div", { ref: washRef, className: "ivlyrics-motion-wash", "aria-hidden": "true" }),
 				e("div", { ref: floodRef, className: "ivlyrics-motion-flood", "aria-hidden": "true" }),
+				// Scenes while no lyrics are on screen (the intro, instrumental breaks, the outro).
+				e("div", { ref: interludeRef, className: "ivlyrics-motion-interludes", "aria-hidden": "true" }),
 				e("div", { ref: viewportRef, className: "ivlyrics-motion-viewport", "aria-hidden": "true" },
 					e("div", { ref: cameraRef, className: "ivlyrics-motion-camera" })),
 				e("div", { ref: panelRef, className: "ivlyrics-motion-panel", "aria-hidden": "true" }),
