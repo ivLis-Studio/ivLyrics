@@ -2651,7 +2651,8 @@ window.LANG_FR = {
       "motionUnavailable": "Les paroles en mouvement fonctionnent avec les chansons synchronisées au mot ou au caractère. Cette chanson affiche les paroles de la scène vidéo.",
       "motionReducedMotion": "La réduction des animations est activée : les paroles de la scène vidéo remplacent les paroles en mouvement.",
       "motionDirecting": "L’IA réalise l’animation…",
-      "motionDirectFailed": "La réalisation par IA a échoué. La réalisation intégrée est utilisée."
+      "motionDirectFailed": "La réalisation par IA a échoué. La réalisation intégrée est utilisée.",
+      "motionRedirect": "Réaliser à nouveau"
     },
     "settings": {
       "subtitle": "Personnalisez la taille, les animations et la typographie inférieure du mode vinyle.",
@@ -2677,6 +2678,18 @@ window.LANG_FR = {
       "motionBackgroundDesc": "Ce qui défile derrière les paroles animées : la vidéo du titre, ou l'arrière-plan de piste utilisé ailleurs (pochette ou couleurs). Choisissez l'arrière-plan de piste quand un titre n'a pas de vidéo ou que YouTube ne peut pas la lire.",
       "motionBackgroundVideo": "Vidéo",
       "motionBackgroundTrack": "Arrière-plan de piste",
+      "motionIntensityLabel": "Intensité du mouvement",
+      "motionIntensityDesc": "L’ampleur des balancements, glissements et secousses de la caméra dans les paroles animées. Calme évite aussi les mots qui arrivent en force.",
+      "motionIntensityCalm": "Calme",
+      "motionIntensityNormal": "Normale",
+      "motionIntensityWild": "Intense",
+      "motionRotationLabel": "Rotation de l’écran",
+      "motionRotationDesc": "À quel point les paroles animées font tourner l’écran et la vidéo. Douce supprime les quarts de tour, retournements et tonneaux ; Désactivée garde tout à l’horizontale.",
+      "motionRotationFull": "Complète",
+      "motionRotationGentle": "Douce",
+      "motionRotationOff": "Désactivée",
+      "motionSafeLabel": "Mode sûr photosensibilité",
+      "motionSafeDesc": "Supprime les flashs, glitchs et clignotements des paroles animées.",
       "tonearmTitle": "Bras de lecture",
       "tonearmSubtitle": "Personnalisez la forme, la finition et la taille du bras de lecture.",
       "tonearmStyleLabel": "Style du bras",

@@ -9712,6 +9712,23 @@ html.is-lp-view-switch::view-transition-new(root) {
   opacity: 1;
 }
 
+/* Motion lyrics: "direct again", set apart from the presentations. */
+.fullscreen-presentation-divider {
+  flex: none;
+  width: 1px;
+  height: 22px;
+  margin: 0 3px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.fullscreen-presentation-redirect svg {
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.fullscreen-presentation-redirect:active svg {
+  transform: rotate(-150deg);
+}
+
 .fullscreen-stage-controls-dock {
   position: fixed;
   z-index: 2147481900;
@@ -11578,7 +11595,11 @@ html.is-lp-view-switch::view-transition-new(root) {
   color: #fff;
   opacity: calc(var(--ls, 1) * var(--e, 0));
   transform-origin: 50% 62%;
-  text-shadow: 0 0.04em 0.22em rgba(0, 0, 0, 0.32);
+  /* A soft halo round the glyphs (no box), stronger over a bright picture (--lum, set by the engine where it can read the picture). */
+  --halo: calc(0.1 + var(--lum, 0.3) * 0.55);
+  text-shadow:
+    0 0.04em 0.22em rgba(0, 0, 0, 0.32),
+    0 0 0.55em rgb(0 0 0 / var(--halo));
 }
 
 .ivlyrics-motion-word[dir="rtl"] .ivlyrics-motion-solid {
@@ -11607,7 +11628,20 @@ html.is-lp-view-switch::view-transition-new(root) {
 .ivlyrics-motion-word.is-active .ivlyrics-motion-solid {
   text-shadow:
     0 0 0.32em color-mix(in srgb, var(--iv-motion-accent, #fff) 62%, transparent),
-    0 0.04em 0.22em rgba(0, 0, 0, 0.32);
+    0 0.04em 0.22em rgba(0, 0, 0, 0.32),
+    0 0 0.55em rgb(0 0 0 / var(--halo));
+}
+
+/* Lite quality (the engine turns it on when frames keep coming late): one small shadow instead of
+   halos and glows, and no drop-shadow filters, so moving type is cheap to draw. */
+.ivlyrics-motion-stage.is-lite .ivlyrics-motion-solid,
+.ivlyrics-motion-stage.is-lite .ivlyrics-motion-word.is-active .ivlyrics-motion-solid {
+  text-shadow: 0 0.04em 0.16em rgba(0, 0, 0, 0.5);
+}
+
+.ivlyrics-motion-stage.is-lite .ivlyrics-motion-word,
+.ivlyrics-motion-stage.is-lite .ivlyrics-motion-solid {
+  filter: none !important;
 }
 
 .ivlyrics-motion-word.is-background .ivlyrics-motion-solid {

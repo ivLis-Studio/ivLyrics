@@ -98,6 +98,12 @@
 	const REST_GAP_MS = 5000;
 	const REST_AFTER_MS = 1100;
 	const REST_FADE_MS = 1000;
+	// Lite quality (the engine's watchFrames): frames averaging slower than LITE_SLOW_MS for
+	// LITE_AFTER_MS turn the costly extras off; faster than LITE_FAST_MS for LITE_BACK_MS, back on.
+	const LITE_SLOW_MS = 27;
+	const LITE_FAST_MS = 18.5;
+	const LITE_AFTER_MS = 2000;
+	const LITE_BACK_MS = 12000;
 	const REST_RETURN_MS = 700;
 	const REST_MIN_MS = 1200;
 	// After the last line the board fades this long after its last word; the camera drifts this long.
@@ -725,7 +731,7 @@
 			const script = info.words[index] || info.script;
 			const role = light && !isEmph ? "light" : "display";
 			const spec = ctx.font(script, faceOf(type, serif, isEmph, accent), role);
-			const text = casedText(word.text, script, upper && spec.kind === "impact");
+			const text = casedText(word.text, script, upper && (spec.kind === "impact" || spec.kind === "flex"));
 			const wordSize = size * spec.scale * (isEmph ? emphScale * (ACCENT_SCALE[accent] || 1) : 1) * (role === "light" ? 0.94 : 1);
 			return {
 				index,
@@ -807,7 +813,7 @@
 			const items = voice.words.map((word, position) => {
 				const script = info.backing?.[voiceIndex]?.[position] || info.script;
 				const spec = ctx.font(script, options.type || "impact", role);
-				const text = casedText(word.text, script, options.upper && spec.kind === "impact");
+				const text = casedText(word.text, script, options.upper && (spec.kind === "impact" || spec.kind === "flex"));
 				const itemSize = size * spec.scale;
 				return {
 					index: index++,
@@ -2361,7 +2367,7 @@
 		rap: { drift: 0.7, shake: 1.35, sway: 0.6, spin: 1.4, swing: 1.2 },
 	});
 	const moodOf = (plan) => MOODS[plan?.mood] || MOODS.warm;
-	const feelOf = (plan) => TEMPO_FEEL[plan?.tempo] || TEMPO_FEEL.mid;
+	const feelOf = (plan) => plan?.feel || TEMPO_FEEL[plan?.tempo] || TEMPO_FEEL.mid;
 	const toWorld = (board, x, y) => {
 		const point = rotate2d(x, y, board.roll);
 		return { x: board.origin.x + point.x, y: board.origin.y + point.y };
@@ -2410,23 +2416,28 @@
 	};
 
 	/** Puts each board next to the last one, out of its way, in the direction its entrance moves. */
-	const placeBoards = (boards, ctx, seed) => {
+	const placeBoards = (boards, ctx, seed, turning = 1) => {
 		const random = createRandom(seed ^ 0x51ED270B);
+		// Rotation off: nothing turns. Gentle: each board starts level again, so small tilts never add up.
+		const level = turning === 0;
+		const steady = turning < 1;
 		let previousRoll = 0;
 		boards.forEach((board, index) => {
 			const firstFrame = board.frames[0];
+			// Rotation off: the world and the camera stay level (a line set at a slant shows it, the screen never turns).
+			if (level) board.roll = 0;
 			if (!index) {
-				board.roll = -firstFrame.roll;
+				if (!level) board.roll = -firstFrame.roll;
 				board.origin = { x: 0, y: 0, z: 0 };
 			} else {
 				const previous = boards[index - 1];
 				const last = previous.cameras[previous.cameras.length - 1];
-				const theta = last.roll - previous.dutch;
+				const theta = steady ? 0 : last.roll - previous.dutch;
 				const enter = board.enter;
-				const turn = enter === "roll" ? (random() < 0.5 ? 90 : -90)
+				const turn = steady ? 0 : enter === "roll" ? (random() < 0.5 ? 90 : -90)
 					: enter === "flip" ? (random() < 0.5 ? 180 : -180)
 						: enter === "twist" ? (random() < 0.5 ? 45 : -45) : 0;
-				board.roll = theta + turn - firstFrame.roll;
+				if (!level) board.roll = theta + turn - firstFrame.roll;
 				const right = rotate2d(1, 0, theta);
 				const down = rotate2d(0, 1, theta);
 				const sideways = random() < 0.5 ? 1 : -1;
@@ -2461,7 +2472,7 @@
 			}
 			board.cameras = board.frames.map((frame, local) => {
 				const point = toWorld(board, frame.x, frame.y);
-				const roll = nearestRoll(board.roll + frame.roll + board.dutch, previousRoll);
+				const roll = level ? 0 : nearestRoll(board.roll + frame.roll + board.dutch, previousRoll);
 				previousRoll = roll;
 				// On drums the camera turns to face the line; push is the way it dollies in (world).
 				const place = board.places[local];
@@ -2622,7 +2633,7 @@
 		return {
 			start,
 			end,
-			roll: sign * (7 + (seed % 7)) * feel.swing,
+			roll: sign * (7 + (seed % 7)) * feel.swing * (feel.turn ?? 1),
 			yaw: -sign * (4 + ((seed >>> 3) % 4)),
 			pitch: ((seed >>> 5) & 1 ? 1 : -1) * 2.5,
 			zoom: 220 + ((seed >>> 7) % 120),
@@ -2679,7 +2690,7 @@
 			line.arrive = line.start - ARRIVE_LEAD_MS;
 			// Every voice's last word: the camera waits for an echo or an answer when it has the time.
 			line.lastWordStart = Math.max(...line.shown.map((word) => word.start));
-			line.drift = { z: board.drift.z * feel.drift, roll: board.drift.roll * feel.drift };
+			line.drift = { z: board.drift.z * feel.drift, roll: board.drift.roll * feel.drift * (feel.turn ?? 1) };
 			fitHold(line, board, ctx);
 		});
 		boards.forEach((board) => {
@@ -2702,10 +2713,17 @@
 			const type = sameBoard ? "line" : boards[next.board].enter;
 			const gap = next.start - line.end;
 			const duration = moveDuration(type, gap, pace);
-			let leave = Math.max(next.arrive - duration, line.lastWordStart + 140);
+			// The last word stays long enough to be read (most of a held one) unless the next line leaves no room.
+			const readFloor = line.lastWordStart + clamp((line.end - line.lastWordStart) * 0.7, 140, 380);
+			let leave = Math.max(next.arrive - duration, readFloor);
 			if (type !== "cut" && next.arrive - leave < 220) leave = next.arrive - 220;
 			leave = type === "cut" ? next.arrive - 1 : leave;
 			line.leave = Math.max(leave, line.arrive + 60);
+			// A camera move sets off on the beat (a cut lands where the next line is).
+			if (type !== "cut" && plan.grid) {
+				const period = plan.grid.period;
+				line.leave = onBeat(plan.grid, line.leave, period * 0.5, period * 0.5, Math.max(line.arrive + 60, Math.min(readFloor, next.arrive - 220)), next.arrive - 220);
+			}
 			const dx = next.camera.x - line.camera.x;
 			const dy = next.camera.y - line.camera.y;
 			const distance = Math.hypot(dx, dy);
@@ -2861,6 +2879,8 @@
 			}
 			line.dimAt = Math.max(next.start, line.voicesEnd + 60);
 			line.exitAt = Math.max(next.start + clamp((next.end - next.start) * 0.4, 300, 1300), line.voicesEnd + 220);
+			// It leaves on a beat.
+			if (plan.grid) line.exitAt = onBeat(plan.grid, line.exitAt, plan.grid.period * 0.5, plan.grid.period * 0.5, Math.max(next.start, line.voicesEnd + 180));
 			// The words of a line set word by word leave one after another, in the order they came.
 			if (line.split === "word" && line.parts > 1) line.exitAt += line.part * Math.min(70, 280 / line.parts);
 		});
@@ -2885,6 +2905,8 @@
 			if (type === "panel") plan.panels.push({ start: line.leave, end: lines[line.n + 1].arrive, color: boards[lines[line.n + 1].board].color });
 		});
 		plan.flashes.sort((left, right) => left.time - right.time);
+		// Nothing flashes for a viewer who asked for that.
+		if (plan.comfort?.safe) plan.flashes = [];
 		plan.bars = boards.filter((board) => board.bars).map((board) => ({
 			start: lines[board.first].arrive - 500,
 			end: Number.isFinite(lines[board.last].leave) ? lines[board.last].leave + 200 : Infinity,
@@ -2899,6 +2921,195 @@
 			});
 		});
 		plan.slams = slams.sort((left, right) => left.time - right.time);
+	};
+
+	// ---------------------------------------------------------------------
+	// Comfort: how much the edit moves, turns and flashes (the viewer's settings)
+	// ---------------------------------------------------------------------
+
+	// intensity: calm, normal or wild (how far the camera swings, drifts and shakes);
+	// rotation: full, gentle (no quarter turns, flips or barrel rolls) or off (the screen
+	// and the picture never turn); safe: nothing that flashes or flickers (photosensitivity).
+	const COMFORT_DEFAULT = Object.freeze({ intensity: "normal", rotation: "full", safe: false });
+	const INTENSITY = Object.freeze({
+		calm: { swing: 0.55, drift: 0.7, shake: 0.45, sway: 0.7, spin: 0.7, dutch: 0.5 },
+		normal: { swing: 1, drift: 1, shake: 1, sway: 1, spin: 1, dutch: 1 },
+		wild: { swing: 1.3, drift: 1.25, shake: 1.35, sway: 1.2, spin: 1.3, dutch: 1.4 },
+	});
+	const TURNS = Object.freeze({ full: 1, gentle: 0.4, off: 0 });
+	/** The viewer's comfort settings, checked. */
+	const comfortOf = (value) => ({
+		intensity: INTENSITY[value?.intensity] ? value.intensity : "normal",
+		rotation: TURNS[value?.rotation] !== undefined ? value.rotation : "full",
+		safe: value?.safe === true,
+	});
+	// Compositions that turn lines (and the screen) a quarter or more, and what stands in for them (holding as many lines).
+	const TURNING_LAYOUTS = Object.freeze({ zigzag: "stairs", spiral: "column", radial: "column", chain: "stairs", arch: "lockup", margin: "column", pillar: "column", collage: "stairs" });
+	// Entrances that turn the screen, and the moves that stand in for them.
+	const TURNING_ENTERS = Object.freeze({ roll: "pan", twist: "drift", flip: "drop", spin: "whip", corkscrew: "push", tumble: "drop" });
+	// Without any turning the camera does not swing round either, and lines do not rock.
+	const SWINGING_ENTERS = Object.freeze({ orbit: "push", swoop: "drift" });
+	const ROCKING_HOLDS = Object.freeze({ lean: "drift", wobble: "float", swivel: "grow" });
+	// What flashes or flickers, and its calm stand-in.
+	const FLASHING_FX = Object.freeze({ glitch: "wipe", flicker: "lift" });
+	const FLASHING_EXITS = Object.freeze({ glitch: "fade", scramble: "dissolve" });
+	const FLASHING_ENTERS = Object.freeze({ panel: "fade" });
+	// Words that smash in, kept for songs with drive unless the viewer wants it calm.
+	const SMASHING_FX = Object.freeze({ slam: "lift", zoom: "blur" });
+
+	/** The direction as the viewer's comfort allows it (shots and line effects). */
+	const comfortDirection = (direction, comfort) => {
+		if (!direction || (comfort.intensity === "normal" && comfort.rotation === "full" && !comfort.safe)) return direction;
+		const scale = INTENSITY[comfort.intensity];
+		const fx = (name) => (comfort.safe && FLASHING_FX[name]) || (comfort.intensity === "calm" && SMASHING_FX[name]) || name;
+		const shots = (Array.isArray(direction.shots) ? direction.shots : []).map((shot) => {
+			const next = { ...shot, fx: fx(shot.fx) };
+			let dutch = (Number(shot.dutch) || 0) * scale.dutch;
+			if (comfort.rotation !== "full") {
+				next.layout = TURNING_LAYOUTS[next.layout] || (comfort.rotation === "off" && next.layout === "wave" ? "column" : next.layout);
+				next.enter = TURNING_ENTERS[next.enter] || (comfort.rotation === "off" && SWINGING_ENTERS[next.enter]) || next.enter;
+				if (comfort.rotation === "off") next.hold = ROCKING_HOLDS[next.hold] || next.hold;
+				dutch = comfort.rotation === "off" ? 0 : clamp(dutch, -4, 4);
+			}
+			next.dutch = Math.round(clamp(dutch, -14, 14));
+			if (comfort.safe) {
+				next.exit = FLASHING_EXITS[next.exit] || next.exit;
+				next.enter = FLASHING_ENTERS[next.enter] || next.enter;
+			}
+			return next;
+		});
+		const lines = {};
+		for (const [key, entry] of Object.entries(direction.lines || {})) lines[key] = entry?.fx ? { ...entry, fx: fx(entry.fx) } : entry;
+		return { ...direction, shots, lines };
+	};
+	/** How the tempo and the viewer's intensity scale the camera (TEMPO_FEEL), and how far it may turn. */
+	const feelFor = (tempo, comfort) => {
+		const base = TEMPO_FEEL[tempo] || TEMPO_FEEL.mid;
+		const scale = INTENSITY[comfort?.intensity] || INTENSITY.normal;
+		return {
+			drift: base.drift * scale.drift,
+			shake: base.shake * scale.shake,
+			sway: base.sway * scale.sway,
+			spin: base.spin * scale.spin,
+			swing: base.swing * scale.swing,
+			turn: TURNS[comfort?.rotation] ?? 1,
+		};
+	};
+
+	// ---------------------------------------------------------------------
+	// The beat: where the song's beats fall, so the edit can cut on them
+	// ---------------------------------------------------------------------
+
+	/**
+	 * The song's beat grid (ms): the audio analysis's beats when there are
+	 * enough, otherwise a steady grid fitted to when words start (people sing
+	 * on the beat). Every fourth beat from the bar most lines start on is a
+	 * downbeat (strength 1). Null when neither gives a steady beat.
+	 */
+	const beatGridOf = (model, pulses) => {
+		if (pulses?.times?.length >= 16) {
+			const times = Array.from(pulses.times);
+			const gaps = times.slice(1).map((time, index) => time - times[index]).filter((gap) => gap > 200 && gap < 1500).sort((a, b) => a - b);
+			const period = gaps[Math.floor(gaps.length / 2)] || 500;
+			return { period, times, strengths: Array.from(pulses.strengths || times.map(() => 0.6)), source: "analysis", confidence: 1 };
+		}
+		const lines = Array.isArray(model) ? model : [];
+		// Words as onsets, a line's first word and held words weighing more (they fall on the beat more often).
+		const onsets = [];
+		for (const line of lines) {
+			(line.words || []).forEach((word, index) => {
+				if (Number.isFinite(word.start)) onsets.push({ time: word.start, weight: index === 0 ? 2 : word.end - word.start >= 350 ? 1.3 : 1 });
+			});
+		}
+		onsets.sort((a, b) => a.time - b.time);
+		if (onsets.length < 24) return null;
+		// 1. The grid words fall on (the coarsest that still fits them all: eighths, or the beat itself), over the whole song.
+		const coherenceAt = (period) => {
+			let sx = 0;
+			let sy = 0;
+			let total = 0;
+			for (const onset of onsets) {
+				const angle = (2 * Math.PI * onset.time) / period;
+				sx += onset.weight * Math.cos(angle);
+				sy += onset.weight * Math.sin(angle);
+				total += onset.weight;
+			}
+			return { r: Math.hypot(sx, sy) / total, angle: Math.atan2(sy, sx) };
+		};
+		const fits = [];
+		let peak = 0;
+		for (let step = 150; step <= 450; step += 0.5) {
+			const fit = coherenceAt(step);
+			fits.push({ step, ...fit });
+			peak = Math.max(peak, fit.r);
+		}
+		if (peak < 0.3) return null;
+		let tatum = fits.filter((fit) => fit.r >= peak * 0.92).reduce((a, b) => (b.step > a.step ? b : a));
+		for (let step = tatum.step - 0.5; step <= tatum.step + 0.5; step += 0.05) {
+			const fit = coherenceAt(step);
+			if (fit.r > tatum.r) tatum = { step, ...fit };
+		}
+		// 2. The beat: two of those (or one, three, four) at a usual tempo, on the one lines start on.
+		const multiple = [2, 1, 3, 4].find((count) => {
+			const bpm = 60000 / (tatum.step * count);
+			return bpm >= 85 && bpm <= 150;
+		}) || (tatum.step * 2 <= 1000 ? 2 : 1);
+		const period = tatum.step * multiple;
+		const base = ((((tatum.angle / (2 * Math.PI)) * tatum.step) % tatum.step) + tatum.step) % tatum.step;
+		const starts = lines.map((line) => line.start).filter(Number.isFinite);
+		const fitOf = (phase) => starts.reduce((sum, time) => {
+			const off = (((time - phase) % period) + period) % period;
+			return sum + (Math.min(off, period - off) < period * 0.15 ? 1 : 0);
+		}, 0);
+		let phase = base;
+		for (let offset = 1; offset < multiple; offset += 1) if (fitOf(base + offset * tatum.step) > fitOf(phase)) phase = base + offset * tatum.step;
+		const first = Math.floor((onsets[0].time - phase) / period) - 8;
+		const last = Math.ceil((onsets[onsets.length - 1].time - phase) / period) + 24;
+		// The downbeat: the bar position most lines start on.
+		const bars = [0, 0, 0, 0];
+		for (const time of starts) bars[((Math.round((time - phase) / period) % 4) + 4) % 4] += 1;
+		const downbeat = bars.indexOf(Math.max(...bars));
+		const times = [];
+		const strengths = [];
+		for (let beat = first; beat <= last; beat += 1) {
+			times.push(phase + beat * period);
+			strengths.push(((beat % 4) + 4) % 4 === downbeat ? 1 : 0.55);
+		}
+		return { period, times, strengths, source: "words", confidence: tatum.r };
+	};
+
+	/** Index of the grid's last beat at or before time (-1 before the first). */
+	const beatIndexAt = (grid, time) => {
+		const times = grid.times;
+		let low = 0;
+		let high = times.length;
+		while (low < high) {
+			const middle = (low + high) >>> 1;
+			if (times[middle] <= time) low = middle + 1;
+			else high = middle;
+		}
+		return low - 1;
+	};
+
+	/**
+	 * The beat nearest to time within [time - before, time + after] that is
+	 * also inside [low, high] (downbeats only when asked), or time itself.
+	 */
+	const onBeat = (grid, time, before, after, low = -Infinity, high = Infinity, downbeats = false) => {
+		if (!grid?.times?.length || !Number.isFinite(time)) return time;
+		const index = beatIndexAt(grid, time);
+		let chosen = time;
+		let distance = Infinity;
+		for (let at = index - 6; at <= index + 7; at += 1) {
+			const beat = grid.times[at];
+			if (!Number.isFinite(beat) || beat < time - before || beat > time + after || beat < low || beat > high) continue;
+			if (downbeats && (grid.strengths[at] ?? 0) < 0.9) continue;
+			if (Math.abs(beat - time) < distance) {
+				distance = Math.abs(beat - time);
+				chosen = beat;
+			}
+		}
+		return chosen;
 	};
 
 	// ---------------------------------------------------------------------
@@ -2995,7 +3206,7 @@
 		const named = [...new Set((direction?.shots || []).flatMap((shot) => (Array.isArray(shot.motifs) ? shot.motifs : [])))]
 			.filter((name) => shapesLib()?.motifOf?.(name));
 		const motifs = (named.length >= 2 ? named : [...named, ...(ORBIT_MOTIFS[plan.mood] || ORBIT_MOTIFS.warm)]).slice(0, 5);
-		const beat = 60000 / clamp(Number(direction?.tempo?.bpm) || DEFAULT_BPM[plan.tempo] || 100, 60, 190);
+		const beat = plan.grid?.period || 60000 / clamp(Number(direction?.tempo?.bpm) || DEFAULT_BPM[plan.tempo] || 100, 60, 190);
 		const windows = [];
 		const first = lines[0];
 		// A scene plays on until shortly before the lyrics come in (over the faint preview of the next board), so the screen is never left waiting.
@@ -3031,7 +3242,11 @@
 			const left = window.end - at;
 			if (left >= INTERLUDE_MIN_MS) {
 				const count = Math.max(1, Math.round(left / SCENE_MAX_MS));
-				for (let part = 0; part < count; part += 1) parts.push({ style: null, start: at + (left * part) / count, end: at + (left * (part + 1)) / count });
+				// A long stretch changes scene on a downbeat.
+				const cuts = [at];
+				for (let part = 1; part < count; part += 1) cuts.push(onBeat(plan.grid, at + (left * part) / count, beat * 2.5, beat * 2.5, cuts[part - 1] + INTERLUDE_MIN_MS, window.end - INTERLUDE_MIN_MS, true));
+				cuts.push(window.end);
+				for (let part = 0; part < count; part += 1) parts.push({ style: null, start: cuts[part], end: cuts[part + 1] });
 			} else if (parts.length) parts[parts.length - 1].end = window.end;
 			parts.forEach((part, order) => {
 				const last = order === parts.length - 1;
@@ -3276,9 +3491,12 @@
 		const pace = Number(sourceDirection?.tempo?.pace) || 1;
 		// Lines are set in the pieces their shots ask for (options.pieces: false keeps every line whole).
 		const sourceTypography = Array.isArray(options.typography) ? options.typography : [];
+		// The viewer's comfort (how much it moves, turns and flashes) applies to whoever directed the song.
+		const comfort = comfortOf(options.motion);
+		const comfortable = comfortDirection(sourceDirection, comfort);
 		const { model, direction, typography } = options.pieces === false
-			? { model: sourceModel, direction: sourceDirection, typography: sourceTypography }
-			: expandPieces(sourceModel, sourceDirection, sourceTypography);
+			? { model: sourceModel, direction: comfortable, typography: sourceTypography }
+			: expandPieces(sourceModel, comfortable, sourceTypography);
 		const ctx = {
 			W, H, F,
 			measure: typeof options.measure === "function" ? options.measure : fallbackMeasure,
@@ -3330,8 +3548,8 @@
 				// The scene an instrumental break after the shot's last line plays (interludesOf), if the AI named one.
 				interlude: INTERLUDE_STYLES.includes(shot.interlude) ? shot.interlude : null,
 				rule: shot.rule === true,
-				// A composition that sets its own slant (a word wall) keeps it.
-				dutch: layout.tilt ?? (Number(shot.dutch) || 0),
+				// A composition that sets its own slant (a word wall) keeps it, as far as the viewer lets the screen turn.
+				dutch: layout.tilt != null ? layout.tilt * (TURNS[comfort.rotation] ?? 1) : (Number(shot.dutch) || 0),
 				first: shot.from,
 				last: shot.to,
 				places: layout.places,
@@ -3360,9 +3578,15 @@
 			boards,
 			lines: lines.filter((line) => line.board >= 0),
 			pulses: pulsesInMs(options.analysis),
+			// Where the beats fall (the analysis, or the singing): moves set off and lines leave on them.
+			grid: beatGridOf(model, pulsesInMs(options.analysis)),
+			comfort,
+			feel: feelFor(tempo, comfort),
 		};
+		// Without an analysis, the beats found in the singing drive what pulses with the beat.
+		if (!plan.pulses && plan.grid) plan.pulses = { times: Float64Array.from(plan.grid.times), strengths: Float32Array.from(plan.grid.strengths) };
 		if (!plan.lines.length) return { ...plan, flashes: [], slams: [], panels: [], bars: [], interludes: [], cues: [] };
-		placeBoards(boards, ctx, seed);
+		placeBoards(boards, ctx, seed, plan.feel.turn);
 		timeline(plan, ctx);
 		// The stretches without lyrics play scenes of their own (title cards, beat scenes, a count-in).
 		plan.interludes = interludesOf(plan, ctx, direction, { seed, title: options.title, artist: options.artist });
@@ -3593,6 +3817,8 @@
 			pose.roll += (beat.index % 2 ? 1 : -1) * 0.5 * beat.strength * mood.punch * Math.exp(-beat.since / 160);
 		}
 		pose.beat = beatAmount;
+		// A viewer who turned rotation off: the camera never rolls (shake, beats, moves and interludes included).
+		if (plan.feel?.turn === 0) pose.roll = 0;
 		return pose;
 	};
 
@@ -4270,11 +4496,14 @@
 			const rest = restAt(plan, time);
 			if (rest > 0) roll += (Math.round(roll / 360) * 360 - roll) * rest;
 			const sway = BG_SWAY[plan.tempo] || BG_SWAY.mid;
-			roll += Math.sin(time * 0.00057 + 0.4) * sway + Math.sin(time * 0.00131 + 1.7) * sway * 0.3 + swing;
+			const turn = plan.feel?.turn ?? 1;
+			roll += (Math.sin(time * 0.00057 + 0.4) * sway + Math.sin(time * 0.00131 + 1.7) * sway * 0.3 + swing) * turn;
 			x += Math.sin(time * 0.00041 + 2.2) * plan.W * 0.018;
 			y += Math.sin(time * 0.00049 + 0.9) * plan.H * 0.018;
 			breath = 1 + 0.05 * (0.5 + 0.5 * Math.sin(time * 0.00071 + 1.1));
 		}
+		// A viewer who turned rotation off never sees the picture turn.
+		if (plan.feel?.turn === 0) roll = 0;
 		const wanted = coverScale(-roll, plan.W, plan.H) * 1.14 * dolly * breath * (1 + (pose.beat || 0) * 0.06);
 		const scale = Math.max(wanted, coverScale(-roll, plan.W, plan.H, x, y) * 1.01);
 		return { rotate: -roll, scale, x, y };
@@ -4351,7 +4580,7 @@
 		if (board.enter === "iris") return "circle(" + round(k * Math.hypot(plan.W, plan.H) * 0.62) + "px at " + round(centre.x) + "px " + round(centre.y) + "px)";
 		const half = k * plan.H * 0.62;
 		const along = plan.W * 3;
-		const turn = (centre.roll || 0) + (board.dutch || 0);
+		const turn = plan.feel?.turn === 0 ? 0 : (centre.roll || 0) + (board.dutch || 0);
 		const points = [[-along, -half], [along, -half], [along, half], [-along, half]].map(([x, y]) => {
 			const point = rotate2d(x, y, turn);
 			return round(centre.x + point.x) + "px " + round(centre.y + point.y) + "px";
@@ -4406,6 +4635,25 @@
 	};
 
 	/**
+	 * How a word in a variable face moves (spec.axes): from thin (and narrow,
+	 * where the face has a width axis) to its resting weight as it lands, a
+	 * little heavier and wider at most on the beat. Null for other faces.
+	 */
+	const flexOf = (spec) => {
+		const axes = spec?.kind === "flex" ? spec.axes : null;
+		if (!axes?.wght) return null;
+		const weight = clamp(spec.weight, axes.wght[0], axes.wght[1]);
+		return {
+			weight,
+			thin: Math.max(axes.wght[0], weight - 560),
+			heaviest: Math.min(axes.wght[1], weight + 80),
+			wdth: Array.isArray(axes.wdth),
+			narrow: Array.isArray(axes.wdth) ? Math.max(axes.wdth[0], 78) : 100,
+			wide: Array.isArray(axes.wdth) ? Math.min(axes.wdth[1], 106) : 100,
+		};
+	};
+
+	/**
 	 * The background's filter with the camera's motion blur after its own (the
 	 * app's dimming and blur of a cover): state.base is its own filter,
 	 * state.written what the camera last set (null: nothing yet). A filter the
@@ -4414,6 +4662,287 @@
 	const cameraFilter = (state, current, blurPx) => {
 		const base = state.written !== null && current !== state.written ? current : state.base;
 		return { base, written: [base, blurPx > 0 ? "blur(" + blurPx + "px)" : ""].filter(Boolean).join(" ") };
+	};
+
+	// ---------------------------------------------------------------------
+	// Judging an edit: what a viewer would see going wrong (the AI's work is
+	// checked with it and sent back with the notes; see requestDirection)
+	// ---------------------------------------------------------------------
+
+	const CRITIQUE_STEP_MS = 100;
+	// A sung word has to be on screen for this long after it starts to be read; a long held note may leave with the camera after.
+	const READ_WORD_MS = 450;
+	const DENSE_SCRIPT_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+	// Compositions meant to run off the screen or fill it (their words leaving the frame is the point).
+	const BLEEDING_LAYOUTS = new Set(["bleed", "wordwall", "fill"]);
+	// Moves and compositions that turn the screen, for the notes.
+	const TURNING_NAMES = "roll, flip, spin, corkscrew, twist, zigzag, spiral, radial, chain and arch";
+
+	/** How long a line needs on screen to be read (ms): a moment to find it, then its letters. */
+	const readingMs = (line) => {
+		const text = line.shown.map((word) => word.text).join("");
+		const glyphs = [...text.replace(/\s+/gu, "")].length;
+		return clamp(260 + glyphs * (DENSE_SCRIPT_RE.test(text) ? 100 : 50), 600, 2600);
+	};
+
+	/** Where a world point lands on screen (px from the centre) for the camera at pose; null at or behind the lens. */
+	const projectPoint = (pose, x, y, z) => {
+		const radians = (-pose.roll * Math.PI) / 180;
+		const x0 = x - pose.x;
+		const y0 = y - pose.y;
+		const z0 = z - pose.z;
+		const x1 = x0 * Math.cos(radians) - y0 * Math.sin(radians);
+		const y1 = x0 * Math.sin(radians) + y0 * Math.cos(radians);
+		const yaw = ((pose.yaw || 0) * Math.PI) / 180;
+		const pitch = ((pose.pitch || 0) * Math.PI) / 180;
+		const x2 = x1 * Math.cos(yaw) + z0 * Math.sin(yaw);
+		const z2 = -x1 * Math.sin(yaw) + z0 * Math.cos(yaw);
+		const y3 = y1 * Math.cos(pitch) - z2 * Math.sin(pitch);
+		const depth = y1 * Math.sin(pitch) + z2 * Math.cos(pitch);
+		if (depth >= PERSPECTIVE_PX * 0.86) return null;
+		const scale = PERSPECTIVE_PX / (PERSPECTIVE_PX - depth);
+		return { x: x2 * scale, y: y3 * scale, scale };
+	};
+
+	/** A word's box on screen (px from the centre, the box round it as turned), or null. */
+	const wordBoxOn = (board, line, word, pose) => {
+		const place = line.place;
+		const local = rotate2d(word.x, word.y, place.rot || 0);
+		const world = toWorld(board, place.x + local.x, place.y + local.y);
+		const point = projectPoint(pose, world.x, world.y, board.origin.z + (place.z || 0) + (word.z || 0));
+		if (!point) return null;
+		const turn = ((board.roll + (place.rot || 0) + (word.rot || 0) - pose.roll) * Math.PI) / 180;
+		const halfWidth = (word.width / 2) * point.scale;
+		// The ink of a line of type (caps and most letters), not its whole em: tightly stacked rows only touch.
+		const halfHeight = word.size * 0.38 * point.scale;
+		const cos = Math.abs(Math.cos(turn));
+		const sin = Math.abs(Math.sin(turn));
+		const reachX = halfWidth * cos + halfHeight * sin;
+		const reachY = halfWidth * sin + halfHeight * cos;
+		return { left: point.x - reachX, right: point.x + reachX, top: point.y - reachY, bottom: point.y + reachY };
+	};
+	const boxArea = (box) => Math.max(0, box.right - box.left) * Math.max(0, box.bottom - box.top);
+	const boxOverlap = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+
+	/** How solidly a line is on screen at a time (0 to 1), as the renderer draws it. */
+	const solidOn = (plan, line, time, progress, pose) => {
+		const board = plan.boards[line.board];
+		const visibility = boardVisibility(board, time);
+		if (visibility <= 0.002) return 0;
+		const depth = viewDepth(pose, line.center);
+		const closeness = depth > PERSPECTIVE_PX * 0.86 ? 0 : 1 - clamp01((depth - 240) / 420);
+		return levelsOn(board, line, progress - line.n, time).solid * visibility * closeness;
+	};
+	/** Whether a line has words on screen that are not on their way out (sung, and before its exit). */
+	const standing = (plan, line, time) => {
+		if (time < line.start) return false;
+		if (Number.isFinite(line.exitAt) && time >= line.exitAt) return false;
+		return !(plan.boards[line.board].solo && Number.isFinite(line.soloOut) && time >= line.soloOut);
+	};
+
+	/** The sung words of a line on screen at a time (boxes), skipping compositions whose geometry the camera bends. */
+	const sungBoxes = (board, line, time, pose) => {
+		const place = line.place;
+		if (!place?.block?.words || place.tiltX || place.tiltY || place.fill || place.travel) return [];
+		const boxes = [];
+		place.block.words.forEach((word, index) => {
+			if (!word) return;
+			const timing = line.shown[index];
+			if (timing && timing.start > time) return;
+			const box = wordBoxOn(board, line, word, pose);
+			if (box) boxes.push(box);
+		});
+		return boxes;
+	};
+
+	/**
+	 * Watches a composed edit the way a viewer would and reports what goes
+	 * wrong: words running off the screen, lines covering each other, lines
+	 * gone before they can be read, singing with nothing on screen, a crowd
+	 * of lines like a lyric sheet, how much the screen turns and flashes,
+	 * and an edit that leans on one look. score: 100 = nothing noticed.
+	 * issues name the song's lines (#n of the prompt) for the AI's notes.
+	 */
+	const critiquePlan = (plan, options = {}) => {
+		const lines = plan?.lines || [];
+		if (!lines.length) return { score: 0, stats: {}, issues: [] };
+		const step = Math.max(40, Number(options.step) || CRITIQUE_STEP_MS);
+		const halfWidth = plan.W / 2;
+		const halfHeight = plan.H / 2;
+		const first = lines[0].start;
+		const last = Math.max(...lines.map((line) => line.end));
+		const span = Math.max(1, last - first);
+		const shownMs = new Float64Array(lines.length);
+		const afterLastMs = new Float64Array(lines.length);
+		const blankOf = new Float64Array(lines.length);
+		const crowdOf = new Map();
+		const pairs = new Map();
+		let overlapMs = 0;
+		let blankMs = 0;
+		let singingMs = 0;
+		let crowdMs = 0;
+		let turned = 0;
+		let previousRoll = null;
+		for (let time = first - 400; time <= last + 400; time += step) {
+			const pose = cameraPose(plan, time);
+			if (previousRoll !== null) {
+				const change = Math.abs(pose.roll - previousRoll) % 360;
+				turned += Math.min(change, 360 - change);
+			}
+			previousRoll = pose.roll;
+			const progress = progressAt(plan, time);
+			const index = lineIndexAt(plan, time);
+			const visible = [];
+			let sung = false;
+			let sungShown = false;
+			for (let n = Math.max(0, index - 5); n <= Math.min(lines.length - 1, index + 2); n += 1) {
+				const line = lines[n];
+				const level = solidOn(plan, line, time, progress, pose);
+				// Only sung words are on screen (a line waiting for its turn shows at most its faint outline).
+				if (level >= 0.5 && time >= line.start) {
+					shownMs[n] += step;
+					if (time >= line.lastWordStart) afterLastMs[n] += step;
+				}
+				if (level >= 0.35 && standing(plan, line, time)) visible.push(line);
+				if (line.shown.some((word) => word.start <= time && time < Math.min(word.end, word.start + READ_WORD_MS))) {
+					sung = true;
+					if (level >= 0.3) sungShown = true;
+					else blankOf[n] += step;
+				}
+			}
+			if (sung) {
+				singingMs += step;
+				if (!sungShown) blankMs += step;
+			}
+			// Pieces of one sung line count as one line (a line built up word by word is not a crowd).
+			const sources = new Set(visible.map((line) => (Number.isInteger(line.source) ? line.source : line.n)));
+			if (sources.size >= 4) {
+				crowdMs += step;
+				const board = visible[visible.length - 1].board;
+				crowdOf.set(board, (crowdOf.get(board) || 0) + step);
+			}
+			if (sources.size >= 2) {
+				const boxes = visible.map((line) => sungBoxes(plan.boards[line.board], line, time, pose));
+				let covered = false;
+				for (let a = 0; a < visible.length; a += 1) {
+					for (let b = a + 1; b < visible.length; b += 1) {
+						if ((visible[a].source ?? visible[a].n) === (visible[b].source ?? visible[b].n)) continue;
+						const hit = boxes[a].some((one) => boxes[b].some((other) => boxOverlap(one, other) > 0.2 * Math.min(boxArea(one), boxArea(other))));
+						if (!hit) continue;
+						covered = true;
+						const key = visible[a].n + ":" + visible[b].n;
+						pairs.set(key, (pairs.get(key) || 0) + step);
+					}
+				}
+				if (covered) overlapMs += step;
+			}
+		}
+		// Each line once all of it is in: how much of its words the frame cuts off.
+		const clipped = [];
+		lines.forEach((line) => {
+			const board = plan.boards[line.board];
+			if (BLEEDING_LAYOUTS.has(board.layout)) return;
+			const until = Math.min(Number.isFinite(line.exitAt) ? line.exitAt : Infinity, Number.isFinite(line.leave) ? line.leave : Infinity, line.end + 1200) - 60;
+			const time = Math.max(line.start, Math.min(line.lastWordStart + 220, until));
+			const pose = cameraPose(plan, time);
+			if (solidOn(plan, line, time, progressAt(plan, time), pose) < 0.5) return;
+			let worst = 0;
+			for (const box of sungBoxes(board, line, time, pose)) {
+				const area = boxArea(box);
+				if (!area) continue;
+				const inside = boxOverlap(box, { left: -halfWidth, right: halfWidth, top: -halfHeight, bottom: halfHeight });
+				worst = Math.max(worst, 1 - inside / area);
+			}
+			if (worst > 0.2) clipped.push(line);
+		});
+		// A line can be read while it is sung: a word sung quickly needs no more than its own time.
+		const rushed = lines.filter((line, index) => index < lines.length - 1
+			&& (shownMs[index] < Math.min(readingMs(line) * 0.6, line.end - line.start + 150)
+				|| afterLastMs[index] < Math.min(260, Math.max(100, (line.end - line.lastWordStart) * 0.6))));
+		const blanks = lines.filter((_, index) => blankOf[index] >= 400);
+		const minutes = span / 60000;
+		const turnsPerMinute = turned / 360 / Math.max(0.5, minutes);
+		const flashesPerMinute = (plan.flashes?.length || 0) / Math.max(0.5, minutes);
+		const boards = plan.boards;
+		const layoutCount = new Map();
+		for (const board of boards) layoutCount.set(board.layout, (layoutCount.get(board.layout) || 0) + 1);
+		const [mostLayout, mostCount] = [...layoutCount.entries()].sort((a, b) => b[1] - a[1])[0] || ["", 0];
+		const monotonous = boards.length >= 6 && (layoutCount.size < 3 || mostCount / boards.length > 0.4);
+		const hits = lines.filter((line) => line.fx === "slam" || line.fx === "zoom");
+		const tooManyHits = hits.length > Math.max(2, lines.length * 0.15);
+
+		const sourceOf = (line) => (Number.isInteger(line.source) ? line.source : line.n);
+		const numbers = (group) => [...new Set(group.map(sourceOf))].sort((a, b) => a - b);
+		const byBoard = (group) => {
+			const groups = new Map();
+			for (const line of group) {
+				if (!groups.has(line.board)) groups.set(line.board, []);
+				groups.get(line.board).push(line);
+			}
+			return [...groups.entries()].map(([board, members]) => ({ board, layout: boards[board].layout, lines: numbers(members) }));
+		};
+		const issues = [];
+		for (const group of byBoard(clipped)) issues.push({ kind: "clip", ...group });
+		for (const [key, ms] of [...pairs.entries()].sort((a, b) => b[1] - a[1])) {
+			if (ms < 300) continue;
+			const [a, b] = key.split(":").map(Number);
+			issues.push({ kind: "overlap", board: lines[b].board, layout: boards[lines[b].board].layout, lines: numbers([lines[a], lines[b]]), ms });
+		}
+		for (const group of byBoard(rushed)) issues.push({ kind: "rushed", ...group });
+		for (const group of byBoard(blanks)) issues.push({ kind: "blank", ...group });
+		for (const [board, ms] of crowdOf) if (ms >= 1000) issues.push({ kind: "crowd", board, layout: boards[board].layout, lines: numbers(lines.filter((line) => line.board === board)), ms });
+		if (turnsPerMinute > 6) issues.push({ kind: "turns", value: round(turnsPerMinute, 1) });
+		if (flashesPerMinute > 6) issues.push({ kind: "flashes", value: round(flashesPerMinute, 1) });
+		if (monotonous) issues.push({ kind: "monotony", layout: mostLayout, value: mostCount, of: boards.length });
+		if (tooManyHits) issues.push({ kind: "hits", lines: numbers(hits) });
+
+		const penalty = Math.min(30, clipped.length * 5)
+			+ Math.min(25, (overlapMs / span) * 400)
+			+ Math.min(20, rushed.length * 2.5)
+			+ Math.min(30, (blankMs / Math.max(1, singingMs)) * 250)
+			+ Math.min(15, (crowdMs / span) * 150)
+			+ Math.min(10, Math.max(0, turnsPerMinute - 6) * 1.5)
+			+ Math.min(8, Math.max(0, flashesPerMinute - 6))
+			+ (monotonous ? 6 : 0)
+			+ (tooManyHits ? Math.min(8, hits.length - Math.max(2, lines.length * 0.15)) : 0);
+		return {
+			score: Math.round(clamp(100 - penalty, 0, 100)),
+			stats: {
+				clipped: clipped.length,
+				overlapMs: Math.round(overlapMs),
+				rushed: rushed.length,
+				blankMs: Math.round(blankMs),
+				singingMs: Math.round(singingMs),
+				crowdMs: Math.round(crowdMs),
+				turnsPerMinute: round(turnsPerMinute, 2),
+				flashesPerMinute: round(flashesPerMinute, 2),
+				layouts: layoutCount.size,
+				hits: hits.length,
+			},
+			issues,
+		};
+	};
+
+	/** The critique as short notes for the AI to revise its direction from (English, at most eight). */
+	const critiqueNotes = (critique, limit = 8) => {
+		const list = (numbers) => numbers.map((n) => "#" + n).join(", ");
+		const notes = [];
+		for (const issue of critique?.issues || []) {
+			switch (issue.kind) {
+				case "clip": notes.push("Lines " + list(issue.lines) + " (layout " + issue.layout + ") run off the screen: give them a composition that keeps them in frame (lockup, column, corners, stairs) or split them into phrases."); break;
+				case "overlap": notes.push("Lines " + list(issue.lines) + " cover each other on screen (layout " + issue.layout + "): give that shot room, fewer lines, or a one-at-a-time composition."); break;
+				case "rushed": notes.push("Lines " + list(issue.lines) + " (layout " + issue.layout + ") are gone before they can be read: keep each whole until the next is sung (split line, a composition that holds lines), fewer pieces."); break;
+				case "blank": notes.push("While " + list(issue.lines) + " are sung they are hardly on screen (layout " + issue.layout + "): a quicker entrance into that shot, and a composition that keeps the sung line in view."); break;
+				case "crowd": notes.push("The shot with " + list(issue.lines) + " (layout " + issue.layout + ") shows four or more lines at once and reads like a lyric sheet: fewer lines in it, or one at a time."); break;
+				case "turns": notes.push("The screen turns " + issue.value + " full circles a minute: keep turning moves and compositions (" + TURNING_NAMES + ") to section changes."); break;
+				case "flashes": notes.push(issue.value + " flashes a minute: keep cut, panel, glitch and flicker to real section changes."); break;
+				case "monotony": notes.push("The edit leans on " + issue.layout + " (" + issue.value + " of " + issue.of + " shots): draw on more of the kit, keeping the chorus look for the choruses."); break;
+				case "hits": notes.push("slam or zoom on " + issue.lines.length + " lines (" + list(issue.lines.slice(0, 8)) + "): keep hits for the one or two loudest moments, arrive smoothly elsewhere."); break;
+				default: break;
+			}
+			if (notes.length >= limit) break;
+		}
+		return notes;
 	};
 
 	const pure = Object.freeze({
@@ -4465,6 +4994,15 @@
 		travelFrame,
 		lineMotion,
 		deepOf,
+		comfortOf,
+		comfortDirection,
+		feelFor,
+		beatGridOf,
+		onBeat,
+		flexOf,
+		critiquePlan,
+		critiqueNotes,
+		projectPoint,
 	});
 
 	// ---------------------------------------------------------------------
@@ -4478,29 +5016,120 @@
 	};
 
 	/**
+	 * The colours of an album cover for the AI ({ colors: [{ hex, share }],
+	 * light: its mean brightness }), largest share first; null when the image
+	 * cannot be read. Read once per cover.
+	 */
+	const coverColors = new Map();
+	const coverColorsOf = (url) => {
+		let source = String(url || "").trim();
+		if (source.startsWith("spotify:image:")) source = "https://i.scdn.co/image/" + source.slice("spotify:image:".length);
+		if (!/^(https?:|data:|blob:)/.test(source) || typeof root.Image !== "function" || !root.document?.createElement) return Promise.resolve(null);
+		if (coverColors.has(source)) return coverColors.get(source);
+		const reading = new Promise((resolve) => {
+			const image = new root.Image();
+			image.crossOrigin = "anonymous";
+			image.onerror = () => resolve(null);
+			image.onload = () => {
+				try {
+					const size = 24;
+					const canvas = root.document.createElement("canvas");
+					canvas.width = size;
+					canvas.height = size;
+					const context = canvas.getContext("2d", { willReadFrequently: true });
+					context.drawImage(image, 0, 0, size, size);
+					const pixels = context.getImageData(0, 0, size, size).data;
+					// Colours in buckets of 3 bits a channel, then near buckets merged.
+					const buckets = new Map();
+					let light = 0;
+					for (let index = 0; index < pixels.length; index += 4) {
+						const [r, g, b] = [pixels[index], pixels[index + 1], pixels[index + 2]];
+						light += (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+						const key = ((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5);
+						const bucket = buckets.get(key) || { count: 0, r: 0, g: 0, b: 0 };
+						bucket.count += 1;
+						bucket.r += r;
+						bucket.g += g;
+						bucket.b += b;
+						buckets.set(key, bucket);
+					}
+					const total = size * size;
+					const merged = [];
+					for (const bucket of [...buckets.values()].sort((left, right) => right.count - left.count)) {
+						const colour = [bucket.r / bucket.count, bucket.g / bucket.count, bucket.b / bucket.count];
+						const near = merged.find((entry) => Math.hypot(entry.rgb[0] - colour[0], entry.rgb[1] - colour[1], entry.rgb[2] - colour[2]) < 48);
+						if (near) near.count += bucket.count;
+						else merged.push({ rgb: colour, count: bucket.count });
+					}
+					const hex = (rgb) => "#" + rgb.map((value) => Math.round(clamp(value, 0, 255)).toString(16).padStart(2, "0")).join("");
+					const colors = merged.filter((entry) => entry.count / total >= 0.03).slice(0, 5).map((entry) => ({ hex: hex(entry.rgb), share: round(entry.count / total, 2) }));
+					resolve(colors.length ? { colors, light: round(light / total, 2) } : null);
+				} catch {
+					// A cover from another origin cannot be read.
+					resolve(null);
+				}
+			};
+			image.src = source;
+		});
+		coverColors.set(source, reading);
+		if (coverColors.size > 24) coverColors.delete(coverColors.keys().next().value);
+		return reading;
+	};
+
+	/**
+	 * The built-in direction for a song: of a few takes (seeds from seed), the
+	 * one a viewer would find least wrong with (critiquePlan), composed on a
+	 * nominal screen so the pick does not change with the window.
+	 */
+	const LOCAL_TAKES = 3;
+	const bestLocalDirection = (model, options, composeOptions = {}) => {
+		const director = root.ivLyricsMotionDirector;
+		if (!director || !model?.length) return null;
+		const seed = (Number(options.seed) >>> 0) || 1;
+		let best = null;
+		for (let take = 0; take < LOCAL_TAKES; take += 1) {
+			const takeSeed = take ? (seed ^ Math.imul(0x9E3779B1, take)) >>> 0 : seed;
+			const direction = director.localDirection(model, { ...options, seed: takeSeed });
+			let score = 0;
+			try {
+				score = critiquePlan(compose(model, direction, { width: 1440, height: 900, ...composeOptions, seed: takeSeed }), { step: 150 }).score;
+			} catch {
+				score = 0;
+			}
+			if (!best || score > best.score) best = { direction, score, seed: takeSeed };
+			// A take nothing is wrong with is as good as it gets.
+			if (score >= 97) break;
+		}
+		return best;
+	};
+
+	/**
 	 * The AI direction for a song: { status: "ready", raw } from the cache or a
 	 * provider, { status: "off" } without a motion-capable provider, or
 	 * { status: "failed", error }.
+	 *
+	 * judge(raw) composes and watches a direction (critiquePlan). A direction
+	 * that scores under REVISE_BELOW goes back to the AI once with what was
+	 * wrong with it; revised then resolves with the revision when it scored
+	 * better (null otherwise), and the better of the two is cached. retake > 0
+	 * asks for a new edit (not from the cache) and caches that one instead.
+	 * cover: the album cover's colours ({ colors: [{ hex, share }], light }).
 	 */
-	const requestDirection = ({ trackUri, model, title = "", artist = "", tempo = null, songLang = "", energy = null }) => {
+	const REVISE_BELOW = 85;
+	const requestDirection = ({ trackUri, model, title = "", artist = "", tempo = null, songLang = "", energy = null, cover = null, judge = null, retake = 0 }) => {
 		const director = root.ivLyricsMotionDirector;
 		if (!director || !trackUri || !model?.length) return Promise.resolve({ status: "off" });
 		const sourceHash = hashString(modelSignature(model)).toString(36) + "-v" + director.VERSION;
-		const key = trackUri + "\u0002" + sourceHash;
+		const take = Math.max(0, Math.floor(Number(retake) || 0));
+		const key = trackUri + "\u0002" + sourceHash + "\u0002" + take;
 		if (directionRequests.has(key)) return directionRequests.get(key);
 		const request = (async () => {
 			const trackId = trackIdOf(trackUri);
 			const cache = root.LyricsCache;
-			try {
-				const cached = await cache?.getMotionDirection?.(trackId, sourceHash);
-				if (cached?.raw) return { status: "ready", raw: cached.raw, cached: true };
-			} catch {
-				// A cache miss only means asking the AI.
-			}
 			const manager = root.AIAddonManager;
 			const providers = manager?.getEnabledProvidersFor?.("motionDirection") || [];
-			if (typeof manager?.generateMotionDirection !== "function" || !providers.length) return { status: "off" };
-			const raw = await manager.generateMotionDirection({
+			const asking = typeof manager?.generateMotionDirection === "function" && providers.length > 0;
+			const params = {
 				title,
 				artist,
 				// The lines with what the song says about them (energy, choruses, repeats, held words) and the cuts its structure suggests.
@@ -4509,15 +5138,61 @@
 				vocabulary: director.vocabulary(),
 				tempo: tempo || director.tempoOf(model),
 				language: songLang,
-			});
+				cover,
+				retake: take,
+			};
+			const save = async (raw, verdict, judged) => {
+				try {
+					await cache?.setMotionDirection?.(trackId, sourceHash, { raw, version: director.VERSION, judged, score: verdict?.score ?? null });
+				} catch {
+					// Not cached: the next play asks again.
+				}
+			};
+			const watch = (raw) => {
+				try {
+					return typeof judge === "function" ? judge(raw) : null;
+				} catch (error) {
+					console.warn("[ivLyrics motion] Could not judge the direction:", error);
+					return null;
+				}
+			};
+			// The AI looks at what went wrong and directs again; the better of the two stays.
+			const revise = async (raw, verdict) => {
+				try {
+					const next = await manager.generateMotionDirection({ ...params, revision: { direction: raw, notes: critiqueNotes(verdict), score: verdict.score } });
+					const second = director.normalizeDirection(next, model, {}).coverage >= 0.5 ? watch(next) : null;
+					const better = !!second && second.score > verdict.score;
+					console.info("[ivLyrics motion] AI direction revised:", verdict.score, "->", second ? second.score : "unusable");
+					await save(better ? next : raw, better ? second : verdict, true);
+					return better ? next : null;
+				} catch (error) {
+					console.warn("[ivLyrics motion] AI revision failed:", error);
+					await save(raw, verdict, true);
+					return null;
+				}
+			};
+			const needsRevision = (verdict) => asking && !!verdict && verdict.score < REVISE_BELOW && critiqueNotes(verdict).length > 0;
+			if (!take) {
+				try {
+					const cached = await cache?.getMotionDirection?.(trackId, sourceHash);
+					if (cached?.raw) {
+						// A direction cached before it was judged (the revision never finished) is judged now.
+						const verdict = cached.judged === true ? null : watch(cached.raw);
+						return { status: "ready", raw: cached.raw, cached: true, revised: needsRevision(verdict) ? revise(cached.raw, verdict) : null };
+					}
+				} catch {
+					// A cache miss only means asking the AI.
+				}
+			}
+			if (!asking) return { status: "off" };
+			const raw = await manager.generateMotionDirection(params);
 			const checked = director.normalizeDirection(raw, model, {});
 			if (checked.coverage < 0.5) throw new Error("The AI direction covered too few lines");
-			try {
-				await cache?.setMotionDirection?.(trackId, sourceHash, { raw, version: director.VERSION });
-			} catch {
-				// Not cached: the next play asks again.
-			}
-			return { status: "ready", raw };
+			const verdict = watch(raw);
+			const revising = needsRevision(verdict);
+			if (verdict) console.info("[ivLyrics motion] AI direction scored", verdict.score, revising ? "(sending it back with " + critiqueNotes(verdict).length + " notes)" : "", verdict.stats);
+			await save(raw, verdict, !revising);
+			return { status: "ready", raw, score: verdict?.score ?? null, revised: revising ? revise(raw, verdict) : null };
 		})().catch((error) => ({ status: "failed", error: String(error?.message || error) }));
 		directionRequests.set(key, request);
 		request.then(() => directionRequests.delete(key));
@@ -4707,6 +5382,153 @@
 			if (next.written !== current) backdrop.style.filter = next.written;
 			backgroundFilter = next;
 		};
+		// ---- Quality: when frames keep coming late on this machine, the costly extras go (lite):
+		// motion blur, reading the picture for contrast, halos and glows (CSS, .is-lite) and words
+		// changing weight. It comes back once frames are on time again, at most twice a song.
+		const quality = { lite: false, average: 0, lastAt: 0, slowSince: null, fastSince: null, drops: 0 };
+		const setLite = (value) => {
+			quality.lite = value;
+			quality.slowSince = null;
+			quality.fastSince = null;
+			if (value) quality.drops += 1;
+			stage.classList?.toggle("is-lite", value);
+		};
+		const watchFrames = (at) => {
+			const gap = at - quality.lastAt;
+			quality.lastAt = at;
+			// Only running frames count (not a pause, a hidden tab or the first frame).
+			if (!playing || gap <= 0 || gap > 250) return;
+			quality.average = quality.average ? quality.average * 0.92 + gap * 0.08 : gap;
+			if (!quality.lite) {
+				if (quality.average > LITE_SLOW_MS) {
+					quality.slowSince ??= at;
+					if (at - quality.slowSince > LITE_AFTER_MS) setLite(true);
+				} else quality.slowSince = null;
+			} else if (quality.drops < 2) {
+				if (quality.average < LITE_FAST_MS) {
+					quality.fastSince ??= at;
+					if (at - quality.fastSince > LITE_BACK_MS) setLite(false);
+				} else quality.fastSince = null;
+			}
+		};
+		// ---- Contrast: how bright the picture is behind each line, where it can be read (a cover, a video
+		// of our own); the halo round the type is stronger on bright parts, the shade over the frame lighter
+		// on dark ones. A picture that cannot be read (a YouTube player, the apps' own video) leaves both as they are.
+		const CONTRAST_MS = 300;
+		const contrast = { canvas: null, context: null, key: "", image: null, blocked: new Set(), cells: null, columns: 0, rows: 0, mean: null, at: -Infinity, paintedAt: -Infinity, frame: null };
+		const contrastSource = (backdrop) => {
+			if (!backdrop || backdrop.querySelector?.("iframe")) return null;
+			const video = backdrop.querySelector?.("video");
+			if (video) return video.readyState >= 2 && video.videoWidth ? { key: "video:" + (video.currentSrc || video.src), el: video, width: video.videoWidth, height: video.videoHeight } : null;
+			const img = backdrop.querySelector?.("img");
+			if (img) return img.complete && img.naturalWidth ? { key: "img:" + img.currentSrc, el: img, width: img.naturalWidth, height: img.naturalHeight } : null;
+			const url = /url\(["']?([^"')]+)["']?\)/.exec(root.getComputedStyle?.(backdrop)?.backgroundImage || "")?.[1];
+			if (!url) return null;
+			// A cover set as a background image is read from a copy loaded for it.
+			if (contrast.key !== "url:" + url) {
+				contrast.key = "url:" + url;
+				contrast.image = null;
+				const image = new root.Image();
+				image.crossOrigin = "anonymous";
+				image.onload = () => { if (contrast.key === "url:" + url) contrast.image = image; };
+				image.src = url;
+			}
+			return contrast.image ? { key: contrast.key, el: contrast.image, width: contrast.image.naturalWidth, height: contrast.image.naturalHeight } : null;
+		};
+		/** Samples the picture (as the camera has turned it) into a small grid of brightness. */
+		const sampleContrast = (backdrop, at) => {
+			if (at - contrast.at < CONTRAST_MS) return;
+			contrast.at = at;
+			const source = contrastSource(backdrop);
+			if (!source || contrast.blocked.has(source.key)) {
+				contrast.cells = null;
+				contrast.mean = null;
+				return;
+			}
+			const columns = 32;
+			const rows = Math.max(8, Math.round((columns * plan.H) / plan.W));
+			if (!contrast.canvas) {
+				contrast.canvas = document.createElement("canvas");
+				contrast.context = contrast.canvas.getContext("2d", { willReadFrequently: true });
+			}
+			if (!contrast.context) return;
+			contrast.canvas.width = columns;
+			contrast.canvas.height = rows;
+			const context = contrast.context;
+			const frame = contrast.frame || { rotate: 0, scale: 1, x: 0, y: 0 };
+			// object-fit: cover, then the camera's turn, zoom and shift.
+			const cover = Math.max(columns / source.width, rows / source.height);
+			context.setTransform(1, 0, 0, 1, 0, 0);
+			context.fillStyle = "#000";
+			context.fillRect(0, 0, columns, rows);
+			context.translate(columns / 2 + (frame.x * columns) / plan.W, rows / 2 + (frame.y * rows) / plan.H);
+			context.rotate(((frame.rotate || 0) * Math.PI) / 180);
+			context.scale(frame.scale || 1, frame.scale || 1);
+			try {
+				context.drawImage(source.el, (-source.width * cover) / 2, (-source.height * cover) / 2, source.width * cover, source.height * cover);
+				const pixels = context.getImageData(0, 0, columns, rows).data;
+				const cells = new Float32Array(columns * rows);
+				let sum = 0;
+				for (let index = 0; index < cells.length; index += 1) {
+					const value = (0.2126 * pixels[index * 4] + 0.7152 * pixels[index * 4 + 1] + 0.0722 * pixels[index * 4 + 2]) / 255;
+					cells[index] = value;
+					sum += value;
+				}
+				// The background's own dimming (brightness(...) in its filter) darkens what is seen.
+				const dim = Number(/brightness\(([\d.]+)\)/.exec(backgroundFilter.base || "")?.[1]);
+				const factor = Number.isFinite(dim) ? dim : 1;
+				for (let index = 0; index < cells.length; index += 1) cells[index] *= factor;
+				contrast.cells = cells;
+				contrast.columns = columns;
+				contrast.rows = rows;
+				contrast.mean = (sum / cells.length) * factor;
+			} catch {
+				// A picture from another origin cannot be read: left as it is.
+				contrast.blocked.add(source.key);
+				contrast.cells = null;
+				contrast.mean = null;
+			}
+		};
+		/** How bright the picture is behind a line on screen (0 to 1), or null when it cannot be read. */
+		const brightnessBehind = (element, stageRect) => {
+			if (!contrast.cells) return null;
+			const rect = element.getBoundingClientRect();
+			if (!rect.width || !rect.height) return null;
+			const left = clamp(Math.floor(((rect.left - stageRect.left) / stageRect.width) * contrast.columns), 0, contrast.columns - 1);
+			const right = clamp(Math.ceil(((rect.right - stageRect.left) / stageRect.width) * contrast.columns), left + 1, contrast.columns);
+			const top = clamp(Math.floor(((rect.top - stageRect.top) / stageRect.height) * contrast.rows), 0, contrast.rows - 1);
+			const bottom = clamp(Math.ceil(((rect.bottom - stageRect.top) / stageRect.height) * contrast.rows), top + 1, contrast.rows);
+			let sum = 0;
+			let count = 0;
+			let brightest = 0;
+			for (let row = top; row < bottom; row += 1) {
+				for (let column = left; column < right; column += 1) {
+					const value = contrast.cells[row * contrast.columns + column];
+					sum += value;
+					count += 1;
+					brightest = Math.max(brightest, value);
+				}
+			}
+			// Bright spots behind the type matter more than the average.
+			return count ? clamp((sum / count) * 0.6 + brightest * 0.4, 0, 1) : null;
+		};
+		/** Each visible line's halo, from the brightness behind it (every CONTRAST_MS). */
+		const paintContrast = (at) => {
+			if (at - contrast.paintedAt < CONTRAST_MS) return;
+			contrast.paintedAt = at;
+			const stageRect = contrast.cells ? stage.getBoundingClientRect() : null;
+			for (const entry of mounted.values()) {
+				for (const lineEntry of entry.lines) {
+					const shown = (lineEntry.cache.solid || 0) > 0.05;
+					const value = shown && stageRect ? brightnessBehind(lineEntry.el, stageRect) : null;
+					const level = value === null ? "" : String(round(value, 2));
+					write(lineEntry.cache, "lum", level, (next) => {
+						if (next === "") lineEntry.el.style.removeProperty("--lum");
+						else lineEntry.el.style.setProperty("--lum", next);
+					});
+				}
+			}
+		};
 		const releaseBackground = () => {
 			if (!background) return;
 			background.classList?.remove("is-motion-camera");
@@ -4744,8 +5566,9 @@
 		/** Beats within span ms before time, latest first: the song's analysis, or without one the tempo's. */
 		const beatsBefore = (scene, time, span) => {
 			const found = [];
-			if (pulses?.times?.length) {
-				const times = pulses.times;
+			const source = pulses || plan?.pulses;
+			if (source?.times?.length) {
+				const times = source.times;
 				let low = 0;
 				let high = times.length;
 				while (low < high) {
@@ -4754,7 +5577,7 @@
 					else high = middle;
 				}
 				for (let index = low - 1; index >= 0 && time - times[index] <= span && found.length < 16; index -= 1) {
-					found.push({ time: times[index], strength: pulses.strengths[index] || 0.5 });
+					found.push({ time: times[index], strength: source.strengths[index] || 0.5 });
 				}
 				return found;
 			}
@@ -5216,7 +6039,7 @@
 			}
 			lineEl.appendChild(wordEl);
 			// Glowing words throb with the beat.
-			return { el: wordEl, solid, box, spark, chars, word, index: wordIndex, size: spot.size, emph: spot.emph, pulse: spot.emph && (board.accent === "glow" || board.accent === "neon"), cache: {} };
+			return { el: wordEl, solid, box, spark, chars, word, index: wordIndex, size: spot.size, emph: spot.emph, pulse: spot.emph && (board.accent === "glow" || board.accent === "neon"), flex: flexOf(spot.spec), cache: {} };
 		};
 
 		const mountBoard = (index) => {
@@ -5311,6 +6134,17 @@
 			write(word.cache, "shadow", frameState.shadow, (value) => { word.solid.style.textShadow = value; });
 		};
 
+		/** A variable word's weight and width (rounded, so the type is reshaped only when they visibly change). */
+		const writeFlex = (word, weight, width) => {
+			// Lite: words keep their resting weight (a changing weight lays the word out again every frame).
+			if (quality.lite) {
+				weight = word.flex.weight;
+				width = word.flex.wdth ? 100 : null;
+			}
+			write(word.cache, "weight", Math.round(weight / 10) * 10, (value) => { word.el.style.fontWeight = String(value); });
+			if (width !== null) write(word.cache, "stretch", Math.round(width), (value) => { word.el.style.fontStretch = value + "%"; });
+		};
+
 		const settleLine = (entry, sung) => {
 			const state = sung ? "sung" : "waiting";
 			if (entry.settled === state) return;
@@ -5325,6 +6159,7 @@
 				if (word.spark) write(word.cache, "spark", "hidden", (value) => { word.spark.style.visibility = value; });
 				if (word.pulse) write(word.cache, "pulse", "", (value) => { word.solid.style.scale = value; });
 				write(word.cache, "float", "", (value) => { word.el.style.translate = value; });
+				if (word.flex) writeFlex(word, word.flex.weight, word.flex.wdth ? 100 : null);
 				if (word.chars) {
 					for (const char of word.chars) {
 						write(char.cache, "opacity", 1, (value) => { char.el.style.opacity = String(value); });
@@ -5365,6 +6200,8 @@
 					// Leaving: the words go one after another with the shot's exit, settled in place until their turn.
 					const k = clamp01((time - (line.exitAt + order * line.exitStagger)) / exitLength);
 					write(word.cache, "active", false, (value) => word.el.classList.toggle("is-active", value));
+					// A variable word thins out as it goes.
+					if (word.flex) writeFlex(word, lerp(word.flex.weight, word.flex.thin, easeInCubic(k)), word.flex.wdth ? lerp(100, word.flex.narrow, easeInCubic(k)) : null);
 					if (word.chars && lettered) {
 						// Taken apart letter by letter.
 						writeSolid(word, k >= 1 ? HIDDEN : SETTLED);
@@ -5390,6 +6227,18 @@
 				const progress = wordEntrance(line.fx, word.word, time, pace);
 				writeSolid(word, solidFrame(line.fx, progress, seed + word.index * 7919, line.info.rtl));
 				write(word.cache, "active", time >= word.word.start && time < word.word.end, (value) => word.el.classList.toggle("is-active", value));
+				if (word.flex) {
+					// A variable word lands thin and narrow and swells to its weight as it is sung; an emphasised one breathes with the beat.
+					const flex = word.flex;
+					const grow = easeOutCubic(clamp01((time - word.word.start + 40) / clamp(word.word.end - word.word.start, 280, 720)));
+					let weight = lerp(flex.thin, flex.weight, grow);
+					let width = flex.wdth ? lerp(flex.narrow, 100, grow) : null;
+					if (word.emph && grow >= 1) {
+						weight = Math.min(flex.heaviest, weight + beat * 70);
+						if (width !== null) width = Math.min(flex.wide, width + beat * 5);
+					}
+					writeFlex(word, weight, width);
+				}
 				if (word.box) {
 					write(word.cache, "box", round(easeOutCubic(clamp01((time - word.word.start + 40) / (300 * fxPaceOf(pace)))), 3), (value) => word.box.style.setProperty("--b", String(value)));
 				}
@@ -5555,7 +6404,7 @@
 				pending = null;
 				planSetAt = at;
 				unmountAll();
-				if (!quiet) swapFlashAt = at;
+				if (!quiet && !plan.comfort?.safe) swapFlashAt = at;
 			}
 		};
 
@@ -5573,14 +6422,15 @@
 				return;
 			}
 			swapIfDue(time, at);
-			const pose = cameraPose(plan, time, pulses);
+			watchFrames(at);
+			const pose = cameraPose(plan, time, pulses || plan.pulses);
 			write(cache.camera, "transform",
 				"rotateX(" + round(pose.pitch || 0, 2) + "deg) rotateY(" + round(pose.yaw || 0, 2) + "deg) rotateZ(" + round(-pose.roll, 3) + "deg) translate3d(" + round(-pose.x) + "px," + round(-pose.y) + "px," + round(-pose.z) + "px)",
 				(value) => { camera.style.transform = value; });
 
-			// Motion blur while the camera whips between boards.
+			// Motion blur while the camera whips between boards (not in lite quality).
 			let blur = 0;
-			if (playing && lastPose && at - lastFrameAt > 0 && at - lastFrameAt < 90) {
+			if (playing && !quality.lite && lastPose && at - lastFrameAt > 0 && at - lastFrameAt < 90) {
 				const elapsed = at - lastFrameAt;
 				let turn = Math.abs(pose.roll - lastPose.roll) % 360;
 				turn = Math.min(turn, 360 - turn);
@@ -5596,10 +6446,12 @@
 			const backdrop = findBackground(at);
 			if (backdrop) {
 				const frameState = backgroundFrame(plan, pose, time);
+				contrast.frame = frameState;
 				write(cache.background, "rotate", round(frameState.rotate, 2) + "deg", (value) => { backdrop.style.rotate = value; });
 				write(cache.background, "scale", String(round(frameState.scale, 4)), (value) => { backdrop.style.scale = value; });
 				write(cache.background, "translate", round(frameState.x) + "px " + round(frameState.y) + "px", (value) => { backdrop.style.translate = value; });
 				writeBackgroundFilter(backdrop, blur >= 1 ? round(blur * 0.5, 1) : 0);
+				if (!quality.lite) sampleContrast(backdrop, at);
 			}
 
 			const progress = progressAt(plan, time);
@@ -5614,6 +6466,7 @@
 				paintBoard(mounted.get(index), time, pose, progress, pose.beat || 0, through);
 			}
 			paintInterludes(time);
+			if (!quality.lite) paintContrast(at);
 
 			const index = Math.max(0, lineIndexAt(plan, time));
 			if (index !== currentLine) {
@@ -5628,8 +6481,10 @@
 			}
 			// Interludes, intro and outro: the video comes forward and the subtitle steps aside.
 			const rest = round(restAt(plan, time), 2);
-			write(cache.rest, "level", rest, (value) => {
-				if (scrim) scrim.style.opacity = String(round(1 - value * 0.5, 2));
+			// The shade over the frame: lighter in interludes, and over a dark picture (where it can be read).
+			const shade = round((1 - rest * 0.5) * (contrast.mean === null ? 1 : clamp(0.55 + contrast.mean * 0.9, 0.62, 1)), 2);
+			write(cache.rest, "shade", shade, (value) => {
+				if (scrim) scrim.style.opacity = String(value);
 			});
 			// The translation goes with its line: not after it ends, before the next one starts.
 			const sung = plan.lines[index];
@@ -5742,14 +6597,19 @@
 		const FAILED_NOTICE_MS = 6000;
 		// A direction that arrives sooner (from the cache) is not announced at all.
 		const STATUS_DELAY_MS = 400;
+		// How long the AI request waits for the cover's colours.
+		const COVER_WAIT_MS = 1200;
 		const t = (key, fallback) => root.I18n?.t?.(key) || fallback;
 
 		/**
 		 * onStatus: the app shows the AI direction's progress with its other AI
 		 * tasks; it is called with { phase: "loading" | "complete" | "failed" |
 		 * "idle", uri }. Without it the stage shows its own notice.
+		 * motion: the viewer's comfort ({ intensity, rotation, safe }, comfortOf);
+		 * retake: counts the viewer's "direct again" (a new edit each time);
+		 * cover: the album cover's URL (its colours go to the AI).
 		 */
-		return react.memo(({ lyrics = [], trackUri = "", accent = "", isPlaying = false, title = "", artist = "", onStatus = null }) => {
+		return react.memo(({ lyrics = [], trackUri = "", accent = "", isPlaying = false, title = "", artist = "", onStatus = null, motion = null, retake = 0, cover = "" }) => {
 			const rootRef = useRef(null);
 			const viewportRef = useRef(null);
 			const cameraRef = useRef(null);
@@ -5772,6 +6632,9 @@
 			const [analysis, setAnalysis] = useState({ uri: "", status: "loading", data: null, planned: false });
 			const [ai, setAi] = useState({ key: "", status: "idle", raw: null });
 			const [showFailure, setShowFailure] = useState(false);
+			const [coverInfo, setCoverInfo] = useState({ url: "", colors: null, settled: false });
+			const sizeRef = useRef(size);
+			sizeRef.current = size;
 			const modelRef = useRef({ signature: "", lines: [] });
 			const model = useMemo(() => {
 				const lines = buildModel(lyrics);
@@ -5791,6 +6654,11 @@
 				}
 			}, [signature]);
 			const typography = useMemo(() => typeLib()?.typographyOf?.(model, songLang) || [], [model, songLang]);
+			// Every "direct again" is a new edit: its own seed (and a new AI take).
+			const take = Math.max(0, Math.floor(Number(retake) || 0));
+			const seedBase = (hashString(trackUri) + Math.imul(take, 7919)) >>> 0;
+			const comfortKey = [motion?.intensity || "", motion?.rotation || "", motion?.safe === true ? "safe" : ""].join("|");
+			const comfort = useMemo(() => comfortOf(motion), [comfortKey]);
 
 			useLayoutEffect(() => {
 				const element = rootRef.current;
@@ -5855,25 +6723,71 @@
 			const planAnalysis = analysis.planned ? analysis.data : null;
 			const tempo = useMemo(() => root.ivLyricsMotionDirector?.tempoOf?.(model, pulsesInMs(planAnalysis)) || null, [model, planAnalysis]);
 
+			// The cover's colours for the AI (it waits a moment for them).
+			useEffect(() => {
+				let cancelled = false;
+				if (!cover) {
+					setCoverInfo({ url: "", colors: null, settled: true });
+					return undefined;
+				}
+				setCoverInfo((current) => (current.url === cover ? current : { url: cover, colors: null, settled: false }));
+				const timer = root.setTimeout(() => {
+					if (!cancelled) setCoverInfo((current) => (current.url === cover && !current.settled ? { ...current, settled: true } : current));
+				}, COVER_WAIT_MS);
+				coverColorsOf(cover).then((colors) => {
+					if (!cancelled) setCoverInfo({ url: cover, colors, settled: true });
+				});
+				return () => {
+					cancelled = true;
+					root.clearTimeout(timer);
+				};
+			}, [cover]);
+			const coverSettled = !cover || (coverInfo.url === cover && coverInfo.settled);
+			const coverRef = useRef(null);
+			coverRef.current = coverInfo.url === cover ? coverInfo.colors : null;
+
 			// The AI is asked once the song's analysis is in (or late): it reads each line's energy and the tempo with its BPM.
 			const analysisSettled = analysis.uri === trackUri && analysis.status !== "loading";
 			useEffect(() => {
-				if (!model.length || !trackUri || !analysisSettled) return undefined;
+				if (!model.length || !trackUri || !analysisSettled || !coverSettled) return undefined;
 				let cancelled = false;
-				setAi({ key: aiKey, status: "loading", raw: null });
+				// A new take keeps showing the edit before it until the new one is in.
+				setAi((current) => (current.key === aiKey && current.raw ? { ...current, status: "loading" } : { key: aiKey, status: "loading", raw: null }));
 				setShowFailure(false);
 				const sound = analysis.data || null;
 				const requestTempo = root.ivLyricsMotionDirector?.tempoOf?.(model, pulsesInMs(sound)) || tempo;
-				requestDirection({ trackUri, model, title, artist, tempo: requestTempo, songLang, energy: lineEnergies(model, sound) }).then((result) => {
+				const energy = lineEnergies(model, sound);
+				// How the AI's direction plays on this screen, watched before it is trusted (critiquePlan).
+				const judgeModel = model;
+				const judgeTypography = typography;
+				const judgeSeed = seedBase;
+				const judge = (raw) => {
+					const director = root.ivLyricsMotionDirector;
+					const checked = director.normalizeDirection(raw, judgeModel, { seed: judgeSeed, energy, tempo: requestTempo });
+					return critiquePlan(compose(judgeModel, checked, {
+						width: sizeRef.current.width || 1440,
+						height: sizeRef.current.height || 900,
+						seed: judgeSeed,
+						analysis: sound,
+						measure: measureRef.current,
+						typography: judgeTypography,
+						songLang,
+					}));
+				};
+				requestDirection({ trackUri, model, title, artist, tempo: requestTempo, songLang, energy, cover: coverRef.current, judge, retake: take }).then((result) => {
 					if (cancelled) return;
-					setAi({ key: aiKey, status: result.status, raw: result.raw || null });
+					setAi((current) => ({ key: aiKey, status: result.status, raw: result.raw || (current.key === aiKey && result.status === "failed" ? current.raw : null) }));
 					if (result.status === "failed") {
 						console.warn("[ivLyrics motion] AI direction failed:", result.error);
 						setShowFailure(true);
 					}
+					// The AI's revision of its own direction, when it came out better: shown from the next cut.
+					Promise.resolve(result.revised).then((better) => {
+						if (!cancelled && better) setAi({ key: aiKey, status: "ready", raw: better });
+					});
 				});
 				return () => { cancelled = true; };
-			}, [aiKey, analysisSettled]);
+			}, [aiKey, analysisSettled, coverSettled, take]);
 
 			useEffect(() => {
 				if (!showFailure) return undefined;
@@ -5881,12 +6795,20 @@
 				return () => root.clearTimeout(timer);
 			}, [showFailure]);
 
-			const direction = useMemo(() => {
+			const chosen = useMemo(() => {
 				const director = root.ivLyricsMotionDirector;
 				if (!director || !model.length) return null;
-				const options = { seed: hashString(trackUri), energy: lineEnergies(model, planAnalysis), tempo };
-				return ai.key === aiKey && ai.raw ? director.normalizeDirection(ai.raw, model, options) : director.localDirection(model, options);
-			}, [ai, aiKey, model, trackUri, planAnalysis, tempo]);
+				const options = { seed: seedBase, energy: lineEnergies(model, planAnalysis), tempo };
+				if (ai.key === aiKey && ai.raw) return { direction: director.normalizeDirection(ai.raw, model, options), seed: seedBase };
+				// Once it is clear no AI direction is coming, the built-in one is the best of a few takes.
+				if (ai.key === aiKey && (ai.status === "off" || ai.status === "failed")) {
+					const best = bestLocalDirection(model, options, { typography, songLang, analysis: planAnalysis });
+					if (best) return best;
+				}
+				return { direction: director.localDirection(model, options), seed: seedBase };
+			}, [ai, aiKey, model, seedBase, planAnalysis, tempo, typography, songLang]);
+			const direction = chosen?.direction || null;
+			const planSeed = chosen?.seed ?? seedBase;
 			const palette = useMemo(() => paletteFrom(accent, direction?.palette), [accent, direction]);
 
 			// The faces this direction sets load before it is composed (bounded),
@@ -5921,15 +6843,16 @@
 				return compose(model, direction, {
 					width: size.width,
 					height: size.height,
-					seed: hashString(trackUri),
+					seed: planSeed,
 					analysis: planAnalysis,
 					measure: measureRef.current,
 					typography,
 					songLang,
 					title,
 					artist,
+					motion: comfort,
 				});
-			}, [planReady, direction, size.width, size.height, fonts.epoch, planAnalysis, typography, title, artist]);
+			}, [planReady, direction, size.width, size.height, fonts.epoch, planAnalysis, typography, title, artist, comfort, planSeed]);
 
 			useEffect(() => { engineRef.current?.setLyrics(lyrics); }, [lyrics]);
 			const shownRef = useRef({ direction: null, size: "" });
@@ -6029,6 +6952,7 @@
 		initialized: true,
 		...pure,
 		requestDirection,
+		bestLocalDirection,
 		createEngine,
 		Stage: react ? createStage(react) : null,
 	});

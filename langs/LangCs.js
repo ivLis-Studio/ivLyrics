@@ -2651,7 +2651,8 @@ window.LANG_CS = {
       "motionUnavailable": "Pohyblivé texty fungují u skladeb se synchronizací po slovech nebo znacích. U této skladby se zobrazí text video scény.",
       "motionReducedMotion": "Je zapnuté omezení pohybu, takže se místo pohyblivých textů zobrazí text video scény.",
       "motionDirecting": "AI připravuje režii animace…",
-      "motionDirectFailed": "Režie AI selhala. Používá se vestavěná režie."
+      "motionDirectFailed": "Režie AI selhala. Používá se vestavěná režie.",
+      "motionRedirect": "Znovu zrežírovat"
     },
     "settings": {
       "subtitle": "Přizpůsobte velikost, animace a typografii spodního textu ve vinylovém režimu.",
@@ -2677,6 +2678,18 @@ window.LANG_CS = {
       "motionBackgroundDesc": "Co se pohybuje za animovaným textem: video skladby, nebo pozadí skladby používané jinde (obal alba nebo barvy). Pozadí skladby zvolte, když skladba nemá video nebo ho YouTube nemůže přehrát.",
       "motionBackgroundVideo": "Video",
       "motionBackgroundTrack": "Pozadí skladby",
+      "motionIntensityLabel": "Intenzita pohybu",
+      "motionIntensityDesc": "Jak moc se kamera v pohyblivých textech houpe, klouže a třese. Klidně také vynechá slova, která vlétají s nárazem.",
+      "motionIntensityCalm": "Klidně",
+      "motionIntensityNormal": "Normálně",
+      "motionIntensityWild": "Divoce",
+      "motionRotationLabel": "Otáčení obrazovky",
+      "motionRotationDesc": "Jak moc pohyblivé texty otáčejí obrazovku a video. Jemně vynechá čtvrtotáčky, převrácení a celé otočky; Vypnuto drží vše ve vodorovné poloze.",
+      "motionRotationFull": "Plné",
+      "motionRotationGentle": "Jemně",
+      "motionRotationOff": "Vypnuto",
+      "motionSafeLabel": "Bezpečný režim pro fotosenzitivitu",
+      "motionSafeDesc": "Odstraní z pohyblivých textů záblesky, glitche a blikání.",
       "tonearmTitle": "Raménko",
       "tonearmSubtitle": "Přizpůsobte tvar, povrch a velikost raménka.",
       "tonearmStyleLabel": "Styl raménka",

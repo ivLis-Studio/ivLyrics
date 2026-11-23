@@ -15,7 +15,8 @@
 
 	if (root.ivLyricsMotionType?.initialized) return;
 
-	const PERSONALITIES = Object.freeze(["impact", "serif", "round"]);
+	// flex: a variable heavy sans whose weight (and width, where the face has the axis) moves as words land and breathe.
+	const PERSONALITIES = Object.freeze(["impact", "serif", "round", "flex"]);
 	const FONT_WAIT_MS = 3200;
 	const BASE_FALLBACK = '"Pretendard Variable", Pretendard, "Noto Sans", "Apple SD Gothic Neo", "Hiragino Sans", sans-serif';
 
@@ -41,6 +42,25 @@
 
 	const face = (family, weight = 400, extra = {}) => ({ family, weight, style: "normal", spacing: 0, lineHeight: 1.04, scale: 1, ...extra });
 	const pretendard = face("Pretendard Variable", 640, { external: true, spacing: -0.012, lineHeight: 1.14 });
+	/**
+	 * A variable face: set at weight (its resting weight) and width 100, it
+	 * moves between the axis ranges given (wght, and wdth where it has one).
+	 */
+	const variable = (family, weight, wght, wdth = null, extra = {}) => face(family, weight, { axes: { wght, wdth }, ...extra });
+	const FLEX = Object.freeze({
+		latin: variable("Archivo", 860, [100, 900], [62, 125], { spacing: -0.012, lineHeight: 1.02 }),
+		cyrillic: variable("Roboto Flex", 880, [100, 1000], [25, 151], { spacing: -0.01, lineHeight: 1.06 }),
+		greek: variable("Roboto Flex", 880, [100, 1000], [25, 151], { spacing: -0.01, lineHeight: 1.06 }),
+		ko: variable("Pretendard Variable", 860, [45, 920], null, { external: true, spacing: -0.02, lineHeight: 1.12 }),
+		ja: variable("Noto Sans JP", 860, [100, 900], null, { lineHeight: 1.16 }),
+		"zh-hans": variable("Noto Sans SC", 860, [100, 900], null, { lineHeight: 1.16 }),
+		"zh-hant": variable("Noto Sans TC", 860, [100, 900], null, { lineHeight: 1.16 }),
+		arabic: variable("Noto Sans Arabic", 820, [100, 900], [62.5, 100], { lineHeight: 1.42 }),
+		hebrew: variable("Noto Sans Hebrew", 820, [100, 900], [62.5, 100], { lineHeight: 1.16 }),
+		thai: variable("Noto Sans Thai", 820, [100, 900], [62.5, 100], { lineHeight: 1.4 }),
+		devanagari: variable("Noto Sans Devanagari", 820, [100, 900], [62.5, 100], { lineHeight: 1.4 }),
+		bengali: variable("Noto Sans Bengali", 820, [100, 900], [62.5, 100], { lineHeight: 1.4 }),
+	});
 	// Handwriting and brush faces for the "script" accent: one emphasised word against the heavy type.
 	const HAND = Object.freeze({
 		latin: face("Kaushan Script", 400, { lineHeight: 1.1, scale: 1.08 }),
@@ -144,7 +164,7 @@
 		// A script without a handwriting face keeps its heavy one.
 		const hand = role !== "light" && personality === "hand" ? HAND[FACES[script] ? script : "latin"] : null;
 		const kind = hand ? "hand" : role === "light" ? "light" : PERSONALITIES.includes(personality) ? personality : "impact";
-		const base = hand || faces[kind];
+		const base = hand || (kind === "flex" ? FLEX[FACES[script] ? script : "latin"] : faces[kind]);
 		const stack = [quote(base.family), quote(faces.light.family), BASE_FALLBACK].join(", ");
 		const key = [script, kind, base.family, base.weight, base.style].join("|");
 		return {
@@ -152,12 +172,14 @@
 			script,
 			kind,
 			family: stack,
-			load: base.external ? null : { family: base.family, weight: base.weight, style: base.style },
+			load: base.external ? null : { family: base.family, weight: base.weight, style: base.style, axes: base.axes || null },
 			weight: base.weight,
 			style: base.style,
 			spacing: base.spacing,
 			lineHeight: base.lineHeight,
 			scale: base.scale,
+			// The axes a variable face moves along (the renderer animates its weight and width).
+			axes: base.axes || null,
 			canvasFont: base.style + " " + base.weight + " 100px " + stack,
 		};
 	};
@@ -246,13 +268,16 @@
 	const slug = (text) => String(text).toLowerCase().replace(/[^a-z0-9]+/g, "-");
 	const cssUrl = (load) => {
 		const family = load.family.replace(/ /g, "+");
-		const axis = load.style === "italic" ? ":ital,wght@1," + load.weight : load.weight === 400 ? "" : ":wght@" + load.weight;
+		// A variable face loads its whole axis ranges (axes in alphabetical order, as Google Fonts wants them).
+		const ranges = load.axes ? [["wdth", load.axes.wdth], ["wght", load.axes.wght]].filter(([, range]) => Array.isArray(range)) : [];
+		const axis = ranges.length ? ":" + ranges.map(([tag]) => tag).join(",") + "@" + ranges.map(([, range]) => range[0] + ".." + range[1]).join(",")
+			: load.style === "italic" ? ":ital,wght@1," + load.weight : load.weight === 400 ? "" : ":wght@" + load.weight;
 		return "https://fonts.googleapis.com/css2?family=" + family + axis + "&display=swap";
 	};
 	const linkLoads = new Map();
 
 	const loadCss = (document, load) => {
-		const id = "ivlyrics-motion-font-" + slug(load.family + "-" + load.weight + "-" + load.style);
+		const id = "ivlyrics-motion-font-" + slug(load.family + "-" + (load.axes ? "variable" : load.weight) + "-" + load.style);
 		if (linkLoads.has(id)) return linkLoads.get(id);
 		const promise = new Promise((resolve) => {
 			let link = document.getElementById(id);

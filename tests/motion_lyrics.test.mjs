@@ -1024,7 +1024,7 @@ test("every accent has its look, and the AI is told about every composition and 
 	for (const name of director.ACCENTS) assert.ok(prompt.includes(name + " = "), "the prompt explains " + name);
 	assert.ok(prompt.includes("(" + director.ACCENTS.join("|") + ")"));
 	for (const [name, most] of Object.entries(director.MAX_LINES)) if (most < 6) assert.ok(prompt.includes(name + " at most " + most), name + " limit");
-	assert.equal(director.VERSION, 8, "older cached directions are asked for again");
+	assert.equal(director.VERSION, 9, "older cached directions are asked for again");
 	assert.equal(typeof motion.strokeLevel, "function");
 });
 
@@ -1503,7 +1503,7 @@ test("accents after typography edits: handwriting, a giant word and drawn marks"
 	assert.equal(type.fontSpec("ko", "hand", "light").kind, "light");
 	const model = motion.buildModel(song());
 	const staged = (accent) => {
-		const direction = director.normalizeDirection({ shots: [{ from: 0, to: 1, layout: "column", accent, upper: true }], lines: [{ n: 0, emph: [1] }] }, model, { seed: 2 });
+		const direction = director.normalizeDirection({ shots: [{ from: 0, to: 1, layout: "column", accent, upper: true, type: "impact" }], lines: [{ n: 0, emph: [1] }] }, model, { seed: 2 });
 		return { direction, words: compose(motion, type, model, direction, 2).lines[0].place.block.words };
 	};
 	const plainWords = staged("color").words;
@@ -1977,6 +1977,247 @@ test("the motion camera keeps the background's own dimming and blur and gives th
 	assert.ok(!/background\.style\.filter = "";/.test(source), "leaving motion never wipes the background's filter");
 	assert.match(source, /background\.style\.filter = backgroundFilter\.base/);
 });
+
+// A song sung on a steady beat: words land on the beats and off-beats of bpm, a little humanly.
+const onBeatSong = (bpm, count = 24) => {
+	const beat = 60000 / bpm;
+	let seed = 7;
+	const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+	const lines = [];
+	for (let n = 0, bar = 8; n < count; n += 1, bar += 8) {
+		const words = [];
+		for (let k = 0; k < 4 + (n % 3); k += 1) {
+			const at = 3000 + (bar + k * (k % 2 ? 0.5 : 1)) * beat + (random() - 0.5) * 40;
+			words.push({ text: "w" + n + k, startTime: at, endTime: at + beat * 0.45 });
+		}
+		lines.push({ startTime: words[0].startTime, originalText: words.map((word) => word.text).join(" "), syllables: words, text2: "" });
+	}
+	return lines;
+};
+
+test("the edit finds the song's beat in the singing and moves on it", () => {
+	const { motion, director, type } = load();
+	for (const bpm of [92, 120, 140]) {
+		const model = motion.buildModel(onBeatSong(bpm));
+		const plan = compose(motion, type, model, director.localDirection(model, { seed: 3 }), 3, "", true);
+		const period = 60000 / bpm;
+		assert.ok(plan.grid, bpm + " BPM has a beat grid");
+		assert.ok(Math.abs(plan.grid.period - period) < period * 0.02, bpm + " BPM: " + plan.grid.period);
+		assert.ok(Array.from(plan.grid.strengths).some((strength) => strength === 1), bpm + " BPM: downbeats");
+		const onGrid = (time) => plan.grid.times.some((beat) => Math.abs(beat - time) < 1);
+		const moves = plan.lines.filter((line) => Number.isFinite(line.leave) && line.move && line.move.type !== "cut");
+		assert.ok(moves.filter((line) => onGrid(line.leave)).length >= moves.length * 0.8, bpm + " BPM: the camera sets off on the beat");
+		assert.ok(plan.pulses?.times?.length > 16, "the beat drives what pulses without an audio analysis");
+		assert.equal(motion.onBeat(plan.grid, plan.grid.times[10] + 30, 200, 200), plan.grid.times[10], "a moment snaps to the beat near it");
+	}
+});
+
+test("variable type lands thin and narrow and swells to its weight", () => {
+	const { motion, director, type } = load();
+	const latin = type.fontSpec("latin", "flex");
+	assert.equal(latin.kind, "flex");
+	assert.deepEqual(plain(latin.axes), { wght: [100, 900], wdth: [62, 125] });
+	assert.match(type.cssUrl(latin.load), /family=Archivo:wdth,wght@62\.\.125,100\.\.900&/);
+	assert.equal(type.fontSpec("ko", "flex").load, null, "Pretendard comes with the app");
+	assert.match(type.cssUrl(type.fontSpec("ja", "flex").load), /Noto\+Sans\+JP:wght@100\.\.900&/);
+	const flex = motion.flexOf(latin);
+	assert.ok(flex.thin < flex.weight && flex.heaviest >= flex.weight, "thin to its weight");
+	assert.ok(flex.narrow < 100 && flex.wide > 100, "narrow to wide where the face has a width axis");
+	assert.equal(motion.flexOf(type.fontSpec("latin", "impact")), null, "static faces do not move");
+	assert.ok(director.TYPES.includes("flex"));
+	assert.match(director.buildPrompt({ lines: [] }), /flex = a variable heavy sans/);
+});
+
+test("comfort: rotation off keeps the screen level, gentle drops the big turns, safe drops what flashes, calm the hits", () => {
+	const { motion, director, type } = load();
+	const model = motion.buildModel(song());
+	const layouts = ["rails", "zigzag", "spiral", "tunnel", "collage", "wave", "radial", "marquee", "column", "chain"];
+	const enters = ["push", "roll", "flip", "spin", "corkscrew", "twist", "orbit", "whip", "cut", "panel"];
+	const checked = director.normalizeDirection({ shots: model.map((_, index) => ({ from: index, to: index })) }, model, { seed: 4 });
+	const direction = {
+		...checked,
+		shots: checked.shots.map((shot, index) => ({ ...shot, layout: layouts[index % 10], enter: enters[index % 10], fx: index % 2 ? "glitch" : "slam", exit: "scramble", hold: "wobble", dutch: 12 })),
+		lines: {},
+	};
+	const planWith = (comfort) => motion.compose(model, direction, { width: 1440, height: 900, seed: 4, measure, typography: type.typographyOf(model, ""), pieces: false, motion: comfort });
+	const end = model.at(-1).end + 6000;
+	const tilt = (degrees) => Math.abs((((degrees % 360) + 540) % 360) - 180);
+	const most = (plan, read) => {
+		let largest = 0;
+		for (let time = 0; time < end; time += 40) largest = Math.max(largest, tilt(read(plan, time)));
+		return largest;
+	};
+	const cameraRoll = (plan, time) => motion.cameraPose(plan, time).roll;
+	const backgroundTurn = (plan, time) => motion.backgroundFrame(plan, motion.cameraPose(plan, time), time).rotate;
+
+	const full = planWith(null);
+	assert.ok(most(full, cameraRoll) > 80, "the full edit turns the screen");
+	assert.deepEqual(plain(full.comfort), { intensity: "normal", rotation: "full", safe: false });
+
+	const off = planWith({ rotation: "off" });
+	assert.equal(most(off, cameraRoll), 0, "the camera never rolls");
+	assert.equal(most(off, backgroundTurn), 0, "the picture never turns");
+	assert.ok(off.boards.every((board) => board.dutch === 0 && board.roll === 0), "no tilted shots");
+	assert.ok(off.boards.every((board) => !["zigzag", "spiral", "radial", "chain"].includes(board.layout)), "no compositions that turn");
+
+	const gentle = planWith({ rotation: "gentle" });
+	assert.ok(gentle.boards.every((board) => !["roll", "flip", "spin", "corkscrew", "twist"].includes(board.enter)), "no quarter turns, flips or barrel rolls");
+	assert.ok(most(gentle, cameraRoll) < 30, "small tilts at most: " + most(gentle, cameraRoll));
+	assert.ok(gentle.boards.every((board) => Math.abs(board.dutch) <= 6));
+
+	const safe = planWith({ safe: true });
+	assert.equal(safe.flashes.length, 0, "no flashes");
+	assert.ok(full.flashes.length > 0);
+	assert.ok(safe.lines.every((line) => !["glitch", "flicker"].includes(line.fx)), "no glitching words");
+	assert.ok(safe.boards.every((board) => !["glitch", "scramble"].includes(board.exit) && board.enter !== "panel"), "nothing leaves in a flicker");
+
+	const calm = planWith({ intensity: "calm" });
+	assert.ok(calm.lines.every((line) => !["slam", "zoom"].includes(line.fx)), "no words smashing in");
+	assert.ok(calm.feel.shake < full.feel.shake && calm.feel.swing < full.feel.swing, "the camera moves less");
+	const wild = planWith({ intensity: "wild" });
+	assert.ok(wild.feel.shake > full.feel.shake);
+	assert.deepEqual(plain(motion.comfortOf({ intensity: "loud", rotation: "sideways", safe: "yes" })), { intensity: "normal", rotation: "full", safe: false }, "unknown values fall back");
+});
+
+test("an edit is watched for what a viewer would notice", () => {
+	const { motion, director, type } = load();
+	const model = motion.buildModel(song());
+	const checked = director.normalizeDirection({ shots: [{ from: 0, to: 1, layout: "column" }] }, model, { seed: 5 });
+	const direction = { ...checked, shots: [{ ...checked.shots[0], from: 0, to: 1, layout: "column", enter: "push", split: "line" }, ...checked.shots.filter((shot) => shot.from >= 2)], lines: {} };
+	const fresh = () => compose(motion, type, model, direction, 5);
+	const clean = motion.critiquePlan(fresh());
+	assert.ok(clean.score >= 80, "a clean edit scores well: " + clean.score + " " + JSON.stringify(clean.stats));
+	assert.equal(clean.stats.clipped, 0);
+
+	// A line pushed off the screen is named.
+	const offscreen = fresh();
+	offscreen.lines[2].place.x += offscreen.W * 2;
+	const clipped = motion.critiquePlan(offscreen);
+	assert.ok(clipped.issues.some((issue) => issue.kind === "clip" && issue.lines.includes(2)), JSON.stringify(clipped.issues));
+	assert.ok(clipped.score < clean.score);
+	assert.ok(motion.critiqueNotes(clipped).some((note) => /#2\b.*run off the screen/.test(note)));
+
+	// Two lines set in one place cover each other while the first is still on screen.
+	const stacked = fresh();
+	stacked.lines[1].place.x = stacked.lines[0].place.x;
+	stacked.lines[1].place.y = stacked.lines[0].place.y;
+	const covered = motion.critiquePlan(stacked);
+	assert.ok(covered.issues.some((issue) => issue.kind === "overlap" && issue.lines.join() === "0,1"), JSON.stringify(covered.issues));
+
+	// The screen turning all the time, and the same composition over and over, are noticed too.
+	const notes = motion.critiqueNotes({ issues: [{ kind: "turns", value: 9.5 }, { kind: "monotony", layout: "radial", value: 8, of: 12 }, { kind: "hits", lines: [1, 2, 3] }] });
+	assert.match(notes[0], /9\.5 full circles a minute/);
+	assert.match(notes[1], /leans on radial \(8 of 12 shots\)/);
+	assert.match(notes[2], /slam or zoom on 3 lines/);
+
+	// Without an AI the built-in direction is the best of a few takes.
+	const best = motion.bestLocalDirection(model, { seed: 9 }, { typography: type.typographyOf(model, ""), measure });
+	assert.ok(best.direction.shots.length > 0 && Number.isFinite(best.score));
+	const first = motion.critiquePlan(motion.compose(model, director.localDirection(model, { seed: 9 }), { width: 1440, height: 900, seed: 9, measure, typography: type.typographyOf(model, "") }), { step: 150 });
+	assert.ok(best.score >= first.score, best.score + " >= " + first.score);
+});
+
+test("the AI's direction is watched, sent back with notes when it falls short, and the better one is kept", async () => {
+	const { motion, director, window } = load();
+	const model = motion.buildModel(song());
+	const asked = [];
+	let answers = [];
+	window.AIAddonManager = {
+		getEnabledProvidersFor: () => [{ id: "test" }],
+		async generateMotionDirection(params) {
+			asked.push(params);
+			return answers.shift();
+		},
+	};
+	let stored = null;
+	const saved = [];
+	window.LyricsCache = {
+		async getMotionDirection() { return stored; },
+		async setMotionDirection(trackId, sourceHash, data) { saved.push({ trackId, ...data }); },
+	};
+	const first = { mood: "warm", shots: [{ from: 0, to: 9, layout: "collage" }] };
+	const second = plain({ mood: "warm", shots: model.map((_, index) => ({ from: index, to: index, layout: "column" })) });
+	const issues = [{ kind: "clip", layout: "collage", lines: [1, 2] }];
+	const judgeWith = (scores) => () => ({ score: scores.shift(), stats: {}, issues });
+	const cover = { colors: [{ hex: "#203040", share: 0.52 }, { hex: "#e8a33c", share: 0.21 }], light: 0.2 };
+
+	answers = [first, second];
+	const result = await motion.requestDirection({ trackUri: "spotify:track:abc", model, title: "Song", artist: "Singer", cover, judge: judgeWith([60, 92]) });
+	assert.equal(result.status, "ready");
+	assert.equal(result.score, 60);
+	assert.deepEqual(plain(result.raw), first, "the first direction plays at once");
+	assert.deepEqual(plain(await result.revised), second, "the revision scored better");
+	assert.equal(asked.length, 2);
+	assert.deepEqual(plain(asked[0].cover), cover, "the cover's colours go to the AI");
+	assert.deepEqual(plain(asked[1].revision), { direction: first, notes: plain(motion.critiqueNotes({ issues })), score: 60 });
+	assert.deepEqual(saved.map((entry) => [entry.trackId, entry.judged, entry.score]), [["abc", false, 60], ["abc", true, 92]]);
+	assert.deepEqual(plain(saved[1].raw), second, "the better one is cached");
+	const prompt = director.buildPrompt(asked[1]);
+	assert.match(prompt, /Album cover colours \(largest share first\): #203040 52%, #e8a33c 21%; a dark cover\./);
+	assert.match(prompt, /REVISION\. Your earlier direction for this song \(below\) was rendered and watched frame by frame, scoring 60 of 100/);
+	assert.match(prompt, /- Lines #1, #2 \(layout collage\) run off the screen/);
+	assert.match(prompt, /Earlier direction: \{"mood":"warm","shots":\[\{"from":0,"to":9,"layout":"collage"\}\]\}/);
+	assert.ok(!director.buildPrompt(asked[0]).includes("REVISION"), "the first request is a plain one");
+
+	// A revision that scores worse is dropped and the first stays cached as judged.
+	answers = [first, second];
+	saved.length = 0;
+	const worse = await motion.requestDirection({ trackUri: "spotify:track:def", model, judge: judgeWith([60, 40]) });
+	assert.equal(await worse.revised, null);
+	assert.deepEqual(saved.map((entry) => [entry.judged, entry.score]), [[false, 60], [true, 60]]);
+	assert.deepEqual(plain(saved[1].raw), first);
+
+	// A direction that plays well is not sent back.
+	answers = [second];
+	asked.length = 0;
+	const good = await motion.requestDirection({ trackUri: "spotify:track:ghi", model, judge: judgeWith([93]) });
+	assert.equal(good.revised, null);
+	assert.equal(asked.length, 1);
+
+	// A cached direction judged before plays without asking; one cached before it was judged is judged now.
+	stored = { raw: second, judged: true };
+	asked.length = 0;
+	const cached = await motion.requestDirection({ trackUri: "spotify:track:jkl", model, judge: judgeWith([10]) });
+	assert.equal(cached.cached, true);
+	assert.equal(cached.revised, null);
+	assert.equal(asked.length, 0);
+	stored = { raw: first, judged: false };
+	answers = [second];
+	const unjudged = await motion.requestDirection({ trackUri: "spotify:track:mno", model, judge: judgeWith([50, 90]) });
+	assert.deepEqual(plain(await unjudged.revised), second);
+	assert.equal(asked.length, 1);
+
+	// "Direct again": past the cache, a new take asked for.
+	answers = [second];
+	asked.length = 0;
+	const retake = await motion.requestDirection({ trackUri: "spotify:track:mno", model, judge: judgeWith([95]), retake: 2 });
+	assert.equal(retake.cached, undefined);
+	assert.equal(asked[0].retake, 2);
+	assert.match(director.buildPrompt(asked[0]), /Take 3: the viewer has seen this song directed before and asked for a new edit/);
+});
+
+test("comfort settings, the cover and \"direct again\" reach the motion stage", () => {
+	const vinyl = read("VinylPlayerMode.js");
+	const overlay = read("FullscreenOverlay.js");
+	const settings = read("Settings.js");
+	const index = read("index.js");
+	assert.match(vinyl, /react\.createElement\(MotionLyrics\.Stage, \{[^}]*motion: motionComfort,\s*retake: motionTake,\s*cover: liveTrack\.coverUrl/);
+	assert.match(vinyl, /onRedirect: motionPlayable \? redirectMotion : null/);
+	assert.match(vinyl, /activeMode === "motion" && typeof onRedirect === "function"/);
+	assert.match(overlay, /motion: \{\s*intensity: CONFIG\?\.visual\?\.\["fullscreen-motion-intensity"\]/);
+	for (const key of ["fullscreen-motion-intensity", "fullscreen-motion-rotation", "fullscreen-motion-safe"]) {
+		assert.ok(settings.includes('key: "' + key + '"'), "a setting for " + key);
+		assert.ok(index.includes('"' + key + '"'), "a default for " + key);
+	}
+	const languages = ["Ar", "Bn", "Cs", "De", "En", "Es", "Fa", "Fr", "Hi", "Id", "It", "Ja", "Ko", "Ms", "Pt", "Ru", "Sv", "Th", "Tr", "Vi", "ZhCN", "ZhTW"];
+	for (const code of languages) {
+		const source = read("langs/Lang" + code + ".js");
+		for (const key of ["motionIntensityLabel", "motionIntensityCalm", "motionIntensityWild", "motionRotationLabel", "motionRotationGentle", "motionRotationOff", "motionSafeLabel", "motionSafeDesc", "motionRedirect"]) {
+			assert.ok(source.includes('"' + key + '"'), code + " has " + key);
+		}
+	}
+});
+
 
 
 

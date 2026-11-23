@@ -2651,7 +2651,8 @@ window.LANG_IT = {
       "motionUnavailable": "I testi in movimento funzionano con brani sincronizzati per parola o carattere. Questo brano mostra il testo del palco video.",
       "motionReducedMotion": "Riduci movimento è attivo, quindi viene mostrato il testo del palco video al posto dei testi in movimento.",
       "motionDirecting": "L’IA sta curando la regia dell’animazione…",
-      "motionDirectFailed": "La regia IA non è riuscita. Viene usata la regia integrata."
+      "motionDirectFailed": "La regia IA non è riuscita. Viene usata la regia integrata.",
+      "motionRedirect": "Rifai la regia"
     },
     "settings": {
       "subtitle": "Personalizza dimensioni, animazioni e tipografia inferiore della modalità vinile.",
@@ -2677,6 +2678,18 @@ window.LANG_IT = {
       "motionBackgroundDesc": "Cosa scorre dietro i testi animati: il video del brano o lo sfondo del brano usato altrove (copertina o colori). Scegli lo sfondo del brano quando non c'è un video o YouTube non può riprodurlo.",
       "motionBackgroundVideo": "Video",
       "motionBackgroundTrack": "Sfondo del brano",
+      "motionIntensityLabel": "Intensità del movimento",
+      "motionIntensityDesc": "Quanto la telecamera oscilla, scorre e trema nei testi animati. Calma evita anche le parole che arrivano di colpo.",
+      "motionIntensityCalm": "Calma",
+      "motionIntensityNormal": "Normale",
+      "motionIntensityWild": "Intensa",
+      "motionRotationLabel": "Rotazione dello schermo",
+      "motionRotationDesc": "Quanto i testi animati ruotano lo schermo e il video. Delicata elimina i quarti di giro, i ribaltamenti e i giri completi; Disattivata mantiene tutto in piano.",
+      "motionRotationFull": "Completa",
+      "motionRotationGentle": "Delicata",
+      "motionRotationOff": "Disattivata",
+      "motionSafeLabel": "Modalità sicura per fotosensibilità",
+      "motionSafeDesc": "Rimuove lampi, glitch e sfarfallii dai testi animati.",
       "tonearmTitle": "Braccio",
       "tonearmSubtitle": "Personalizza forma, finitura e dimensione del braccio.",
       "tonearmStyleLabel": "Stile del braccio",

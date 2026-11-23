@@ -2651,7 +2651,8 @@ window.LANG_HI = {
       "motionUnavailable": "मोशन बोल केवल शब्द या अक्षर टाइमिंग वाले गानों में चलते हैं। इस गाने में वीडियो स्टेज के बोल दिखाए जाएँगे।",
       "motionReducedMotion": "गति कम करें चालू है, इसलिए मोशन बोल के बजाय वीडियो स्टेज के बोल दिखाए जा रहे हैं।",
       "motionDirecting": "AI मोशन निर्देशन बना रहा है…",
-      "motionDirectFailed": "AI निर्देशन विफल रहा। अंतर्निहित निर्देशन का उपयोग किया जा रहा है।"
+      "motionDirectFailed": "AI निर्देशन विफल रहा। अंतर्निहित निर्देशन का उपयोग किया जा रहा है।",
+      "motionRedirect": "फिर से निर्देशित करें"
     },
     "settings": {
       "subtitle": "विनाइल मोड का आकार, ऐनिमेशन और नीचे दिखने वाले गीतों का फ़ॉन्ट बदलें।",
@@ -2677,6 +2678,18 @@ window.LANG_HI = {
       "motionBackgroundDesc": "मोशन लिरिक्स के पीछे क्या चले: गाने का वीडियो, या कहीं और इस्तेमाल होने वाली ट्रैक पृष्ठभूमि (एल्बम आर्ट या रंग)। जब गाने का कोई वीडियो न हो या YouTube न चल सके, तब ट्रैक पृष्ठभूमि चुनें।",
       "motionBackgroundVideo": "वीडियो",
       "motionBackgroundTrack": "ट्रैक पृष्ठभूमि",
+      "motionIntensityLabel": "मोशन की तीव्रता",
+      "motionIntensityDesc": "मोशन लिरिक्स में कैमरा कितना झूलता, सरकता और हिलता है। ‘शांत’ चुनने पर शब्द ज़ोर से टकराकर भी नहीं आते।",
+      "motionIntensityCalm": "शांत",
+      "motionIntensityNormal": "सामान्य",
+      "motionIntensityWild": "तेज़",
+      "motionRotationLabel": "स्क्रीन घुमाव",
+      "motionRotationDesc": "मोशन लिरिक्स स्क्रीन और वीडियो को कितना घुमाते हैं। ‘हल्का’ चौथाई घुमाव, पलटना और पूरे चक्कर हटाता है; ‘बंद’ सब कुछ सीधा रखता है।",
+      "motionRotationFull": "पूरा",
+      "motionRotationGentle": "हल्का",
+      "motionRotationOff": "बंद",
+      "motionSafeLabel": "प्रकाश-संवेदनशीलता सुरक्षित मोड",
+      "motionSafeDesc": "मोशन लिरिक्स से चमक, ग्लिच और टिमटिमाहट हटाता है।",
       "tonearmTitle": "टोनआर्म",
       "tonearmSubtitle": "टोनआर्म का आकार, फ़िनिश और माप बदलें।",
       "tonearmStyleLabel": "टोनआर्म शैली",

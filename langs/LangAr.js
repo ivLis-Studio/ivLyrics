@@ -2651,7 +2651,8 @@ window.LANG_AR = {
       "motionUnavailable": "تعمل كلمات الحركة مع الأغاني المزامنة على مستوى الكلمة أو الحرف. تُعرض لهذه الأغنية كلمات منصة الفيديو.",
       "motionReducedMotion": "تقليل الحركة مفعّل، لذا تُعرض كلمات منصة الفيديو بدلًا من كلمات الحركة.",
       "motionDirecting": "يقوم الذكاء الاصطناعي بإخراج الحركة…",
-      "motionDirectFailed": "تعذّر إخراج الحركة بالذكاء الاصطناعي، لذا يُستخدم الإخراج المدمج."
+      "motionDirectFailed": "تعذّر إخراج الحركة بالذكاء الاصطناعي، لذا يُستخدم الإخراج المدمج.",
+      "motionRedirect": "إعادة الإخراج"
     },
     "settings": {
       "subtitle": "خصّص حجم وضع الأسطوانة وحركته وخط الكلمات السفلية.",
@@ -2677,6 +2678,18 @@ window.LANG_AR = {
       "motionBackgroundDesc": "ما يظهر خلف كلمات الحركة: فيديو الأغنية، أو خلفية المقطع المستخدمة في الشاشات الأخرى (غلاف الألبوم أو الألوان). استخدم خلفية المقطع عندما لا يكون للأغنية فيديو أو لا يمكن تشغيل YouTube.",
       "motionBackgroundVideo": "فيديو",
       "motionBackgroundTrack": "خلفية المقطع",
+      "motionIntensityLabel": "شدة الحركة",
+      "motionIntensityDesc": "مدى تأرجح الكاميرا وانزلاقها واهتزازها في الكلمات المتحركة. يمنع الخيار «هادئ» أيضًا دخول الكلمات بعنف.",
+      "motionIntensityCalm": "هادئ",
+      "motionIntensityNormal": "عادي",
+      "motionIntensityWild": "قوي",
+      "motionRotationLabel": "دوران الشاشة",
+      "motionRotationDesc": "مدى تدوير الكلمات المتحركة للشاشة والفيديو. يزيل «لطيف» الدورات الربعية والقلب والدورات الكاملة، ويُبقي «إيقاف» كل شيء مستويًا.",
+      "motionRotationFull": "كامل",
+      "motionRotationGentle": "لطيف",
+      "motionRotationOff": "إيقاف",
+      "motionSafeLabel": "الوضع الآمن للحساسية الضوئية",
+      "motionSafeDesc": "يزيل الومضات والتشويش والوميض من الكلمات المتحركة.",
       "tonearmTitle": "ذراع التشغيل",
       "tonearmSubtitle": "خصّص شكل ذراع التشغيل وتشطيبه وحجمه.",
       "tonearmStyleLabel": "شكل ذراع التشغيل",

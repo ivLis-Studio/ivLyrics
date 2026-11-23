@@ -3033,6 +3033,16 @@ const CONFIG = {
     // Motion lyrics fly over the song's video, or over the track background used elsewhere.
     "fullscreen-motion-background":
       StorageManager.getItem("ivLyrics:visual:fullscreen-motion-background") === "track" ? "track" : "video",
+    // Motion lyrics comfort: how much the camera moves, how far it turns the screen, and no flashing.
+    "fullscreen-motion-intensity": (() => {
+      const stored = StorageManager.getItem("ivLyrics:visual:fullscreen-motion-intensity");
+      return stored === "calm" || stored === "wild" ? stored : "normal";
+    })(),
+    "fullscreen-motion-rotation": (() => {
+      const stored = StorageManager.getItem("ivLyrics:visual:fullscreen-motion-rotation");
+      return stored === "gentle" || stored === "off" ? stored : "full";
+    })(),
+    "fullscreen-motion-safe": StorageManager.get("ivLyrics:visual:fullscreen-motion-safe", false),
     "fullscreen-cd-disc-size": Number(StorageManager.getItem("ivLyrics:visual:fullscreen-cd-disc-size") ?? 100),
     "fullscreen-cd-rotation-enabled": StorageManager.get("ivLyrics:visual:fullscreen-cd-rotation-enabled", true),
     "fullscreen-cd-rotation-speed": Number(StorageManager.getItem("ivLyrics:visual:fullscreen-cd-rotation-speed") ?? 100),

@@ -2603,6 +2603,12 @@ const FullscreenOverlay = (() => {
                     rotationSpeed: CONFIG?.visual?.["fullscreen-vinyl-rotation-speed"] ?? 100,
                     centerRotation: CONFIG?.visual?.["fullscreen-vinyl-center-rotation"] !== false,
                     lyricsEnabled: CONFIG?.visual?.["fullscreen-vinyl-lyrics-enabled"] !== false,
+                    // Motion lyrics comfort (MotionLyrics.comfortOf checks the values).
+                    motion: {
+                        intensity: CONFIG?.visual?.["fullscreen-motion-intensity"] || "normal",
+                        rotation: CONFIG?.visual?.["fullscreen-motion-rotation"] || "full",
+                        safe: CONFIG?.visual?.["fullscreen-motion-safe"] === true,
+                    },
                     tonearmStyle: CONFIG?.visual?.["fullscreen-vinyl-tonearm-style"] || "s",
                     tonearmFinish: CONFIG?.visual?.["fullscreen-vinyl-tonearm-finish"] || "white",
                     tonearmSize: CONFIG?.visual?.["fullscreen-vinyl-tonearm-size"] ?? 100,

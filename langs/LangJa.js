@@ -2651,7 +2651,8 @@ window.LANG_JA = {
       "motionUnavailable": "モーション歌詞は単語・文字単位の同期がある曲で再生されます。この曲はビデオステージの歌詞で表示します。",
       "motionReducedMotion": "動きを減らす設定がオンのため、モーション歌詞の代わりにビデオステージの歌詞を表示します。",
       "motionDirecting": "AIがモーション演出を作成中…",
-      "motionDirectFailed": "AI演出を作成できなかったため、標準の演出で表示します。"
+      "motionDirectFailed": "AI演出を作成できなかったため、標準の演出で表示します。",
+      "motionRedirect": "演出し直す"
     },
     "settings": {
       "subtitle": "LP モードのサイズ、アニメーション、下部歌詞のフォントを調整します。",
@@ -2677,6 +2678,18 @@ window.LANG_JA = {
       "motionBackgroundDesc": "モーション歌詞の後ろに映す背景を選びます。曲の映像か、ほかの画面で使うトラック背景(アルバムアートや色)です。映像がない曲や YouTube を再生できない場合はトラック背景を使ってください。",
       "motionBackgroundVideo": "映像",
       "motionBackgroundTrack": "トラック背景",
+      "motionIntensityLabel": "モーションの強さ",
+      "motionIntensityDesc": "モーション歌詞でカメラが揺れたり動いたりする強さを選びます。「控えめ」では単語が叩きつけるように現れる演出も抑えます。",
+      "motionIntensityCalm": "控えめ",
+      "motionIntensityNormal": "標準",
+      "motionIntensityWild": "ダイナミック",
+      "motionRotationLabel": "画面の回転",
+      "motionRotationDesc": "モーション歌詞が画面と映像を回転させる量を選びます。「穏やか」は90度回転・反転・一回転をなくし、「オフ」は常に水平を保ちます。",
+      "motionRotationFull": "フル",
+      "motionRotationGentle": "穏やか",
+      "motionRotationOff": "オフ",
+      "motionSafeLabel": "光過敏性セーフモード",
+      "motionSafeDesc": "モーション歌詞からフラッシュ、グリッチ、点滅する演出を取り除きます。",
       "tonearmTitle": "トーンアーム",
       "tonearmSubtitle": "トーンアームの形状、仕上げ、サイズを調整します。",
       "tonearmStyleLabel": "トーンアームの形状",

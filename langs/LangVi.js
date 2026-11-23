@@ -2651,7 +2651,8 @@ window.LANG_VI = {
       "motionUnavailable": "Lời chuyển động hoạt động với bài hát có đồng bộ theo từ hoặc ký tự. Bài này hiển thị lời của sân khấu video.",
       "motionReducedMotion": "Giảm chuyển động đang bật nên lời của sân khấu video được hiển thị thay cho lời chuyển động.",
       "motionDirecting": "AI đang dàn dựng chuyển động…",
-      "motionDirectFailed": "AI dàn dựng thất bại. Đang dùng phần dàn dựng tích hợp."
+      "motionDirectFailed": "AI dàn dựng thất bại. Đang dùng phần dàn dựng tích hợp.",
+      "motionRedirect": "Dàn dựng lại"
     },
     "settings": {
       "subtitle": "Tùy chỉnh kích thước, chuyển động và phông lời bên dưới của chế độ đĩa than.",
@@ -2677,6 +2678,18 @@ window.LANG_VI = {
       "motionBackgroundDesc": "Thứ chuyển động phía sau lời bài hát động: video của bài hát, hoặc nền bài hát dùng ở các màn hình khác (ảnh bìa hoặc màu sắc). Hãy chọn nền bài hát khi bài không có video hoặc YouTube không phát được.",
       "motionBackgroundVideo": "Video",
       "motionBackgroundTrack": "Nền bài hát",
+      "motionIntensityLabel": "Cường độ chuyển động",
+      "motionIntensityDesc": "Mức độ máy quay lắc, trôi và rung trong lời bài hát chuyển động. Nhẹ nhàng cũng bỏ hiệu ứng chữ lao vào mạnh.",
+      "motionIntensityCalm": "Nhẹ nhàng",
+      "motionIntensityNormal": "Bình thường",
+      "motionIntensityWild": "Mạnh mẽ",
+      "motionRotationLabel": "Xoay màn hình",
+      "motionRotationDesc": "Mức độ lời bài hát chuyển động xoay màn hình và video. Nhẹ bỏ các cú xoay một phần tư, lật và xoay tròn; Tắt giữ mọi thứ nằm ngang.",
+      "motionRotationFull": "Đầy đủ",
+      "motionRotationGentle": "Nhẹ",
+      "motionRotationOff": "Tắt",
+      "motionSafeLabel": "Chế độ an toàn cho người nhạy cảm ánh sáng",
+      "motionSafeDesc": "Loại bỏ chớp sáng, glitch và nhấp nháy khỏi lời bài hát chuyển động.",
       "tonearmTitle": "Cần máy hát",
       "tonearmSubtitle": "Tùy chỉnh hình dáng, lớp hoàn thiện và kích thước của cần máy hát.",
       "tonearmStyleLabel": "Kiểu cần máy hát",

@@ -8,7 +8,7 @@
 // The page is built by .github/scripts/build_motion_mobile.mjs. This file
 // loads after Preact and before the motion scripts.
 //
-// App to page:   ivLyricsMotionHost.configure / setTrack / setPlayback / resolve
+// App to page:   ivLyricsMotionHost.configure / setTrack / setPlayback / resolve / redirect
 // Page to app:   { type: "ready" | "eligible" | "direct" | "cacheGet" |
 //                  "cacheSet" | "background" | "error", ... }
 (function IvLyricsMotionMobileHost(root) {
@@ -45,6 +45,9 @@
 		labels: {},
 		ai: false,
 		background: false,
+		// The viewer's comfort ({ intensity, rotation, safe }) and "direct again" counted per song.
+		motion: null,
+		take: { uri: "", count: 0 },
 	};
 
 	// ---------------------------------------------------------------------
@@ -190,13 +193,17 @@
 				isPlaying: state.playing,
 				title: track.title,
 				artist: track.artist,
+				motion: state.motion,
+				retake: state.take.uri === track.uri ? state.take.count : 0,
+				cover: track.cover,
 			})
 			: null;
 		preact.render(stage, state.container);
 	};
 
 	/**
-	 * The song: { uri, title, artist, accent, language, karaokeSource, lyrics }.
+	 * The song: { uri, title, artist, accent, cover?, language, karaokeSource, lyrics }
+	 * (cover: the album art's URL, its colours go to the AI).
 	 * lyrics are lines as the desktop app holds them: { text, startTime,
 	 * endTime, syllables: [{ text, startTime, endTime }], vocals?, text2? }.
 	 * null clears the stage.
@@ -212,6 +219,7 @@
 			title: String(track.title || ""),
 			artist: String(track.artist || ""),
 			accent: String(track.accent || ""),
+			cover: String(track.cover || ""),
 			language: String(track.language || ""),
 			lyrics,
 		} : null;
@@ -223,17 +231,33 @@
 		render();
 	};
 
-	/** labels: { directing, failed }; ai: the app can ask a provider; insets: safe area in CSS pixels; hud; background. */
+	/**
+	 * labels: { directing, failed }; ai: the app can ask a provider; insets: safe area in CSS pixels; hud; background;
+	 * motion: the viewer's comfort { intensity: calm | normal | wild, rotation: full | gentle | off, safe: boolean }.
+	 */
 	const configure = (options = {}) => {
 		if (options.labels && typeof options.labels === "object") state.labels = { ...options.labels };
 		if (typeof options.ai === "boolean") state.ai = options.ai;
 		if (typeof options.background === "boolean") state.background = options.background;
+		if (options.motion && typeof options.motion === "object") {
+			const next = { intensity: String(options.motion.intensity || "normal"), rotation: String(options.motion.rotation || "full"), safe: options.motion.safe === true };
+			const current = state.motion;
+			if (!current || current.intensity !== next.intensity || current.rotation !== next.rotation || current.safe !== next.safe) state.motion = Object.freeze(next);
+		}
 		const style = document.documentElement.style;
 		for (const side of ["top", "right", "bottom", "left"]) {
 			const value = Number(options.insets?.[side]);
 			if (Number.isFinite(value)) style.setProperty("--iv-inset-" + side, Math.max(0, value) + "px");
 		}
 		if (typeof options.hud === "boolean") document.documentElement.classList.toggle("no-hud", !options.hud);
+		render();
+	};
+
+	/** "Direct again": a new edit of the current song (a new AI take, or another built-in one). */
+	const redirect = () => {
+		const uri = state.track?.uri || "";
+		if (!uri) return;
+		state.take = { uri, count: state.take.uri === uri ? state.take.count + 1 : 1 };
 		render();
 	};
 
@@ -286,6 +310,7 @@
 		setTrack,
 		setPlayback,
 		resolve,
+		redirect,
 		start,
 		// For tests.
 		positionAt,

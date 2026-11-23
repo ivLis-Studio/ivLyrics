@@ -2651,7 +2651,8 @@ window.LANG_EN = {
       "motionUnavailable": "Motion lyrics play songs with word or character timing. This song shows the video stage lyric instead.",
       "motionReducedMotion": "Motion is reduced, so the video stage lyric is shown instead of motion lyrics.",
       "motionDirecting": "AI is directing the motion…",
-      "motionDirectFailed": "AI direction failed. Using the built-in direction."
+      "motionDirectFailed": "AI direction failed. Using the built-in direction.",
+      "motionRedirect": "Direct again"
     },
     "settings": {
       "subtitle": "Customize the LP mode size, motion, and bottom lyric typography.",
@@ -2677,6 +2678,18 @@ window.LANG_EN = {
       "motionBackgroundDesc": "What moves behind motion lyrics: the song's video, or the track background used elsewhere (album art or colours). Use the track background when a song has no video or YouTube cannot play it.",
       "motionBackgroundVideo": "Video",
       "motionBackgroundTrack": "Track background",
+      "motionIntensityLabel": "Motion intensity",
+      "motionIntensityDesc": "How far the camera swings, drifts and shakes in motion lyrics. Calm also keeps words from smashing in.",
+      "motionIntensityCalm": "Calm",
+      "motionIntensityNormal": "Normal",
+      "motionIntensityWild": "Wild",
+      "motionRotationLabel": "Screen rotation",
+      "motionRotationDesc": "How much motion lyrics turn the screen and the video. Gentle drops quarter turns, flips and barrel rolls; Off keeps everything level.",
+      "motionRotationFull": "Full",
+      "motionRotationGentle": "Gentle",
+      "motionRotationOff": "Off",
+      "motionSafeLabel": "Photosensitivity-safe mode",
+      "motionSafeDesc": "Removes flashes, glitches and flickering from motion lyrics.",
       "tonearmTitle": "Tonearm",
       "tonearmSubtitle": "Customize the tonearm shape, finish, and size.",
       "tonearmStyleLabel": "Tonearm style",

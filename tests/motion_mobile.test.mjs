@@ -191,6 +191,28 @@ test("AI directions and the direction cache go through the app", async () => {
 	host.resolve(999, { ok: true, value: "late" });
 });
 
+
+test("the app's comfort settings and \"direct again\" reach the stage", () => {
+	const { host, rendered } = load();
+	host.start();
+	host.setTrack(song({ cover: "https://i.scdn.co/image/abc" }));
+	let stage = rendered.at(-1);
+	assert.equal(stage.props.motion, null, "the desktop defaults until the app says otherwise");
+	assert.equal(stage.props.retake, 0);
+	assert.equal(stage.props.cover, "https://i.scdn.co/image/abc", "the cover's colours go to the AI");
+	host.configure({ motion: { intensity: "calm", rotation: "off", safe: true } });
+	stage = rendered.at(-1);
+	assert.deepEqual({ ...stage.props.motion }, { intensity: "calm", rotation: "off", safe: true });
+	const comfort = stage.props.motion;
+	host.configure({ motion: { intensity: "calm", rotation: "off", safe: true } });
+	assert.equal(rendered.at(-1).props.motion, comfort, "the same settings keep the same object (no new edit)");
+	host.redirect();
+	host.redirect();
+	assert.equal(rendered.at(-1).props.retake, 2, "each \"direct again\" asks for a new edit");
+	host.setTrack(song({ uri: "spotify:track:next" }));
+	assert.equal(rendered.at(-1).props.retake, 0, "a new song starts from its first edit");
+});
+
 test("the app's safe area and labels reach the page", () => {
 	const { host, rootStyle, classes } = load();
 	host.start();

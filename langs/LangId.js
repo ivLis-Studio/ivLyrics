@@ -2651,7 +2651,8 @@ window.LANG_ID = {
       "motionUnavailable": "Lirik gerak berfungsi untuk lagu dengan sinkronisasi per kata atau karakter. Lagu ini menampilkan lirik panggung video.",
       "motionReducedMotion": "Kurangi gerakan aktif, jadi lirik panggung video ditampilkan sebagai ganti lirik gerak.",
       "motionDirecting": "AI sedang mengarahkan animasi…",
-      "motionDirectFailed": "Arahan AI gagal. Menggunakan arahan bawaan."
+      "motionDirectFailed": "Arahan AI gagal. Menggunakan arahan bawaan.",
+      "motionRedirect": "Arahkan ulang"
     },
     "settings": {
       "subtitle": "Sesuaikan ukuran, animasi, dan tipografi lirik bawah pada mode vinil.",
@@ -2677,6 +2678,18 @@ window.LANG_ID = {
       "motionBackgroundDesc": "Yang bergerak di belakang lirik bergerak: video lagu, atau latar trek yang dipakai di tampilan lain (sampul album atau warna). Pilih latar trek bila lagu tidak punya video atau YouTube tidak bisa memutarnya.",
       "motionBackgroundVideo": "Video",
       "motionBackgroundTrack": "Latar trek",
+      "motionIntensityLabel": "Intensitas gerakan",
+      "motionIntensityDesc": "Seberapa jauh kamera berayun, meluncur, dan bergetar pada lirik bergerak. Tenang juga menghindari kata yang masuk dengan hentakan.",
+      "motionIntensityCalm": "Tenang",
+      "motionIntensityNormal": "Normal",
+      "motionIntensityWild": "Liar",
+      "motionRotationLabel": "Rotasi layar",
+      "motionRotationDesc": "Seberapa banyak lirik bergerak memutar layar dan video. Lembut menghapus putaran seperempat, balikan, dan putaran penuh; Mati menjaga semuanya tetap datar.",
+      "motionRotationFull": "Penuh",
+      "motionRotationGentle": "Lembut",
+      "motionRotationOff": "Mati",
+      "motionSafeLabel": "Mode aman fotosensitif",
+      "motionSafeDesc": "Menghapus kilatan, glitch, dan kedipan dari lirik bergerak.",
       "tonearmTitle": "Lengan pemutar",
       "tonearmSubtitle": "Sesuaikan bentuk, lapisan, dan ukuran lengan pemutar.",
       "tonearmStyleLabel": "Gaya lengan",

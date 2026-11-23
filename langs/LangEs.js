@@ -2651,7 +2651,8 @@ window.LANG_ES = {
       "motionUnavailable": "Las letras en movimiento funcionan con canciones sincronizadas por palabra o carácter. Esta canción muestra la letra del escenario de video.",
       "motionReducedMotion": "Reducir movimiento está activado, así que se muestra la letra del escenario de video en lugar de las letras en movimiento.",
       "motionDirecting": "La IA está dirigiendo la animación…",
-      "motionDirectFailed": "La dirección con IA falló. Se usa la dirección integrada."
+      "motionDirectFailed": "La dirección con IA falló. Se usa la dirección integrada.",
+      "motionRedirect": "Volver a dirigir"
     },
     "settings": {
       "subtitle": "Personaliza el tamaño, las animaciones y la tipografía inferior del modo vinilo.",
@@ -2677,6 +2678,18 @@ window.LANG_ES = {
       "motionBackgroundDesc": "Lo que se mueve detrás de las letras en movimiento: el vídeo de la canción o el fondo de pista que usas en otras vistas (portada o colores). Usa el fondo de pista cuando la canción no tenga vídeo o YouTube no pueda reproducirlo.",
       "motionBackgroundVideo": "Vídeo",
       "motionBackgroundTrack": "Fondo de pista",
+      "motionIntensityLabel": "Intensidad del movimiento",
+      "motionIntensityDesc": "Cuánto se balancea, se desliza y tiembla la cámara en las letras en movimiento. Tranquila también evita que las palabras entren de golpe.",
+      "motionIntensityCalm": "Tranquila",
+      "motionIntensityNormal": "Normal",
+      "motionIntensityWild": "Intensa",
+      "motionRotationLabel": "Rotación de pantalla",
+      "motionRotationDesc": "Cuánto giran la pantalla y el vídeo las letras en movimiento. Suave quita los giros de un cuarto, las volteretas y los giros completos; Desactivada lo mantiene todo nivelado.",
+      "motionRotationFull": "Completa",
+      "motionRotationGentle": "Suave",
+      "motionRotationOff": "Desactivada",
+      "motionSafeLabel": "Modo seguro para fotosensibilidad",
+      "motionSafeDesc": "Quita los destellos, los glitches y los parpadeos de las letras en movimiento.",
       "tonearmTitle": "Brazo",
       "tonearmSubtitle": "Personaliza la forma, el acabado y el tamaño del brazo.",
       "tonearmStyleLabel": "Estilo del brazo",

@@ -2651,7 +2651,8 @@ window.LANG_KO = {
       "motionUnavailable": "모션 가사는 단어·글자 싱크가 있는 곡에서 재생돼요. 이 곡은 비디오 스테이지 가사로 보여드려요.",
       "motionReducedMotion": "동작 줄이기가 켜져 있어 모션 가사 대신 비디오 스테이지 가사로 보여드려요.",
       "motionDirecting": "AI가 모션 연출을 만드는 중…",
-      "motionDirectFailed": "AI 연출을 만들지 못해 기본 연출로 보여드려요."
+      "motionDirectFailed": "AI 연출을 만들지 못해 기본 연출로 보여드려요.",
+      "motionRedirect": "다시 연출"
     },
     "settings": {
       "subtitle": "LP 모드의 크기, 모션, 하단 가사 글꼴을 조정합니다.",
@@ -2677,6 +2678,18 @@ window.LANG_KO = {
       "motionBackgroundDesc": "모션 가사 뒤에 깔리는 배경을 고릅니다. 곡의 영상을 쓰거나, 다른 화면에서 쓰는 트랙 배경(앨범 아트나 색상)을 씁니다. 영상이 없거나 YouTube를 재생할 수 없는 곡은 트랙 배경을 쓰세요.",
       "motionBackgroundVideo": "영상",
       "motionBackgroundTrack": "트랙 배경",
+      "motionIntensityLabel": "모션 강도",
+      "motionIntensityDesc": "모션 가사에서 카메라가 흔들리고 움직이는 정도를 정합니다. 차분하게를 고르면 단어가 세게 부딪히며 등장하는 효과도 줄어듭니다.",
+      "motionIntensityCalm": "차분하게",
+      "motionIntensityNormal": "보통",
+      "motionIntensityWild": "역동적으로",
+      "motionRotationLabel": "화면 회전",
+      "motionRotationDesc": "모션 가사가 화면과 영상을 돌리는 정도를 정합니다. 부드럽게는 90도 회전·뒤집기·한 바퀴 회전을 빼고, 끄기는 화면을 항상 수평으로 유지합니다.",
+      "motionRotationFull": "전체",
+      "motionRotationGentle": "부드럽게",
+      "motionRotationOff": "끄기",
+      "motionSafeLabel": "광과민 안전 모드",
+      "motionSafeDesc": "모션 가사에서 번쩍임, 글리치, 깜빡이는 효과를 모두 뺍니다.",
       "tonearmTitle": "톤암",
       "tonearmSubtitle": "톤암의 형태, 마감과 크기를 원하는 대로 조절합니다.",
       "tonearmStyleLabel": "톤암 형태",

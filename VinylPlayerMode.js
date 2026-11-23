@@ -306,16 +306,28 @@ const VinylPlayerMode = (() => {
         if (name === "motion") {
             return renderFramedPresentationIcon("M7 15.5 10 9l2.5 4.5L17 8.5M14.5 8.5H17v2.5");
         }
+        if (name === "redirect") {
+            // Arrows going round: shoot the edit again.
+            return react.createElement("svg", {
+                viewBox: "0 0 24 24",
+                "aria-hidden": "true"
+            },
+                react.createElement("path", { d: "M19 12a7 7 0 0 1-12.2 4.7M5 12a7 7 0 0 1 12.2-4.7" }),
+                react.createElement("path", { d: "M17.5 3.8v3.6h-3.6M6.5 20.2v-3.6h3.6" })
+            );
+        }
         return renderFramedPresentationIcon("m10 9 5 3-5 3z");
     };
 
     const PresentationSwitcher = react.memo(({
         activeMode,
         visible = true,
-        onChange
+        onChange,
+        onRedirect = null
     }) => {
         const groupLabel = I18n.t("vinyl.presentation.switcherLabel")
             || "Fullscreen presentation";
+        const redirectLabel = I18n.t("vinyl.presentation.motionRedirect") || "Direct again";
 
         return react.createElement("div", {
             className: `fullscreen-presentation-dock${visible ? "" : " is-hidden"}`
@@ -348,7 +360,26 @@ const VinylPlayerMode = (() => {
                         react.createElement(PresentationIcon, { name: option.icon }),
                         react.createElement("span", null, label)
                     );
-                })
+                }),
+                // Motion lyrics: a new edit of the song (a new AI take, or another built-in one).
+                activeMode === "motion" && typeof onRedirect === "function"
+                    ? react.createElement(react.Fragment, null,
+                        react.createElement("span", { className: "fullscreen-presentation-divider", "aria-hidden": "true" }),
+                        react.createElement("button", {
+                            type: "button",
+                            className: "fullscreen-presentation-option fullscreen-presentation-redirect",
+                            "aria-label": redirectLabel,
+                            title: redirectLabel,
+                            onClick: (event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                onRedirect();
+                            }
+                        },
+                            react.createElement(PresentationIcon, { name: "redirect" }),
+                            react.createElement("span", null, redirectLabel)
+                        ))
+                    : null
             )
         );
     });
@@ -1323,6 +1354,20 @@ const VinylPlayerMode = (() => {
         };
         const liveTrackRef = useRef(liveTrack);
         liveTrackRef.current = liveTrack;
+        // Motion lyrics: the viewer's comfort, and "direct again" counted per song.
+        const motionIntensity = vinylSettings.motion?.intensity || "normal";
+        const motionRotation = vinylSettings.motion?.rotation || "full";
+        const motionSafe = vinylSettings.motion?.safe === true;
+        const motionComfort = react.useMemo(
+            () => ({ intensity: motionIntensity, rotation: motionRotation, safe: motionSafe }),
+            [motionIntensity, motionRotation, motionSafe]
+        );
+        const [motionRetake, setMotionRetake] = useState({ uri: "", take: 0 });
+        const motionTake = motionRetake.uri === liveTrack.uri ? motionRetake.take : 0;
+        const redirectMotion = useCallback(() => {
+            const uri = liveTrackRef.current.uri;
+            setMotionRetake((current) => ({ uri, take: current.uri === uri ? current.take + 1 : 1 }));
+        }, []);
         const [displayedTrack, setDisplayedTrack] = useState(() => liveTrack);
         const displayedTrackRef = useRef(liveTrack);
         const [incomingTrack, setIncomingTrack] = useState(null);
@@ -1684,7 +1729,10 @@ const VinylPlayerMode = (() => {
                 isPlaying,
                 title: liveTrack.title,
                 artist: liveTrack.artist,
-                onStatus: reportMotionDirectionStatus
+                onStatus: reportMotionDirectionStatus,
+                motion: motionComfort,
+                retake: motionTake,
+                cover: liveTrack.coverUrl
             }) : null,
             isMotionPresentation && !motionPlayable && Array.isArray(activeLyrics) && activeLyrics.length > 0
                 ? react.createElement("div", {
@@ -1761,7 +1809,8 @@ const VinylPlayerMode = (() => {
             react.createElement(PresentationSwitcher, {
                 activeMode: normalizedPresentationMode,
                 visible: true,
-                onChange: onPresentationModeChange
+                onChange: onPresentationModeChange,
+                onRedirect: motionPlayable ? redirectMotion : null
             }),
             (isFullVinylPresentation || isVideoPresentation || isMotionPresentation) && react.createElement(StagePlaybackControls, {
                 isPlaying,

@@ -2651,7 +2651,8 @@ window.LANG_MS = {
       "motionUnavailable": "Lirik gerakan berfungsi untuk lagu dengan penyegerakan perkataan atau aksara. Lagu ini memaparkan lirik pentas video.",
       "motionReducedMotion": "Kurangkan gerakan dihidupkan, jadi lirik pentas video dipaparkan dan bukan lirik gerakan.",
       "motionDirecting": "AI sedang mengarahkan animasi…",
-      "motionDirectFailed": "Arahan AI gagal. Menggunakan arahan terbina dalam."
+      "motionDirectFailed": "Arahan AI gagal. Menggunakan arahan terbina dalam.",
+      "motionRedirect": "Arahkan semula"
     },
     "settings": {
       "subtitle": "Sesuaikan saiz, animasi dan tipografi lirik bawah bagi mod vinil.",
@@ -2677,6 +2678,18 @@ window.LANG_MS = {
       "motionBackgroundDesc": "Apa yang bergerak di belakang lirik bergerak: video lagu, atau latar trek yang digunakan di tempat lain (kulit album atau warna). Pilih latar trek apabila lagu tiada video atau YouTube tidak dapat memainkannya.",
       "motionBackgroundVideo": "Video",
       "motionBackgroundTrack": "Latar trek",
+      "motionIntensityLabel": "Keamatan gerakan",
+      "motionIntensityDesc": "Sejauh mana kamera berayun, meluncur dan bergegar dalam lirik bergerak. Tenang juga mengelakkan perkataan masuk dengan hentakan.",
+      "motionIntensityCalm": "Tenang",
+      "motionIntensityNormal": "Biasa",
+      "motionIntensityWild": "Liar",
+      "motionRotationLabel": "Putaran skrin",
+      "motionRotationDesc": "Sejauh mana lirik bergerak memutarkan skrin dan video. Lembut membuang pusingan suku, terbalik dan pusingan penuh; Mati mengekalkan semuanya mendatar.",
+      "motionRotationFull": "Penuh",
+      "motionRotationGentle": "Lembut",
+      "motionRotationOff": "Mati",
+      "motionSafeLabel": "Mod selamat fotosensitif",
+      "motionSafeDesc": "Membuang kilauan, glitch dan kelipan daripada lirik bergerak.",
       "tonearmTitle": "Lengan pikap",
       "tonearmSubtitle": "Sesuaikan bentuk, kemasan dan saiz lengan pikap.",
       "tonearmStyleLabel": "Gaya lengan",

@@ -2651,7 +2651,8 @@ window.LANG_ZH_TW = {
       "motionUnavailable": "動態歌詞僅適用於有逐詞或逐字同步的歌曲。這首歌會顯示影片舞台歌詞。",
       "motionReducedMotion": "已開啟減少動態效果，因此顯示影片舞台歌詞，而非動態歌詞。",
       "motionDirecting": "AI 正在編排動態演出…",
-      "motionDirectFailed": "AI 演出生成失敗，已改用內建演出。"
+      "motionDirectFailed": "AI 演出生成失敗，已改用內建演出。",
+      "motionRedirect": "重新演出"
     },
     "settings": {
       "subtitle": "調整黑膠模式的大小、動效與底部歌詞字型。",
@@ -2677,6 +2678,18 @@ window.LANG_ZH_TW = {
       "motionBackgroundDesc": "選擇動態歌詞後面的背景：歌曲的影片，或在其他地方使用的曲目背景（專輯封面或顏色）。歌曲沒有影片或無法播放 YouTube 時，請使用曲目背景。",
       "motionBackgroundVideo": "影片",
       "motionBackgroundTrack": "曲目背景",
+      "motionIntensityLabel": "動態強度",
+      "motionIntensityDesc": "動態歌詞中鏡頭搖晃和移動的幅度。選擇「柔和」時也會減少文字猛烈衝入的效果。",
+      "motionIntensityCalm": "柔和",
+      "motionIntensityNormal": "標準",
+      "motionIntensityWild": "強烈",
+      "motionRotationLabel": "畫面旋轉",
+      "motionRotationDesc": "動態歌詞旋轉畫面和影片的程度。「輕微」會去掉 90 度轉動、翻轉和整圈旋轉；「關閉」讓畫面始終保持水平。",
+      "motionRotationFull": "完整",
+      "motionRotationGentle": "輕微",
+      "motionRotationOff": "關閉",
+      "motionSafeLabel": "光敏安全模式",
+      "motionSafeDesc": "移除動態歌詞中的閃光、故障和閃爍效果。",
       "tonearmTitle": "唱臂",
       "tonearmSubtitle": "自訂唱臂的造型、外觀與大小。",
       "tonearmStyleLabel": "唱臂樣式",

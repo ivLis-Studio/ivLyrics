@@ -2651,7 +2651,8 @@ window.LANG_TR = {
       "motionUnavailable": "Hareketli sözler, kelime veya karakter senkronu olan şarkılarda çalışır. Bu şarkıda video sahnesi sözleri gösteriliyor.",
       "motionReducedMotion": "Hareketi azalt açık olduğu için hareketli sözler yerine video sahnesi sözleri gösteriliyor.",
       "motionDirecting": "Yapay zekâ hareketi yönetiyor…",
-      "motionDirectFailed": "Yapay zekâ yönetimi başarısız oldu. Yerleşik yönetim kullanılıyor."
+      "motionDirectFailed": "Yapay zekâ yönetimi başarısız oldu. Yerleşik yönetim kullanılıyor.",
+      "motionRedirect": "Yeniden yönet"
     },
     "settings": {
       "subtitle": "Plak modunun boyutunu, animasyonlarını ve alttaki şarkı sözü yazı tipini özelleştirin.",
@@ -2677,6 +2678,18 @@ window.LANG_TR = {
       "motionBackgroundDesc": "Hareketli sözlerin arkasında ne oynayacağı: şarkının videosu ya da başka ekranlarda kullanılan parça arka planı (albüm kapağı veya renkler). Şarkının videosu yoksa ya da YouTube oynatamıyorsa parça arka planını seçin.",
       "motionBackgroundVideo": "Video",
       "motionBackgroundTrack": "Parça arka planı",
+      "motionIntensityLabel": "Hareket yoğunluğu",
+      "motionIntensityDesc": "Hareketli sözlerde kameranın ne kadar sallanıp kaydığını ve titrediğini belirler. Sakin, kelimelerin çarparak girmesini de kaldırır.",
+      "motionIntensityCalm": "Sakin",
+      "motionIntensityNormal": "Normal",
+      "motionIntensityWild": "Coşkulu",
+      "motionRotationLabel": "Ekran döndürme",
+      "motionRotationDesc": "Hareketli sözlerin ekranı ve videoyu ne kadar döndürdüğünü belirler. Hafif; çeyrek dönüşleri, taklaları ve tam turları kaldırır, Kapalı her şeyi düz tutar.",
+      "motionRotationFull": "Tam",
+      "motionRotationGentle": "Hafif",
+      "motionRotationOff": "Kapalı",
+      "motionSafeLabel": "Işığa duyarlılık için güvenli mod",
+      "motionSafeDesc": "Hareketli sözlerden flaşları, glitch'leri ve titremeleri kaldırır.",
       "tonearmTitle": "Pikap kolu",
       "tonearmSubtitle": "Pikap kolunun şeklini, kaplamasını ve boyutunu özelleştirin.",
       "tonearmStyleLabel": "Kol stili",

@@ -2651,7 +2651,8 @@ window.LANG_PT = {
       "motionUnavailable": "As letras em movimento funcionam com músicas sincronizadas por palavra ou caractere. Esta música mostra a letra do palco de vídeo.",
       "motionReducedMotion": "Reduzir movimento está ativado, então a letra do palco de vídeo é exibida no lugar das letras em movimento.",
       "motionDirecting": "A IA está dirigindo a animação…",
-      "motionDirectFailed": "A direção por IA falhou. Usando a direção integrada."
+      "motionDirectFailed": "A direção por IA falhou. Usando a direção integrada.",
+      "motionRedirect": "Dirigir de novo"
     },
     "settings": {
       "subtitle": "Personalize o tamanho, as animações e a tipografia inferior do modo vinil.",
@@ -2677,6 +2678,18 @@ window.LANG_PT = {
       "motionBackgroundDesc": "O que se move atrás das letras animadas: o vídeo da música ou o fundo da faixa usado em outras telas (capa ou cores). Use o fundo da faixa quando a música não tiver vídeo ou o YouTube não puder reproduzi-lo.",
       "motionBackgroundVideo": "Vídeo",
       "motionBackgroundTrack": "Fundo da faixa",
+      "motionIntensityLabel": "Intensidade do movimento",
+      "motionIntensityDesc": "Quanto a câmera balança, desliza e treme nas letras em movimento. Calma também evita palavras entrando com impacto.",
+      "motionIntensityCalm": "Calma",
+      "motionIntensityNormal": "Normal",
+      "motionIntensityWild": "Intensa",
+      "motionRotationLabel": "Rotação da tela",
+      "motionRotationDesc": "Quanto as letras em movimento giram a tela e o vídeo. Suave remove giros de 90 graus, viradas e giros completos; Desligada mantém tudo nivelado.",
+      "motionRotationFull": "Completa",
+      "motionRotationGentle": "Suave",
+      "motionRotationOff": "Desligada",
+      "motionSafeLabel": "Modo seguro para fotossensibilidade",
+      "motionSafeDesc": "Remove flashes, glitches e cintilações das letras em movimento.",
       "tonearmTitle": "Braço",
       "tonearmSubtitle": "Personalize o formato, o acabamento e o tamanho do braço.",
       "tonearmStyleLabel": "Estilo do braço",

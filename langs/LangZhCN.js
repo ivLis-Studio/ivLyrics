@@ -2651,7 +2651,8 @@ window.LANG_ZH_CN = {
       "motionUnavailable": "动效歌词仅适用于带有逐词或逐字同步的歌曲。这首歌将显示视频舞台歌词。",
       "motionReducedMotion": "已开启减少动态效果，因此显示视频舞台歌词，而不是动效歌词。",
       "motionDirecting": "AI 正在编排动态演出…",
-      "motionDirectFailed": "AI 演出生成失败，已改用内置演出。"
+      "motionDirectFailed": "AI 演出生成失败，已改用内置演出。",
+      "motionRedirect": "重新演出"
     },
     "settings": {
       "subtitle": "调整黑胶模式的尺寸、动效和底部歌词字体。",
@@ -2677,6 +2678,18 @@ window.LANG_ZH_CN = {
       "motionBackgroundDesc": "选择动态歌词后面的背景：歌曲的视频，或在其他地方使用的曲目背景（专辑封面或颜色）。歌曲没有视频或无法播放 YouTube 时，请使用曲目背景。",
       "motionBackgroundVideo": "视频",
       "motionBackgroundTrack": "曲目背景",
+      "motionIntensityLabel": "动效强度",
+      "motionIntensityDesc": "动态歌词中镜头摇晃和移动的幅度。选择「柔和」时也会减少文字猛烈冲入的效果。",
+      "motionIntensityCalm": "柔和",
+      "motionIntensityNormal": "标准",
+      "motionIntensityWild": "强烈",
+      "motionRotationLabel": "画面旋转",
+      "motionRotationDesc": "动态歌词旋转画面和视频的程度。「轻微」会去掉 90 度转动、翻转和整圈旋转；「关闭」让画面始终保持水平。",
+      "motionRotationFull": "完整",
+      "motionRotationGentle": "轻微",
+      "motionRotationOff": "关闭",
+      "motionSafeLabel": "光敏安全模式",
+      "motionSafeDesc": "移除动态歌词中的闪光、故障和闪烁效果。",
       "tonearmTitle": "唱臂",
       "tonearmSubtitle": "自定义唱臂的造型、饰面和大小。",
       "tonearmStyleLabel": "唱臂样式",

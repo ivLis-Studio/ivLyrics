@@ -2651,7 +2651,8 @@ window.LANG_DE = {
       "motionUnavailable": "Bewegte Songtexte funktionieren bei Songs mit Wort- oder Zeichen-Timing. Dieser Song zeigt den Songtext der Videobühne.",
       "motionReducedMotion": "„Bewegung reduzieren“ ist aktiv, daher wird statt der bewegten Songtexte der Songtext der Videobühne angezeigt.",
       "motionDirecting": "Die KI inszeniert die Animation …",
-      "motionDirectFailed": "KI-Regie fehlgeschlagen. Die integrierte Regie wird verwendet."
+      "motionDirectFailed": "KI-Regie fehlgeschlagen. Die integrierte Regie wird verwendet.",
+      "motionRedirect": "Neu inszenieren"
     },
     "settings": {
       "subtitle": "Passe Größe, Animationen und die untere Liedtext-Typografie des Vinylmodus an.",
@@ -2677,6 +2678,18 @@ window.LANG_DE = {
       "motionBackgroundDesc": "Was hinter den bewegten Songtexten läuft: das Video des Songs oder der Track-Hintergrund, der sonst verwendet wird (Albumcover oder Farben). Wähle den Track-Hintergrund, wenn ein Song kein Video hat oder YouTube es nicht abspielen kann.",
       "motionBackgroundVideo": "Video",
       "motionBackgroundTrack": "Track-Hintergrund",
+      "motionIntensityLabel": "Bewegungsintensität",
+      "motionIntensityDesc": "Wie stark die Kamera in Motion-Lyrics schwenkt, gleitet und wackelt. „Ruhig“ verzichtet auch auf hart einschlagende Wörter.",
+      "motionIntensityCalm": "Ruhig",
+      "motionIntensityNormal": "Normal",
+      "motionIntensityWild": "Wild",
+      "motionRotationLabel": "Bildschirmdrehung",
+      "motionRotationDesc": "Wie stark Motion-Lyrics Bild und Video drehen. „Sanft“ lässt Vierteldrehungen, Überschläge und Rollen weg; „Aus“ hält alles waagerecht.",
+      "motionRotationFull": "Voll",
+      "motionRotationGentle": "Sanft",
+      "motionRotationOff": "Aus",
+      "motionSafeLabel": "Modus für Lichtempfindliche",
+      "motionSafeDesc": "Entfernt Blitze, Glitches und Flackern aus den Motion-Lyrics.",
       "tonearmTitle": "Tonarm",
       "tonearmSubtitle": "Passe Form, Oberfläche und Größe des Tonarms an.",
       "tonearmStyleLabel": "Tonarmstil",

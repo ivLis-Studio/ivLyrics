@@ -2651,7 +2651,8 @@ window.LANG_SV = {
       "motionUnavailable": "Rörliga låttexter fungerar med låtar som har ord- eller teckensynk. Den här låten visar videoscenens låttext.",
       "motionReducedMotion": "Minska rörelse är på, så videoscenens låttext visas i stället för rörliga låttexter.",
       "motionDirecting": "AI regisserar animationen …",
-      "motionDirectFailed": "AI-regin misslyckades. Den inbyggda regin används."
+      "motionDirectFailed": "AI-regin misslyckades. Den inbyggda regin används.",
+      "motionRedirect": "Regissera om"
     },
     "settings": {
       "subtitle": "Anpassa storlek, animationer och typografi för den nedre textraden i vinylläget.",
@@ -2677,6 +2678,18 @@ window.LANG_SV = {
       "motionBackgroundDesc": "Vad som rör sig bakom rörliga låttexter: låtens video eller spårbakgrunden som används på andra ställen (skivomslag eller färger). Välj spårbakgrund när en låt saknar video eller YouTube inte kan spela den.",
       "motionBackgroundVideo": "Video",
       "motionBackgroundTrack": "Spårbakgrund",
+      "motionIntensityLabel": "Rörelseintensitet",
+      "motionIntensityDesc": "Hur mycket kameran svänger, glider och skakar i rörliga texter. Lugn tar också bort ord som slår in.",
+      "motionIntensityCalm": "Lugn",
+      "motionIntensityNormal": "Normal",
+      "motionIntensityWild": "Vild",
+      "motionRotationLabel": "Skärmrotation",
+      "motionRotationDesc": "Hur mycket rörliga texter vrider skärmen och videon. Mjuk tar bort kvartsvarv, vändningar och hela varv; Av håller allt vågrätt.",
+      "motionRotationFull": "Full",
+      "motionRotationGentle": "Mjuk",
+      "motionRotationOff": "Av",
+      "motionSafeLabel": "Säkert läge för ljuskänsliga",
+      "motionSafeDesc": "Tar bort blixtar, glitchar och flimmer från rörliga texter.",
       "tonearmTitle": "Tonarm",
       "tonearmSubtitle": "Anpassa tonarmens form, finish och storlek.",
       "tonearmStyleLabel": "Tonarmsstil",
