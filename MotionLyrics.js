@@ -4405,6 +4405,17 @@
 		return { ghost, solid };
 	};
 
+	/**
+	 * The background's filter with the camera's motion blur after its own (the
+	 * app's dimming and blur of a cover): state.base is its own filter,
+	 * state.written what the camera last set (null: nothing yet). A filter the
+	 * app set meanwhile becomes its own.
+	 */
+	const cameraFilter = (state, current, blurPx) => {
+		const base = state.written !== null && current !== state.written ? current : state.base;
+		return { base, written: [base, blurPx > 0 ? "blur(" + blurPx + "px)" : ""].filter(Boolean).join(" ") };
+	};
+
 	const pure = Object.freeze({
 		PERSPECTIVE_PX,
 		hashString,
@@ -4448,6 +4459,7 @@
 		LETTER_EXITS,
 		INTERLUDE_STYLES,
 		interludesOf,
+		cameraFilter,
 		revealClip,
 		fillFrame,
 		travelFrame,
@@ -4654,6 +4666,9 @@
 		let currentLine = -2;
 		let currentBoard = -2;
 		let background = null;
+		// The background's own filter (the app's dimming and blur of a cover) and what the camera last wrote over it:
+		// the camera's motion blur is added after it, and it is given back as it was.
+		let backgroundFilter = { base: "", written: null };
 		let backgroundCheckedAt = -Infinity;
 		let lastPose = null;
 		let lastFrameAt = 0;
@@ -4682,8 +4697,15 @@
 			const scope = stage.closest?.("#lyrics-fullscreen-container, .lyrics-lyricsContainer-LyricsContainer") || document;
 			background = scope.querySelector?.(".ivlyrics-video-background-camera") || document.querySelector?.(".ivlyrics-video-background-camera") || null;
 			cache.background = {};
+			backgroundFilter = { base: background?.style?.filter || "", written: null };
 			background?.classList?.add("is-motion-camera");
 			return background;
+		};
+		const writeBackgroundFilter = (backdrop, blurPx) => {
+			const current = backdrop.style.filter || "";
+			const next = cameraFilter(backgroundFilter, current, blurPx);
+			if (next.written !== current) backdrop.style.filter = next.written;
+			backgroundFilter = next;
 		};
 		const releaseBackground = () => {
 			if (!background) return;
@@ -4691,7 +4713,9 @@
 			background.style.rotate = "";
 			background.style.scale = "";
 			background.style.translate = "";
-			background.style.filter = "";
+			// Its own filter back, unless the app has set another since.
+			if (backgroundFilter.written !== null && (background.style.filter || "") === backgroundFilter.written) background.style.filter = backgroundFilter.base;
+			backgroundFilter = { base: "", written: null };
 			background = null;
 			cache.background = {};
 		};
@@ -5575,7 +5599,7 @@
 				write(cache.background, "rotate", round(frameState.rotate, 2) + "deg", (value) => { backdrop.style.rotate = value; });
 				write(cache.background, "scale", String(round(frameState.scale, 4)), (value) => { backdrop.style.scale = value; });
 				write(cache.background, "translate", round(frameState.x) + "px " + round(frameState.y) + "px", (value) => { backdrop.style.translate = value; });
-				write(cache.background, "filter", blur >= 1 ? "blur(" + round(blur * 0.5, 1) + "px)" : "", (value) => { backdrop.style.filter = value; });
+				writeBackgroundFilter(backdrop, blur >= 1 ? round(blur * 0.5, 1) : 0);
 			}
 
 			const progress = progressAt(plan, time);

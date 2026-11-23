@@ -1958,6 +1958,26 @@ test("a chorus of long lines the AI set line by line keeps its look shot after s
 	assert.ok(chorus.every((shot) => shot.layout === "lockup" && shot.fx === "assemble" && shot.accent === "trail"), chorus.map((shot) => shot.layout + "/" + shot.fx + "/" + shot.accent).join(" "));
 });
 
+test("the motion camera keeps the background's own dimming and blur and gives them back", () => {
+	const { motion } = load();
+	const cover = "brightness(0.5) blur(20px)";
+	let state = { base: cover, written: null };
+	state = motion.cameraFilter(state, cover, 0);
+	assert.equal(state.written, cover, "nothing of its own is taken away");
+	state = motion.cameraFilter(state, state.written, 3.5);
+	assert.equal(state.written, cover + " blur(3.5px)", "the camera's blur comes after the cover's own");
+	state = motion.cameraFilter(state, state.written, 0);
+	assert.equal(state.written, cover);
+	// The app changes the dimming while the camera runs: that becomes the background's own.
+	state = motion.cameraFilter(state, "brightness(0.8) blur(10px)", 2);
+	assert.equal(state.base, "brightness(0.8) blur(10px)");
+	assert.equal(state.written, "brightness(0.8) blur(10px) blur(2px)");
+	assert.equal(motion.cameraFilter({ base: "", written: null }, "", 0).written, "", "a background without a filter of its own keeps none");
+	const source = read("MotionLyrics.js");
+	assert.ok(!/background\.style\.filter = "";/.test(source), "leaving motion never wipes the background's filter");
+	assert.match(source, /background\.style\.filter = backgroundFilter\.base/);
+});
+
 
 
 
