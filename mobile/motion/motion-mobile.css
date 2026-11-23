@@ -36,8 +36,14 @@ body {
 }
 
 .ivlyrics-motion-status {
-  top: calc(var(--iv-inset-top, 0px) + 40px);
+  /* Top left under the title, inside the safe area. */
+  top: calc(var(--iv-inset-top, 0px) + 36px);
+  left: calc(var(--iv-inset-left, 0px) + 16px);
   max-width: calc(100% - 32px);
+}
+
+.no-hud .ivlyrics-motion-status {
+  top: calc(var(--iv-inset-top, 0px) + 12px);
 }
 
 .ivlyrics-motion-subtitle {

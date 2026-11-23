@@ -2221,7 +2221,9 @@ window.LANG_DE = {
     "pronunciationSync": "Aussprache-Timing",
     "pronunciationSyncLoading": "KI passt die Aussprache an das Liedtext-Timing an...",
     "pronunciationSyncFailed": "Aussprache-Timing fehlgeschlagen",
-    "pronunciationSyncFailedDesc": "Die Aussprache konnte nicht per KI getimt werden. Es wird ein ungefähres Timing angezeigt."
+    "pronunciationSyncFailedDesc": "Die Aussprache konnte nicht per KI getimt werden. Es wird ein ungefähres Timing angezeigt.",
+    "motionDirection": "Bewegungsregie",
+    "motionDirectionFailed": "Bewegungsregie fehlgeschlagen"
   },
   "videoSync": {
     "title": "Video-Timing",

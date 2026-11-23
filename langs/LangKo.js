@@ -2221,7 +2221,9 @@ window.LANG_KO = {
     "pronunciationSync": "발음 싱크",
     "pronunciationSyncLoading": "AI가 발음을 가사 싱크에 맞추는 중...",
     "pronunciationSyncFailed": "발음 싱크 실패",
-    "pronunciationSyncFailedDesc": "AI로 발음 싱크를 만들지 못해 근사 싱크로 표시합니다."
+    "pronunciationSyncFailedDesc": "AI로 발음 싱크를 만들지 못해 근사 싱크로 표시합니다.",
+    "motionDirection": "모션 연출",
+    "motionDirectionFailed": "모션 연출 실패"
   },
   "videoSync": {
     "title": "영상 싱크",

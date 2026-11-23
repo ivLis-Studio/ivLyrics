@@ -2221,7 +2221,9 @@ window.LANG_ID = {
     "pronunciationSync": "Sinkron pelafalan",
     "pronunciationSyncLoading": "AI sedang menyesuaikan pelafalan dengan waktu lirik...",
     "pronunciationSyncFailed": "Sinkron pelafalan gagal",
-    "pronunciationSyncFailedDesc": "Tidak dapat menyinkronkan pelafalan dengan AI. Menampilkan waktu perkiraan."
+    "pronunciationSyncFailedDesc": "Tidak dapat menyinkronkan pelafalan dengan AI. Menampilkan waktu perkiraan.",
+    "motionDirection": "Arahan gerak",
+    "motionDirectionFailed": "Arahan gerak gagal"
   },
   "videoSync": {
     "title": "Waktu video",

@@ -2221,7 +2221,9 @@ window.LANG_AR = {
     "pronunciationSync": "توقيت النطق",
     "pronunciationSyncLoading": "يطابق الذكاء الاصطناعي النطق مع توقيت كلمات الأغنية...",
     "pronunciationSyncFailed": "تعذّر توقيت النطق",
-    "pronunciationSyncFailedDesc": "تعذّر توقيت النطق باستخدام الذكاء الاصطناعي. يُعرض توقيت تقريبي."
+    "pronunciationSyncFailedDesc": "تعذّر توقيت النطق باستخدام الذكاء الاصطناعي. يُعرض توقيت تقريبي.",
+    "motionDirection": "إخراج الحركة",
+    "motionDirectionFailed": "فشل إخراج الحركة"
   },
   "videoSync": {
     "title": "توقيت الفيديو",

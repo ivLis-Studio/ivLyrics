@@ -2221,7 +2221,9 @@ window.LANG_EN = {
     "pronunciationSync": "Pronunciation timing",
     "pronunciationSyncLoading": "AI is matching the pronunciation to the lyric timing...",
     "pronunciationSyncFailed": "Pronunciation timing failed",
-    "pronunciationSyncFailedDesc": "Could not time the pronunciation with AI. Showing approximate timing."
+    "pronunciationSyncFailedDesc": "Could not time the pronunciation with AI. Showing approximate timing.",
+    "motionDirection": "Motion direction",
+    "motionDirectionFailed": "Motion direction failed"
   },
   "videoSync": {
     "title": "Video timing",

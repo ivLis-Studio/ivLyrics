@@ -2221,7 +2221,9 @@ window.LANG_FR = {
     "pronunciationSync": "Synchro de la prononciation",
     "pronunciationSyncLoading": "L'IA aligne la prononciation sur le minutage des paroles...",
     "pronunciationSyncFailed": "Échec de la synchro de la prononciation",
-    "pronunciationSyncFailedDesc": "Impossible de synchroniser la prononciation avec l'IA. Affichage d'un minutage approximatif."
+    "pronunciationSyncFailedDesc": "Impossible de synchroniser la prononciation avec l'IA. Affichage d'un minutage approximatif.",
+    "motionDirection": "Mise en scène du mouvement",
+    "motionDirectionFailed": "Échec de la mise en scène"
   },
   "videoSync": {
     "title": "Timing de la vidéo",

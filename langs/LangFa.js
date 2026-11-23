@@ -2221,7 +2221,9 @@ window.LANG_FA = {
     "pronunciationSync": "زمان‌بندی تلفظ",
     "pronunciationSyncLoading": "هوش مصنوعی در حال تطبیق تلفظ با زمان‌بندی متن آهنگ است...",
     "pronunciationSyncFailed": "زمان‌بندی تلفظ ناموفق بود",
-    "pronunciationSyncFailedDesc": "زمان‌بندی تلفظ با هوش مصنوعی انجام نشد. زمان‌بندی تقریبی نمایش داده می‌شود."
+    "pronunciationSyncFailedDesc": "زمان‌بندی تلفظ با هوش مصنوعی انجام نشد. زمان‌بندی تقریبی نمایش داده می‌شود.",
+    "motionDirection": "کارگردانی حرکت",
+    "motionDirectionFailed": "کارگردانی حرکت ناموفق بود"
   },
   "videoSync": {
     "title": "زمان‌بندی ویدیو",

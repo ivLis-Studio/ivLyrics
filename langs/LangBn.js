@@ -2221,7 +2221,9 @@ window.LANG_BN = {
     "pronunciationSync": "উচ্চারণের টাইমিং",
     "pronunciationSyncLoading": "AI উচ্চারণকে গানের কথার টাইমিংয়ের সঙ্গে মেলাচ্ছে...",
     "pronunciationSyncFailed": "উচ্চারণের টাইমিং ব্যর্থ",
-    "pronunciationSyncFailedDesc": "AI দিয়ে উচ্চারণের টাইমিং তৈরি করা যায়নি। আনুমানিক টাইমিং দেখানো হচ্ছে।"
+    "pronunciationSyncFailedDesc": "AI দিয়ে উচ্চারণের টাইমিং তৈরি করা যায়নি। আনুমানিক টাইমিং দেখানো হচ্ছে।",
+    "motionDirection": "মোশন নির্দেশনা",
+    "motionDirectionFailed": "মোশন নির্দেশনা ব্যর্থ"
   },
   "videoSync": {
     "title": "ভিডিও টাইমিং",

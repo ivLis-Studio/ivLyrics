@@ -5197,6 +5197,7 @@ const createInitialLyricsContainerState = () => ({
     pronunciation: { phase: "idle", revision: 0 },
     "cultural-annotations": { phase: "idle", revision: 0 },
     "video-background": { phase: "idle", revision: 0 },
+    "motion-direction": { phase: "idle", revision: 0 },
   },
   currentLyricIndex: 0,
   // Keep the previous fullscreen layout while loading, without retaining
@@ -5469,6 +5470,7 @@ class LyricsContainer extends react.Component {
     this.handleWordSyncLoading = this.handleWordSyncLoading.bind(this);
     this.handlePronunciationSyncStatus = this.handlePronunciationSyncStatus.bind(this);
     this.handlePronunciationFirstUpdate = this.handlePronunciationFirstUpdate.bind(this);
+    this.handleMotionDirectionStatus = this.handleMotionDirectionStatus.bind(this);
     this.handleVideoBackgroundLoadingChange = this.handleVideoBackgroundLoadingChange.bind(this);
 
     // The floating toolbar gets one stable set of callbacks, so its props stay
@@ -7000,6 +7002,15 @@ class LyricsContainer extends react.Component {
     if (!this._isComponentMounted) return;
     const statuses = window.ivLyricsPronunciationFirst?.getStatuses?.(this.currentTrackUri) || [];
     statuses.forEach(status => this.handlePronunciationSyncStatus({ detail: status }));
+  }
+
+  // Motion lyrics (MotionLyrics.js via VinylPlayerMode.js): the AI directing the edit, shown with the other AI tasks.
+  handleMotionDirectionStatus(event) {
+    const phase = event?.detail?.phase;
+    if (phase === "loading") this.showGenerationPillLoading("motion-direction");
+    else if (phase === "complete") this.completeGenerationPill("motion-direction");
+    else if (phase === "failed") this.failGenerationPill("motion-direction");
+    else this.hideGenerationPill("motion-direction");
   }
 
   handlePronunciationFirstUpdate(event) {
@@ -10346,6 +10357,7 @@ class LyricsContainer extends react.Component {
     this.restoreWordSyncLoading();
     window.addEventListener("ivLyrics:pronunciation-sync:status", this.handlePronunciationSyncStatus);
     window.addEventListener("ivLyrics:pronunciation-first-updated", this.handlePronunciationFirstUpdate);
+    window.addEventListener("ivLyrics:motion-direction:status", this.handleMotionDirectionStatus);
     this.restorePronunciationSyncLoading();
 
     this.handleSyncCreatorVisibility = (event) => {
@@ -10853,6 +10865,7 @@ class LyricsContainer extends react.Component {
     this._unsubscribeWordSyncLoading = null;
     window.removeEventListener("ivLyrics:pronunciation-sync:status", this.handlePronunciationSyncStatus);
     window.removeEventListener("ivLyrics:pronunciation-first-updated", this.handlePronunciationFirstUpdate);
+    window.removeEventListener("ivLyrics:motion-direction:status", this.handleMotionDirectionStatus);
     clearTimeout(this._pronunciationTimingTimer);
     this._pronunciationTimingTimer = null;
     Spicetify.Player?.removeEventListener?.("onplaypause", this.updatePlaybackPausedState);
@@ -11560,6 +11573,13 @@ class LyricsContainer extends react.Component {
           key: "video-background",
           label: I18n.t("settings.videoBackground.label") || I18n.t("videoBackground.loading"),
           description: I18n.t("videoBackground.loadingMessage"),
+        },
+        {
+          key: "motion-direction",
+          label: I18n.t("generationStatus.motionDirection") || "Motion direction",
+          description: I18n.t("vinyl.presentation.motionDirecting") || "AI is directing the motion…",
+          failureLabel: I18n.t("generationStatus.motionDirectionFailed") || "Motion direction failed",
+          failureDescription: I18n.t("vinyl.presentation.motionDirectFailed") || "AI direction failed. Using the built-in direction.",
         },
       ];
       const generationStatuses = generationStatusDefinitions

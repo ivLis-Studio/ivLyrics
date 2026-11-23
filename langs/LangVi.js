@@ -2221,7 +2221,9 @@ window.LANG_VI = {
     "pronunciationSync": "Đồng bộ phát âm",
     "pronunciationSyncLoading": "AI đang khớp phát âm với thời gian lời bài hát...",
     "pronunciationSyncFailed": "Đồng bộ phát âm thất bại",
-    "pronunciationSyncFailedDesc": "Không thể đồng bộ phát âm bằng AI. Đang hiển thị thời gian gần đúng."
+    "pronunciationSyncFailedDesc": "Không thể đồng bộ phát âm bằng AI. Đang hiển thị thời gian gần đúng.",
+    "motionDirection": "Dàn dựng chuyển động",
+    "motionDirectionFailed": "Dàn dựng chuyển động thất bại"
   },
   "videoSync": {
     "title": "Thời gian video",

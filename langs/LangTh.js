@@ -2221,7 +2221,9 @@ window.LANG_TH = {
     "pronunciationSync": "จังหวะคำอ่าน",
     "pronunciationSyncLoading": "AI กำลังจัดคำอ่านให้ตรงกับจังหวะเนื้อเพลง...",
     "pronunciationSyncFailed": "จัดจังหวะคำอ่านไม่สำเร็จ",
-    "pronunciationSyncFailedDesc": "ไม่สามารถจัดจังหวะคำอ่านด้วย AI ได้ จึงแสดงจังหวะโดยประมาณ"
+    "pronunciationSyncFailedDesc": "ไม่สามารถจัดจังหวะคำอ่านด้วย AI ได้ จึงแสดงจังหวะโดยประมาณ",
+    "motionDirection": "การกำกับโมชัน",
+    "motionDirectionFailed": "กำกับโมชันไม่สำเร็จ"
   },
   "videoSync": {
     "title": "จังหวะวิดีโอ",

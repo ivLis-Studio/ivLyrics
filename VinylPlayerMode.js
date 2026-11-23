@@ -40,6 +40,11 @@ const VinylPlayerMode = (() => {
     const TRACK_RECORD_RAISE_MS = 360;
     const TRACK_HANDOFF_MS = 96;
     const VINYL_FALLBACK_ACCENT = "var(--spice-button-active, #ff809d)";
+    // Motion lyrics report their AI direction to the lyrics page, which shows it with its other AI tasks (index.js).
+    const MOTION_DIRECTION_STATUS_EVENT = "ivLyrics:motion-direction:status";
+    const reportMotionDirectionStatus = (detail) => {
+        window.dispatchEvent(new CustomEvent(MOTION_DIRECTION_STATUS_EVENT, { detail }));
+    };
     const VINYL_SEEK_END_GUARD_MIN_MS = 250;
     const VINYL_SEEK_END_GUARD_MAX_MS = 500;
     const PRESENTATION_MODES = Object.freeze([
@@ -1678,7 +1683,8 @@ const VinylPlayerMode = (() => {
                 accent: displayedTrack.accent,
                 isPlaying,
                 title: liveTrack.title,
-                artist: liveTrack.artist
+                artist: liveTrack.artist,
+                onStatus: reportMotionDirectionStatus
             }) : null,
             isMotionPresentation && !motionPlayable && Array.isArray(activeLyrics) && activeLyrics.length > 0
                 ? react.createElement("div", {

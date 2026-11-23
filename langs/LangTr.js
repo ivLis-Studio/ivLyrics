@@ -2221,7 +2221,9 @@ window.LANG_TR = {
     "pronunciationSync": "Telaffuz zamanlaması",
     "pronunciationSyncLoading": "Yapay zekâ telaffuzu söz zamanlamasına uyduruyor...",
     "pronunciationSyncFailed": "Telaffuz zamanlaması başarısız",
-    "pronunciationSyncFailedDesc": "Telaffuz yapay zekâ ile zamanlanamadı. Yaklaşık zamanlama gösteriliyor."
+    "pronunciationSyncFailedDesc": "Telaffuz yapay zekâ ile zamanlanamadı. Yaklaşık zamanlama gösteriliyor.",
+    "motionDirection": "Hareket yönetimi",
+    "motionDirectionFailed": "Hareket yönetimi başarısız"
   },
   "videoSync": {
     "title": "Video zamanlaması",

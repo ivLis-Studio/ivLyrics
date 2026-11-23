@@ -2221,7 +2221,9 @@ window.LANG_CS = {
     "pronunciationSync": "Časování výslovnosti",
     "pronunciationSyncLoading": "AI přizpůsobuje výslovnost časování textu...",
     "pronunciationSyncFailed": "Časování výslovnosti selhalo",
-    "pronunciationSyncFailedDesc": "Výslovnost se nepodařilo načasovat pomocí AI. Zobrazuje se přibližné časování."
+    "pronunciationSyncFailedDesc": "Výslovnost se nepodařilo načasovat pomocí AI. Zobrazuje se přibližné časování.",
+    "motionDirection": "Režie animace",
+    "motionDirectionFailed": "Režie animace selhala"
   },
   "videoSync": {
     "title": "Časování videa",

@@ -11544,6 +11544,24 @@ html.is-lp-view-switch::view-transition-new(root) {
   opacity: var(--lg, 0.3);
 }
 
+/* Outlines drawn round the letters' shape by an SVG filter (MotionLyrics.js,
+   createOutlines; desktop): the text is filled and the filter hollows it, so
+   contours that overlap inside a letter draw no lines. A waiting line's
+   outline is drawn once into a layer of its own; only its opacity changes. */
+.ivlyrics-motion-ghost.is-shaped {
+  color: rgba(255, 255, 255, 0.92);
+  -webkit-text-stroke: 0;
+  will-change: opacity;
+  backface-visibility: hidden;
+}
+
+.ivlyrics-motion-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
 /* Other voices (background vocals, a duet partner) are smaller: they wait as a faint fill. */
 .ivlyrics-motion-word.is-voice .ivlyrics-motion-ghost {
   color: rgba(255, 255, 255, 0.85);
@@ -11615,8 +11633,15 @@ html.is-lp-view-switch::view-transition-new(root) {
   rotate: -4deg;
 }
 
-.accent-script .ivlyrics-motion-word.is-emph .ivlyrics-motion-ghost {
+/* The outline turns with the solid type about the same point, so it stays under it. */
+.accent-script .ivlyrics-motion-word.is-emph .ivlyrics-motion-ghost,
+.accent-sticker .ivlyrics-motion-word.is-emph .ivlyrics-motion-ghost {
   rotate: -4deg;
+  transform-origin: 50% 62%;
+}
+
+.accent-sticker .ivlyrics-motion-word.is-emph .ivlyrics-motion-ghost {
+  rotate: -3deg;
 }
 
 .accent-outline .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
@@ -11636,10 +11661,15 @@ html.is-lp-view-switch::view-transition-new(root) {
 
 /* Letters filled with a gradient of the two accent colours (top to bottom, so letters set one by one match).
    A word animated letter by letter paints the gradient on its letters only: painted on the word as well,
-   it would show every letter where it rests, under the one in motion and before it is sung. */
+   it would show every letter where it rests, under the one in motion and before it is sung.
+   The gradient is painted through the letters only inside the element's box: padding (taken back by a
+   negative margin, so nothing moves) leaves room for a comma's tail or a slanted letter's overhang. The
+   stops sit where they were on the unpadded 1em box (14% and 86%). */
 .accent-gradient .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid:not(.has-letters),
 .accent-gradient .ivlyrics-motion-word.is-emph .ivlyrics-motion-char {
-  background-image: linear-gradient(180deg, color-mix(in srgb, var(--iv-motion-accent-2, #5cd6ff) 80%, #fff) 14%, var(--iv-motion-accent, #ff5ca0) 86%);
+  margin: -0.3em -0.2em;
+  padding: 0.3em 0.2em;
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--iv-motion-accent-2, #5cd6ff) 80%, #fff) 0.44em, var(--iv-motion-accent, #ff5ca0) 1.16em);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -11700,24 +11730,23 @@ html.is-lp-view-switch::view-transition-new(root) {
   rotate: -1.6deg;
 }
 
-/* A rubber stamp: a tilted outlined frame that slams down around the word. */
+/* A rubber stamp: an outlined frame that slams down around the word, square with it and clear of its letters. */
 .ivlyrics-motion-box.is-stamp,
 .ivlyrics-motion-word[dir="rtl"] .ivlyrics-motion-box.is-stamp {
-  inset: -0.03em -0.2em -0.01em;
+  inset: -0.1em -0.22em -0.08em;
   border: max(2px, 0.065em) solid var(--iv-motion-accent, #ff5ca0);
   border-radius: 0.12em;
   background: none;
   opacity: calc(var(--ls, 1) * var(--b, 0));
-  rotate: -3.5deg;
   transform: scale(calc(1.6 - 0.6 * var(--b, 0)));
   transform-origin: 50% 50%;
 }
 
-/* A pen loop drawn round the word as it is sung. */
+/* A pen loop drawn round the word as it is sung (hidden until it starts: its round cap would show as a dot). */
 .ivlyrics-motion-loop {
   position: absolute;
   overflow: visible;
-  opacity: var(--ls, 1);
+  opacity: calc(var(--ls, 1) * min(1, var(--b, 0) * 60));
 }
 
 .ivlyrics-motion-loop path {
@@ -11800,6 +11829,12 @@ html.is-lp-view-switch::view-transition-new(root) {
   opacity: var(--fl, 0);
   transform-origin: 0 0;
   backface-visibility: hidden;
+}
+
+.ivlyrics-motion-fill.is-shaped,
+.ivlyrics-motion-echo.is-shaped {
+  color: rgba(255, 255, 255, 0.9);
+  -webkit-text-stroke: 0;
 }
 
 .ivlyrics-motion-spark {
@@ -11945,6 +11980,8 @@ html.is-lp-view-switch::view-transition-new(root) {
 .ivlyrics-motion-hud > div {
   position: absolute;
   display: flex;
+  /* Title and artist on one baseline, whatever script (and fallback face) each is in. */
+  align-items: baseline;
   gap: 0.9em;
   max-width: 42%;
   white-space: nowrap;
@@ -11981,14 +12018,16 @@ html.is-lp-view-switch::view-transition-new(root) {
   font-variant-numeric: tabular-nums;
 }
 
+/* The AI direction's notice sits top left, under the title, like the app's other AI tasks.
+   (The desktop app lists it with those tasks instead: MotionLyrics.js, onStatus.) */
 .ivlyrics-motion-status {
   position: absolute;
-  top: clamp(44px, 7svh, 72px);
-  left: 50%;
+  top: calc(clamp(18px, 3.2svh, 34px) + 26px);
+  left: clamp(20px, 3vw, 44px);
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: min(560px, calc(100% - 48px));
+  max-width: min(560px, calc(100% - 40px));
   padding: 7px 14px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
@@ -11997,7 +12036,6 @@ html.is-lp-view-switch::view-transition-new(root) {
   font-family: var(--iv-motion-ui);
   font-size: 12.5px;
   line-height: 1.35;
-  transform: translateX(-50%);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   animation: ivlyrics-motion-status-in 260ms ease both;
@@ -12018,8 +12056,8 @@ html.is-lp-view-switch::view-transition-new(root) {
 }
 
 @keyframes ivlyrics-motion-status-in {
-  from { opacity: 0; transform: translate(-50%, -6px); }
-  to { opacity: 1; transform: translate(-50%, 0); }
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes ivlyrics-motion-status-pulse {

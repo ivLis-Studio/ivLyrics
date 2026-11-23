@@ -21,6 +21,9 @@
 	const document = root.document;
 	const now = () => root.performance.now();
 
+	// Outlines keep the plain text stroke here: the filtered outlines each take a layer of their own (MotionLyrics.js, createOutlines).
+	root.ivLyricsMotionConfig = Object.freeze({ ...root.ivLyricsMotionConfig, shapedOutlines: false });
+
 	// An AI direction of a long song can take a while; the built-in direction plays meanwhile.
 	const AI_TIMEOUT_MS = 180000;
 	const CACHE_TIMEOUT_MS = 4000;

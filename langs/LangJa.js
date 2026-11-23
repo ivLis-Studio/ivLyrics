@@ -2221,7 +2221,9 @@ window.LANG_JA = {
     "pronunciationSync": "発音の同期",
     "pronunciationSyncLoading": "AIが発音を歌詞のタイミングに合わせています...",
     "pronunciationSyncFailed": "発音の同期に失敗",
-    "pronunciationSyncFailedDesc": "AIで発音のタイミングを作成できなかったため、おおよそのタイミングで表示します。"
+    "pronunciationSyncFailedDesc": "AIで発音のタイミングを作成できなかったため、おおよそのタイミングで表示します。",
+    "motionDirection": "モーション演出",
+    "motionDirectionFailed": "モーション演出に失敗"
   },
   "videoSync": {
     "title": "動画のタイミング",

@@ -2221,7 +2221,9 @@ window.LANG_ZH_TW = {
     "pronunciationSync": "發音同步",
     "pronunciationSyncLoading": "AI 正在將發音與歌詞時間對齊...",
     "pronunciationSyncFailed": "發音同步失敗",
-    "pronunciationSyncFailedDesc": "無法用 AI 產生發音時間，將以近似時間顯示。"
+    "pronunciationSyncFailedDesc": "無法用 AI 產生發音時間，將以近似時間顯示。",
+    "motionDirection": "動態編排",
+    "motionDirectionFailed": "動態編排失敗"
   },
   "videoSync": {
     "title": "影片同步",

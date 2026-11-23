@@ -2221,7 +2221,9 @@ window.LANG_MS = {
     "pronunciationSync": "Penyegerakan sebutan",
     "pronunciationSyncLoading": "AI sedang menyelaraskan sebutan dengan masa lirik...",
     "pronunciationSyncFailed": "Penyegerakan sebutan gagal",
-    "pronunciationSyncFailedDesc": "Tidak dapat menyegerakkan sebutan dengan AI. Memaparkan masa anggaran."
+    "pronunciationSyncFailedDesc": "Tidak dapat menyegerakkan sebutan dengan AI. Memaparkan masa anggaran.",
+    "motionDirection": "Arahan gerakan",
+    "motionDirectionFailed": "Arahan gerakan gagal"
   },
   "videoSync": {
     "title": "Pemasaan video",

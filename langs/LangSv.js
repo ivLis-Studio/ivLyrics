@@ -2221,7 +2221,9 @@ window.LANG_SV = {
     "pronunciationSync": "Uttalstiming",
     "pronunciationSyncLoading": "AI anpassar uttalet till låttextens timing...",
     "pronunciationSyncFailed": "Uttalstiming misslyckades",
-    "pronunciationSyncFailedDesc": "Kunde inte tajma uttalet med AI. Visar ungefärlig timing."
+    "pronunciationSyncFailedDesc": "Kunde inte tajma uttalet med AI. Visar ungefärlig timing.",
+    "motionDirection": "Rörelseregi",
+    "motionDirectionFailed": "Rörelseregin misslyckades"
   },
   "videoSync": {
     "title": "Videotiming",

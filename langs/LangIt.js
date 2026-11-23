@@ -2221,7 +2221,9 @@ window.LANG_IT = {
     "pronunciationSync": "Sincronia della pronuncia",
     "pronunciationSyncLoading": "L'IA sta allineando la pronuncia ai tempi del testo...",
     "pronunciationSyncFailed": "Sincronia della pronuncia non riuscita",
-    "pronunciationSyncFailedDesc": "Impossibile sincronizzare la pronuncia con l'IA. Viene mostrata una sincronia approssimativa."
+    "pronunciationSyncFailedDesc": "Impossibile sincronizzare la pronuncia con l'IA. Viene mostrata una sincronia approssimativa.",
+    "motionDirection": "Regia del movimento",
+    "motionDirectionFailed": "Regia del movimento non riuscita"
   },
   "videoSync": {
     "title": "Sincronizzazione video",

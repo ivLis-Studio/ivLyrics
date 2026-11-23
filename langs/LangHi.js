@@ -2221,7 +2221,9 @@ window.LANG_HI = {
     "pronunciationSync": "उच्चारण टाइमिंग",
     "pronunciationSyncLoading": "AI उच्चारण को बोलों की टाइमिंग से मिला रहा है...",
     "pronunciationSyncFailed": "उच्चारण टाइमिंग विफल",
-    "pronunciationSyncFailedDesc": "AI से उच्चारण की टाइमिंग नहीं बन सकी। अनुमानित टाइमिंग दिखाई जा रही है।"
+    "pronunciationSyncFailedDesc": "AI से उच्चारण की टाइमिंग नहीं बन सकी। अनुमानित टाइमिंग दिखाई जा रही है।",
+    "motionDirection": "मोशन निर्देशन",
+    "motionDirectionFailed": "मोशन निर्देशन विफल"
   },
   "videoSync": {
     "title": "वीडियो टाइमिंग",
