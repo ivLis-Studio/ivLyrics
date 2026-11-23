@@ -1878,7 +1878,8 @@ test("the AI reads the song's structure and energy and directs from a concept an
 	const many = motion.buildModel(Array.from({ length: 24 }, (_, index) => line(["line" + index, "goes", "on"], 2000 + index * 2200, { step: 380 })));
 	const kit = { layouts: ["lockup", "column", "stairs", "chain", "rails", "frame"], fx: ["lift", "wipe", "blur", "rise", "track"], accents: ["underline", "circle", "color"], exits: ["sink", "fade", "dissolve"], enters: ["pan", "drift", "crane", "rise"], holds: ["drift", "grow", "float"] };
 	const shots = [];
-	for (let from = 0; from < many.length; from += 2) shots.push({ from, to: from + 1, layout: "lockup", enter: "pan", fx: "lift", accent: "underline", exit: "sink", hold: "drift" });
+	// (The effect changes from shot to shot, so these are not one composition running on.)
+	for (let from = 0; from < many.length; from += 2) shots.push({ from, to: from + 1, layout: "lockup", enter: "pan", fx: from % 4 ? "wipe" : "lift", accent: "underline", exit: "sink", hold: "drift" });
 	const refined = director.normalizeDirection({ concept: "a quiet diary", kit, shots }, many, { seed: 4, tempo: { tempo: "mid", pace: 1 } });
 	assert.equal(refined.concept, "a quiet diary");
 	const kitted = refined.shots.filter((shot) => shot.source === "ai");
@@ -1932,6 +1933,17 @@ test("instrumental breaks, the intro and the outro play scenes of their own", ()
 	assert.ok(untitled.interludes.every((scene) => scene.style !== "title" && scene.style !== "marquee"));
 	assert.ok(director.INTERLUDES.every((name) => motion.INTERLUDE_STYLES.includes(name)));
 	assert.ok(director.buildPrompt({ lines: [] }).includes('"interlude"'));
+});
+
+test("a chorus the AI set line by line in one look stays one composition", () => {
+	const { motion, director } = load();
+	const model = motion.buildModel([["sing", "it", "loud"], ["all", "night", "long"], ["sing", "it", "loud"], ["all", "night", "long"], ["then", "the", "verse"], ["goes", "on"]]
+		.map((parts, index) => line(parts, 1000 + index * 1500, { step: 380 })));
+	const look = { layout: "lockup", fx: "assemble", accent: "trail", exit: "sweep", enter: "pan" };
+	const raw = { shots: [0, 1, 2, 3].map((n) => ({ from: n, to: n, ...look })).concat([{ from: 4, to: 5, layout: "column", fx: "lift", accent: "color", exit: "fade" }]) };
+	const direction = director.normalizeDirection(raw, model, { seed: 2, tempo: { tempo: "mid", pace: 1 } });
+	assert.deepEqual(plain(direction.shots.map((shot) => [shot.from, shot.to, shot.layout])), [[0, 3, "lockup"], [4, 5, "column"]]);
+	assert.ok(director.buildPrompt({ lines: [] }).includes("never a whole song of them"));
 });
 
 

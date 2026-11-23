@@ -1074,6 +1074,24 @@
 			});
 			lastTo = to;
 		}
+		// Shots in a row that the AI gave one look (a chorus set line by line, the same composition, effect, accent
+		// and exit) are one composition running on: they are merged as far as it holds lines and keeps them on screen
+		// (not across an interlude), so the look is not broken up by the rule that no composition follows itself.
+		const runs = [];
+		for (const shot of aiShots) {
+			const before = runs[runs.length - 1];
+			const alike = !!before && before.to + 1 === shot.from && ["layout", "fx", "accent", "exit", "type", "split"].every((key) => before[key] === shot[key]);
+			if (alike && shot.to - before.from + 1 <= (MAX_LINES[before.layout] || 6)
+				&& lines[shot.from].start - lines[before.to].end < REST_GAP_MS && screenSpan(lines, before.from, shot.to) <= MAX_SHOT_MS) {
+				before.to = shot.to;
+				before.motifs = [...new Set([...before.motifs, ...shot.motifs])].slice(0, MAX_SHOT_MOTIFS);
+				before.echo = before.echo || shot.echo;
+				before.interlude = shot.interlude || before.interlude;
+				continue;
+			}
+			runs.push(shot);
+		}
+		aiShots.splice(0, aiShots.length, ...runs);
 
 		// Fill what the AI left out with the local shots, clipped to the gaps.
 		const filled = [];
@@ -1273,7 +1291,7 @@
 			+ '1. concept: one sentence, the visual idea of this edit, taken from the words and the sound (say "neon night drive: rails and grids, neon accents, whips between shots" or "a diary on a quiet night: corners and margins, handwriting accents, soft wipes"). Everything after follows it.\n'
 			+ '2. kit: the song\'s own visual language, picked before any shot for its mood, tempo and concept: 6 to 9 layouts, 4 to 6 entrances, 5 to 7 fx, 3 to 5 accents, 4 to 6 exits, 3 to 5 holds and 0 to 4 motifs. Nearly every shot draws on the kit; step outside it only for the bridge or the single biggest moment. An edit feels designed when it keeps coming back to its kit, not when every shot changes everything; a kit that fights the song (dreamy waves in a metal song, slams in a lullaby) is the worst mistake.\n'
 			+ '3. sections: name the parts of the song (intro, verse, pre-chorus, chorus, bridge, final chorus, outro) from the lines, the pauses and the chorus marks, and give each its role. Verses carry the story: clean and readable (lockup, column, corners, frame, margin, chain, stairs, rails, slot), gentle or crisp fx, little decoration. A pre-chorus builds: swell, stairs, tunnel, a push hold, the energy rising shot by shot. Every chorus has the signature look of the song and keeps it each time it returns (the same layout, fx, accent and exit; a later chorus may add bars or a stronger entrance), the final chorus the biggest. The bridge is the contrast: something the song has not shown yet, often quieter. The loudest lines (highest energy) get the big compositions (hero, wall, fill, poster, bleed, tower, flash) and the few hits; quiet lines get air.\n'
-			+ '4. shots: follow the suggested shots unless the meaning asks for another cut. For each shot pick from the kit what fits its lines: their energy, meaning and rhythm. The word animation follows the vocal: smooth for held and tender lines, letter by letter for quick syllables, a hit only on the loudest words. Long lines go in phrases, sharp rhythmic lines now and then word by word (split).\n'
+			+ '4. shots: follow the suggested shots unless the meaning asks for another cut. A shot is a composition the camera explores: it holds the 2 to 4 lines that belong together (a couplet, a run of the chorus); one-line shots are for the few biggest moments, never a whole song of them, and lines that share one look go in one shot rather than a row of one-line shots with the same settings. For each shot pick from the kit what fits its lines: their energy, meaning and rhythm. The word animation follows the vocal: smooth for held and tender lines, letter by letter for quick syllables, a hit only on the loudest words. Long lines go in phrases, sharp rhythmic lines now and then word by word (split).\n'
 			+ '5. lines: emphasise the words that carry each line (the image, the name, the verb that turns it, a held word): 0 to 2 per line, not on every line, chosen for meaning, never by position out of habit.\n\n'
 			+ 'Return ONLY one JSON object, no markdown:\n'
 			+ '{"concept": "...",\n'
