@@ -26,7 +26,8 @@
 	if (root.ivLyricsMotionDirector?.initialized) return;
 
 	// 6: lines come and go (exits, holds), the compositions, entrances, effects and accents from the motion-typography canon.
-	const VERSION = 6;
+	// 7: lines are set in pieces (split): long lines in phrases, fast lines word by word; thirteen more exits (six whole-word, seven letter by letter).
+	const VERSION = 7;
 	const MOODS = Object.freeze(["calm", "dreamy", "melancholic", "warm", "playful", "energetic", "intense", "dark"]);
 	const TEMPOS = Object.freeze(["slow", "mid", "fast", "rap"]);
 	// Flat compositions, then three that sit in depth: carousel and reel wrap the lines round a drum, crawl lays them on a tilted plane.
@@ -66,11 +67,19 @@
 	// Shot faces. Serif shots are rare (SERIF_SHARE); shot.serif sets only a shot's emphasised words in serif.
 	const TYPES = Object.freeze(["impact", "serif", "round"]);
 	// How a sung line leaves once the next one is under way (lines come and go; the screen is never a lyric sheet).
-	const EXITS = Object.freeze(["fade", "rise", "fall", "scatter", "shrink", "sweep", "blur", "wipe", "flip", "stretch", "glitch", "drip"]);
+	// Whole-word exits, then ones that take the words apart letter by letter.
+	const EXITS = Object.freeze([
+		"fade", "rise", "fall", "scatter", "shrink", "sweep", "blur", "wipe", "flip", "stretch", "glitch", "drip",
+		"sink", "shut", "zoom", "twist", "dash", "hinge",
+		"crumble", "dissolve", "erase", "burst", "evaporate", "tumble", "scramble",
+	]);
 	// How a line keeps moving after its words have landed, so a held line never freezes.
 	const HOLDS = Object.freeze(["still", "grow", "drift", "float", "lean", "breathe", "push", "wobble", "swivel"]);
 	// No composition stays on screen longer than this: a long run of slow lines is cut into several.
 	const MAX_SHOT_MS = 8000;
+	// How a shot breaks its lines into pieces (MotionLyrics.js, piecesOf): whole lines (a long one still in
+	// phrases), short phrases, or word by word.
+	const SPLITS = Object.freeze(["line", "phrase", "word"]);
 	// A pause this long is an interlude: the board is hidden meanwhile (MotionLyrics.js REST_GAP_MS).
 	const REST_GAP_MS = 5000;
 	/** How long lines from..to keep their composition on screen (interludes do not count). */
@@ -452,6 +461,7 @@
 		};
 		if (avoid) for (const name of avoid) weights[name] = 0;
 		const open = { ...weights };
+		if (shot.split === "word") for (const [name, factor] of Object.entries(WORD_LAYOUTS)) if (weights[name]) weights[name] *= factor;
 		history.slice(-RECENT_PENALTY.length).reverse().forEach((name, back) => {
 			if (!weights[name]) return;
 			weights[name] *= !back && name === "wall" && (shot.chorus || shot.repeated) ? 0.5 : RECENT_PENALTY[back];
@@ -563,10 +573,22 @@
 
 	// Exits and holds by tempo: slow songs leave softly and keep drifting, fast ones get thrown off and pulse.
 	const EXIT_WEIGHTS = Object.freeze({
-		slow: { fade: 1.1, rise: 1.2, blur: 1.2, shrink: 0.8, wipe: 0.8, sweep: 0.5, fall: 0.5, flip: 0.4, scatter: 0.2, stretch: 0.1, drip: 0.6 },
-		mid: { fade: 0.7, rise: 1, blur: 0.9, shrink: 0.9, wipe: 0.9, sweep: 1, fall: 0.9, flip: 0.8, scatter: 0.6, stretch: 0.5, glitch: 0.5, drip: 0.6 },
-		fast: { fade: 0.3, rise: 0.7, blur: 0.6, shrink: 0.9, wipe: 0.9, sweep: 1.2, fall: 1.1, flip: 1, scatter: 1.1, stretch: 0.9, glitch: 1, drip: 0.5 },
-		rap: { fade: 0.3, rise: 0.6, blur: 0.5, shrink: 1, wipe: 1, sweep: 1.2, fall: 1, flip: 1, scatter: 1, stretch: 1, glitch: 1.1, drip: 0.4 },
+		slow: {
+			fade: 1.1, rise: 1.2, blur: 1.2, shrink: 0.8, wipe: 0.8, sweep: 0.5, fall: 0.5, flip: 0.4, scatter: 0.2, stretch: 0.1, drip: 0.6,
+			sink: 0.9, shut: 0.5, zoom: 0.4, twist: 0.2, hinge: 0.2, dissolve: 1.1, evaporate: 1.1, crumble: 0.4, erase: 0.5, tumble: 0.3,
+		},
+		mid: {
+			fade: 0.7, rise: 1, blur: 0.9, shrink: 0.9, wipe: 0.9, sweep: 1, fall: 0.9, flip: 0.8, scatter: 0.6, stretch: 0.5, glitch: 0.5, drip: 0.6,
+			sink: 1, shut: 0.8, zoom: 0.8, twist: 0.6, dash: 0.7, hinge: 0.6, crumble: 0.9, dissolve: 0.9, erase: 0.8, burst: 0.6, evaporate: 0.8, tumble: 0.8, scramble: 0.5,
+		},
+		fast: {
+			fade: 0.3, rise: 0.7, blur: 0.6, shrink: 0.9, wipe: 0.9, sweep: 1.2, fall: 1.1, flip: 1, scatter: 1.1, stretch: 0.9, glitch: 1, drip: 0.5,
+			sink: 1, shut: 1, zoom: 1.1, twist: 0.9, dash: 1.2, hinge: 0.8, crumble: 1, dissolve: 0.5, erase: 0.9, burst: 1.1, evaporate: 0.4, tumble: 1, scramble: 0.9,
+		},
+		rap: {
+			fade: 0.3, rise: 0.6, blur: 0.5, shrink: 1, wipe: 1, sweep: 1.2, fall: 1, flip: 1, scatter: 1, stretch: 1, glitch: 1.1, drip: 0.4,
+			sink: 1, shut: 1.1, zoom: 1, twist: 0.8, dash: 1.2, hinge: 0.7, crumble: 0.9, dissolve: 0.4, erase: 1.1, burst: 1, evaporate: 0.3, tumble: 0.9, scramble: 1.1,
+		},
 	});
 	const HOLD_WEIGHTS = Object.freeze({
 		slow: { grow: 1.4, drift: 1.3, float: 1.1, push: 1, lean: 0.8, breathe: 0.4, still: 0.05, swivel: 0.9, wobble: 0.3 },
@@ -580,6 +602,32 @@
 		if (previous && table[previous]) table[previous] *= 0.15;
 		return weightedPick(random, table) || fallback;
 	};
+
+	const WIDE_RE = /[\p{Script=Han}\p{Script=Hangul}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+	/** Room a text takes: a Latin letter one, a Korean, Japanese or Chinese character nearly two (MotionLyrics.js, unitsOf). */
+	const unitsOfText = (text) => {
+		let units = 0;
+		for (const character of String(text ?? "").replace(/\s+/gu, "")) units += WIDE_RE.test(character) ? 1.8 : 1;
+		return units;
+	};
+	// How often a shot of short, clearly sung lines goes word by word, by tempo.
+	const WORD_SPLIT_CHANCE = Object.freeze({ slow: 0, mid: 0.14, fast: 0.32, rap: 0.24 });
+	/**
+	 * How a shot breaks its lines: word by word now and then in songs with drive
+	 * (lines of 2 to 7 words sung at a readable pace), short phrases when its
+	 * lines are long, otherwise whole lines.
+	 */
+	const localSplit = (lines, tempo, energy, random) => {
+		const heaviest = Math.max(...lines.map((line) => unitsOfText(line.text)));
+		const most = Math.max(...lines.map((line) => line.words.length));
+		const pace = lines.reduce((sum, line) => sum + wordsPerSecond(line), 0) / Math.max(1, lines.length);
+		const wordy = lines.every((line) => line.words.length >= 2 && line.words.length <= 7 && !(line.backing || []).length);
+		if (wordy && pace >= 1.4 && pace <= 4.6 && random() < (WORD_SPLIT_CHANCE[tempo.tempo] ?? 0.14) * (0.6 + energy)) return "word";
+		if (heaviest > 20 || most >= 6) return random() < 0.8 ? "phrase" : "line";
+		return most >= 4 && random() < 0.12 ? "phrase" : "line";
+	};
+	// Compositions that suit words set one by one, and ones that do not.
+	const WORD_LAYOUTS = Object.freeze({ chain: 2, flash: 1.7, stairs: 1.5, collage: 1.5, zigzag: 1.3, tower: 1.3, constellation: 1.3, spread: 1.2, rails: 1.2, wall: 0.5, poster: 0.6, fill: 0.5, frame: 0.6, marquee: 0.4, bleed: 0.6, seal: 0.6 });
 	const UPPER_CHANCE = Object.freeze({ slow: 0.15, mid: 0.4, fast: 0.6, rap: 0.6 });
 	const TILT = Object.freeze({ slow: 2, mid: 5, fast: 9, rap: 11 });
 
@@ -697,7 +745,7 @@
 
 			if (repeats("layout")) shot.layout = first.final.layout;
 			else if ((previous && shot.layout === previous.layout) || (counts.layout.get(shot.layout) || 0) >= cap("layout")) {
-				const traits = { chorus: false, repeated: false, build: false, voices: members.some((line, offset) => (line.backing || []).some((voice) => voice.role === "duet") || (offset > 0 && singsInto(members[offset - 1], line))) };
+				const traits = { chorus: false, repeated: false, build: false, split: shot.split, voices: members.some((line, offset) => (line.backing || []).some((voice) => voice.role === "duet") || (offset > 0 && singsInto(members[offset - 1], line))) };
 				const avoid = new Set([...full("layout"), previous?.layout].filter(Boolean));
 				shot.layout = localLayout(members, shotEnergy, traits, history.layout, tempo, random, avoid);
 			}
@@ -795,6 +843,8 @@
 		const layoutHistory = [];
 		const accentHistory = [];
 		const groups = groupShots(lines);
+		// Its own stream, so the rest of the edit is chosen as before.
+		const splitRandom = createRandom((Number(options.seed) >>> 0) ^ 0x2545F491);
 		const budget = serifBudget(groups.length, lines.length);
 		let serifShots = 0;
 		let serifLines = 0;
@@ -819,6 +869,7 @@
 			}
 			const traits = {
 				...shot,
+				split: localSplit(members, tempo, shotEnergy, splitRandom),
 				build: groups[index + 1]?.chorus === true && !shot.chorus,
 				voices: members.some((line, offset) => (line.backing || []).some((voice) => voice.role === "duet")
 					|| (offset > 0 && singsInto(members[offset - 1], line))),
@@ -842,6 +893,7 @@
 				accent: localAccent(accents, accentHistory, random),
 				exit: localMotion(EXIT_WEIGHTS, tempo, previous?.exit, random, "fade"),
 				hold: localMotion(HOLD_WEIGHTS, tempo, previous?.hold, random, "grow"),
+				split: traits.split,
 				type,
 				serif,
 				upper: type === "impact" && random() < UPPER_CHANCE[tempo.tempo],
@@ -964,6 +1016,7 @@
 				accent: ACCENTS.includes(item.accent) ? item.accent : fallback.accent,
 				exit: EXITS.includes(item.exit) ? item.exit : fallback.exit,
 				hold: HOLDS.includes(item.hold) ? item.hold : fallback.hold,
+				split: SPLITS.includes(item.split) ? item.split : fallback.split,
 				type,
 				serif: flag(item.serif, item.type === "serif"),
 				upper: flag(item.upper, false),
@@ -1080,6 +1133,7 @@
 		types: [...TYPES],
 		motifs: [...(shapes()?.NAMES || [])],
 		exits: [...EXITS],
+		splits: [...SPLITS],
 		holds: [...HOLDS],
 		maxLines: { ...MAX_LINES },
 	});
@@ -1123,7 +1177,7 @@
 			+ 'Return ONLY one JSON object, no markdown:\n'
 			+ '{"mood": "' + list(vocab.moods) + '",\n'
 			+ ' "palette": ["#rrggbb", "#rrggbb"],\n'
-			+ ' "shots": [{"from": 0, "to": 2, "layout": "...", "enter": "...", "fx": "...", "accent": "...", "exit": "...", "hold": "...", "type": "impact", "serif": false, "upper": false, "bars": false, "rule": false, "dutch": 0, "motifs": ["..."], "echo": "..."}],\n'
+			+ ' "shots": [{"from": 0, "to": 2, "layout": "...", "enter": "...", "fx": "...", "accent": "...", "exit": "...", "hold": "...", "split": "line", "type": "impact", "serif": false, "upper": false, "bars": false, "rule": false, "dutch": 0, "motifs": ["..."], "echo": "..."}],\n'
 			+ ' "lines": [{"n": 0, "emph": [1], "fx": "..."}],\n'
 			+ ' "shapes": {"name": {"d": "M10 10 L90 50 L10 90 Z", "style": "fill"}}}\n\n'
 			+ 'Rules:\n'
@@ -1142,8 +1196,9 @@
 			+ '- serif: true sets only the shot\'s emphasised words in the serif against the heavy type. Use it for a few poignant words, not every shot.\n'
 			+ '- upper: true sets Latin, Cyrillic and Greek words in capitals (impact shots, hooks). bars: true brings cinematic letterbox bars for the shot (big, emotional moments). rule: true draws a thin line under each line as it is sung (quiet, elegant shots).\n'
 			+ '- accent (' + list(vocab.accents) + '): how emphasised words stand out. color = accent colour; outline = hollow outlined letters; underline = a line drawn under; mark = a highlighter stroke; spark = sparks bursting around the word; glow = white neon glow that throbs with the beat (night, longing, electric); gradient = filled with a two-colour gradient (dreamy, pop); stamp = an outlined frame slammed on like a rubber stamp (declarations, punchlines); circle = circled by hand with a pen (the word that matters, tender or pointed); extrude = solid 3D block letters (retro, loud, confident); sticker = coloured letters with a thick white edge, slightly tilted (playful, cute, K-pop); script = the word alone in brush handwriting against the heavy type (asides, feelings, the personal word); giant = the word blown up far larger than its line (the one word that matters most; shouts); trail = outlined copies stepping out from behind the word (echoes, repeats, reverb); scribble = a wobbling pen line scrawled under it (casual, nervous, handwritten); bracket = a rule either side closing in on it (precise, cool, a word singled out); neon = a hollow glowing tube of the accent colour that throbs with the beat (night, clubs, retro, electric); chrome = polished metal letters with a light sweeping across them (80s, flex, glory, the title word); spectrum = coloured copies of the word fanned out behind it (pop, retro, euphoria, a word that echoes). Change the accent from shot to shot and use at least 5 different ones in a song; keep a returning section on its accent.\n'
-			+ '- exit (' + list(vocab.exits) + '): how a sung line leaves once the next line is under way. fade = melts away; rise = floats up and fades; fall = drops away with gravity; scatter = its words fly apart; shrink = shrinks away; sweep = swept off sideways; blur = goes out of focus; wipe = wiped off; flip = flips away; stretch = squashed flat and gone; glitch = breaks up in digital jitter; drip = melts down and runs away. Tender parts leave gently (fade, rise, blur, shrink, wipe), driving parts get thrown off (fall, scatter, sweep, flip, stretch). Change it from shot to shot.\n'
+			+ '- exit (' + list(vocab.exits) + '): how a sung line leaves once the next line is under way (in one-at-a-time compositions, as the next line comes in in its place). Whole words: fade = melts away; rise = floats up and fades; fall = drops away with gravity; scatter = its words fly apart; shrink = shrinks away; sweep = swept off sideways; blur = goes out of focus; wipe = wiped off; flip = flips away; stretch = squashed flat and gone; glitch = breaks up in digital jitter; drip = melts down and runs away; sink = sinks out of sight behind its own baseline (clean, editorial); shut = closes to a thin line across its middle (crisp, techno); zoom = flies at the camera out of focus (impact, a drop); twist = turns away and shrinks to a point (playful, dizzy); dash = smeared off sideways at speed (fast, sporty); hinge = swings down from its first letter like a sign losing a screw, then drops (comic, broken, a letdown). Letter by letter: crumble = its letters drop off one after another (falling apart, loss); dissolve = its letters go out one by one at random (fading memories, dreamy); erase = deleted from the end letter by letter like a cursor going back (regret, taking words back, chat-like); burst = its letters blown apart from the middle (explosive hooks, shouts); evaporate = its letters rise away like steam (tender, warm, sad endings); tumble = each letter tips over forwards like dominoes (rhythmic, quirky); scramble = its letters flicker through random characters and blink out (cyber, glitchy, secrets). Tender parts leave gently (fade, rise, blur, shrink, wipe, sink, dissolve, evaporate), driving parts get thrown off (fall, scatter, sweep, flip, stretch, zoom, dash, burst, crumble, shut). Change it from shot to shot and use a good range of them in a song: at least 6 different exits, some whole-word and some letter by letter, keeping a returning section on its exit.\n'
 			+ '- hold (' + list(vocab.holds) + '): how a line keeps moving while it is held, so the screen never freezes: grow = slowly grows; drift = slides slowly along; float = its words bob gently; lean = slowly tilts; push = comes slowly toward the camera; breathe = pulses with the beat; wobble = rocks and leans like jelly (playful, drunk, dizzy lines); swivel = turns slowly in depth like a sign on a pole; still = holds still (rarely, only for short hard lines in fast songs). Slow songs always need one that moves.\n'
+			+ '- split (' + list(vocab.splits) + '): how the shot breaks its lines; a line need not reach the screen all at once. line = each line whole (a very long line is still broken into phrases); phrase = lines of more than three or four words are broken into short phrases of two to four words at their natural breaks, each set, timed and leaving on its own while the camera moves from phrase to phrase (long lines, storytelling, any line too long to read at a glance); word = every word on its own, landing one after another in its own place, the line building up word by word until the next line (punchy, rhythmic lines of two to seven words, hooks, chants, fast songs; never for long dense lines or lines sung over each other). Use phrase for long lines, word now and then where the rhythm is sharp, line for short ones.\n'
 			+ '- lines: list only lines that need emphasis or their own fx. emph = 0 to 2 word indexes (0-based, in " | " order) that carry the meaning or are held long; they are set larger and take the shot\'s accent. Give nearly every shot at least one emphasised word, or its accent never shows.\n'
 			+ '- dutch: camera tilt in degrees, 0 for calm shots, up to 12 or -12 for energetic ones.\n'
 			+ '- motifs: 0 to 4 shapes animated around the shot. Prefer concrete images from the words (moon for moon or 月, drop for tears or rain, heart for love, flame for fire) over decoration. Library: ' + list(vocab.motifs) + '.\n'
@@ -1169,6 +1224,7 @@
 		TYPES,
 		EXITS,
 		HOLDS,
+		SPLITS,
 		MAX_SHOT_MS,
 		MAX_LINES,
 		PACE,

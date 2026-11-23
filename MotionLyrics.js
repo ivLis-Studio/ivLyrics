@@ -60,7 +60,16 @@
 	const EXIT_MS = 560;
 	const PREVIEW_LAYOUTS = new Set(["reel", "carousel", "wordwall", "tunnel", "crawl", "constellation", "grid"]);
 	// A shot's exit (how a sung line leaves) and hold (how a line keeps moving once its words have landed).
-	const EXIT_NAMES = new Set(["fade", "rise", "fall", "scatter", "shrink", "sweep", "blur", "wipe", "flip", "stretch", "glitch", "drip"]);
+	const EXIT_NAMES = new Set([
+		"fade", "rise", "fall", "scatter", "shrink", "sweep", "blur", "wipe", "flip", "stretch", "glitch", "drip",
+		"sink", "shut", "zoom", "twist", "dash", "hinge",
+		"crumble", "dissolve", "erase", "burst", "evaporate", "tumble", "scramble",
+	]);
+	// Exits that take a word apart letter by letter (exitCharFrame), and the whole-word exit
+	// that words whose letters join (Arabic, Devanagari...) leave with instead.
+	const LETTER_EXITS = Object.freeze({ crumble: "fall", dissolve: "blur", erase: "wipe", burst: "scatter", evaporate: "rise", tumble: "flip", scramble: "glitch" });
+	// How long an exit takes against EXIT_MS: letters going one by one take a little longer, a zoom or a dash less.
+	const EXIT_LENGTH = Object.freeze({ crumble: 1.35, dissolve: 1.3, erase: 1.05, burst: 1.15, evaporate: 1.4, tumble: 1.3, scramble: 1.25, hinge: 1.3, zoom: 0.85, dash: 0.8 });
 	const HOLD_NAMES = new Set(["still", "grow", "drift", "float", "lean", "breathe", "push", "wobble", "swivel"]);
 	// After a voice sung into the next line ends, the camera takes this long to settle on the new line.
 	const SHARE_RETURN_MS = 520;
@@ -959,36 +968,33 @@
 	};
 
 	// Lines alternate across and down (or up) a staircase; the camera turns 90° for each.
+	// A line set in pieces turns as one: its words stay together on their line.
 	const layoutZigzag = (lines, ctx, random, look) => {
 		const turn = random() < 0.5 ? 90 : -90;
 		const gap = ctx.F * 0.24;
-		const places = [];
-		lines.forEach((line, index) => {
+		const units = runUnits(lines, ctx, (line, lineCtx, unit) => layoutBlock(line, lineCtx, blockOptions(look, line, {
+			size: ctx.F * 0.8 * boostOf(line),
+			maxLength: ctx.W * 0.72,
+			light: lightFor(look, line) && unit % 2 === 1,
+		})));
+		const boxes = [];
+		units.forEach((unit, index) => {
 			const vertical = index % 2 === 1;
-			const block = layoutBlock(line, ctx, blockOptions(look, line, {
-				size: ctx.F * 0.8 * boostOf(line),
-				maxLength: ctx.W * 0.72,
-				light: lightFor(look, line) && vertical,
-			}));
 			const rot = vertical ? turn : 0;
 			if (!index) {
-				places.push({ x: 0, y: 0, z: 0, rot, block });
+				boxes.push({ x: 0, y: 0, rot, w: unit.width, h: unit.height });
 				return;
 			}
-			const previous = places[index - 1];
-			const previousWidth = previous.rot ? previous.block.height : previous.block.width;
-			const previousHeight = previous.rot ? previous.block.width : previous.block.height;
-			const width = vertical ? block.height : block.width;
-			const height = vertical ? block.width : block.height;
-			const x = previous.x + previousWidth / 2 + gap + width / 2;
+			const previous = boxes[index - 1];
+			const width = vertical ? unit.height : unit.width;
+			const height = vertical ? unit.width : unit.height;
+			const x = previous.x + previous.w / 2 + gap + width / 2;
 			let y;
-			if (vertical) y = turn > 0 ? previous.y - previousHeight / 2 + height / 2 : previous.y + previousHeight / 2 - height / 2;
-			else y = turn > 0 ? previous.y + previousHeight / 2 - height / 2 : previous.y - previousHeight / 2 + height / 2;
-			places.push({ x, y, z: 0, rot, block });
+			if (vertical) y = turn > 0 ? previous.y - previous.h / 2 + height / 2 : previous.y + previous.h / 2 - height / 2;
+			else y = turn > 0 ? previous.y + previous.h / 2 - height / 2 : previous.y - previous.h / 2 + height / 2;
+			boxes.push({ x, y, rot, w: width, h: height });
 		});
-		centerPlaces(places);
-		const frames = places.map((place) => ({ x: place.x, y: place.y, z: 0, roll: place.rot }));
-		return { places, frames, drift: { z: 70, roll: 1.2 } };
+		return { ...placeUnits(units, boxes, lines.length), drift: { z: 70, roll: 1.2 } };
 	};
 
 	// Up to four lines around a square: the screen turns a quarter for each.
@@ -1861,31 +1867,147 @@
 		return { places, frames, drift: { z: 140, roll: 0.4 }, solo: true };
 	};
 
+	/**
+	 * The members of a composition in runs that belong together: the pieces a
+	 * lyric line was broken into (expandPieces) form one run, a whole line its own.
+	 */
+	const pieceRuns = (lines) => {
+		const runs = [];
+		lines.forEach((line, index) => {
+			const previous = lines[index - 1];
+			const continues = previous && line.part > 0 && Number.isInteger(line.source) && previous.source === line.source;
+			if (continues) runs[runs.length - 1].push(index);
+			else runs.push([index]);
+		});
+		return runs;
+	};
+
+	/**
+	 * The pieces of one lyric line set together as that line would be set
+	 * (makeBlock: lockupBlock, layoutBlock...), each piece getting its own
+	 * words back as a block centred on its own box (x, y: where that box sits
+	 * in the line). Null when the line has other voices (their rows belong to
+	 * single pieces).
+	 */
+	const runParts = (members, ctx, makeBlock) => {
+		if (members.length < 2 || members.some((line) => line.backing.length)) return null;
+		const head = members[0];
+		const words = [];
+		const scripts = [];
+		const emph = new Set();
+		const offsets = [];
+		members.forEach((line) => {
+			offsets.push(words.length);
+			const info = ctx.typography[line.n] || DEFAULT_INFO;
+			line.words.forEach((word, index) => {
+				if (line.emph.has(index)) emph.add(words.length);
+				scripts.push((info.words || [])[index]);
+				words.push(word);
+			});
+		});
+		const whole = { ...head, n: 0, words, backing: [], emph, chars: members.reduce((sum, line) => sum + (line.chars || 0), 0) };
+		const block = makeBlock(whole, { ...ctx, typography: [{ ...(ctx.typography[head.n] || DEFAULT_INFO), words: scripts }] });
+		return members.map((line, member) => {
+			const own = block.words.slice(offsets[member], offsets[member] + line.words.length);
+			const left = Math.min(...own.map((word) => word.x - word.width / 2));
+			const right = Math.max(...own.map((word) => word.x + word.width / 2));
+			const top = Math.min(...own.map((word) => word.y - word.size * 0.5));
+			const bottom = Math.max(...own.map((word) => word.y + word.size * 0.5));
+			const x = (left + right) / 2;
+			const y = (top + bottom) / 2;
+			const size = Math.max(...own.map((word) => word.size));
+			return {
+				x,
+				y,
+				block: { words: own.map((word) => ({ ...word, x: word.x - x, y: word.y - y })), width: right - left, height: bottom - top, rows: 1, size, rtl: block.rtl, leadWidth: right - left },
+			};
+		});
+	};
+
+	/**
+	 * A composition's members as units that move together: a line set in
+	 * pieces is one unit (its pieces where the whole line would have its
+	 * words), a whole line a unit of its own. makeBlock(line, ctx, unit) sets
+	 * a line. Each unit: its members, where each sits (centred on the unit)
+	 * and the unit's box.
+	 */
+	const runUnits = (lines, ctx, makeBlock) => pieceRuns(lines).map((members, unit) => {
+		const make = (line, lineCtx) => makeBlock(line, lineCtx, unit);
+		let parts = runParts(members.map((index) => lines[index]), ctx, make);
+		if (!parts) {
+			// Whole lines (or pieces with other voices): stacked under each other.
+			const gap = ctx.F * 0.22;
+			const blocks = members.map((index) => make(lines[index], ctx));
+			const height = blocks.reduce((sum, block) => sum + block.height, 0) + gap * (blocks.length - 1);
+			const widest = Math.max(...blocks.map((block) => block.width));
+			let top = -height / 2;
+			parts = blocks.map((block) => {
+				const part = { x: -widest / 2 + block.width / 2, y: top + block.height / 2, block };
+				top += block.height + gap;
+				return part;
+			});
+		}
+		const left = Math.min(...parts.map((part) => part.x - part.block.width / 2));
+		const right = Math.max(...parts.map((part) => part.x + part.block.width / 2));
+		const top = Math.min(...parts.map((part) => part.y - part.block.height / 2));
+		const bottom = Math.max(...parts.map((part) => part.y + part.block.height / 2));
+		const cx = (left + right) / 2;
+		const cy = (top + bottom) / 2;
+		return { members, parts: parts.map((part) => ({ ...part, x: part.x - cx, y: part.y - cy })), width: right - left, height: bottom - top };
+	});
+
+	/**
+	 * Places and camera frames for units set at boxes (x, y, rot): every
+	 * member where its unit puts it, all centred, the camera holding still on
+	 * the pieces of one line.
+	 */
+	const placeUnits = (units, boxes, count) => {
+		const places = new Array(count);
+		units.forEach((unit, index) => {
+			const box = boxes[index];
+			unit.members.forEach((member, position) => {
+				const part = unit.parts[position];
+				const at = rotate2d(part.x, part.y, box.rot);
+				places[member] = { x: box.x + at.x, y: box.y + at.y, z: 0, rot: box.rot, block: part.block };
+			});
+		});
+		const extent = extentOf(boxesOf(places));
+		places.forEach((place) => {
+			place.x -= extent.cx;
+			place.y -= extent.cy;
+		});
+		const frames = new Array(count);
+		units.forEach((unit, index) => {
+			const box = boxes[index];
+			for (const member of unit.members) frames[member] = { x: box.x - extent.cx, y: box.y - extent.cy, z: 0, roll: box.rot };
+		});
+		return { places, frames };
+	};
+
 	// Each line attached to the edge of the one before, now and then turned a quarter: a mosaic the camera rolls along.
+	// A line set in pieces keeps its pieces together in its own lockup: only the lines turn, never their words.
 	const layoutChain = (lines, ctx, random, look) => {
 		const turn = random() < 0.5 ? 90 : -90;
 		const gap = ctx.F * 0.22;
-		const places = [];
-		lines.forEach((line, index) => {
-			const block = lockupBlock(line, ctx, blockOptions(look, line, { light: false }), ctx.W * between(random, 0.42, 0.54), ctx.H * 0.46);
+		const units = runUnits(lines, ctx, (line, lineCtx) => lockupBlock(line, lineCtx, blockOptions(look, line, { light: false }), ctx.W * between(random, 0.42, 0.54), ctx.H * 0.46));
+		const boxes = [];
+		units.forEach((unit, index) => {
 			if (!index) {
-				places.push({ x: 0, y: 0, z: 0, rot: 0, block });
+				boxes.push({ x: 0, y: 0, rot: 0 });
 				return;
 			}
-			const previous = places[index - 1];
+			const previous = boxes[index - 1];
+			const before = units[index - 1];
 			// Every other line turns down the side of the one before (now and then two in a row).
 			const turned = index % 2 === 1 || random() < 0.2;
-			const rot = previous.rot + (turned ? turn : 0);
 			// In the previous line's own frame: under it (left edges aligned), or down its side when turned.
 			const local = turned
-				? { x: (turn > 0 ? 1 : -1) * (previous.block.width / 2 + gap + block.height / 2), y: -previous.block.height / 2 + block.width / 2 }
-				: { x: -previous.block.width / 2 + block.width / 2, y: previous.block.height / 2 + gap + block.height / 2 };
+				? { x: (turn > 0 ? 1 : -1) * (before.width / 2 + gap + unit.height / 2), y: -before.height / 2 + unit.width / 2 }
+				: { x: -before.width / 2 + unit.width / 2, y: before.height / 2 + gap + unit.height / 2 };
 			const offset = rotate2d(local.x, local.y, previous.rot);
-			places.push({ x: previous.x + offset.x, y: previous.y + offset.y, z: 0, rot, block });
+			boxes.push({ x: previous.x + offset.x, y: previous.y + offset.y, rot: previous.rot + (turned ? turn : 0) });
 		});
-		centerPlaces(places);
-		const frames = places.map((place) => ({ x: place.x, y: place.y, z: 0, roll: place.rot }));
-		return { places, frames, drift: { z: 70, roll: 0.8 } };
+		return { ...placeUnits(units, boxes, lines.length), drift: { z: 70, roll: 0.8 } };
 	};
 
 	// One line at a time in capitals that always fill the width: each sung word stretches the line (fillFrame).
@@ -2084,6 +2206,8 @@
 
 	// Compositions that show one line at a time: lines sung over each other cannot share them.
 	const SOLO_LAYOUTS = new Set(["slot", "poster", "spread", "lockup", "flash", "fill", "seal", "frame", "marquee", "bleed"]);
+	// Compositions that set any number of lines one after another (the others have a fixed number of places).
+	const ROOMY_LAYOUTS = new Set(["column", "zigzag", "collage", "stairs", "strip", "rails", "chain"]);
 	/** A line still sung when the next comes in (MotionLyricsDirector.singsInto: overlapping lines, or another voice singing on). */
 	const singsInto = (line, next) => (root.ivLyricsMotionDirector?.singsInto
 		? root.ivLyricsMotionDirector.singsInto(line, next)
@@ -2688,22 +2812,47 @@
 		// When each line peeks in, dims and leaves (lifeLevels, paintWords).
 		lines.forEach((line, index) => {
 			const board = boards[line.board];
-			const next = lines[index + 1];
+			let next = lines[index + 1];
+			// A line set word by word builds up: its words stay until the line after it comes in.
+			if (line.split === "word" && line.parts > 1) {
+				let after = index + 1;
+				while (lines[after] && lines[after].source === line.source) after += 1;
+				next = lines[after];
+			}
 			line.peekAt = line.local ? line.arrive - PEEK_MS * clamp(pace, 0.85, 1.3) : board.appear;
 			line.voicesEnd = Math.max(line.end, ...line.shown.map((word) => word.end));
 			line.exitStagger = Math.min(70, 280 / Math.max(1, line.shown.length));
-			line.exitSpan = EXIT_MS * fxPaceOf(pace) + line.exitStagger * Math.max(0, line.shown.length - 1);
-			// One line at a time: a line stays until the next one on its board comes in (no empty screen between them).
+			line.exitLength = EXIT_MS * fxPaceOf(pace) * (EXIT_LENGTH[board.exit] || 1);
+			line.exitSpan = line.exitLength + line.exitStagger * Math.max(0, line.shown.length - 1);
+			// One line at a time: a line stays until the next one on its board (even the next piece of the
+			// same line) can be read, crossfading into it, so the screen is never empty between them.
 			// (Letters that decode or rain in show before their word: the line before has gone by then.)
-			line.soloOut = board.solo && next && next.board === line.board ? next.start - (next.fx === "decode" || next.fx === "rain" ? 360 : 120) : Infinity;
+			const following = lines[index + 1];
+			line.soloOut = Infinity;
+			line.soloFade = 120;
+			if (board.solo && following && following.board === line.board) {
+				if (following.fx === "decode" || following.fx === "rain") line.soloOut = following.start - 360;
+				else {
+					const first = following.words[0];
+					const reads = Math.min((READS_AFTER[following.fx] ?? 70) * fxPaceOf(pace), Math.max(60, (first.end - first.start) * 0.75));
+					line.soloOut = Math.max(line.lastWordStart + 120, following.start - 50);
+					line.soloFade = Math.max(120, following.start + reads - line.soloOut);
+				}
+				// It leaves with the shot's exit, quickly, as the next one comes in in its place.
+				line.exitStagger = Math.min(22, 90 / Math.max(1, line.shown.length));
+				line.exitLength = clamp(line.soloFade + 160, 260, 400);
+				line.exitSpan = line.exitLength + line.exitStagger * Math.max(0, line.shown.length - 1);
+			}
 			if (!next || next.board !== line.board || board.preview || board.solo) {
 				// The last line of a board leaves with the board.
 				line.dimAt = Infinity;
-				line.exitAt = Infinity;
+				line.exitAt = Number.isFinite(line.soloOut) ? line.soloOut : Infinity;
 				return;
 			}
 			line.dimAt = Math.max(next.start, line.voicesEnd + 60);
 			line.exitAt = Math.max(next.start + clamp((next.end - next.start) * 0.4, 300, 1300), line.voicesEnd + 220);
+			// The words of a line set word by word leave one after another, in the order they came.
+			if (line.split === "word" && line.parts > 1) line.exitAt += line.part * Math.min(70, 280 / line.parts);
 		});
 		plan.flashes = [];
 		plan.panels = [];
@@ -2742,19 +2891,224 @@
 		plan.slams = slams.sort((left, right) => left.time - right.time);
 	};
 
+	// ---------------------------------------------------------------------
+	// Pieces: a lyric line need not reach the screen all at once
+	// ---------------------------------------------------------------------
+
+	// How a shot breaks its lines into pieces, each set, timed and left on its own:
+	// "line" keeps short lines whole (a long line is still broken into phrases),
+	// "phrase" breaks every line of more than a few words into short phrases,
+	// "word" sets every word on its own (the words of a line stay until the next line).
+	const SPLIT_MODES = new Set(["line", "phrase", "word"]);
+	const PIECE_RULES = Object.freeze({
+		// A line heavier than "most" units (or with more words) is broken into pieces of about "target" units.
+		line: { most: 26, words: 8, target: 16 },
+		phrase: { most: 13, words: 4, target: 12 },
+	});
+	const WIDE_RE = /[\p{Script=Han}\p{Script=Hangul}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+	const BREAK_AFTER_RE = /[,.;:!?、。，．！？；：…]["'”’」』)]*$/u;
+	const PARTICLE_RE = /^[\p{Script=Hiragana}ー]{1,2}$/u;
+	const PUNCTUATION_RE = /^[\p{P}\p{S}\s]+$/u;
+
+	/** How much room a text takes: a Latin letter counts one, a Korean, Japanese or Chinese character nearly two. */
+	const unitsOf = (text) => {
+		let units = 0;
+		for (const grapheme of graphemesOf(text)) {
+			if (/\s/u.test(grapheme)) continue;
+			units += WIDE_RE.test(grapheme) ? 1.8 : 1;
+		}
+		return units;
+	};
+
+	/**
+	 * The pieces a line is set in, as [first word, last word] ranges. Phrases
+	 * break where the line breaks itself (punctuation, a breath between words)
+	 * into pieces of about the same size, never ending on a little word.
+	 */
+	const piecesOf = (line, mode = "line") => {
+		const words = line.words;
+		const count = words.length;
+		if (count < 2) return [[0, Math.max(0, count - 1)]];
+		if (mode === "word") {
+			const pieces = [];
+			words.forEach((word, index) => {
+				const text = String(word.text ?? "").trim();
+				// Punctuation, and a Japanese particle run on from its word, stay with the word before.
+				const tagAlong = index > 0 && (PUNCTUATION_RE.test(text) || (word.joined && PARTICLE_RE.test(text)));
+				if (tagAlong) pieces[pieces.length - 1][1] = index;
+				else pieces.push([index, index]);
+			});
+			return pieces;
+		}
+		const rule = PIECE_RULES[mode] || PIECE_RULES.line;
+		const weights = words.map((word) => Math.max(0.6, unitsOf(word.text)));
+		const total = weights.reduce((sum, value) => sum + value, 0);
+		if (total <= rule.most && count < rule.words) return [[0, count - 1]];
+		const parts = clamp(Math.max(Math.ceil(total / rule.target), Math.ceil(count / (mode === "phrase" ? 3 : 5))), 2, count);
+		const even = total / parts;
+		const prefix = [0];
+		weights.forEach((value, index) => prefix.push(prefix[index] + value));
+		/** What breaking after word b costs (negative where the line breaks itself). */
+		const breakCost = (b) => {
+			const text = String(words[b].text ?? "");
+			const gap = words[b + 1].start - words[b].end;
+			let cost = 0;
+			if (BREAK_AFTER_RE.test(text)) cost -= 0.7;
+			if (gap >= 350) cost -= 0.55;
+			else if (gap >= 150) cost -= 0.25;
+			if (SMALL_WORDS.has(text.toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, ""))) cost += 0.45;
+			// Japanese and Chinese runs break on their particles rather than inside a compound.
+			if (words[b + 1].joined && !PARTICLE_RE.test(text)) cost += 0.15;
+			if (PUNCTUATION_RE.test(String(words[b + 1].text ?? "").trim())) cost += 2;
+			return cost;
+		};
+		const pieceCost = (from, to) => {
+			const weight = prefix[to + 1] - prefix[from];
+			const off = (weight - even) / even;
+			return off * off * 1.4 + (from === to && unitsOf(words[from].text) <= 2 ? 0.5 : 0);
+		};
+		// best[m][j]: the cheapest way to set words 0..j-1 in m pieces.
+		const best = Array.from({ length: parts + 1 }, () => new Array(count + 1).fill(Infinity));
+		const from = Array.from({ length: parts + 1 }, () => new Array(count + 1).fill(-1));
+		best[0][0] = 0;
+		for (let m = 1; m <= parts; m += 1) {
+			for (let j = m; j <= count; j += 1) {
+				for (let i = m - 1; i < j; i += 1) {
+					if (!Number.isFinite(best[m - 1][i])) continue;
+					const cost = best[m - 1][i] + pieceCost(i, j - 1) + (i > 0 ? breakCost(i - 1) : 0);
+					if (cost < best[m][j]) {
+						best[m][j] = cost;
+						from[m][j] = i;
+					}
+				}
+			}
+		}
+		const pieces = [];
+		for (let m = parts, j = count; m > 0; m -= 1) {
+			const i = from[m][j];
+			pieces.unshift([i, j - 1]);
+			j = i;
+		}
+		return pieces;
+	};
+
+	/**
+	 * The song as it reaches the screen: each line broken into the pieces its
+	 * shot asks for, with the direction (shots, emphasised words, line
+	 * effects) and the typography carried over to the pieces. A shot with more
+	 * pieces than its composition holds goes on in the next board. Pieces keep
+	 * their line's index (its translation) and know their line (source).
+	 */
+	const expandPieces = (model, direction, typography) => {
+		const shots = Array.isArray(direction?.shots) ? direction.shots : [];
+		const modeOf = new Array(model.length).fill("line");
+		for (const shot of shots) {
+			const mode = SPLIT_MODES.has(shot.split) ? shot.split : "line";
+			for (let index = shot.from; index <= shot.to && index < model.length; index += 1) modeOf[index] = mode;
+		}
+		const pieces = [];
+		const pieceTypography = [];
+		const firstOf = [];
+		const lastOf = [];
+		const where = [];
+		model.forEach((line, n) => {
+			const info = typography[n] || DEFAULT_INFO;
+			const ranges = piecesOf(line, modeOf[n]);
+			firstOf[n] = pieces.length;
+			where[n] = [];
+			// Each other voice goes with the piece being sung when it comes in.
+			const starts = ranges.map(([first]) => line.words[first].start);
+			const voiceAt = (line.backing || []).map((voice) => {
+				let at = 0;
+				while (at + 1 < starts.length && starts[at + 1] <= voice.start) at += 1;
+				return at;
+			});
+			ranges.forEach(([first, last], part) => {
+				const words = line.words.slice(first, last + 1);
+				const voices = (line.backing || []).filter((_, voice) => voiceAt[voice] === part);
+				for (let word = first; word <= last; word += 1) where[n][word] = { piece: pieces.length, word: word - first };
+				pieces.push(ranges.length === 1 ? { ...line, source: n, part: 0, parts: 1, split: modeOf[n] } : {
+					...line,
+					words,
+					backing: voices,
+					text: words.map((word) => word.text).join(" "),
+					start: Math.min(words[0].start, ...voices.map((voice) => voice.start)),
+					end: Math.max(...words.map((word) => word.end), ...voices.flatMap((voice) => voice.words.map((word) => word.end))),
+					chars: words.reduce((sum, word) => sum + word.chars.length, 0),
+					source: n,
+					part,
+					parts: ranges.length,
+					split: modeOf[n],
+				});
+				pieceTypography.push(ranges.length === 1 ? info : {
+					...info,
+					words: (info.words || []).slice(first, last + 1),
+					backing: (info.backing || []).filter((_, voice) => voiceAt[voice] === part),
+				});
+			});
+			lastOf[n] = pieces.length - 1;
+		});
+		if (pieces.length === model.length) return { model: pieces, direction, typography: pieceTypography };
+		const lineDirections = {};
+		for (const [key, entry] of Object.entries(direction?.lines || {})) {
+			const n = Number(key);
+			if (!Number.isInteger(n) || !where[n]) continue;
+			for (let piece = firstOf[n]; piece <= lastOf[n]; piece += 1) {
+				const value = {};
+				if (entry.fx) value.fx = entry.fx;
+				const emph = (entry.emph || []).map((word) => where[n][word]).filter((spot) => spot && spot.piece === piece).map((spot) => spot.word);
+				if (emph.length) value.emph = emph;
+				if (Object.keys(value).length) lineDirections[piece] = value;
+			}
+		}
+		const holds = (shot) => root.ivLyricsMotionDirector?.MAX_LINES?.[shot.layout] || 6;
+		const split = [];
+		for (const shot of shots) {
+			const first = firstOf[shot.from];
+			const last = lastOf[Math.min(shot.to, model.length - 1)];
+			if (!Number.isInteger(first) || !Number.isInteger(last)) continue;
+			// One-at-a-time compositions show one piece at a time in the same place: they hold more;
+			// so do the open-ended ones for words set one by one (small, and gone as their line goes).
+			const most = SOLO_LAYOUTS.has(shot.layout) ? Math.max(12, holds(shot))
+				: shot.split === "word" && ROOMY_LAYOUTS.has(shot.layout) ? Math.min(10, Math.max(8, holds(shot) * 2)) : holds(shot);
+			for (let start = first; start <= last;) {
+				let end = Math.min(last, start + most - 1);
+				if (end < last) {
+					// Between two lines rather than inside one (unless that leaves the board half empty),
+					// and never between pieces sung into each other.
+					const fits = (cut, between) => (!between || pieces[cut].source !== pieces[cut + 1].source) && !singsInto(pieces[cut], pieces[cut + 1]);
+					const find = (between, lowest) => {
+						for (let cut = end; cut >= lowest; cut -= 1) if (fits(cut, between)) return cut;
+						return -1;
+					};
+					let cut = find(true, start + Math.floor((most - 1) / 2));
+					if (cut < 0) cut = find(false, start + 1);
+					if (cut >= 0) end = cut;
+				}
+				split.push(start === first ? { ...shot, from: start, to: end } : { ...shot, from: start, to: end, enter: "pan", continued: true });
+				start = end + 1;
+			}
+		}
+		return { model: pieces, direction: { ...direction, shots: split, lines: lineDirections }, typography: pieceTypography };
+	};
+
 	/**
 	 * The edit for a song: boards in world space, the camera's path and the
 	 * timeline. Pure: the same model, direction, typography, size and seed
 	 * give the same plan.
 	 */
-	const compose = (model, direction, options = {}) => {
+	const compose = (sourceModel, sourceDirection, options = {}) => {
 		const W = Math.max(320, Number(options.width) || 0);
 		const H = Math.max(240, Number(options.height) || 0);
 		const F = clamp(Math.min(W * 0.068, H * 0.118), 34, 136);
 		const seed = (Number(options.seed) >>> 0) || 1;
-		const tempo = direction?.tempo?.tempo || "mid";
-		const pace = Number(direction?.tempo?.pace) || 1;
-		const typography = Array.isArray(options.typography) ? options.typography : [];
+		const tempo = sourceDirection?.tempo?.tempo || "mid";
+		const pace = Number(sourceDirection?.tempo?.pace) || 1;
+		// Lines are set in the pieces their shots ask for (options.pieces: false keeps every line whole).
+		const sourceTypography = Array.isArray(options.typography) ? options.typography : [];
+		const { model, direction, typography } = options.pieces === false
+			? { model: sourceModel, direction: sourceDirection, typography: sourceTypography }
+			: expandPieces(sourceModel, sourceDirection, sourceTypography);
 		const ctx = {
 			W, H, F,
 			measure: typeof options.measure === "function" ? options.measure : fallbackMeasure,
@@ -3133,6 +3487,9 @@
 		type: 1, assemble: 1, drop: 1, wave: 1, track: 1, bounce: 1, flicker: 1, cascade: 1, ripple: 1, swirl: 1, rain: 1, decode: 1,
 	});
 	const CHAR_FX = new Set(["type", "assemble", "drop", "wave", "track", "bounce", "flicker", "cascade", "ripple", "swirl", "rain", "decode"]);
+	// How long after its word starts a word coming in with this effect can be read (masks and slow fades take a
+	// while; others about 70 ms): in a one-at-a-time composition the piece before stays until then (timeline, soloOut).
+	const READS_AFTER = Object.freeze({ brush: 280, wipe: 230, open: 210, glide: 200, blur: 200, shutter: 170, door: 160, lift: 150, spin: 150, flip: 130, swing: 120, skew: 110 });
 	const fxPaceOf = (pace) => clamp(Number(pace) || 1, 0.75, 1.5);
 
 	/** Entrance progress of a sung word's solid type (0 before it starts). */
@@ -3292,7 +3649,8 @@
 		if (k <= 0) return SETTLED;
 		if (k >= 1) return HIDDEN;
 		const side = rtl ? -1 : 1;
-		switch (exit) {
+		// A word that cannot be taken apart letter by letter leaves the nearest whole-word way.
+		switch (LETTER_EXITS[exit] || exit) {
 			case "rise": {
 				const e = easeOutCubic(k);
 				return frame({ opacity: 1 - k, transform: "translateY(" + round(-0.85 * e, 3) + "em)", filter: k > 0.1 ? "blur(" + round(k * 3, 1) + "px)" : "" });
@@ -3352,10 +3710,111 @@
 				const e = easeInCubic(k);
 				return frame({ opacity: 1 - easeInQuad(k), transform: "translateY(" + round(e * 0.55, 3) + "em) scale(" + round(1 - 0.25 * e, 3) + "," + round(1 + 1.1 * e, 3) + ")", filter: k > 0.2 ? "blur(" + round(k * 3, 1) + "px)" : "" });
 			}
+			case "sink": {
+				// Sinks behind a mask at its own baseline, the way lift brings a word in, backwards.
+				const depth = easeInCubic(k) * 1.1;
+				const bottom = lerp(-SPILL_EM, depth - 0.2, clamp01(k / 0.18));
+				return frame({ opacity: 1 - clamp01((k - 0.82) / 0.18), transform: "translateY(" + round(depth, 3) + "em)", clip: "inset(" + SPILL + " " + SPILL + " " + round(bottom, 3) + "em " + SPILL + ")" });
+			}
+			case "shut": {
+				// Closes to a thin line across its middle, top and bottom together.
+				const e = easeInCubic(k);
+				const edge = "calc(" + round(e * 50, 2) + "% - " + round(SPILL_EM * (1 - e), 3) + "em)";
+				return frame({ opacity: 1 - clamp01((k - 0.78) / 0.22), transform: "scaleY(" + round(1 + 0.12 * e, 3) + ")", clip: "inset(" + edge + " " + SPILL + " " + edge + " " + SPILL + ")" });
+			}
+			case "zoom": {
+				// Flies at the lens, out of focus.
+				const e = easeInCubic(k);
+				return frame({ opacity: 1 - easeInQuad(k), transform: "scale(" + round(1 + 1.6 * e, 3) + ")", filter: k > 0.1 ? "blur(" + round(e * 10, 1) + "px)" : "" });
+			}
+			case "twist": {
+				// Turns away and shrinks to a point.
+				const e = easeInCubic(k);
+				const turn = (seed % 2 ? 1 : -1) * 190;
+				return frame({ opacity: 1 - easeInQuad(k), transform: "rotate(" + round(turn * e, 1) + "deg) scale(" + round(1 - 0.9 * e, 3) + ")" });
+			}
+			case "dash": {
+				// Smeared off sideways at speed.
+				const e = easeInCubic(k);
+				const blur = e * 6;
+				return frame({ opacity: 1 - easeInQuad(k), transform: "translateX(" + round(side * 2.2 * e, 3) + "em) scaleX(" + round(1 + 1.3 * e, 3) + ")", filter: blur > 0.3 ? "blur(" + round(blur, 1) + "px)" : "" });
+			}
+			case "hinge": {
+				// Loses a screw: swings down from its first letter, then drops away.
+				const hinge = rtl ? ["translateX(50%)", "translateX(-50%)"] : ["translateX(-50%)", "translateX(50%)"];
+				const turn = easeOutBack(clamp01(k / 0.55)) * 64 * side;
+				const drop = easeInQuad(clamp01((k - 0.5) / 0.5)) * 1.6;
+				return frame({ opacity: 1 - clamp01((k - 0.45) / 0.55), transform: "translateY(" + round(drop, 3) + "em) " + hinge[0] + " rotate(" + round(turn, 1) + "deg) " + hinge[1] });
+			}
 			default: {
 				const e = easeOutCubic(k);
 				return frame({ opacity: 1 - k, transform: "translateY(" + round(-0.14 * e, 3) + "em)" });
 			}
+		}
+	};
+
+	/**
+	 * A letter of a word leaving letter by letter (LETTER_EXITS): k runs 0 → 1
+	 * over the word's part of the exit; each letter takes its own turn within
+	 * it (in reading order, from the end, at random or all at once).
+	 * context: count (letters in the word) and seed.
+	 */
+	const exitCharFrame = (exit, k, char, index, context = {}) => {
+		const { count = 1, seed = 0 } = context;
+		if (k <= 0) return LETTER_SETTLED;
+		if (k >= 1) return LETTER_HIDDEN;
+		const random = createRandom((seed + index * 2654435761) >>> 0);
+		const along = count > 1 ? index / (count - 1) : 0;
+		const turn = exit === "erase" ? 1 - along
+			: exit === "dissolve" || exit === "scramble" ? random()
+				: exit === "burst" ? random() * 0.25 : along;
+		const spread = count > 1 ? 0.55 : 0;
+		const t = clamp01((k - turn * spread) / (1 - spread));
+		if (t <= 0) return LETTER_SETTLED;
+		switch (exit) {
+			case "crumble": {
+				// The letters drop off one after another, each turning its own way.
+				const e = easeInQuad(t);
+				return { opacity: 1 - easeInCubic(t), transform: "translate(" + round((random() * 2 - 1) * 0.18 * e, 3) + "em," + round(e * 1.4, 3) + "em) rotate(" + round((random() * 2 - 1) * 48 * e, 1) + "deg)" };
+			}
+			case "dissolve": {
+				// The letters go out one by one at random, swelling a little as they fade.
+				const e = easeOutCubic(t);
+				return { opacity: 1 - t, transform: "translateY(" + round(-0.08 * e, 3) + "em) scale(" + round(1 + 0.3 * e, 3) + ")" };
+			}
+			case "erase": {
+				// Deleted from the end, letter by letter, like a cursor going back.
+				return { opacity: 1 - clamp01((t - 0.1) / 0.18), transform: "scale(" + round(1 - 0.3 * clamp01(t / 0.28), 3) + ")" };
+			}
+			case "burst": {
+				// Blown apart from the middle of the word.
+				const e = easeOutCubic(t);
+				const out = count > 1 ? (index - (count - 1) / 2) / Math.max(1, (count - 1) / 2) : random() * 2 - 1;
+				return {
+					opacity: 1 - t,
+					transform: "translate(" + round((out * 1.1 + (random() * 2 - 1) * 0.35) * e, 3) + "em," + round((random() * 2 - 1) * 0.9 * e, 3) + "em) rotate("
+						+ round((random() * 2 - 1) * 120 * e, 1) + "deg) scale(" + round(1 + 0.5 * e, 3) + ")",
+				};
+			}
+			case "evaporate": {
+				// The letters rise away one after another like steam, swaying as they go.
+				const e = easeOutCubic(t);
+				return { opacity: 1 - easeInQuad(t), transform: "translate(" + round(Math.sin(t * 5 + index) * 0.12 * e, 3) + "em," + round(-1.1 * e, 3) + "em) scale(" + round(1 + 0.18 * e, 3) + ")" };
+			}
+			case "tumble": {
+				// Each letter tips over forwards, one after another like dominoes.
+				const e = easeInCubic(t);
+				return { opacity: 1 - easeInCubic(t), transform: "perspective(4em) translateY(" + round(0.3 * e, 3) + "em) rotateX(" + round(-100 * e, 1) + "deg)" };
+			}
+			case "scramble": {
+				// The letters flicker through random characters, then blink out.
+				if (t >= 0.78) return LETTER_HIDDEN;
+				const pool = DECODE_POOLS[decodePoolOf(char?.ch || "")] || DECODE_POOLS.latin;
+				const flicker = createRandom((seed + index * 7919 + Math.floor(t * 9) * 104729) >>> 0);
+				return { opacity: 1, transform: "none", text: t < 0.08 ? undefined : pool[Math.floor(flicker() * pool.length)] };
+			}
+			default:
+				return { opacity: 1 - t, transform: "none" };
 		}
 	};
 
@@ -3744,7 +4203,9 @@
 	const levelsOn = (board, line, distance, time) => {
 		if (board.solo) {
 			if (distance <= 0) return { ghost: 0, solid: 1 };
-			return { ghost: 0, solid: Number.isFinite(line.soloOut) ? 1 - clamp01((time - line.soloOut) / 120) : 1 - clamp01(distance / 0.4) };
+			// Handing over to the next line: its exit plays, the last of it fading out.
+			const span = line.exitSpan || line.soloFade || 120;
+			return { ghost: 0, solid: Number.isFinite(line.soloOut) ? 1 - clamp01((time - (line.soloOut + span * 0.55)) / (span * 0.45)) : 1 - clamp01(distance / 0.4) };
 		}
 		if (board.preview || !Number.isFinite(line.peekAt)) {
 			// A line still being sung (overlapping the next one: a duet, an echo) stays bright.
@@ -3805,6 +4266,11 @@
 		floodAt,
 		plateLevel,
 		levelsOn,
+		piecesOf,
+		expandPieces,
+		exitCharFrame,
+		EXIT_NAMES: [...EXIT_NAMES],
+		LETTER_EXITS,
 		revealClip,
 		fillFrame,
 		travelFrame,
@@ -4116,7 +4582,8 @@
 			const solid = document.createElement("span");
 			solid.className = "ivlyrics-motion-solid";
 			let chars = null;
-			if (CHAR_FX.has(line.fx) && spot.letters !== false) {
+			// Letters of their own for letter-by-letter entrances and exits.
+			if ((CHAR_FX.has(line.fx) || LETTER_EXITS[board.exit]) && spot.letters !== false) {
 				const cased = (spot.text || word.text) !== word.text;
 				// Styles that paint through the glyphs (the gradient accent) then paint each letter, not the word:
 				// the word would also paint every letter where it rests, under the one in motion.
@@ -4268,7 +4735,9 @@
 			const sway = clamp01(1 - (distance - 0.3) / 0.9);
 			const seed = hashString(line.text);
 			const pace = plan.pace;
-			const exitLength = EXIT_MS * fxPaceOf(pace);
+			const exitLength = line.exitLength || EXIT_MS * fxPaceOf(pace);
+			const lettered = !!LETTER_EXITS[board.exit];
+			const letterFx = CHAR_FX.has(line.fx);
 			const floating = board.hold === "float";
 			const flash = line.place.flash === true;
 			entry.words.forEach((word, order) => {
@@ -4287,8 +4756,20 @@
 				if (time >= line.exitAt) {
 					// Leaving: the words go one after another with the shot's exit, settled in place until their turn.
 					const k = clamp01((time - (line.exitAt + order * line.exitStagger)) / exitLength);
-					writeSolid(word, exitFrame(board.exit, k, seed + word.index * 7919, line.info.rtl));
 					write(word.cache, "active", false, (value) => word.el.classList.toggle("is-active", value));
+					if (word.chars && lettered) {
+						// Taken apart letter by letter.
+						writeSolid(word, k >= 1 ? HIDDEN : SETTLED);
+						const context = { count: word.chars.length, seed: seed + word.index * 131 };
+						word.chars.forEach((char, index) => {
+							const state = exitCharFrame(board.exit, k, char.char, index, context);
+							write(char.cache, "opacity", round(state.opacity, 3), (value) => { char.el.style.opacity = String(value); });
+							write(char.cache, "transform", state.transform, (value) => { char.el.style.transform = value; });
+							write(char.cache, "text", state.text || char.text, (value) => { char.el.textContent = value; });
+						});
+						return;
+					}
+					writeSolid(word, exitFrame(board.exit, k, seed + word.index * 7919, line.info.rtl));
 					if (word.chars) {
 						for (const char of word.chars) {
 							write(char.cache, "opacity", 1, (value) => { char.el.style.opacity = String(value); });
@@ -4322,7 +4803,8 @@
 				if (word.chars) {
 					const context = { count: word.chars.length, wordStart: word.word.start, seed: seed + word.index * 131, sway, pace };
 					word.chars.forEach((char, index) => {
-						const state = charFrame(line.fx, char.char, index, time, context);
+						// Letters set apart only for the exit come in with their word.
+						const state = letterFx ? charFrame(line.fx, char.char, index, time, context) : LETTER_SETTLED;
 						write(char.cache, "opacity", round(state.opacity, 3), (value) => { char.el.style.opacity = String(value); });
 						write(char.cache, "transform", state.transform, (value) => { char.el.style.transform = value; });
 						write(char.cache, "text", state.text || char.text, (value) => { char.el.textContent = value; });

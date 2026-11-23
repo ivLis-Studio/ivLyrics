@@ -63,8 +63,9 @@ const screenOf = (model, shot) => {
 };
 
 
-const compose = (motion, type, model, direction, seed, lang = "") => motion.compose(model, direction, {
-	width: 1440, height: 900, seed, measure, typography: type.typographyOf(model, lang), songLang: lang,
+// Most tests read the plan line by line: they keep every line whole (pieces have tests of their own).
+const compose = (motion, type, model, direction, seed, lang = "", pieces = false) => motion.compose(model, direction, {
+	width: 1440, height: 900, seed, measure, typography: type.typographyOf(model, lang), songLang: lang, pieces,
 });
 
 const plans = (seed) => {
@@ -1023,7 +1024,7 @@ test("every accent has its look, and the AI is told about every composition and 
 	for (const name of director.ACCENTS) assert.ok(prompt.includes(name + " = "), "the prompt explains " + name);
 	assert.ok(prompt.includes("(" + director.ACCENTS.join("|") + ")"));
 	for (const [name, most] of Object.entries(director.MAX_LINES)) if (most < 6) assert.ok(prompt.includes(name + " at most " + most), name + " limit");
-	assert.equal(director.VERSION, 6, "older cached directions are asked for again");
+	assert.equal(director.VERSION, 7, "older cached directions are asked for again");
 	assert.equal(typeof motion.strokeLevel, "function");
 });
 
@@ -1042,7 +1043,12 @@ test("compositions after typography edits: one line at a time, colour grounds, t
 		const [first, second] = plan.lines;
 		assert.deepEqual(plain(motion.levelsOn(board, second, -1, first.start)), { ghost: 0, solid: 1 }, "nothing waits on screen");
 		assert.equal(motion.levelsOn(board, first, 0, first.start).solid, 1);
-		assert.equal(motion.levelsOn(board, first, 1, second.start).solid, 0, "the last line is gone when the next starts");
+		// The line before stays until the next one comes in and leaves with the shot's exit as it does: never an empty screen.
+		assert.equal(motion.levelsOn(board, first, 1, second.start - 60).solid, 1, "the last line is there until the next starts");
+		assert.equal(first.exitAt, first.soloOut, "it leaves with the exit");
+		assert.ok(motion.levelsOn(board, first, 1, first.soloOut + first.exitSpan * 0.4).solid === 1, "which plays before it fades");
+		assert.equal(motion.levelsOn(board, first, 1, first.soloOut + first.exitSpan).solid, 0, "and gone once the next is in");
+		assert.ok(first.soloOut + first.exitSpan <= second.start + 480, "soon after the next starts");
 	}
 	// Lines sung over each other cannot take turns in one place.
 	const duet = motion.buildModel([line(["one", "two", "three"], 0), line(["four", "five"], 900), line(["six", "seven"], 3000)]);
@@ -1139,7 +1145,8 @@ test("lines come and go instead of standing as a lyric sheet", () => {
 
 test("sung lines leave with their exit and held lines keep moving", () => {
 	const { motion, director } = load();
-	assert.equal(director.EXITS.length, 12);
+	assert.equal(director.EXITS.length, 25);
+	assert.deepEqual(plain(motion.EXIT_NAMES), plain(director.EXITS), "the renderer knows every exit the director may ask for");
 	assert.equal(director.HOLDS.length, 9);
 	for (const exit of director.EXITS) {
 		assert.deepEqual(plain(motion.exitFrame(exit, 0)), plain(motion.solidFrame("pop", 1)), exit + " starts settled");
@@ -1148,6 +1155,24 @@ test("sung lines leave with their exit and held lines keep moving", () => {
 		assert.ok(middle.opacity < 1 || middle.clip, exit + " is on its way out");
 		assert.ok(middle.transform !== "none" || middle.clip || middle.filter, exit + " moves");
 	}
+	// Letter by letter: each letter takes its own turn, and they are all gone at the end.
+	const letters = (exit, k) => Array.from({ length: 6 }, (_, index) => motion.exitCharFrame(exit, k, { ch: "abcdef"[index] }, index, { count: 6, seed: 11 }));
+	for (const exit of Object.keys(motion.LETTER_EXITS)) {
+		assert.ok(director.EXITS.includes(exit), exit + " is an exit");
+		assert.ok(letters(exit, 0).every((state) => state.opacity === 1 && state.transform === "none"), exit + " starts settled");
+		assert.ok(letters(exit, 1).every((state) => state.opacity === 0), exit + " ends with every letter gone");
+		const middle = letters(exit, 0.45);
+		const moving = middle.filter((state) => state.opacity < 1 || state.transform !== "none" || state.text);
+		assert.ok(moving.length > 0 && moving.length < 6 || exit === "burst", exit + " takes the letters one by one: " + JSON.stringify(middle));
+		// Words whose letters join leave the nearest whole-word way.
+		assert.equal(motion.exitFrame(exit, 1).opacity, 0);
+		assert.ok(motion.exitFrame(exit, 0.5, 7).opacity < 1 || motion.exitFrame(exit, 0.5, 7).clip, exit + " has a whole-word stand-in");
+	}
+	const erased = letters("erase", 0.3);
+	assert.ok(erased[5].opacity < erased[0].opacity, "erase goes back from the end");
+	const crumbled = letters("crumble", 0.3);
+	assert.ok(crumbled[0].transform !== "none" && crumbled[5].transform === "none", "crumble drops the first letters first");
+	assert.ok(letters("scramble", 0.4).some((state) => state.text && state.text.length === 1), "scramble flickers through other characters");
 	const held = { start: 1000, end: 3000, voicesEnd: 3000, exitAt: 5000, exitSpan: 600, text: "hold me" };
 	for (const hold of ["grow", "drift", "lean", "push"]) {
 		assert.equal(motion.holdFrame(hold, held, 900), "", hold + " waits for the line");
@@ -1294,6 +1319,153 @@ test("new word entrances, exits and holds", () => {
 	}
 	assert.ok(motion.exitFrame("glitch", 0.5, 9).clip.startsWith("inset("));
 	assert.ok(motion.exitFrame("drip", 0.5).transform.includes("scale("));
+});
+
+test("a line need not reach the screen at once: long lines in phrases, punchy lines word by word", () => {
+	const { motion, director, type } = load();
+	const texts = (line, pieces) => pieces.map(([from, to]) => line.words.slice(from, to + 1).map((word) => word.text).join(" "));
+	const covers = (line, pieces) => pieces.every(([from, to], index) => from <= to && (!index || from === pieces[index - 1][1] + 1)) && pieces[0][0] === 0 && pieces[pieces.length - 1][1] === line.words.length - 1;
+	const [long, short, comma, korean] = motion.buildModel([
+		line(["Lanterns", "rising", "over", "quiet", "streets", "and", "every", "single", "window", "glows"], 1000, { step: 300 }),
+		line(["hold", "on", "tight"], 5000),
+		line(["Hold", "on,", "I'm", "coming", "home", "tonight"], 8000, { step: 300 }),
+		line(["너를", "처음", "만난", "그날", "밤을", "아직도", "기억해"], 12000, { step: 350 }),
+	]);
+	// A long line is broken even in a "line" shot, a short one never.
+	const lanterns = motion.piecesOf(long, "line");
+	assert.ok(lanterns.length >= 3 && covers(long, lanterns), "a long line in phrases: " + texts(long, lanterns).join(" / "));
+	assert.ok(texts(long, lanterns).every((text) => !/\b(and|the|over)$/.test(text)), "no phrase ends on a little word: " + texts(long, lanterns).join(" / "));
+	assert.deepEqual(plain(motion.piecesOf(short, "line")), [[0, 2]]);
+	assert.deepEqual(plain(motion.piecesOf(short, "phrase")), [[0, 2]], "three words stay together");
+	// Phrases break where the line breaks itself.
+	const held = motion.piecesOf(comma, "phrase");
+	assert.equal(texts(comma, held)[0], "Hold on,", "at the comma: " + texts(comma, held).join(" / "));
+	const breath = motion.buildModel([{ startTime: 0, originalText: "one two three four five six", syllables: [
+		{ text: "one", startTime: 0, endTime: 300 }, { text: "two", startTime: 300, endTime: 600 }, { text: "three", startTime: 600, endTime: 900 },
+		{ text: "four", startTime: 1700, endTime: 2000 }, { text: "five", startTime: 2000, endTime: 2300 }, { text: "six", startTime: 2300, endTime: 2600 },
+	] }])[0];
+	assert.deepEqual(plain(motion.piecesOf(breath, "phrase")), [[0, 2], [3, 5]], "at a breath between words");
+	const eojeol = motion.piecesOf(korean, "phrase");
+	assert.ok(eojeol.length >= 2 && covers(korean, eojeol), "Korean in phrases of whole words: " + texts(korean, eojeol).join(" / "));
+	// Word by word, a Japanese particle stays with its word.
+	const japanese = motion.buildModel([line(["月", "を", "見て", "いた"], 1000, { joined: true })])[0];
+	assert.ok(japanese.words.length >= 2);
+	const kana = motion.piecesOf(japanese, "word");
+	assert.ok(kana.every(([from, to]) => !/^[をはがにでのと]$/.test(japanese.words.slice(from, to + 1).map((word) => word.text).join(""))), "particles do not stand alone");
+	assert.equal(motion.piecesOf(short, "word").length, 3);
+
+	// The direction and typography follow the pieces.
+	const model = [long, short, comma];
+	const typography = type.typographyOf(model, "en");
+	const raw = { shots: [{ from: 0, to: 0, layout: "column", split: "phrase" }, { from: 1, to: 2, layout: "stairs", split: "word" }], lines: { 0: { emph: [8], fx: "pop" }, 2: { emph: [3] } } };
+	const { model: pieces, direction, typography: pieceTypography } = motion.expandPieces(model, raw, typography);
+	assert.equal(pieces.length, pieceTypography.length);
+	assert.ok(pieces.every((piece) => piece.words.length && piece.index === model[piece.source].index && pieceTypography[pieces.indexOf(piece)].words.length === piece.words.length), "every piece keeps its line's translation and faces");
+	const window = pieces.findIndex((piece) => piece.source === 0 && piece.words.some((word) => word.text === "window"));
+	assert.deepEqual(plain(direction.lines[window].emph), [pieces[window].words.findIndex((word) => word.text === "window")], "the emphasised word goes with its piece");
+	assert.ok(pieces.filter((piece) => piece.source === 0).every((_, part) => direction.lines[pieces.findIndex((piece) => piece.source === 0) + part]?.fx === "pop"), "and the line's effect with every piece");
+	assert.equal(direction.shots[0].from, 0);
+	assert.equal(direction.shots[direction.shots.length - 1].to, pieces.length - 1);
+	// Open-ended compositions take more single words (they are small and leave with their line).
+	const roomy = new Set(["column", "zigzag", "collage", "stairs", "strip", "rails", "chain"]);
+	const holds = (shot) => (shot.split === "word" && roomy.has(shot.layout) ? 10 : director.MAX_LINES[shot.layout]);
+	assert.ok(direction.shots.every((shot) => shot.to - shot.from + 1 <= holds(shot)), "a shot with more pieces than its composition holds goes on in the next board");
+	// A board breaks between two lines rather than inside one.
+	const punchy = motion.buildModel([["go", "get", "it", "now"], ["never", "look", "back"], ["we", "run", "this", "town"], ["one", "more", "time"]].map((parts, index) => line(parts, 1000 + index * 1600, { step: 280 })));
+	const boards = motion.expandPieces(punchy, { shots: [{ from: 0, to: 3, layout: "chain", split: "word" }] }, type.typographyOf(punchy, "en"));
+	assert.ok(boards.direction.shots.length > 1);
+	assert.ok(boards.direction.shots.slice(1).every((shot) => shot.continued && shot.enter === "pan"), "and goes on in the next board");
+	assert.ok(boards.direction.shots.every((shot) => shot.to === boards.model.length - 1 || boards.model[shot.to].source !== boards.model[shot.to + 1].source),
+		"every board ends with a line: " + boards.direction.shots.map((shot) => shot.from + "-" + shot.to));
+
+	// Other voices go with the piece being sung when they come in.
+	const voiced = motion.buildModel([{
+		startTime: 0, originalText: "we were young and we were wild and free",
+		vocals: {
+			lead: { text: "we were young and we were wild and free", syllables: ["we", "were", "young", "and", "we", "were", "wild", "and", "free"].map((text, index) => ({ text, startTime: index * 400, endTime: index * 400 + 380 })) },
+			background: [{ text: "so free", syllables: [{ text: "so", startTime: 3000, endTime: 3300 }, { text: "free", startTime: 3300, endTime: 3700 }] }],
+		},
+	}]);
+	const parted = motion.expandPieces(voiced, { shots: [{ from: 0, to: 0, layout: "column", split: "phrase" }] }, type.typographyOf(voiced, "en")).model;
+	assert.ok(parted.length >= 2);
+	assert.equal(parted.filter((piece) => piece.backing.length).length, 1);
+	assert.ok(parted[parted.length - 1].backing.length === 1, "the echo sings with the last phrase");
+});
+
+test("pieces set in every composition, and how they come and go", () => {
+	const { motion, director, type } = load();
+	const lyrics = [];
+	let start = 2000;
+	for (const parts of [
+		["Lanterns", "rising", "over", "quiet", "streets", "and", "every", "single", "window", "glows"],
+		["you", "can", "freeze", "the", "night"],
+		["we", "are", "burning", "bright", "tonight"],
+		["hold", "on"],
+	]) {
+		lyrics.push(line(parts, start, { step: 320 }));
+		start += parts.length * 320 + 700;
+	}
+	const model = motion.buildModel(lyrics);
+	for (const split of ["phrase", "word"]) {
+		for (const layout of director.LAYOUTS) {
+			const direction = director.normalizeDirection({ shots: [{ from: 0, to: 3, layout, enter: "pan", split }] }, model, { seed: 4 });
+			const plan = compose(motion, type, model, direction, 4, "", true);
+			assert.ok(plan.lines.length > model.length, layout + " " + split + " sets pieces");
+			assert.deepEqual(plain([...new Set(plan.lines.map((piece) => piece.source))]), plain(model.map((_, index) => index)), "every line, in order");
+			for (const piece of plan.lines) {
+				const label = layout + " " + split + " piece " + piece.n;
+				assert.equal(piece.place.block.words.length, piece.shown.length, label + " sets every word");
+				assert.ok(piece.place.block.rows <= 2, label + " in at most two rows");
+				assert.ok([piece.camera.x, piece.camera.y, piece.camera.z, piece.place.x, piece.place.y].every(Number.isFinite), label + " is placed");
+				const board = plan.boards[piece.board];
+				const upright = piece.camera.roll - board.dutch - (board.roll + piece.place.rot);
+				assert.ok(Math.abs(upright - Math.round(upright / 360) * 360) < 0.01, label + " is upright");
+				assert.ok(piece.arrive < piece.start && piece.leave > piece.arrive, label + " is reached in time");
+			}
+		}
+	}
+	// Word by word, a line builds up until the next line; phrases make way for each other.
+	// Compositions that turn from line to line turn whole lines, never the words of one.
+	for (const layout of ["chain", "zigzag"]) {
+		const plan = compose(motion, type, model, director.normalizeDirection({ shots: [{ from: 0, to: 3, layout, enter: "pan", split: "word" }] }, model, { seed: 4 }), 4, "", true);
+		for (const piece of plan.lines) {
+			const line = plan.lines.filter((other) => other.source === piece.source && other.board === piece.board);
+			assert.ok(line.every((other) => other.place.rot === piece.place.rot && other.camera.roll === piece.camera.roll), layout + ": the words of line " + piece.source + " stay on one line");
+		}
+		assert.ok(new Set(plan.lines.map((piece) => piece.place.rot)).size > 1, layout + " still turns between lines");
+	}
+	const built = compose(motion, type, model, director.normalizeDirection({ shots: [{ from: 0, to: 3, layout: "column", enter: "pan", split: "word" }] }, model, { seed: 4 }), 4, "", true);
+	const words = built.lines.filter((piece) => piece.source === 1);
+	const nextLine = built.lines.find((piece) => piece.source === 2);
+	const board = built.boards[words[0].board];
+	const lastWord = words[words.length - 1];
+	if (words.every((piece) => piece.board === words[0].board)) {
+		assert.ok(motion.levelsOn(board, words[0], 0, lastWord.start + 50).solid > 0.95, "the first word is still there when the last is sung");
+	}
+	assert.ok(words.every((piece) => !Number.isFinite(piece.exitAt) || piece.exitAt >= nextLine.start), "the words leave once the next line is under way");
+	const phrased = compose(motion, type, model, director.normalizeDirection({ shots: [{ from: 0, to: 0, layout: "column", enter: "pan", split: "phrase" }, { from: 1, to: 3, layout: "stairs", enter: "pan" }] }, model, { seed: 4 }), 4, "", true);
+	const [first, second] = phrased.lines.filter((piece) => piece.source === 0);
+	assert.ok(first.exitAt < first.end + 2500 && first.exitAt >= second.start, "a phrase leaves soon after the next phrase has begun");
+});
+
+test("the director breaks long lines and sets punchy ones word by word now and then", () => {
+	const { motion, director } = load();
+	const make = (count, parts, step) => motion.buildModel(Array.from({ length: count }, (_, index) => line(parts.map((part) => part + index), 2000 + index * (parts.length * step + 600), { step })));
+	const long = make(16, ["lanterns", "rising", "over", "quiet", "streets", "and", "every", "window"], 380);
+	const longSplits = director.localDirection(long, { seed: 3, tempo: { tempo: "mid", pace: 1 } }).shots.map((shot) => shot.split);
+	assert.ok(longSplits.filter((split) => split === "phrase").length >= longSplits.length * 0.6, "long lines in phrases: " + longSplits);
+	const punchy = make(24, ["go", "get", "it", "now"], 240);
+	let words = 0;
+	for (let seed = 1; seed <= 8; seed += 1) words += director.localDirection(punchy, { seed, tempo: { tempo: "fast", pace: 0.82 } }).shots.filter((shot) => shot.split === "word").length;
+	assert.ok(words > 0, "fast punchy lines go word by word at times");
+	let slowWords = 0;
+	for (let seed = 1; seed <= 8; seed += 1) slowWords += director.localDirection(punchy, { seed, tempo: { tempo: "slow", pace: 1.4 } }).shots.filter((shot) => shot.split === "word").length;
+	assert.equal(slowWords, 0, "never in a ballad");
+	assert.equal(director.normalizeDirection({ shots: [{ from: 0, to: 3, layout: "column", split: "word" }] }, punchy, { seed: 1 }).shots[0].split, "word", "the AI may ask");
+	assert.ok(director.SPLITS.includes(director.normalizeDirection({ shots: [{ from: 0, to: 3, layout: "column", split: "chunks" }] }, punchy, { seed: 1 }).shots[0].split));
+	const prompt = director.buildPrompt({ lines: [] });
+	for (const name of director.SPLITS) assert.ok(prompt.includes(name + " = "), "the prompt explains " + name);
+	assert.ok(prompt.includes('"split"'));
 });
 
 test("a lyric line never takes more than two rows, however it is set", () => {
