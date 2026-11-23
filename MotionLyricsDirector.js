@@ -1071,6 +1071,9 @@
 				motifs: Array.isArray(item.motifs) ? motifs : fallback.motifs,
 				echo,
 				source: "ai",
+				// The look the AI gave the shot itself (not what was filled in for it): shots in a row with one look run on.
+				look: [item.layout, item.fx, item.accent, item.exit].every((value) => typeof value === "string" && value)
+					? [layout, item.fx, item.accent, item.exit, item.type || ""].join("|") : "",
 			});
 			lastTo = to;
 		}
@@ -1080,7 +1083,7 @@
 		const runs = [];
 		for (const shot of aiShots) {
 			const before = runs[runs.length - 1];
-			const alike = !!before && before.to + 1 === shot.from && ["layout", "fx", "accent", "exit", "type", "split"].every((key) => before[key] === shot[key]);
+			const alike = !!before && before.to + 1 === shot.from && !!shot.look && shot.look === before.look;
 			if (alike && shot.to - before.from + 1 <= (MAX_LINES[before.layout] || 6)
 				&& lines[shot.from].start - lines[before.to].end < REST_GAP_MS && screenSpan(lines, before.from, shot.to) <= MAX_SHOT_MS) {
 				before.to = shot.to;
@@ -1092,6 +1095,14 @@
 			runs.push(shot);
 		}
 		aiShots.splice(0, aiShots.length, ...runs);
+		// Ones that cannot be merged (their lines would stay on screen too long) run on as the same composition.
+		aiShots.forEach((shot, index) => {
+			const before = aiShots[index - 1];
+			if (!before || before.to + 1 !== shot.from || !shot.look || shot.look !== before.look) return;
+			shot.continued = true;
+			shot.type = before.type;
+			shot.split = before.split;
+		});
 
 		// Fill what the AI left out with the local shots, clipped to the gaps.
 		const filled = [];
@@ -1128,7 +1139,7 @@
 						break;
 					}
 				}
-				split.push({ ...shot, from, to, enter: from === shot.from ? shot.enter : "pan", continued: from !== shot.from });
+				split.push({ ...shot, from, to, enter: from === shot.from ? shot.enter : "pan", continued: from !== shot.from || shot.continued === true });
 				from = to + 1;
 			}
 		}

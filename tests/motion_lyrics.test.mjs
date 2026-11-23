@@ -1946,6 +1946,18 @@ test("a chorus the AI set line by line in one look stays one composition", () =>
 	assert.ok(director.buildPrompt({ lines: [] }).includes("never a whole song of them"));
 });
 
+test("a chorus of long lines the AI set line by line keeps its look shot after shot", () => {
+	const { motion, director } = load();
+	const parts = ["kimi", "no", "zen", "zen", "zense", "kara", "boku", "wa", "kimi", "wo", "sagashi", "hajimeta", "yo"];
+	const model = motion.buildModel(Array.from({ length: 6 }, (_, index) => line(parts.map((part) => part + index), 1000 + index * 5200, { step: 380 })));
+	const look = { layout: "lockup", fx: "assemble", accent: "trail", exit: "sweep" };
+	const raw = { shots: [0, 1, 2, 3].map((n) => ({ from: n, to: n, enter: n % 2 ? "drift" : "push", ...look })).concat([{ from: 4, to: 5, layout: "column", fx: "lift", accent: "color", exit: "fade" }]) };
+	const direction = director.normalizeDirection(raw, model, { seed: 2, tempo: { tempo: "mid", pace: 1 } });
+	const chorus = direction.shots.filter((shot) => shot.to <= 3);
+	assert.equal(chorus.length, 4, "too long to merge");
+	assert.ok(chorus.every((shot) => shot.layout === "lockup" && shot.fx === "assemble" && shot.accent === "trail"), chorus.map((shot) => shot.layout + "/" + shot.fx + "/" + shot.accent).join(" "));
+});
+
 
 
 
