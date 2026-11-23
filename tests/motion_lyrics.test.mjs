@@ -53,6 +53,16 @@ const song = () => {
 	return lines;
 };
 
+const screenOf = (model, shot) => {
+	let span = model[shot.to].end - model[shot.from].start;
+	for (let index = shot.from + 1; index <= shot.to; index += 1) {
+		const gap = model[index].start - model[index - 1].end;
+		if (gap >= 5000) span -= gap;
+	}
+	return span;
+};
+
+
 const compose = (motion, type, model, direction, seed, lang = "") => motion.compose(model, direction, {
 	width: 1440, height: 900, seed, measure, typography: type.typographyOf(model, lang), songLang: lang,
 });
@@ -306,23 +316,37 @@ test("boards share the world without overlapping, and every line is read upright
 		plan.boards.slice(1).forEach((board, offset) => {
 			const previous = plan.boards[offset];
 			const last = previous.cameras[previous.cameras.length - 1];
-			if (["push", "pull", "through", "fade", "corkscrew"].includes(board.enter)) {
+			if (["push", "pull", "through", "fade", "iris", "open", "corkscrew"].includes(board.enter)) {
 				assert.ok(Math.abs(board.cameras[0].z - last.z) >= 300, "a dolly or dissolve entrance moves the camera in depth");
 				return;
 			}
-			const frame = (corner) => {
-				const radians = (-(last.roll - previous.dutch) * Math.PI) / 180;
-				const x = corner.x - last.x;
-				const y = corner.y - last.y;
-				return { x: x * Math.cos(radians) - y * Math.sin(radians), y: x * Math.sin(radians) + y * Math.cos(radians) };
+			// The two boards' outlines (convex hulls of their lines' corners) do not overlap: some axis separates them.
+			const hull = (points) => {
+				const sorted = [...points].sort((p, q) => p.x - q.x || p.y - q.y);
+				const cross = (o, p, q) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+				const half = (list) => {
+					const out = [];
+					for (const point of list) {
+						while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], point) <= 0) out.pop();
+						out.push(point);
+					}
+					return out.slice(0, -1);
+				};
+				return [...half(sorted), ...half([...sorted].reverse())];
 			};
-			const box = (corners) => {
-				const points = corners.map(frame);
-				return { left: Math.min(...points.map((p) => p.x)), right: Math.max(...points.map((p) => p.x)), top: Math.min(...points.map((p) => p.y)), bottom: Math.max(...points.map((p) => p.y)) };
-			};
-			const a = box(previous.corners);
-			const b = box(board.corners);
-			const apart = a.right <= b.left + 1 || b.right <= a.left + 1 || a.bottom <= b.top + 1 || b.bottom <= a.top + 1;
+			const a = hull(previous.corners);
+			const b = hull(board.corners);
+			const axes = [a, b].flatMap((polygon) => polygon.map((point, index) => {
+				const next = polygon[(index + 1) % polygon.length];
+				return { x: next.y - point.y, y: point.x - next.x };
+			}));
+			const apart = axes.some((axis) => {
+				const length = Math.hypot(axis.x, axis.y) || 1;
+				const project = (polygon) => polygon.map((point) => (point.x * axis.x + point.y * axis.y) / length);
+				const pa = project(a);
+				const pb = project(b);
+				return Math.max(...pa) <= Math.min(...pb) + 1 || Math.max(...pb) <= Math.min(...pa) + 1;
+			});
 			assert.ok(apart, "seed " + seed + " board " + board.index + " (" + board.enter + ") clears the previous one");
 		});
 	}
@@ -423,8 +447,8 @@ test("the next board waits faintly before the camera leaves, and the last one li
 test("sung words enter with their effect and settle exactly in place", () => {
 	const { motion, director } = load();
 	const word = { start: 1000, end: 1600 };
-	assert.equal(director.FX.length, 28);
-	assert.equal(new Set(director.FX).size, 28);
+	assert.equal(director.FX.length, 32);
+	assert.equal(new Set(director.FX).size, 32);
 	for (const fx of director.FX) {
 		for (const pace of [0.72, 1, 1.4]) {
 			assert.deepEqual(plain(motion.solidFrame(fx, motion.wordEntrance(fx, word, 0, pace))), { opacity: 0, transform: "none", filter: "", clip: "", shadow: "" }, fx + " waits");
@@ -785,8 +809,8 @@ const seenFrom = (motion, pose, point) => {
 
 test("every composition sets its lines where the camera reads them", () => {
 	const { motion, director, type } = load();
-	assert.equal(director.LAYOUTS.length, 27);
-	assert.equal(new Set(director.LAYOUTS).size, 27);
+	assert.equal(director.LAYOUTS.length, 37);
+	assert.equal(new Set(director.LAYOUTS).size, 37);
 	assert.deepEqual(Object.keys(director.MAX_LINES).sort(), [...director.LAYOUTS].sort());
 	const model = motion.buildModel(song());
 	for (const layout of director.LAYOUTS) {
@@ -836,8 +860,11 @@ test("every composition sets its lines where the camera reads them", () => {
 				assert.ok(depths.every((z, index) => !index || (tilt > 0 ? z > depths[index - 1] : z < depths[index - 1])), "the lines lie along it: " + depths);
 			}
 			if (layout === "swell") {
-				const sizes = drum.places.map((place) => place.block.size);
-				assert.ok(sizes[sizes.length - 1] > sizes[0] * 1.5, "each line outgrows the last: " + sizes);
+				// Short lines that can grow (a long line is held to two rows and set smaller).
+				const build = motion.buildModel([line(["hold", "on"], 1000), line(["hold", "on", "tight"], 2400), line(["never", "let", "go"], 3800)]);
+				const swell = compose(motion, type, build, director.normalizeDirection({ shots: [{ from: 0, to: 2, layout: "swell", enter: "pan" }] }, build, { seed }), seed).boards[0];
+				const sizes = swell.places.map((place) => place.block.size);
+				assert.ok(sizes.every((size, index) => !index || size > sizes[index - 1]) && sizes[2] > sizes[0] * 1.5, "each line outgrows the last: " + sizes);
 			}
 			if (layout === "radial") {
 				const turns = drum.places.map((place) => place.rot);
@@ -852,6 +879,8 @@ test("every composition sets its lines where the camera reads them", () => {
 				} else if (board.layout === "grid") {
 					const columns = lineCount <= 1 ? 1 : 2;
 					assert.equal(board.strokes.length, (columns > 1 ? 1 : 0) + Math.ceil(lineCount / columns) - 1, "grid rules");
+				} else if (board.layout === "rails") {
+					assert.ok(board.strokes.length >= 3, "rails are drawn across the board");
 				} else {
 					assert.equal(board.strokes.length, { strip: 1, split: 1, slot: 2 }[board.layout] || 0, board.layout + " strokes");
 				}
@@ -931,7 +960,7 @@ test("the local director moves through many compositions and accents", () => {
 	let pillars = 0;
 	for (let seed = 1; seed <= 30; seed += 1) pillars += director.localDirection(japanese, { seed, tempo: { tempo: "slow", pace: 1.4 } }).shots.filter((shot) => shot.layout === "pillar").length;
 	assert.ok(pillars > 0, "Japanese lines can stand upright");
-	assert.equal(director.ACCENTS.length, 16);
+	assert.equal(director.ACCENTS.length, 19);
 	assert.deepEqual([...accents].sort(), [...director.ACCENTS].sort(), "every accent is reached");
 	// Voices facing each other and the build before a chorus steer the choice.
 	const tally = (make, name) => {
@@ -955,6 +984,7 @@ test("every accent has its look, and the AI is told about every composition and 
 		spark: ".ivlyrics-motion-spark", glow: ".accent-glow ", gradient: ".accent-gradient ", stamp: ".ivlyrics-motion-box.is-stamp", circle: ".ivlyrics-motion-loop path",
 		extrude: ".accent-extrude ", sticker: ".accent-sticker ", script: ".accent-script ", giant: ".accent-giant ", trail: ".ivlyrics-motion-trail",
 		scribble: ".ivlyrics-motion-loop path", bracket: ".ivlyrics-motion-box.is-bracket",
+		neon: ".accent-neon ", chrome: ".accent-chrome ", spectrum: ".accent-spectrum ",
 	};
 	assert.deepEqual(Object.keys(looks).sort(), [...director.ACCENTS].sort());
 	for (const [name, selector] of Object.entries(looks)) assert.ok(css.includes(selector), name + " is styled by " + selector);
@@ -970,9 +1000,10 @@ test("every accent has its look, and the AI is told about every composition and 
 	assert.match(source, /solid\.classList\.add\("has-letters"\)/);
 	assert.match(source, /board\.accent === "scribble"/);
 	assert.match(source, /board\.accent === "trail"/);
-	for (const selector of [".ivlyrics-motion-flood", ".ivlyrics-motion-plate.is-card", ".ivlyrics-motion-plate.is-band", ".ivlyrics-motion-plate.is-ring", ".ivlyrics-motion-fill", ".ivlyrics-motion-word.is-upright", ".ivlyrics-motion-line.on-color"]) {
+	for (const selector of [".ivlyrics-motion-flood", ".ivlyrics-motion-plate.is-band", ".ivlyrics-motion-plate.is-ring", ".ivlyrics-motion-fill", ".ivlyrics-motion-word.is-upright", ".ivlyrics-motion-line.on-color"]) {
 		assert.ok(css.includes(selector), selector + " is styled");
 	}
+	assert.ok(!css.includes(".ivlyrics-motion-plate.is-card"), "no colour cards are styled");
 	assert.match(source, /board\.accent === "circle"/);
 	assert.match(source, /board\.accent === "glow"/);
 	assert.match(source, /rotateY\(" \+ round\(place\.tiltY, 2\)/);
@@ -987,10 +1018,12 @@ test("every accent has its look, and the AI is told about every composition and 
 	const prompt = window.AIAddonManager.buildMotionDirectionPrompt({ lines: [] });
 	assert.equal(prompt, director.buildPrompt({ lines: [] }));
 	for (const name of director.LAYOUTS) assert.ok(prompt.includes(name + " = "), "the prompt explains " + name);
+	assert.ok(!prompt.includes("cards = ") && !prompt.includes("colour card"), "the AI is not offered colour cards");
+	assert.ok(prompt.includes("tower = each line set in two justified rows"), "nor a tower of more than two rows");
 	for (const name of director.ACCENTS) assert.ok(prompt.includes(name + " = "), "the prompt explains " + name);
 	assert.ok(prompt.includes("(" + director.ACCENTS.join("|") + ")"));
 	for (const [name, most] of Object.entries(director.MAX_LINES)) if (most < 6) assert.ok(prompt.includes(name + " at most " + most), name + " limit");
-	assert.equal(director.VERSION, 5, "older cached directions are asked for again");
+	assert.equal(director.VERSION, 6, "older cached directions are asked for again");
 	assert.equal(typeof motion.strokeLevel, "function");
 });
 
@@ -1032,16 +1065,10 @@ test("compositions after typography edits: one line at a time, colour grounds, t
 	assert.equal(sung.place.ground, sung.place.flood === "ink" ? "dark" : "color");
 	assert.equal(motion.floodAt(stage("column"), 3000), null);
 
-	const cards = stage("cards");
-	const deck = cards.boards[0];
-	assert.equal(deck.plates.length, deck.places.length);
-	assert.ok(deck.plates.every((plate, index) => plate.kind === "card" && plate.line === index && plate.w > deck.places[index].block.width && Math.abs(plate.x - deck.places[index].x) < 0.01));
-	assert.ok(deck.places.every((place, index) => place.cover && (!index || place.z > deck.places[index - 1].z)), "each card lands on the last");
-	const dealt = cards.lines[1];
-	assert.equal(motion.plateLevel(cards, deck, deck.plates[1], dealt.start - 400), 0);
-	assert.ok(Math.abs(motion.plateLevel(cards, deck, deck.plates[1], dealt.start + 600) - 1) < 0.01);
-	assert.equal(motion.levelsOn(deck, dealt, -1, dealt.start - 400).ghost, 0, "a line waits unseen until its card lands");
-	assert.ok(motion.levelsOn(deck, dealt, -0.2, dealt.start - 100).ghost > 0);
+	// Colour cards dealt one over another are gone; an older (cached) answer asking for them gets another composition.
+	assert.ok(!director.LAYOUTS.includes("cards"));
+	const dealt = stage("cards");
+	assert.ok(dealt.boards.every((board) => board.layout !== "cards" && (board.plates || []).every((plate) => plate.kind !== "card")), "no colour cards are dealt");
 
 	const wall = stage("wordwall").boards[0];
 	assert.ok(wall.fills.length >= 8 && wall.fills.every((fill) => fill.text && fill.size > 0 && [fill.x, fill.y].every(Number.isFinite)), "outlined copies tile the wall");
@@ -1067,6 +1094,233 @@ test("compositions after typography edits: one line at a time, colour grounds, t
 	assert.ok(pillars.boards.filter((board) => board.layout !== "pillar").every((board) => board.places.every((place) => place.block.words.every((word) => !word.vertical))));
 	assert.equal(stage("pillar", { accent: "underline" }).boards.find((board) => board.layout === "pillar").accent, "color", "accents that need a baseline give way");
 });
+
+test("lines come and go instead of standing as a lyric sheet", () => {
+	const { motion, director, type } = load();
+	const lyrics = [];
+	let start = 2000;
+	for (let index = 0; index < 8; index += 1) {
+		const parts = ["slow", "words", "drifting", "over", "the", "quiet", "sea"].slice(0, 4 + (index % 3));
+		lyrics.push(line(parts, start, { step: 620 }));
+		start += parts.length * 620 + 800;
+	}
+	const model = motion.buildModel(lyrics);
+	for (const layout of ["column", "stairs", "wall", "zigzag", "corners", "hero", "swell", "split"]) {
+		const direction = director.normalizeDirection({ shots: [{ from: 0, to: 7, layout, enter: "pan", exit: "fall", hold: "drift" }] }, model, { seed: 4, tempo: { tempo: "slow", pace: 1.4 } });
+		assert.ok(direction.shots.every((shot) => screenOf(model, shot) <= director.MAX_SHOT_MS), layout + ": no composition stays longer than " + director.MAX_SHOT_MS + " ms");
+		const plan = compose(motion, type, model, direction, 4);
+		for (let time = plan.lines[0].start; time < plan.lines[plan.lines.length - 1].end; time += 97) {
+			const progress = motion.progressAt(plan, time);
+			const shown = plan.lines.filter((item) => {
+				const board = plan.boards[item.board];
+				const levels = motion.levelsOn(board, item, progress - item.n, time);
+				return motion.boardVisibility(board, time) * Math.max(levels.ghost, levels.solid) > 0.02;
+			});
+			assert.ok(shown.length <= 3, layout + " at " + time + ": " + shown.map((item) => item.n));
+			// Two lines back is always gone.
+			assert.ok(shown.every((item) => item.n >= motion.lineIndexAt(plan, time) - 1), layout + " at " + time + " keeps an old line: " + shown.map((item) => item.n));
+		}
+		const [first, second] = plan.lines;
+		if (first.board === second.board) {
+			assert.equal(plan.boards[first.board].exit, "fall");
+			const board = plan.boards[first.board];
+			assert.equal(motion.levelsOn(board, second, -1, second.peekAt - 50).ghost, 0, "the next line is not there long before it is sung");
+			assert.ok(motion.levelsOn(board, second, -0.2, second.start - 60).ghost > 0.2, "its outline peeks in just before");
+			assert.ok(motion.levelsOn(board, first, 1, second.start + 400).solid < 0.6, "the sung line dims once the next one starts");
+			assert.equal(motion.levelsOn(board, first, 1, first.exitAt + first.exitSpan + 1).solid, 0, "and is gone after its exit");
+			assert.ok(first.exitAt > first.end && first.exitAt > second.start, "it leaves only after the next line is under way");
+		}
+	}
+	// Compositions that are about their structure keep the lines round the current one.
+	const reel = compose(motion, type, model, director.normalizeDirection({ shots: [{ from: 0, to: 4, layout: "reel", enter: "pan" }] }, model, { seed: 4 }), 4);
+	assert.equal(reel.boards[0].preview, true);
+	assert.ok(reel.lines.slice(0, 4).every((item) => !Number.isFinite(item.exitAt)));
+});
+
+test("sung lines leave with their exit and held lines keep moving", () => {
+	const { motion, director } = load();
+	assert.equal(director.EXITS.length, 12);
+	assert.equal(director.HOLDS.length, 9);
+	for (const exit of director.EXITS) {
+		assert.deepEqual(plain(motion.exitFrame(exit, 0)), plain(motion.solidFrame("pop", 1)), exit + " starts settled");
+		assert.equal(motion.exitFrame(exit, 1).opacity, 0, exit + " ends hidden");
+		const middle = motion.exitFrame(exit, 0.5, 7);
+		assert.ok(middle.opacity < 1 || middle.clip, exit + " is on its way out");
+		assert.ok(middle.transform !== "none" || middle.clip || middle.filter, exit + " moves");
+	}
+	const held = { start: 1000, end: 3000, voicesEnd: 3000, exitAt: 5000, exitSpan: 600, text: "hold me" };
+	for (const hold of ["grow", "drift", "lean", "push"]) {
+		assert.equal(motion.holdFrame(hold, held, 900), "", hold + " waits for the line");
+		const early = motion.holdFrame(hold, held, 1500);
+		const late = motion.holdFrame(hold, held, 4500);
+		assert.ok(early && late && early !== late, hold + " keeps moving: " + early + " -> " + late);
+	}
+	assert.equal(motion.holdFrame("still", held, 2000), "");
+	// Local directions use them and never repeat one shot to the next.
+	const model = motion.buildModel(song());
+	for (const seed of [1, 2, 3]) {
+		const direction = director.localDirection(model, { seed });
+		direction.shots.forEach((shot, index) => {
+			assert.ok(director.EXITS.includes(shot.exit) && director.HOLDS.includes(shot.hold));
+			const previous = direction.shots[index - 1];
+			if (previous && !shot.repeated) assert.ok(shot.exit !== previous.exit || shot.hold !== previous.hold || shot.from === previous.from);
+		});
+	}
+	// The AI may set them; anything else gets the local choice.
+	const asked = director.normalizeDirection({ shots: [{ from: 0, to: 1, layout: "column", exit: "scatter", hold: "lean" }, { from: 2, to: 3, layout: "hero", exit: "nope", hold: 3 }] }, model, { seed: 2 });
+	assert.equal(asked.shots[0].exit, "scatter");
+	assert.equal(asked.shots[0].hold, "lean");
+	assert.ok(director.EXITS.includes(asked.shots[1].exit) && director.HOLDS.includes(asked.shots[1].hold));
+	const prompt = director.buildPrompt({ lines: [] });
+	for (const name of [...director.EXITS, ...director.HOLDS]) assert.ok(prompt.includes(name + " = "), "the prompt explains " + name);
+	assert.ok(prompt.includes("not shown as a lyric sheet"));
+});
+
+
+test("compositions from the motion-typography canon", () => {
+	const { motion, director, type } = load();
+	const lyrics = [
+		line(["I", "will", "never", "let", "you", "go"], 2000, { step: 300 }),
+		line(["hold", "on", "tonight"], 4400, { step: 400 }),
+		line(["every", "word", "you", "said"], 6600, { step: 350 }),
+		line(["we", "are", "burning", "bright"], 9000, { step: 380 }),
+	];
+	const model = motion.buildModel(lyrics);
+	const stage = (layout, extra = {}) => {
+		const direction = director.normalizeDirection({ shots: [{ from: 0, to: 3, layout, enter: "pan", ...extra }], lines: [{ n: 0, emph: [2] }] }, model, { seed: 8 });
+		return compose(motion, type, model, direction, 8);
+	};
+
+	// A sized lockup: the stressed word large, the little words small, two rows of the same width.
+	const lockup = stage("lockup").boards[0];
+	assert.equal(lockup.solo, true);
+	const sized = lockup.places[0].block;
+	const size = (index) => sized.words[index].size;
+	assert.ok(size(2) > size(0) * 2 && size(2) > size(1) * 1.5, "never outweighs I and will: " + sized.words.map((word) => Math.round(word.size)));
+	assert.equal(sized.rows, 2);
+
+	// One word at a time, all in one place.
+	const flash = stage("flash");
+	const flashed = flash.boards[0].places[0];
+	assert.equal(flashed.flash, true);
+	assert.ok(flashed.block.words.every((word) => word.x === 0 && word.y === 0), "every word in the same place");
+	assert.ok(flashed.block.words[2].size > flashed.block.words[0].size * 1.8, "sized by stress");
+
+	// A mosaic: lines attached edge to edge, some turned a quarter, the camera rolling with them.
+	const chain = stage("chain").boards[0];
+	assert.ok(chain.places.some((place) => Math.abs(place.rot % 180) === 90) || chain.places.length < 3, "a line turned down the side: " + chain.places.map((place) => place.rot));
+
+	// Capitals filling the width: the words sung so far always fill it.
+	const fill = stage("fill");
+	const filled = fill.lines[2];
+	assert.ok(filled.place.fill, "a short line fills the width");
+	const scaleAt = (time) => Number(motion.fillFrame(filled, filled.place, time).match(/scale\(([\d.]+)\)/)[1]);
+	assert.ok(scaleAt(filled.words[0].start + 300) > 1.5, "the first word alone fills it: " + scaleAt(filled.words[0].start + 300));
+	assert.ok(Math.abs(scaleAt(filled.end + 500) - 1) < 0.01, "the whole line at its own size");
+	assert.ok(filled.place.block.words.every((word) => word.text === word.text.toUpperCase()), "in capitals");
+
+	// A seal: two rings for each line that turn and leave with it.
+	const seal = stage("seal");
+	const rings = seal.boards[0].plates;
+	assert.equal(rings.length, seal.boards[0].places.length * 2);
+	assert.ok(rings.every((plate) => plate.kind === "ring" && plate.solo && plate.spin));
+	const second = seal.lines[1];
+	assert.ok(motion.plateLevel(seal, seal.boards[0], rings[0], seal.lines[0].start + 200) > 0.9);
+	assert.equal(motion.plateLevel(seal, seal.boards[0], rings[0], second.start + 400), 0, "the first seal goes when the next line comes");
+
+	// Round the frame: the words at the edges, the middle open.
+	const framed = stage("frame").boards[0].places[1].block.words;
+	assert.ok(framed.every((word) => Math.abs(word.x) > 1440 * 0.2 || Math.abs(word.y) > 900 * 0.2), "no word in the middle: " + framed.map((word) => Math.round(word.x) + "," + Math.round(word.y)));
+
+	// Marquee rows stream past while their line is sung.
+	const marquee = stage("marquee").boards[0];
+	assert.ok(marquee.fills.length >= 4 && marquee.fills.every((fill) => Number.isInteger(fill.line) && fill.speed && fill.step > 0));
+	assert.ok(new Set(marquee.fills.filter((fill) => fill.line === 0).map((fill) => Math.sign(fill.speed))).size === 2, "rows stream both ways");
+
+	// Words hung in depth line up from the line's camera.
+	const deep = stage("anamorph");
+	for (const item of deep.lines) {
+		const words = item.place.block.words;
+		assert.ok(new Set(words.map((word) => Math.round(word.z))).size > 1, "at different depths");
+		for (const word of words) assert.ok(Number.isFinite((word.x * motion.PERSPECTIVE_PX) / (motion.PERSPECTIVE_PX - word.z)));
+		// Each word appears at the size of its neighbours from the line's camera.
+		const apparent = words.map((word) => (word.size * motion.PERSPECTIVE_PX) / (motion.PERSPECTIVE_PX - word.z));
+		assert.ok(Math.max(...apparent) / Math.min(...apparent) < 1.6, "they read as one line: " + apparent.map(Math.round));
+	}
+
+	// Larger than the screen, the view slides along to the word being sung.
+	const bleed = stage("bleed");
+	const huge = bleed.lines[0];
+	if (huge.place.travel > 0) {
+		const at = (time) => Number(motion.travelFrame(huge, huge.place, time).match(/translateX\((-?[\d.]+)px\)/)[1]);
+		assert.notEqual(at(huge.words[0].start + 50), at(huge.end + 400), "the view travels");
+	}
+
+	// Lines slide along their rails into place.
+	const rails = stage("rails");
+	const railed = rails.lines[1];
+	assert.ok(rails.boards[0].strokes.length >= 3 && Math.abs(rails.boards[0].dutch) >= 10, "a slanted grid of rules");
+	assert.ok(motion.lineMotion(rails.boards[0], railed, railed.start - 300, 0, 60).includes("translate("), "on its way along the rail");
+	assert.ok(!motion.lineMotion(rails.boards[0], railed, railed.start + 1200, 0, 60).includes("translate("), "then in place");
+
+	// Margins: lines along the edges of the screen.
+	const margin = stage("margin").boards[0];
+	assert.ok(margin.places.every((place) => Math.abs(place.x) + place.block.width / 2 > 1440 * 0.3), "at the edges: " + margin.places.map((place) => Math.round(place.x)));
+
+	// The way into a board through a growing circle or a band.
+	const opened = { ...stage("column"), boards: null };
+	const iris = director.normalizeDirection({ shots: [{ from: 0, to: 1, layout: "column", enter: "pan" }, { from: 2, to: 3, layout: "column", enter: "iris" }] }, model, { seed: 8 });
+	const irisPlan = compose(motion, type, model, { ...iris, shots: iris.shots.map((shot, index) => ({ ...shot, enter: index ? "iris" : "pan" })) }, 8);
+	const into = irisPlan.boards[1];
+	const radius = (time) => Number((motion.revealClip(irisPlan, into, time).match(/circle\(([\d.]+)px/) || [0, Infinity])[1]);
+	assert.ok(radius(into.appear + 50) < radius((into.appear + irisPlan.lines[into.first].arrive) / 2), "the circle grows");
+	assert.equal(motion.revealClip(irisPlan, into, irisPlan.lines[into.first].arrive + 10), "", "and is gone once the board is in");
+	assert.ok(Math.abs(into.cameras[0].z - irisPlan.boards[0].cameras[irisPlan.boards[0].cameras.length - 1].z) >= 300, "in place, a little deeper");
+	void opened;
+});
+
+test("new word entrances, exits and holds", () => {
+	const { motion } = load();
+	const context = { count: 4, wordStart: 1000, seed: 3, sway: 1, pace: 1 };
+	const decoding = motion.charFrame("decode", { start: 1000, ch: "가" }, 0, 900, context);
+	assert.ok(decoding.text && decoding.text !== "가" && /\p{Script=Hangul}/u.test(decoding.text), "decode flickers through letters of the same script: " + decoding.text);
+	assert.equal(motion.charFrame("decode", { start: 1000, ch: "A" }, 0, 1000, context).text, undefined, "and locks on");
+	assert.ok(motion.charFrame("rain", { start: 1000 }, 1, 900, context).transform.startsWith("translateY("), "rain letters fall or rise into line");
+	assert.ok(motion.solidFrame("brush", 0.4).clip.startsWith("polygon("), "brush pulls a slanted edge across");
+	assert.ok(motion.solidFrame("shutter", 0.4).clip.startsWith("inset(calc("), "shutter opens from the middle line");
+	const held = { start: 1000, end: 3000, voicesEnd: 3000, exitAt: 5000, exitSpan: 600, text: "hold me" };
+	for (const hold of ["wobble", "swivel"]) {
+		assert.notEqual(motion.holdFrame(hold, held, 1600), motion.holdFrame(hold, held, 2300), hold + " keeps moving");
+	}
+	assert.ok(motion.exitFrame("glitch", 0.5, 9).clip.startsWith("inset("));
+	assert.ok(motion.exitFrame("drip", 0.5).transform.includes("scale("));
+});
+
+test("a lyric line never takes more than two rows, however it is set", () => {
+	const { motion, director, type } = load();
+	const latin = motion.buildModel([
+		line(["Lanterns", "rising", "over", "quiet", "streets", "and", "every", "single", "window", "glows", "for", "you", "tonight"], 1000, { step: 180 }),
+		line(["we", "keep", "on", "running", "through", "the", "longest", "night", "of", "our", "lives", "together"], 4000, { step: 200 }),
+		line(["one", "two", "three", "four", "five", "six", "seven", "eight"], 7000, { step: 220 }),
+		line(["hold", "on"], 9500),
+	]);
+	const japanese = motion.buildModel([
+		line([..."夢ならばどれほどよかったでしょう未だにあなたのことを夢にみる"], 1000, { step: 120 }),
+		line([..."忘れた物を取りに帰るように古びた思い出の埃を払う"], 6000, { step: 120 }),
+	]);
+	for (const [model, lang] of [[latin, "en"], [japanese, "ja"]]) {
+		for (const layout of director.LAYOUTS) {
+			for (const seed of [2, 9]) {
+				const direction = director.normalizeDirection({ shots: [{ from: 0, to: model.length - 1, layout, enter: "pan" }] }, model, { seed });
+				const plan = compose(motion, type, model, direction, seed, lang);
+				for (const board of plan.boards) {
+					for (const place of board.places) assert.ok(place.block.rows <= 2, board.layout + " (asked " + layout + ") sets a line in " + place.block.rows + " rows");
+				}
+			}
+		}
+	}
+});
+
 
 test("accents after typography edits: handwriting, a giant word and drawn marks", () => {
 	const { motion, director, type } = load();
@@ -1244,7 +1498,7 @@ test("editorial compositions: a wave, a star chart, a grid and the corners", () 
 	assert.ok(new Set(wave.places.map((place) => Math.sign(Math.round(place.y)))).size >= 2, "above and below the middle");
 	const corners = stage("corners");
 	const quarters = new Set(corners.places.map((place) => Math.sign(place.x) + ":" + Math.sign(place.y)));
-	assert.equal(quarters.size, 4, "one line in each corner");
+	assert.ok(corners.places.length >= 3 && quarters.size === corners.places.length, "one line in each corner");
 	assert.ok(corners.places.every((place) => place.block.size < model[0].words.length * 1000), "set small");
 	const grid = stage("grid");
 	const lefts = new Set(grid.places.map((place) => Math.round(place.x - place.block.width / 2)));
@@ -1271,25 +1525,30 @@ test("a long sideways stretch turns the background back to landscape, and it fol
 	const sideways = (roll) => { const turn = ((roll % 180) + 180) % 180; return Math.min(turn, 180 - turn); };
 	const tilt = (roll) => { const turn = ((roll % 360) + 360) % 360; return Math.min(turn, 360 - turn); };
 	assert.ok(sideways(plan.lines[3].camera.roll) > 80, "the middle board is on its side");
-	assert.equal(plan.uprights.length, 1, "one sideways stretch is long enough");
-	const [upright] = plan.uprights;
-	assert.equal(upright.from, plan.lines[2].arrive + 7000);
-	// The quarter turn back may land upright or upside down: upside down is not "back".
-	const back = plan.lines.slice(8).find((line) => tilt(line.camera.roll) <= 45);
-	assert.equal(upright.to, back ? back.arrive : Infinity);
+	const [righting] = plan.uprights;
+	assert.ok(righting && righting.from >= plan.lines[2].arrive + 5000 && righting.from < plan.lines[2].arrive + 7300, "one sideways stretch is long enough: " + (righting && righting.from - plan.lines[2].arrive));
 	const at = (time) => motion.backgroundFrame(plan, motion.cameraPose(plan, time, null), time);
-	assert.ok(sideways(at(upright.from - 100).rotate) > 80, "it turns with the camera at first");
-	const righted = at(upright.from + 1500);
-	assert.ok(tilt(righted.rotate) < 1, "then rights itself: " + righted.rotate);
-	assert.ok(righted.scale < at(upright.from - 100).scale, "and covers the screen with less zoom");
-	const late = Number.isFinite(upright.to) ? upright.to + 1000 : plan.lines[11].end;
-	assert.ok(tilt(at(late).rotate) < 15, "the video is upright at the end, never upside down: " + at(late).rotate);
-	if (Number.isFinite(upright.to)) assert.equal(motion.uprightAt(plan, upright.to + 1000), null, "back on upright lines it follows the camera again");
-	assert.equal(motion.backgroundFrame(plan, motion.cameraPose(plan, upright.from + 1500, null)).rotate,
-		-motion.cameraPose(plan, upright.from + 1500, null).roll, "without a time it is the plain camera turn");
+	// The video turns over with the camera on the way in.
+	const into = (plan.lines[1].leave + plan.lines[2].arrive) / 2;
+	assert.ok(tilt(at(into).rotate) > 20, "it turns with the camera at first: " + at(into).rotate);
+	assert.ok(sideways(at(righting.from - 100).rotate) > 70, "and stays on its side a while");
+	const righted = at(righting.until + 200);
+	assert.ok(tilt(righted.rotate) < 7, "then rights itself (but for its own slow sway): " + righted.rotate);
+	assert.ok(righted.scale < at(righting.from - 100).scale, "and covers the screen with less zoom");
+	assert.ok(tilt(at(plan.lines[11].end).rotate) < 7, "the video is upright at the end: " + at(plan.lines[11].end).rotate);
+	// Upside down only on the way over, never for long.
+	let upsideSince = null;
+	for (let time = plan.lines[0].start; time < plan.lines[11].end + 3000; time += 50) {
+		if (tilt(at(time).rotate) > 135) {
+			upsideSince ??= time;
+			assert.ok(time - upsideSince < 2600, "never upside down for long, from " + upsideSince);
+		} else upsideSince = null;
+	}
+	assert.equal(motion.backgroundFrame(plan, motion.cameraPose(plan, righting.until + 200, null)).rotate,
+		-motion.cameraPose(plan, righting.until + 200, null).roll, "without a time it is the plain camera turn");
 });
 
-test("a flip never leaves the video upside down: it rights itself while the camera turns over", () => {
+test("a flip turns the video over with the camera, then it rights itself soon after landing", () => {
 	const { motion, director, type } = load();
 	const lyrics = [];
 	for (let index = 0; index < 9; index += 1) lyrics.push(line(["flip" + index, "over", "line"], 2000 + index * 2200, { step: 500 }));
@@ -1304,14 +1563,44 @@ test("a flip never leaves the video upside down: it rights itself while the came
 	const plan = compose(motion, type, model, direction, 3);
 	const tilt = (roll) => { const turn = ((roll % 360) + 360) % 360; return Math.min(turn, 360 - turn); };
 	assert.ok(tilt(plan.lines[4].camera.roll) > 170, "the middle board is upside down");
-	const [upright] = plan.uprights;
-	assert.ok(upright, "the flip is righted");
-	assert.equal(upright.from, plan.lines[2].leave, "from the moment the camera starts to turn over");
-	assert.ok(upright.turn <= plan.lines[3].arrive - plan.lines[2].leave, "within the move: " + upright.turn);
 	const at = (time) => motion.backgroundFrame(plan, motion.cameraPose(plan, time, null), time);
-	for (let time = plan.lines[3].arrive; time < plan.lines[5].end; time += 250) {
-		assert.ok(tilt(at(time).rotate) < 3, "upright behind the flipped board at " + time + ": " + at(time).rotate);
+	assert.ok(tilt(at(plan.lines[3].arrive).rotate) > 150, "the video has turned over with the camera: " + at(plan.lines[3].arrive).rotate);
+	const [righting] = plan.uprights;
+	assert.ok(righting, "the flip is righted");
+	assert.ok(Math.abs(righting.from - (plan.lines[3].arrive + 700)) < 1, "soon after the camera has landed");
+	// While the board is held (the far plane swings a little more while the camera travels).
+	for (let time = righting.until + 50; time < plan.lines[5].leave; time += 250) {
+		const held = plan.lines.some((item) => time >= item.arrive && time <= item.leave);
+		if (!held) continue;
+		assert.ok(tilt(at(time).rotate) < 7, "upright behind the flipped board at " + time + ": " + at(time).rotate);
 	}
+});
+
+test("the video background keeps moving, and is upright in interludes", () => {
+	const { motion, director, type } = load();
+	const model = motion.buildModel([
+		line(["one", "two", "three"], 2000), line(["four", "five", "six"], 4000),
+		line(["seven", "eight"], 16000), line(["nine", "ten"], 18000),
+	]);
+	const raw = { shots: [{ from: 0, to: 1, layout: "column", enter: "pan", dutch: 0 }, { from: 2, to: 3, layout: "column", enter: "roll", dutch: 0 }] };
+	const checked = director.normalizeDirection(raw, model, { seed: 4 });
+	const direction = { ...checked, shots: checked.shots.map((shot, index) => ({ ...shot, ...raw.shots[index] })) };
+	const plan = compose(motion, type, model, direction, 4);
+	const at = (time) => motion.backgroundFrame(plan, motion.cameraPose(plan, time, null), time);
+	const tilt = (roll) => { const turn = ((roll % 360) + 360) % 360; return Math.min(turn, 360 - turn); };
+	let still = 0;
+	let samples = 0;
+	let previous = null;
+	for (let time = 2000; time < 19000; time += 100) {
+		const frame = at(time);
+		if (previous) {
+			samples += 1;
+			if (Math.abs(frame.rotate - previous.rotate) < 0.05 && Math.abs(frame.scale - previous.scale) < 0.0005) still += 1;
+		}
+		previous = frame;
+		if (motion.restAt(plan, time) > 0.99) assert.ok(tilt(frame.rotate) < 7, "upright in the interlude at " + time + ": " + frame.rotate);
+	}
+	assert.ok(still / samples < 0.05, "it never stands still: " + still + " of " + samples);
 });
 
 test("the camera eases in on a held line only as far as its ends stay on screen", () => {

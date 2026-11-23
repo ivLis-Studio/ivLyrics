@@ -4,19 +4,24 @@
 // A director (MotionLyricsDirector.js, written by AI when a provider is
 // available) groups the lines into shots and paces them to the song's tempo;
 // each shot becomes a board, a composition of several lines in 3D space
-// (twenty-seven kinds: flat ones like columns, stairs, strips and spokes,
+// (thirty-seven kinds: flat ones like columns, stairs, strips and spokes,
 // ones in depth like tunnels, drums the lines wrap around and a tilted
-// crawl, and ones after typography edits that show one thought at a time on
-// bands, colour cards and colour fields, bend type round a circle or stand
-// it upright, or set it on a wave, a star chart, a grid or in the corners),
-// set in the faces of its script (MotionLyricsType.js). A camera
+// crawl, ones after typography edits that show one thought at a time on
+// bands and colour fields, bend type round a circle or stand it upright, set
+// it on a wave, a star chart, a grid or in the corners, and ones from the
+// motion-typography canon: sized lockups, one word at a time, chains of
+// words, lines that fill the width, seals, words round the frame, upright
+// margins, marquee rows, words hung in depth, type larger than the screen
+// and rails), set in the faces of its script (MotionLyricsType.js). A lyric
+// line takes at most two rows (MAX_LINE_ROWS) however it is set. A camera
 // flies, rolls, orbits and dollies across the boards and turns to face the
-// lines on drums: upcoming lines wait as faint outlines, each word lands as
-// solid type with its effect as it is sung (emphasised words in one of
-// sixteen accents), and
-// sung lines stay as dim echoes until their board drifts out of view. Motifs,
-// a giant background word, colour panels and letterbox bars animate with each
-// board, and the video background turns and zooms with the camera. Other
+// lines on drums. Lines come and go: a line's outline peeks in just before
+// it is sung, each word lands as solid type with its effect as it is sung
+// (emphasised words in one of nineteen accents), the line keeps moving while
+// it is held (its hold) and leaves with its shot's exit once the next line
+// is under way. Motifs, a giant background word, colour panels and letterbox
+// bars animate with each board, and the video background turns and zooms
+// with the camera (never left turned) and keeps moving on its own. Other
 // voices (background vocals, a duet partner) sing in smaller rows of their
 // own line, on their own timing; while one is still sung into the next
 // line the camera keeps both in frame. In interludes the board fades soon after
@@ -41,17 +46,37 @@
 	const BOARD_PREVIEW_MS = 1800;
 	const BOARD_LINGER_MS = 650;
 	const BOARD_FADE_MS = 900;
+	// Lines come and go instead of standing as a lyric sheet: a line's outline
+	// peeks in shortly before it is sung, a sung line stays as a dim echo only
+	// while the next one gets going, then leaves with its shot's exit (at most
+	// the current line and the one before it are on screen). Compositions whose
+	// structure is the point (a drum, a wall of words, a star chart) keep the
+	// lines round the current one in view instead (PREVIEW_LAYOUTS).
+	const PEEK_MS = 700;
+	const PEEK_GHOST = 0.3;
+	const SINGING_GHOST = 0.3;
+	const ECHO_SOLID = 0.42;
+	const ECHO_DIM_MS = 280;
+	const EXIT_MS = 560;
+	const PREVIEW_LAYOUTS = new Set(["reel", "carousel", "wordwall", "tunnel", "crawl", "constellation", "grid"]);
+	// A shot's exit (how a sung line leaves) and hold (how a line keeps moving once its words have landed).
+	const EXIT_NAMES = new Set(["fade", "rise", "fall", "scatter", "shrink", "sweep", "blur", "wipe", "flip", "stretch", "glitch", "drip"]);
+	const HOLD_NAMES = new Set(["still", "grow", "drift", "float", "lean", "breathe", "push", "wobble", "swivel"]);
 	// After a voice sung into the next line ends, the camera takes this long to settle on the new line.
 	const SHARE_RETURN_MS = 520;
-	// The background turns with the camera, so a sideways shot shows the video
+	// The background turns with the camera, flips and barrel rolls included, so
+	// the video is seen to turn over with the edit. It is only not left turned:
 	// on its side (portrait on a wide screen, small and blurry once scaled to
-	// cover it). After this long sideways it turns back to landscape, and it
-	// follows the camera again once the camera is back. Upside down it never
-	// stays: it rights itself while the camera turns over (at least this fast).
-	const SIDEWAYS_HOLD_MS = 7000;
+	// cover it) it turns back to landscape after SIDEWAYS_HOLD_MS, upside down
+	// it rights itself UPSIDE_HOLD_MS after the camera has landed, and in
+	// interludes it comes back upright under the camera's swing. On its own it
+	// keeps turning, drifting and breathing a little (BG_SWAY), so it never
+	// stands still.
+	const SIDEWAYS_HOLD_MS = 5000;
+	const UPSIDE_HOLD_MS = 700;
 	const UPRIGHT_TURN_MS = 1400;
-	const UPRIGHT_RETURN_MS = 900;
-	const FLIP_TURN_MIN_MS = 360;
+	const UPSIDE_TURN_MS = 1100;
+	const BG_SWAY = Object.freeze({ slow: 3.4, mid: 4.2, fast: 4.8, rap: 4.4 });
 	const TUNNEL_STEP = 1500;
 	const PUSH_DEPTH = 2300;
 	const PULL_DEPTH = 1900;
@@ -590,7 +615,7 @@
 		return [first, second || hslToHex([(hue + 0.42) % 1, Math.max(0.62, saturation), 0.66])];
 	};
 
-	/** A palette colour deepened into a ground (cards, colour fields) that white type reads on. */
+	/** A palette colour deepened into a ground (colour fields) that white type reads on. */
 	const deepOf = (color) => {
 		const [hue, saturation] = rgbToHsl(parseColor(color) || [255, 92, 160]);
 		return hslToHex([hue, Math.max(0.74, saturation), 0.44]);
@@ -606,7 +631,7 @@
 	const fallbackMeasure = (text, size) => graphemesOf(text).reduce((sum, piece) => sum + (CJK_RE.test(piece) || /\p{Script=Hangul}/u.test(piece) ? 1 : 0.56), 0) * size;
 	const DEFAULT_INFO = Object.freeze({ script: "latin", rtl: false, joined: false, lang: "", words: [] });
 	// Word-level stand-ins for letter effects in scripts whose letters join.
-	const JOINED_FX = Object.freeze({ type: "wipe", assemble: "blur", drop: "rise", wave: "rise", track: "wipe", bounce: "pop", flicker: "wipe", cascade: "lift", ripple: "rise", swirl: "blur" });
+	const JOINED_FX = Object.freeze({ type: "wipe", assemble: "blur", drop: "rise", wave: "rise", track: "wipe", bounce: "pop", flicker: "wipe", cascade: "lift", ripple: "rise", swirl: "blur", rain: "rise", decode: "blur" });
 
 	const createFontBook = () => {
 		const specs = new Map();
@@ -668,6 +693,9 @@
 	// reaches sideways (style.css: the brackets' rules, the stamp's frame, the
 	// pen loop, the marker): the words beside it are set clear of the mark.
 	const ACCENT_REACH = Object.freeze({ bracket: 0.26, stamp: 0.24, circle: 0.31, mark: 0.1, underline: 0.06 });
+	// However a lyric line is set (rows, a tower, upright columns), it never
+	// takes more than this many rows: a long line is set smaller instead.
+	const MAX_LINE_ROWS = 2;
 
 	/** A line's words with the face, cased text and natural width each is set in. */
 	const itemsOf = (line, ctx, options) => {
@@ -775,7 +803,7 @@
 					gap: position ? size * (word.joined ? 0.05 + spec.spacing : 0.27 + spec.spacing) : 0,
 				};
 			});
-			const fit = fitRows(items, maxLength / scale, 3);
+			const fit = fitRows(items, maxLength / scale, MAX_LINE_ROWS);
 			const target = voice.start < line.words[0].start - 250 ? above : below;
 			for (const row of fit.rows) target.push({ row, scale: scale * fit.scale });
 		});
@@ -830,24 +858,24 @@
 	};
 
 	/**
-	 * A line's words in up to four rows, centred on the line's origin, with
+	 * A line's words in up to two rows, centred on the line's origin, with
 	 * its other voices in smaller rows. leadWidth is the lead's own width.
 	 */
 	const layoutBlock = (line, ctx, options) => {
 		const { size, maxLength, align = "center" } = options;
 		const rtl = (ctx.typography[line.n] || DEFAULT_INFO).rtl;
-		const lead = fitRows(itemsOf(line, ctx, options), maxLength, 4);
+		const lead = fitRows(itemsOf(line, ctx, options), maxLength, MAX_LINE_ROWS);
 		const { rows, scales } = withVoices(lead.rows, lead.rows.map(() => lead.scale), voiceRows(line, ctx, options, lead.scale, maxLength));
 		const block = stackRows(rows, scales, align, rtl, size * lead.scale);
 		return { ...block, size: size * lead.scale, rtl, leadWidth: Math.max(...lead.rows.map(rowWidth)) * lead.scale };
 	};
 
-	/** A line set as a justified tower: one or two words per row, every row the same width. */
+	/** A line set as a justified tower: two rows (one when it is a single word), every row the same width. */
 	const towerBlock = (line, ctx, width, options) => {
 		const rtl = (ctx.typography[line.n] || DEFAULT_INFO).rtl;
 		const sized = { ...options, size: 100 };
 		const items = itemsOf(line, ctx, sized);
-		const count = items.length <= 4 ? items.length : Math.min(4, Math.ceil(items.length / 2));
+		const count = Math.min(MAX_LINE_ROWS, items.length);
 		const rows = count <= 1 ? [items] : splitRows(items, count, rowWidth(items));
 		const scaleOf = (row) => clamp(width / Math.max(1, rowWidth(row)), (ctx.F * 0.5) / 100, (ctx.F * 2.4) / 100);
 		// The other voices sit under the tower, sized from its smallest row.
@@ -1373,40 +1401,6 @@
 		return { places, frames, drift: { z: 60, roll: 0.5 }, solo: true, plates: [band], strokes: [tick(-1), tick(1)] };
 	};
 
-	// Each line on its own colour card, dealt one over another; a card lands as its line starts.
-	const layoutCards = (lines, ctx, random, look) => {
-		const offset = Math.floor(random() * GROUNDS.length);
-		let side = random() < 0.5 ? 1 : -1;
-		const places = [];
-		lines.forEach((line, index) => {
-			const block = layoutBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 0.86 * boostOf(line), maxLength: ctx.W * 0.5 }));
-			const card = { w: block.width + ctx.F * 1.4, h: block.height + ctx.F * 1.1 };
-			const previous = places[index - 1];
-			let x = 0;
-			let y = 0;
-			if (previous) {
-				side = -side;
-				x = previous.x + side * between(random, 0.1, 0.2) * ctx.W;
-				y = previous.y + previous.card.h / 2 + card.h * between(random, 0.12, 0.3);
-			}
-			const color = groundOf(index, offset);
-			places.push({
-				x, y, z: index * 46,
-				rot: index ? between(random, 3, 8) * side : between(random, -3, 3),
-				block, card, color,
-				// Nothing waits on the table: the line shows once its card has landed.
-				cover: true,
-				ground: color === "ink" ? "dark" : "color",
-			});
-		});
-		centerPlaces(places);
-		const plates = places.map((place, index) => ({
-			kind: "card", color: place.color, x: place.x, y: place.y, z: place.z - 10, w: place.card.w, h: place.card.h, rot: place.rot, radius: ctx.F * 0.22, line: index,
-		}));
-		const frames = places.map((place) => ({ x: place.x, y: place.y, z: place.z, roll: place.rot }));
-		return { places, frames, drift: { z: 70, roll: 1 }, plates };
-	};
-
 	// One line at a time, as large as the screen allows, on a flat colour field that changes with every line.
 	const layoutPoster = (lines, ctx, random, look) => {
 		const offset = Math.floor(random() * GROUNDS.length);
@@ -1583,23 +1577,17 @@
 	const UPRIGHT_RE = /^[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{P}\p{N}\s\u30fc]+$/u;
 	const standsUpright = (line) => UPRIGHT_RE.test(line.text) && !line.backing.length;
 
-	/** A line set top to bottom, in more columns (right to left) when it is long. */
+	/** A line set top to bottom, in two columns (right to left) when it is long. */
 	const pillarBlock = (line, ctx, options) => {
 		const items = itemsOf(line, ctx, options);
 		const lengthOf = (item) => graphemesOf(item.text).length * item.size * 1.02;
 		const gap = options.size * 0.3;
 		const most = ctx.H * 0.64;
-		const columns = [[]];
-		let used = 0;
-		for (const item of items) {
-			const length = lengthOf(item);
-			if (used && used + gap + length > most) {
-				columns.push([]);
-				used = 0;
-			}
-			columns[columns.length - 1].push(item);
-			used += (used ? gap : 0) + length;
-		}
+		// A long line splits into at most MAX_LINE_ROWS balanced columns, set smaller when they are still too tall.
+		const spans = items.map((item, index) => ({ item, width: lengthOf(item), gap: index ? gap : 0 }));
+		const total = rowWidth(spans);
+		const columns = (total > most && items.length > 1 ? splitRows(spans, Math.min(MAX_LINE_ROWS, items.length), total) : [spans])
+			.map((column) => column.map((span) => span.item));
 		const heights = columns.map((column) => column.reduce((sum, item, index) => sum + lengthOf(item) + (index ? gap : 0), 0));
 		const scale = Math.min(1, most / Math.max(...heights));
 		const pitch = options.size * 1.34 * scale;
@@ -1767,14 +1755,341 @@
 		return { places, frames, drift: { z: 24, roll: 0.4 } };
 	};
 
+	// ---- Compositions from the motion-typography canon (lyric videos, title sequences, kinetic identities)
+
+	// Little words a sized lockup sets small (the stressed words carry the line).
+	const SMALL_WORDS = new Set(["a", "an", "the", "of", "to", "in", "on", "at", "by", "for", "and", "or", "but", "is", "am", "are", "it", "its", "i", "me", "my", "you", "your", "we", "be", "as", "so", "oh", "do", "no", "up", "if", "de", "la", "le", "les", "el", "los", "y", "et", "und", "der", "die", "das", "ein", "un", "une"]);
+	/** How much a word weighs in a sized lockup: the little words small, the long and emphasised ones big. */
+	const stressOf = (text, emph) => {
+		if (emph) return 1.9;
+		const bare = String(text ?? "").toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+		const length = graphemesOf(bare).length;
+		if (!length) return 0.5;
+		if (SMALL_WORDS.has(bare)) return 0.55;
+		if (length === 1 && /\p{Script=Hiragana}/u.test(bare)) return 0.6;
+		return length >= 6 ? 1.25 : 1;
+	};
+
+	/**
+	 * A line as a sized lockup: its words in one or two rows, each word sized
+	 * by its stress, every row justified to the same width and the rows set
+	 * tight on their baselines. Lines with other voices keep the plain block.
+	 */
+	const lockupBlock = (line, ctx, options, width, maxHeight) => {
+		if (line.backing.length) return layoutBlock(line, ctx, { ...options, size: ctx.F * 0.9, maxLength: width });
+		const info = ctx.typography[line.n] || DEFAULT_INFO;
+		const items = itemsOf(line, ctx, { ...options, size: 100 });
+		items.forEach((item, index) => {
+			const weight = stressOf(item.text, item.emph) / (item.emph ? 1.3 * (ACCENT_SCALE[options.accent] || 1) : 1);
+			item.size *= weight;
+			item.width *= weight;
+			item.gap = index ? Math.min(item.size, items[index - 1].size) * (item.gap > 10 ? 0.24 : 0.05) : 0;
+		});
+		const rows = items.length >= 3 ? splitRows(items, Math.min(MAX_LINE_ROWS, items.length), rowWidth(items)) : [items];
+		// Every row fills the width, but a row of little words does not grow past twice the line's size.
+		let scales = rows.map((row) => Math.min(width / Math.max(1, rowWidth(row)), (ctx.F * 3.2) / Math.max(...row.map((item) => item.size))));
+		const build = () => {
+			const words = [];
+			let baseline = 0;
+			let widest = 0;
+			let tallest = 0;
+			rows.forEach((row, rowIndex) => {
+				const scale = scales[rowIndex];
+				const top = Math.max(...row.map((item) => item.size)) * scale;
+				tallest = Math.max(tallest, top);
+				baseline += rowIndex ? top * 0.92 : top * 0.78;
+				const rowLength = rowWidth(row) * scale;
+				widest = Math.max(widest, rowLength);
+				let x = -rowLength / 2;
+				row.forEach((item, position) => {
+					if (position) x += item.gap * scale;
+					const size = item.size * scale;
+					const itemWidth = item.width * scale;
+					const center = x + itemWidth / 2;
+					words[item.index] = {
+						x: info.rtl ? -center : center,
+						y: baseline - size * 0.24,
+						size, width: itemWidth, role: item.role, emph: item.emph, voice: 0, spec: item.spec, text: item.text, letters: item.letters,
+					};
+					x += itemWidth;
+				});
+			});
+			const height = baseline + tallest * 0.22;
+			words.forEach((word) => { word.y -= height / 2; });
+			return { words, width: widest, height, rows: rows.length, size: tallest, rtl: info.rtl, leadWidth: widest };
+		};
+		let block = build();
+		if (block.height > maxHeight) {
+			scales = scales.map((scale) => (scale * maxHeight) / block.height);
+			block = build();
+		}
+		return block;
+	};
+
+	// One line at a time as a sized lockup in the middle of the screen.
+	const layoutLockup = (lines, ctx, random, look) => {
+		const places = lines.map((line) => ({ x: 0, y: 0, z: 0, rot: 0, block: lockupBlock(line, ctx, blockOptions(look, line, { light: false }), ctx.W * between(random, 0.56, 0.7), ctx.H * 0.62) }));
+		const frames = places.map(() => ({ x: 0, y: 0, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 110, roll: 0.6 }, solo: true };
+	};
+
+	/** A line set one word at a time in one place: each word sized by its stress (the renderer shows only the latest). */
+	const flashBlock = (line, ctx, options) => {
+		const info = ctx.typography[line.n] || DEFAULT_INFO;
+		const items = itemsOf(line, ctx, { ...options, size: 100 });
+		const words = [];
+		let widest = 0;
+		let tallest = 0;
+		items.forEach((item) => {
+			const wanted = ctx.F * 1.55 * stressOf(item.text, item.emph);
+			const size = Math.min(wanted, (ctx.W * 0.84 * 100) / Math.max(1, item.width) * (item.size / 100), ctx.H * 0.46);
+			const scale = size / item.size;
+			const width = item.width * scale;
+			words[item.index] = { x: 0, y: 0, size, width, role: item.role, emph: item.emph, voice: 0, spec: item.spec, text: item.text, letters: item.letters };
+			widest = Math.max(widest, width);
+			tallest = Math.max(tallest, size);
+		});
+		return { words, width: widest, height: tallest * 1.1, rows: 1, size: tallest, rtl: info.rtl, leadWidth: widest };
+	};
+
+	// One word at a time, each replacing the last in the same place on its beat.
+	const layoutFlash = (lines, ctx, random, look) => {
+		const places = lines.map((line) => (line.backing.length
+			? { x: 0, y: 0, z: 0, rot: 0, block: layoutBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 1.05 * boostOf(line), maxLength: ctx.W * 0.74 })) }
+			: { x: 0, y: 0, z: 0, rot: 0, block: flashBlock(line, ctx, blockOptions(look, line, { light: false })), flash: true }));
+		const frames = places.map(() => ({ x: 0, y: 0, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 140, roll: 0.4 }, solo: true };
+	};
+
+	// Each line attached to the edge of the one before, now and then turned a quarter: a mosaic the camera rolls along.
+	const layoutChain = (lines, ctx, random, look) => {
+		const turn = random() < 0.5 ? 90 : -90;
+		const gap = ctx.F * 0.22;
+		const places = [];
+		lines.forEach((line, index) => {
+			const block = lockupBlock(line, ctx, blockOptions(look, line, { light: false }), ctx.W * between(random, 0.42, 0.54), ctx.H * 0.46);
+			if (!index) {
+				places.push({ x: 0, y: 0, z: 0, rot: 0, block });
+				return;
+			}
+			const previous = places[index - 1];
+			// Every other line turns down the side of the one before (now and then two in a row).
+			const turned = index % 2 === 1 || random() < 0.2;
+			const rot = previous.rot + (turned ? turn : 0);
+			// In the previous line's own frame: under it (left edges aligned), or down its side when turned.
+			const local = turned
+				? { x: (turn > 0 ? 1 : -1) * (previous.block.width / 2 + gap + block.height / 2), y: -previous.block.height / 2 + block.width / 2 }
+				: { x: -previous.block.width / 2 + block.width / 2, y: previous.block.height / 2 + gap + block.height / 2 };
+			const offset = rotate2d(local.x, local.y, previous.rot);
+			places.push({ x: previous.x + offset.x, y: previous.y + offset.y, z: 0, rot, block });
+		});
+		centerPlaces(places);
+		const frames = places.map((place) => ({ x: place.x, y: place.y, z: 0, roll: place.rot }));
+		return { places, frames, drift: { z: 70, roll: 0.8 } };
+	};
+
+	// One line at a time in capitals that always fill the width: each sung word stretches the line (fillFrame).
+	const layoutFill = (lines, ctx, random, look) => {
+		const target = ctx.W * 0.88;
+		const places = lines.map((line) => {
+			// Heavy capitals throughout (the shot's face and serif words give way).
+			const options = blockOptions(look, line, { emphScale: 1.15, light: false, upper: true, type: "impact", serif: false });
+			const natural = layoutBlock(line, ctx, { ...options, size: 100, maxLength: Infinity }).leadWidth / 100;
+			const size = Math.min(target / Math.max(1, natural), ctx.F * 3);
+			// A long line cannot fill the width in one row: it is set as a plain block.
+			if (size < ctx.F * 0.55 || line.backing.length) {
+				return { x: 0, y: 0, z: 0, rot: 0, block: layoutBlock(line, ctx, { ...options, size: ctx.F * 0.95, maxLength: target }) };
+			}
+			const block = layoutBlock(line, ctx, { ...options, size, maxLength: Infinity });
+			return { x: 0, y: 0, z: 0, rot: 0, block, fill: { target, most: Math.max(1, Math.min(3.4, (ctx.H * 0.62) / Math.max(1, block.height))) } };
+		});
+		const frames = places.map(() => ({ x: 0, y: 0, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 60, roll: 0.3 }, solo: true };
+	};
+
+	// One line at a time inside a ring like a seal, an outer dashed ring turning the other way.
+	const layoutSeal = (lines, ctx, random, look) => {
+		const radius = Math.min(ctx.W, ctx.H) * 0.33;
+		const spin = random() < 0.5 ? 1 : -1;
+		const places = lines.map((line) => {
+			let block = layoutBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 0.92 * boostOf(line), maxLength: radius * 1.5 }));
+			if (block.height > radius * 1.2) block = layoutBlock(line, ctx, blockOptions(look, line, { size: (ctx.F * 0.92 * boostOf(line) * radius * 1.2) / block.height, maxLength: radius * 1.5 }));
+			return { x: 0, y: 0, z: 0, rot: 0, block };
+		});
+		const plates = [];
+		places.forEach((_, index) => {
+			plates.push({ kind: "ring", color: "seal", x: 0, y: 0, z: -6, w: radius * 2, h: radius * 2, rot: 0, radius, line: index, solo: true, spin: spin * 14 });
+			plates.push({ kind: "ring", color: "dash", x: 0, y: 0, z: -10, w: radius * 2.28, h: radius * 2.28, rot: between(random, 0, 90), radius: radius * 1.14, line: index, solo: true, spin: -spin * 26 });
+		});
+		const frames = places.map(() => ({ x: 0, y: 0, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 90, roll: 0.6 }, solo: true, plates };
+	};
+
+	/** A line's words placed round the edges of the frame (clockwise from the top left), the middle left open. */
+	const frameBlock = (line, ctx, options, random) => {
+		const info = ctx.typography[line.n] || DEFAULT_INFO;
+		const items = itemsOf(line, ctx, { ...options, size: 100 });
+		const A = ctx.W * 0.4;
+		const B = ctx.H * 0.34;
+		const perimeter = 4 * A + 4 * B;
+		const sized = items.map((item) => {
+			const size = clamp(ctx.F * 0.74 * stressOf(item.text, item.emph) * between(random, 0.85, 1.2), ctx.F * 0.42, ctx.F * 1.4);
+			return { item, size, width: (item.width * size) / item.size };
+		});
+		const gap = ctx.F * 0.9;
+		const total = sized.reduce((sum, entry) => sum + entry.width, 0) + gap * Math.max(0, sized.length - 1);
+		const stretch = Math.max(1, (perimeter * 0.7) / Math.max(1, total));
+		const pointAt = (s) => {
+			let rest = ((s % perimeter) + perimeter) % perimeter;
+			if (rest < 2 * A) return { x: -A + rest, y: -B };
+			rest -= 2 * A;
+			if (rest < 2 * B) return { x: A, y: -B + rest };
+			rest -= 2 * B;
+			if (rest < 2 * A) return { x: A - rest, y: B };
+			rest -= 2 * A;
+			return { x: -A, y: B - rest };
+		};
+		const words = [];
+		let along = perimeter * 0.02;
+		sized.forEach((entry, index) => {
+			if (index) along += gap * stretch;
+			const point = pointAt(along + (entry.width * stretch) / 2);
+			along += entry.width * stretch;
+			// Pulled inside the frame.
+			const x = clamp(point.x, -ctx.W * 0.46 + entry.width / 2, ctx.W * 0.46 - entry.width / 2);
+			const y = clamp(point.y, -ctx.H * 0.43 + entry.size * 0.6, ctx.H * 0.43 - entry.size * 0.6);
+			words[entry.item.index] = { x, y, rot: between(random, -3, 3), size: entry.size, width: entry.width, role: entry.item.role, emph: entry.item.emph, voice: 0, spec: entry.item.spec, text: entry.item.text, letters: entry.item.letters };
+		});
+		return { words, width: A * 2, height: B * 2, rows: 2, size: Math.max(...sized.map((entry) => entry.size)), rtl: info.rtl, leadWidth: A * 2 };
+	};
+
+	// One line at a time round the edges of the frame, the middle left to the video.
+	const layoutFrame = (lines, ctx, random, look) => {
+		const places = lines.map((line) => ({
+			x: 0, y: 0, z: 0, rot: 0,
+			block: line.backing.length
+				? layoutBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 0.85 * boostOf(line), maxLength: ctx.W * 0.7 }))
+				: frameBlock(line, ctx, blockOptions(look, line, { light: false }), random),
+		}));
+		const frames = places.map(() => ({ x: 0, y: 0, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 40, roll: 0.5 }, solo: true };
+	};
+
+	// Lines along the left and right edges of the screen, stepping inward: upright for Korean, Japanese and Chinese.
+	const layoutMargin = (lines, ctx, random, look) => {
+		const first = random() < 0.5 ? 1 : -1;
+		const places = lines.map((line, index) => {
+			const side = index % 2 ? -first : first;
+			const step = Math.floor(index / 2);
+			if (standsUpright(line)) {
+				const block = pillarBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 0.62 * boostOf(line), light: false }));
+				return { x: side * (ctx.W * 0.4 - step * ctx.F * 1.3 - block.width / 2), y: -ctx.H * 0.04, z: 0, rot: 0, block, upright: true };
+			}
+			const block = layoutBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 0.62 * boostOf(line), maxLength: ctx.W * 0.42, align: side > 0 ? "right" : "left" }));
+			return { x: side * Math.max(0, ctx.W * 0.44 - block.width / 2), y: -ctx.H * 0.3 + index * ctx.H * 0.17, z: 0, rot: 0, block };
+		});
+		const frames = places.map((place) => ({ x: place.x * 0.2, y: place.y * 0.3, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 30, roll: 0.4 } };
+	};
+
+	// One line at a time with copies of it streaming across the screen in rows above and below (marquee bands).
+	const layoutMarquee = (lines, ctx, random, look) => {
+		const fills = [];
+		const places = lines.map((line, index) => {
+			const options = blockOptions(look, line, { light: false });
+			const block = layoutBlock(line, ctx, { ...options, size: ctx.F * 1.05 * boostOf(line), maxLength: ctx.W * 0.8 });
+			const info = ctx.typography[line.n] || DEFAULT_INFO;
+			const spec = ctx.font(info.script, look.type, "display");
+			const text = block.words.slice(0, line.words.length).map((word) => word.text).join(info.joined ? "" : " ");
+			const size = block.size * 0.92;
+			const copy = ctx.measure(text + "   ", size, spec);
+			const pitch = Math.max(block.height / Math.max(1, block.rows), size * 1.08);
+			const direction = random() < 0.5 ? 1 : -1;
+			// Enough copies in a row to cover the screen wherever the row has slid to.
+			const copies = Math.max(4, Math.ceil((ctx.W * 1.8) / Math.max(1, copy)) + 2);
+			for (let row = 1; row * pitch < ctx.H * 0.62; row += 1) {
+				for (const sign of [-1, 1]) {
+					const y = sign * (block.height / 2 + (row - 0.5) * pitch + size * 0.08);
+					fills.push({ text: (text + "   ").repeat(copies), spec, size, x: 0, y, z: 0, rot: 0, line: index, step: copy, speed: direction * (row % 2 ? 1 : -1) * (sign > 0 ? 1 : -1) * ctx.F * (1.1 + row * 0.25) });
+				}
+			}
+			return { x: 0, y: 0, z: 0, rot: 0, block };
+		});
+		const frames = places.map(() => ({ x: 0, y: 0, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 80, roll: 0.5 }, solo: true, fills };
+	};
+
+	/**
+	 * The words of a line hung at different depths, each moved and sized so
+	 * that from the line's camera (on the line's plane) the words line up into
+	 * the line; when the camera moves they split apart in parallax.
+	 */
+	const anamorphize = (block, random) => {
+		const words = block.words.map((word, index) => {
+			const depth = index ? between(random, -760, 240) : between(random, -260, 120);
+			const k = (PERSPECTIVE_PX - depth) / PERSPECTIVE_PX;
+			return { ...word, x: word.x * k, y: word.y * k, size: word.size * k, width: word.width * k, z: depth };
+		});
+		return { ...block, words };
+	};
+
+	// Lines stacked like a column, their words hung in depth: they only read as lines from where the camera holds.
+	const layoutAnamorph = (lines, ctx, random, look) => {
+		const places = [];
+		let y = 0;
+		lines.forEach((line, index) => {
+			const block = anamorphize(layoutBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 0.95 * boostOf(line), maxLength: ctx.W * 0.66 })), random);
+			if (index) y += places[index - 1].block.height / 2 + ctx.H * 0.24 + block.height / 2;
+			places.push({ x: (index % 2 ? 1 : -1) * ctx.W * between(random, 0.04, 0.12), y, z: 0, rot: 0, block });
+		});
+		centerPlaces(places);
+		const frames = places.map((place) => ({ x: place.x, y: place.y, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 12, roll: 0.6 } };
+	};
+
+	// One short line at a time so large it runs off the screen; the view slides along it as it is sung (travelFrame).
+	const layoutBleed = (lines, ctx, random, look) => {
+		const places = lines.map((line) => {
+			const options = blockOptions(look, line, { emphScale: 1.1, light: false });
+			const block = layoutBlock(line, ctx, { ...options, size: ctx.H * 0.5, maxLength: Infinity });
+			const travel = Math.max(0, (block.leadWidth - ctx.W * 0.9) / 2);
+			// The frame holds a screenful of it.
+			return { x: 0, y: 0, z: 0, rot: 0, block: { ...block, width: Math.min(block.width, ctx.W * 0.9), height: Math.min(block.height, ctx.H * 0.8) }, travel };
+		});
+		const frames = places.map(() => ({ x: 0, y: 0, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 50, roll: 0.3 }, solo: true };
+	};
+
+	// Lines on a slanted grid of rules, each sliding along its rule into place (a Saul Bass title).
+	const layoutRails = (lines, ctx, random, look) => {
+		const side = (ctx.typography[lines[0].n] || DEFAULT_INFO).rtl ? -1 : 1;
+		const places = [];
+		let y = 0;
+		lines.forEach((line, index) => {
+			const block = layoutBlock(line, ctx, blockOptions(look, line, { size: ctx.F * 0.88 * boostOf(line), maxLength: ctx.W * 0.6, align: side > 0 ? "left" : "right" }));
+			if (index) y += places[index - 1].block.height / 2 + ctx.F * 0.7 + block.height / 2;
+			const x = side * (index % 3) * ctx.W * 0.09;
+			places.push({ x, y, z: 0, rot: 0, block, slide: { x: 0, y: (index % 2 ? -1 : 1) * ctx.H * 0.42 } });
+		});
+		centerPlaces(places);
+		const rails = new Set();
+		for (const place of places) rails.add(Math.round(place.x - (side * place.block.width) / 2 - side * ctx.F * 0.3));
+		for (let extra = -2; extra <= 2; extra += 1) rails.add(Math.round(extra * ctx.W * 0.16 + ctx.W * 0.05));
+		const top = Math.min(...places.map((place) => place.y - place.block.height / 2)) - ctx.H * 0.5;
+		const length = Math.max(...places.map((place) => place.y + place.block.height / 2)) + ctx.H * 0.5 - top;
+		const strokes = [...rails].map((x) => ({ x, y: top, z: -4, length, rot: 90, stops: places.map(() => 1) }));
+		const frames = places.map((place) => ({ x: place.x, y: place.y, z: 0, roll: 0 }));
+		return { places, frames, drift: { z: 60, roll: 0.4 }, strokes, tilt: (random() < 0.5 ? 1 : -1) * between(random, 10, 14) };
+	};
+
 	// Compositions that show one line at a time: lines sung over each other cannot share them.
-	const SOLO_LAYOUTS = new Set(["slot", "poster", "spread"]);
+	const SOLO_LAYOUTS = new Set(["slot", "poster", "spread", "lockup", "flash", "fill", "seal", "frame", "marquee", "bleed"]);
 	/** A line still sung when the next comes in (MotionLyricsDirector.singsInto: overlapping lines, or another voice singing on). */
 	const singsInto = (line, next) => (root.ivLyricsMotionDirector?.singsInto
 		? root.ivLyricsMotionDirector.singsInto(line, next)
 		: !!line && !!next && next.start < line.end - 150);
 	// Accents that still read on upright type.
-	const UPRIGHT_ACCENTS = new Set(["color", "outline", "glow", "gradient", "extrude", "sticker", "giant", "script", "spark"]);
+	const UPRIGHT_ACCENTS = new Set(["color", "outline", "glow", "gradient", "extrude", "sticker", "giant", "script", "spark", "neon", "chrome"]);
 
 	const LAYOUT_FNS = Object.freeze({
 		column: layoutColumn,
@@ -1794,7 +2109,6 @@
 		reel: layoutReel,
 		crawl: layoutCrawl,
 		slot: layoutSlot,
-		cards: layoutCards,
 		poster: layoutPoster,
 		wordwall: layoutWordwall,
 		arch: layoutArch,
@@ -1804,6 +2118,17 @@
 		constellation: layoutConstellation,
 		grid: layoutGrid,
 		corners: layoutCorners,
+		lockup: layoutLockup,
+		flash: layoutFlash,
+		chain: layoutChain,
+		fill: layoutFill,
+		seal: layoutSeal,
+		frame: layoutFrame,
+		margin: layoutMargin,
+		marquee: layoutMarquee,
+		anamorph: layoutAnamorph,
+		bleed: layoutBleed,
+		rails: layoutRails,
 	});
 	const BIG_MOTIFS = new Set(["ring", "halo", "sunburst", "spiral", "moon", "sun", "disc", "square", "flower", "star", "frame"]);
 	const CALM_MOTIFS = new Set(["ring", "dot", "disc", "halo", "moon", "sun"]);
@@ -1919,8 +2244,11 @@
 	const UPWARDS = new Set(["rise", "crane"]);
 	// How far down a slanting entrance goes for every step sideways.
 	const SLANTED = Object.freeze({ roll: 0.45, twist: 0.45, drift: 0.55, swoop: 0.85 });
-	const IN_DEPTH = { push: -PUSH_DEPTH, through: -PUSH_DEPTH, pull: PULL_DEPTH, fade: -FADE_DEPTH, corkscrew: -PUSH_DEPTH * 0.85 };
+	const IN_DEPTH = { push: -PUSH_DEPTH, through: -PUSH_DEPTH, pull: PULL_DEPTH, fade: -FADE_DEPTH, iris: -FADE_DEPTH, open: -FADE_DEPTH, corkscrew: -PUSH_DEPTH * 0.85 };
 	const HARD_CUTS = new Set(["cut", "panel"]);
+	// Entrances that change shot in place (a dissolve, or the next shot opening out of a circle or a band).
+	const DISSOLVES = new Set(["fade", "iris", "open"]);
+	const REVEALS = new Set(["iris", "open"]);
 	// Moves eased evenly in and out (the others accelerate hard).
 	const CUBIC_MOVES = new Set(["push", "pull", "through", "orbit", "tumble", "crane", "swoop", "corkscrew", "hop"]);
 	// Compositions the camera pulls back from at the end, to show them whole.
@@ -1990,7 +2318,7 @@
 					const distance = Math.max(ahead + behind + gap, ctx.W * 0.85);
 					target = { x: last.x + direction.x * distance, y: last.y + direction.y * distance };
 				} else {
-					const spread = enter === "fade" ? 0.04 : 0.08;
+					const spread = DISSOLVES.has(enter) ? 0.04 : 0.08;
 					const side = rotate2d(between(random, -spread, spread) * ctx.W, between(random, -spread * 0.75, spread * 0.75) * ctx.H, theta);
 					target = { x: last.x + side.x, y: last.y + side.y };
 				}
@@ -2075,63 +2403,68 @@
 	};
 
 	/**
-	 * Stretches of the song the camera spends turned from upright: on its side
-	 * for longer than SIDEWAYS_HOLD_MS, or upside down at all. From then on
-	 * the background turns to the upright orientation the camera comes back to
-	 * (target, a camera roll), until the camera has come back (to; Infinity
-	 * when it never does). Upside down, it turns while the camera turns over
-	 * (from the move's start, over turn ms), so the video is never left upside
-	 * down behind upright lyrics.
+	 * How the background is turned against the camera over the song (a list of
+	 * turns of its offset from the camera's roll). While the camera moves the
+	 * offset holds, so the video turns over with every roll, flip and barrel
+	 * roll; it changes only while a line is held: turned upside down the video
+	 * rights itself UPSIDE_HOLD_MS after the camera has landed, on its side
+	 * after SIDEWAYS_HOLD_MS, and when the camera turns back upright the video
+	 * comes back with it during that move. So the video is seen to turn but is
+	 * never left turned.
 	 */
 	const uprightsOf = (lines) => {
-		const uprights = [];
-		let run = null;
-		const close = (to, roll) => {
-			const held = run.start + SIDEWAYS_HOLD_MS;
-			const flipFirst = run.flipAt < held;
-			const from = flipFirst ? run.flipAt : held;
-			if (to > from) uprights.push({ from, to, target: Math.round(roll / 360) * 360, turn: flipFirst ? run.flipTurn : UPRIGHT_TURN_MS });
-			run = null;
-		};
+		const turns = [];
+		let offset = 0;
+		let sidewaysSince = null;
 		lines.forEach((line, index) => {
-			const tilt = tiltOf(line.camera.roll);
-			if (tilt <= 45) {
-				if (run) close(line.arrive, line.camera.roll);
+			const roll = line.camera.roll;
+			const previous = lines[index - 1];
+			const moveStart = previous && Number.isFinite(previous.leave) ? Math.min(previous.leave, line.arrive) : line.arrive;
+			const bg = roll + offset;
+			if (tiltOf(roll) <= 45) {
+				sidewaysSince = null;
+				const level = Math.round(offset / 360) * 360;
+				if (Math.abs(level - offset) > 0.5) {
+					turns.push({ from: moveStart, until: Math.max(line.arrive, moveStart + 400), offsetFrom: offset, offsetTo: level });
+					offset = level;
+				}
 				return;
 			}
-			if (!run) run = { start: line.arrive, flipAt: Infinity, flipTurn: UPRIGHT_TURN_MS };
-			if (tilt > 135 && !Number.isFinite(run.flipAt)) {
-				const previous = lines[index - 1];
-				const leave = previous && Number.isFinite(previous.leave) ? Math.min(previous.leave, line.arrive) : line.arrive;
-				run.flipAt = leave;
-				run.flipTurn = clamp(line.arrive - leave, FLIP_TURN_MIN_MS, UPRIGHT_TURN_MS);
+			const tilt = tiltOf(bg);
+			if (tilt <= 45) {
+				sidewaysSince = null;
+				return;
 			}
+			if (tilt <= 135 && sidewaysSince === null) sidewaysSince = line.arrive;
+			const from = tilt > 135 ? line.arrive + UPSIDE_HOLD_MS : Math.max(line.arrive + UPSIDE_HOLD_MS, sidewaysSince + SIDEWAYS_HOLD_MS);
+			const leave = Number.isFinite(line.leave) ? line.leave : Infinity;
+			// Not enough of the line left: the camera moves on first and the next line decides.
+			if (leave - from < 500) return;
+			const offsetTo = offset + Math.round(bg / 360) * 360 - bg;
+			turns.push({ from, until: Math.min(from + (tilt > 135 ? UPSIDE_TURN_MS : UPRIGHT_TURN_MS), leave), offsetFrom: offset, offsetTo });
+			offset = offsetTo;
+			sidewaysSince = null;
 		});
-		if (run) close(Infinity, lines[lines.length - 1].camera.roll);
-		return uprights;
+		return turns;
 	};
 
-	/** How far the background has turned to landscape at a time: { weight 0..1, target roll }, or null. */
+	/** The background's turn against the camera's roll at a time (degrees; 0 before any turn or without a time). */
 	const uprightAt = (plan, time) => {
-		if (!Number.isFinite(time)) return null;
-		for (const upright of plan?.uprights || []) {
-			if (time <= upright.from || time >= upright.to + UPRIGHT_RETURN_MS) continue;
-			const turned = easeInOutCubic(clamp01((time - upright.from) / (upright.turn || UPRIGHT_TURN_MS)));
-			const back = Number.isFinite(upright.to) ? 1 - easeInOutCubic(clamp01((time - upright.to) / UPRIGHT_RETURN_MS)) : 1;
-			return { weight: Math.min(turned, back), target: upright.target };
+		if (!Number.isFinite(time)) return 0;
+		let offset = 0;
+		for (const turn of plan?.uprights || []) {
+			if (turn.from > time) break;
+			offset = time >= turn.until ? turn.offsetTo : turn.offsetFrom + (turn.offsetTo - turn.offsetFrom) * easeInOutCubic(clamp01((time - turn.from) / Math.max(1, turn.until - turn.from)));
 		}
-		return null;
+		return offset;
 	};
-
-
-	/** How long the camera takes to reach the next line, by move and tempo. */
 	const moveDuration = (type, gap, pace) => {
 		switch (type) {
 			case "line": return clamp((gap + 260) * pace, 300 * Math.min(1, pace), 760 * pace);
 			case "cut": return 1;
 			case "whip": return clamp((gap + 200) * 0.55 * pace, 260, 520);
 			case "panel": return clamp((gap + 300) * pace, 560, 900);
-			case "fade": return clamp((gap + 700) * pace, 800, 1800 * pace);
+			case "fade": case "iris": case "open": return clamp((gap + 700) * pace, 800, 1800 * pace);
 			case "roll":
 			case "flip":
 			case "spin":
@@ -2257,7 +2590,7 @@
 				swing.pitch = -24 * sy;
 			} else if (type === "drift") swing.yaw = 7 * sx;
 			else if (type === "hop") swing.yaw = 10 * sx;
-			else if (!sameBoard && !hardCut(type) && type !== "fade" && type !== "corkscrew") {
+			else if (!sameBoard && !hardCut(type) && !DISSOLVES.has(type) && type !== "corkscrew") {
 				// Every board move swings a little in depth.
 				if (Math.abs(seen.x) >= Math.abs(seen.y)) swing.yaw = 14 * sx;
 				else swing.pitch = -11 * sy;
@@ -2270,7 +2603,7 @@
 				extraRoll: type === "spin" || type === "corkscrew" ? (sx > 0 ? 360 : -360) : 0,
 				arc: type === "line" ? clamp(distance * 0.1, 20, 150)
 					: type === "push" || type === "pull" || type === "corkscrew" || hardCut(type) ? 0
-						: type === "fade" ? 0
+						: DISSOLVES.has(type) ? 0
 							: type === "orbit" ? clamp(distance * 0.4, 300, 1300)
 								// A hop leaps back to see both boards on its way; a crane lifts; a drift barely leaves the plane.
 								: type === "hop" ? clamp(distance * 0.75, 520, 1500)
@@ -2318,7 +2651,7 @@
 				board.appear = first.arrive - 60;
 			} else if (board.enter === "panel") {
 				board.appear = into.move.cutAt - 40;
-			} else if (board.enter === "fade") {
+			} else if (DISSOLVES.has(board.enter)) {
 				// A dissolve: the new board fades in while the camera eases into it.
 				board.appear = into.leave - 100;
 			} else {
@@ -2339,7 +2672,7 @@
 			} else if (next.enter === "panel") {
 				board.fadeAt = out.move.cutAt - 60;
 				board.fadeEnd = out.move.cutAt + 20;
-			} else if (next.enter === "fade") {
+			} else if (DISSOLVES.has(next.enter)) {
 				board.fadeAt = out.leave;
 				board.fadeEnd = nextFirst.arrive - 40;
 			} else {
@@ -2351,6 +2684,26 @@
 				board.fadeAt = Math.min(board.fadeAt, out.rest.start);
 				board.fadeEnd = Math.min(board.fadeEnd, out.rest.start + REST_FADE_MS);
 			}
+		});
+		// When each line peeks in, dims and leaves (lifeLevels, paintWords).
+		lines.forEach((line, index) => {
+			const board = boards[line.board];
+			const next = lines[index + 1];
+			line.peekAt = line.local ? line.arrive - PEEK_MS * clamp(pace, 0.85, 1.3) : board.appear;
+			line.voicesEnd = Math.max(line.end, ...line.shown.map((word) => word.end));
+			line.exitStagger = Math.min(70, 280 / Math.max(1, line.shown.length));
+			line.exitSpan = EXIT_MS * fxPaceOf(pace) + line.exitStagger * Math.max(0, line.shown.length - 1);
+			// One line at a time: a line stays until the next one on its board comes in (no empty screen between them).
+			// (Letters that decode or rain in show before their word: the line before has gone by then.)
+			line.soloOut = board.solo && next && next.board === line.board ? next.start - (next.fx === "decode" || next.fx === "rain" ? 360 : 120) : Infinity;
+			if (!next || next.board !== line.board || board.preview || board.solo) {
+				// The last line of a board leaves with the board.
+				line.dimAt = Infinity;
+				line.exitAt = Infinity;
+				return;
+			}
+			line.dimAt = Math.max(next.start, line.voicesEnd + 60);
+			line.exitAt = Math.max(next.start + clamp((next.end - next.start) * 0.4, 300, 1300), line.voicesEnd + 220);
 		});
 		plan.flashes = [];
 		plan.panels = [];
@@ -2462,6 +2815,9 @@
 				plates: layout.plates || [],
 				fills: layout.fills || [],
 				solo: layout.solo === true,
+				preview: PREVIEW_LAYOUTS.has(name),
+				exit: EXIT_NAMES.has(shot.exit) ? shot.exit : "fade",
+				hold: HOLD_NAMES.has(shot.hold) ? shot.hold : "grow",
 				color: index % 2,
 				rests: [],
 			};
@@ -2611,7 +2967,7 @@
 		let eased;
 		if (type === "line") eased = easeInOutQuart(u);
 		else if (type === "whip") eased = easeInOutExpo(u);
-		else if (type === "fade" || type === "drift") eased = easeInOutSine(u);
+		else if (DISSOLVES.has(type) || type === "drift") eased = easeInOutSine(u);
 		else if (CUBIC_MOVES.has(type)) eased = easeInOutCubic(u);
 		else eased = easeInOutExpo(u);
 		const pose = mixPose(from, to, eased);
@@ -2623,7 +2979,7 @@
 			pose.x = lerp(a.x, b.x, half);
 			pose.y = lerp(a.y, b.y, half);
 		}
-		const rollEase = type === "line" ? eased : type === "fade" || type === "drift" ? easeInOutSine(u) : type === "corkscrew" ? easeInOutCubic(u) : easeInOutQuint(u);
+		const rollEase = type === "line" ? eased : DISSOLVES.has(type) || type === "drift" ? easeInOutSine(u) : type === "corkscrew" ? easeInOutCubic(u) : easeInOutQuint(u);
 		pose.roll = lerp(from.roll, to.roll + move.extraRoll, rollEase);
 		const dolly = move.arc * Math.sin(Math.PI * u);
 		pose.z += dolly;
@@ -2666,7 +3022,7 @@
 				pose = { dolly: 0, sway: null, ...holdPose(plan, index, time) };
 				const previous = lines[index - 1];
 				const since = time - line.arrive;
-				if (previous && since >= 0 && since < 700 && !["cut", "panel", "fade"].includes(previous.move?.type)) {
+				if (previous && since >= 0 && since < 700 && !["cut", "panel", "fade", "iris", "open"].includes(previous.move?.type)) {
 					const k = since / 700;
 					const spring = Math.sin(k * Math.PI * 2.2) * Math.exp(-k * 4.5);
 					const dx = line.camera.x - previous.camera.x;
@@ -2726,7 +3082,7 @@
 	};
 
 	const boardVisibility = (board, time) => {
-		const fadeIn = board.index && (board.enter === "cut" || board.enter === "panel") ? 120 : board.enter === "fade" ? 650 : 450;
+		const fadeIn = board.index && (board.enter === "cut" || board.enter === "panel" || REVEALS.has(board.enter)) ? 120 : board.enter === "fade" ? 650 : 450;
 		const into = easeOutCubic(clamp01((time - board.appear) / fadeIn));
 		const out = Number.isFinite(board.fadeAt) ? 1 - easeInOutCubic(clamp01((time - board.fadeAt) / Math.max(1, board.fadeEnd - board.fadeAt))) : 1;
 		// An interlude inside a board hides it until its lyrics return.
@@ -2773,10 +3129,10 @@
 
 	const FX_DURATION = Object.freeze({
 		pop: 380, slide: 420, rise: 440, slam: 230, flip: 480, blur: 560, wipe: 520, glitch: 340, spin: 560, zoom: 480,
-		lift: 620, swing: 640, smear: 360, door: 620, glide: 760, skew: 500, open: 560,
-		type: 1, assemble: 1, drop: 1, wave: 1, track: 1, bounce: 1, flicker: 1, cascade: 1, ripple: 1, swirl: 1,
+		lift: 620, swing: 640, smear: 360, door: 620, glide: 760, skew: 500, open: 560, shutter: 460, brush: 640,
+		type: 1, assemble: 1, drop: 1, wave: 1, track: 1, bounce: 1, flicker: 1, cascade: 1, ripple: 1, swirl: 1, rain: 1, decode: 1,
 	});
-	const CHAR_FX = new Set(["type", "assemble", "drop", "wave", "track", "bounce", "flicker", "cascade", "ripple", "swirl"]);
+	const CHAR_FX = new Set(["type", "assemble", "drop", "wave", "track", "bounce", "flicker", "cascade", "ripple", "swirl", "rain", "decode"]);
 	const fxPaceOf = (pace) => clamp(Number(pace) || 1, 0.75, 1.5);
 
 	/** Entrance progress of a sung word's solid type (0 before it starts). */
@@ -2902,12 +3258,200 @@
 				const side = "calc(" + round((1 - k) * 50, 2) + "% - " + round(SPILL_EM * k, 3) + "em)";
 				return frame({ opacity: 1, transform: "scaleX(" + round(1.06 - 0.06 * k, 3) + ")", clip: "inset(" + SPILL + " " + side + " " + SPILL + " " + side + ")" });
 			}
+			case "shutter": {
+				// Opens from a thin line across its middle, top and bottom apart.
+				const k = easeOutCubic(progress);
+				const edge = "calc(" + round((1 - k) * 50, 2) + "% - " + round(SPILL_EM * k, 3) + "em)";
+				return frame({ opacity: clamp01(progress * 4), transform: "scaleY(" + round(1.12 - 0.12 * k, 3) + ")", clip: "inset(" + edge + " " + SPILL + " " + edge + " " + SPILL + ")" });
+			}
+			case "brush": {
+				// A slanted edge pulled across the word, like a brush stroke (from the right in right-to-left lines).
+				const k = easeInOutCubic(progress);
+				const lead = round(-30 + k * 160, 2);
+				const tail = round(lead - 30, 2);
+				const points = rtl
+					? [(100 - tail) + "% -0.6em", "calc(100% + 0.6em) -0.6em", "calc(100% + 0.6em) calc(100% + 0.6em)", (100 - lead) + "% calc(100% + 0.6em)"]
+					: ["-0.6em -0.6em", lead + "% -0.6em", tail + "% calc(100% + 0.6em)", "-0.6em calc(100% + 0.6em)"];
+				return frame({ opacity: 1, transform: "translateX(" + round((1 - k) * (rtl ? 0.08 : -0.08), 3) + "em)", clip: "polygon(" + points.join(",") + ")", filter: k < 0.6 ? "blur(" + round((0.6 - k) * 3, 1) + "px)" : "" });
+			}
 			default: {
 				const k = easeOutBack(progress);
 				return frame({ opacity: clamp01(progress * 2.4), transform: "scale(" + round(0.55 + 0.45 * k, 3) + ")" });
 			}
 		}
 	};
+
+	const easeInCubic = (t) => t * t * t;
+	const easeInQuad = (t) => t * t;
+
+	/**
+	 * A sung word leaving with its shot's exit: k runs 0 → 1 over the word's
+	 * part of the exit (the words of a line leave one after another).
+	 */
+	const exitFrame = (exit, k, seed = 0, rtl = false) => {
+		if (k <= 0) return SETTLED;
+		if (k >= 1) return HIDDEN;
+		const side = rtl ? -1 : 1;
+		switch (exit) {
+			case "rise": {
+				const e = easeOutCubic(k);
+				return frame({ opacity: 1 - k, transform: "translateY(" + round(-0.85 * e, 3) + "em)", filter: k > 0.1 ? "blur(" + round(k * 3, 1) + "px)" : "" });
+			}
+			case "fall": {
+				const e = easeInQuad(k);
+				const turn = (seed % 2 ? 1 : -1) * (8 + (seed % 9));
+				return frame({ opacity: 1 - easeInCubic(k), transform: "translateY(" + round(e * 1.5, 3) + "em) rotate(" + round(turn * e, 1) + "deg)" });
+			}
+			case "scatter": {
+				const e = easeOutCubic(k);
+				const scatter = scatterOf(seed);
+				return frame({
+					opacity: 1 - k,
+					transform: "translate(" + round(scatter.x * 1.2 * e, 3) + "em," + round(scatter.y * 1.2 * e, 3) + "em) rotate(" + round(scatter.r * e, 1) + "deg) scale(" + round(1 + scatter.s * 0.6 * e, 3) + ")",
+					filter: k > 0.15 ? "blur(" + round(k * 5, 1) + "px)" : "",
+				});
+			}
+			case "shrink": {
+				const e = easeInOutCubic(k);
+				return frame({ opacity: 1 - easeInQuad(k), transform: "scale(" + round(1 - 0.55 * e, 3) + ")" });
+			}
+			case "sweep": {
+				const e = easeInCubic(k);
+				return frame({ opacity: 1 - easeInQuad(k), transform: "translateX(" + round(side * 1.4 * e, 3) + "em) skewX(" + round(-side * 18 * e, 1) + "deg)" });
+			}
+			case "blur": {
+				const e = easeOutCubic(k);
+				return frame({ opacity: 1 - k, transform: "scale(" + round(1 + 0.16 * e, 3) + ")", filter: "blur(" + round(e * 14, 1) + "px)" });
+			}
+			case "wipe": {
+				const e = easeInOutCubic(k);
+				// The edge sweeps across the word (its shadow included), taking it away in reading order.
+				const edge = "calc(" + round(e * 100, 2) + "% + " + round(SPILL_EM * (2 * e - 1), 3) + "em)";
+				return frame({ opacity: 1, transform: "translateX(" + round(side * 0.1 * e, 3) + "em)", clip: rtl ? "inset(" + SPILL + " " + edge + " " + SPILL + " " + SPILL + ")" : "inset(" + SPILL + " " + SPILL + " " + SPILL + " " + edge + ")" });
+			}
+			case "flip": {
+				const e = easeInCubic(k);
+				return frame({ opacity: 1 - easeInQuad(k), transform: "perspective(6em) rotateX(" + round(e * 88, 1) + "deg)" });
+			}
+			case "stretch": {
+				const e = easeInCubic(k);
+				return frame({ opacity: 1 - easeInQuad(k), transform: "scale(" + round(1 + 0.6 * e, 3) + "," + round(1 - 0.9 * e, 3) + ")" });
+			}
+			case "glitch": {
+				const random = createRandom((seed + Math.floor(k * 14) * 7919) >>> 0);
+				const jolt = (random() * 2 - 1) * (0.1 + k * 0.5);
+				const cut = round(random() * 70, 1);
+				return frame({
+					opacity: random() < k * 0.7 ? 0 : 1 - k * 0.6,
+					transform: "translateX(" + round(jolt, 3) + "em) skewX(" + round((random() * 2 - 1) * 24 * k, 1) + "deg)",
+					clip: "inset(" + cut + "% " + SPILL + " " + round(Math.max(0, 100 - cut - 18 - random() * 30), 1) + "% " + SPILL + ")",
+					shadow: "0.06em 0 0 rgba(255,40,90,0.7), -0.06em 0 0 rgba(40,220,255,0.7)",
+				});
+			}
+			case "drip": {
+				const e = easeInCubic(k);
+				return frame({ opacity: 1 - easeInQuad(k), transform: "translateY(" + round(e * 0.55, 3) + "em) scale(" + round(1 - 0.25 * e, 3) + "," + round(1 + 1.1 * e, 3) + ")", filter: k > 0.2 ? "blur(" + round(k * 3, 1) + "px)" : "" });
+			}
+			default: {
+				const e = easeOutCubic(k);
+				return frame({ opacity: 1 - k, transform: "translateY(" + round(-0.14 * e, 3) + "em)" });
+			}
+		}
+	};
+
+	/**
+	 * A line's movement while it is held (its shot's hold), added after its
+	 * place: it never freezes once its words have landed. "float" moves the
+	 * words themselves (floatOffset).
+	 */
+	const holdFrame = (hold, line, time, beat = 0, F = 60) => {
+		if (!hold || hold === "still" || hold === "float" || time < line.start) return "";
+		const end = Number.isFinite(line.exitAt) ? line.exitAt + line.exitSpan : line.voicesEnd + 2600;
+		const k = clamp01((time - line.start) / Math.max(1, end - line.start));
+		const side = hashString(line.text) % 2 ? 1 : -1;
+		switch (hold) {
+			case "grow": return " scale(" + round(1 + 0.05 * Math.sin((k * Math.PI) / 2), 4) + ")";
+			case "drift": return " translateX(" + round(side * F * 0.5 * easeInOutSine(k), 1) + "px)";
+			case "lean": return " rotateZ(" + round(side * 2.2 * easeInOutSine(k), 2) + "deg)";
+			case "push": return " translateZ(" + round(F * 1.6 * easeInOutSine(k), 1) + "px)";
+			case "breathe": {
+				const swell = 0.018 * Math.sin(((time - line.start) / 2600) * Math.PI * 2) + beat * 0.03;
+				return Math.abs(swell) < 0.0005 ? "" : " scale(" + round(1 + swell, 4) + ")";
+			}
+			case "wobble": {
+				// Rocks and leans like jelly, a little more on the beat.
+				const phase = ((time - line.start) / 1300) * Math.PI * 2;
+				const fade = clamp01((time - line.start) / 500);
+				return " rotateZ(" + round(Math.sin(phase) * 2.4 * fade, 2) + "deg) skewX(" + round(Math.sin(phase * 0.5 + 1) * 5 * fade, 2) + "deg) scale(" + round(1 + beat * 0.04, 4) + "," + round(1 - beat * 0.03, 4) + ")";
+			}
+			case "swivel": return " rotateY(" + round(side * 16 * Math.sin(easeInOutSine(k) * Math.PI * 1.2 - 0.6), 2) + "deg)";
+			default: return "";
+		}
+	};
+
+	/** Where a line's sung words reach in its block (left and right edges and centre) after count of them have started. */
+	const sungSpan = (line, words, count) => {
+		let left = Infinity;
+		let right = -Infinity;
+		for (let index = 0; index < Math.max(1, count) && index < line.words.length; index += 1) {
+			const word = words[index];
+			left = Math.min(left, word.x - word.width / 2);
+			right = Math.max(right, word.x + word.width / 2);
+		}
+		return { width: right - left, center: (left + right) / 2 };
+	};
+	const startedWords = (line, time) => {
+		let count = 0;
+		while (count < line.words.length && line.words[count].start <= time) count += 1;
+		return count;
+	};
+
+	/** A line that fills the width: the words sung so far are scaled and centred to fill it, easing as each word lands. */
+	const fillFrame = (line, place, time) => {
+		const fill = place.fill;
+		const words = place.block.words;
+		const count = startedWords(line, time);
+		const stateAt = (n) => {
+			const span = sungSpan(line, words, n);
+			return { scale: clamp(fill.target / Math.max(1, span.width), 1, fill.most), center: span.center };
+		};
+		const now = stateAt(count);
+		const before = stateAt(count - 1);
+		const k = count <= 1 ? 1 : easeOutCubic(clamp01((time - line.words[count - 1].start) / 240));
+		return " scale(" + round(lerp(before.scale, now.scale, k), 4) + ") translateX(" + round(-lerp(before.center, now.center, k), 1) + "px)";
+	};
+
+	/** A line larger than the screen: the view slides along it as it is sung, from its start to its end. */
+	const travelFrame = (line, place, time) => {
+		const k = easeInOutSine(clamp01((time - line.start + 200) / Math.max(400, line.end - line.start + 400)));
+		const side = line.info.rtl ? -1 : 1;
+		return " translateX(" + round(side * place.travel * (1 - 2 * k), 1) + "px)";
+	};
+
+	/** A line that slides along its rail into place as it starts (rails). */
+	const slideFrame = (line, place, time) => {
+		const k = easeOutExpo(clamp01((time - (line.start - 420)) / 560));
+		if (k >= 1) return "";
+		return " translate(" + round(place.slide.x * (1 - k), 1) + "px," + round(place.slide.y * (1 - k), 1) + "px)";
+	};
+
+	/** Everything a line does on top of its place at a time: sliding in, filling the width or travelling, or its hold. */
+	const lineMotion = (board, line, time, beat = 0, F = 60) => {
+		const place = line.place;
+		const slide = place.slide ? slideFrame(line, place, time) : "";
+		if (place.fill) return slide + fillFrame(line, place, time);
+		if (place.travel) return slide + travelFrame(line, place, time);
+		return slide + holdFrame(board.hold, line, time, beat, F);
+	};
+
+	/** How far a word floats (px, up is negative) under the "float" hold. */
+	const floatOffset = (line, wordIndex, size, time) => {
+		if (time < line.start) return 0;
+		const fadeOut = Number.isFinite(line.exitAt) ? 1 : 1 - clamp01((time - (line.voicesEnd + 1200)) / 400);
+		const fadeIn = clamp01((time - line.start) / 600);
+		return Math.sin((time / 2600) * Math.PI * 2 + wordIndex * 0.9) * size * 0.06 * fadeIn * fadeOut;
+	};
+
 
 	const scatterOf = (seed) => {
 		const random = createRandom(seed);
@@ -2920,6 +3464,18 @@
 	};
 	const LETTER_SETTLED = Object.freeze({ opacity: 1, transform: "none" });
 	const LETTER_HIDDEN = Object.freeze({ opacity: 0, transform: "none" });
+	// What decoding letters flicker through, by script.
+	const DECODE_POOLS = Object.freeze({
+		latin: [..."ABCDEFGHJKLMNPRSTUVWXYZ0123456789#%&@$?"],
+		hangul: [..."가나다라마바사아자차카타파하고노도로모보소오조호구누두루무부수우주후"],
+		kana: [..."アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモ"],
+		han: [..."日月火水木金土山川田人心花光夢風空海星雨雪愛生"],
+		cyrillic: [..."АБВГДЕЖЗИКЛМНОПРСТУФХЦЧШЭЮЯ"],
+	});
+	const decodePoolOf = (ch) => (/\p{Script=Hangul}/u.test(ch) ? "hangul"
+		: /[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(ch) ? "kana"
+			: /\p{Script=Han}/u.test(ch) ? "han"
+				: /\p{Script=Cyrillic}/u.test(ch) ? "cyrillic" : "latin");
 
 	/**
 	 * A character's state for the letter-by-letter effects. context: count
@@ -3006,6 +3562,23 @@
 				const k = easeOutCubic(e);
 				return { opacity: clamp01(e * 2), transform: "translate(" + round((1 - k) * -0.55, 3) + "em," + round((1 - k) * 0.32, 3) + "em) rotate(" + round((1 - k) * -150, 1) + "deg) scale(" + round(0.55 + 0.45 * k, 3) + ")" };
 			}
+			case "rain": {
+				// Letters start scattered high and low and drop or rise into one line.
+				const e = clamp01((time - (char.start - 240)) / (440 * slow));
+				if (e <= 0) return LETTER_HIDDEN;
+				if (e >= 1) return LETTER_SETTLED;
+				const height = scatterOf((seed + index * 2654435761) >>> 0).y * 1.3;
+				return { opacity: clamp01(e * 3), transform: "translateY(" + round(height * (1 - easeOutCubic(e)), 3) + "em)" };
+			}
+			case "decode": {
+				// Each letter flickers through random characters of its script and locks onto the right one.
+				const begin = char.start - 320 * slow;
+				if (time < begin) return LETTER_HIDDEN;
+				if (time >= char.start) return LETTER_SETTLED;
+				const pool = DECODE_POOLS[decodePoolOf(char.ch)];
+				const pick = Math.floor(time / 55) * 7 + index * 13 + seed;
+				return { opacity: 0.55 + 0.45 * ((time - begin) / (char.start - begin)), transform: "none", text: pool[((pick % pool.length) + pool.length) % pool.length] };
+			}
 			default:
 				return time >= char.start ? LETTER_SETTLED : LETTER_HIDDEN;
 		}
@@ -3028,29 +3601,47 @@
 	 * Rotation, zoom and offset of the video background so it moves like the
 	 * far plane of the same camera: it turns with the roll, slides against
 	 * 3D swings and travel, and zooms with the dolly and the beat. Given the
-	 * time, a long sideways stretch turns it back to landscape (uprightAt).
+	 * time, it is not left turned (uprightAt, interludes) and keeps moving on
+	 * its own: a slow turn, drift and breath, and a swing past the camera's
+	 * turn while the camera travels between boards.
 	 */
 	const backgroundFrame = (plan, pose, time = NaN) => {
+		const timed = Number.isFinite(time);
 		let x = 0;
 		let y = 0;
+		let swing = 0;
 		if (pose.sway) {
 			const move = rotate2d(pose.sway.dx, pose.sway.dy, -pose.roll);
 			const length = Math.hypot(move.x, move.y);
 			if (length > 1) {
-				const amount = Math.sin(Math.PI * pose.sway.u) * plan.W * (pose.sway.whip ? 0.1 : pose.sway.board ? 0.06 : 0.02);
+				const arc = Math.sin(Math.PI * pose.sway.u);
+				const amount = arc * plan.W * (pose.sway.whip ? 0.15 : pose.sway.board ? 0.09 : 0.035);
 				x = (-move.x / length) * amount;
 				y = (-move.y / length) * amount;
+				// Between boards the far plane swings a little past the camera's own turn.
+				if (pose.sway.board || pose.sway.whip) swing = arc * (pose.sway.whip ? 9 : 6) * (move.x >= 0 ? 1 : -1);
 			}
 		}
 		// Swings slide the video fully; the standing turn that faces a drum line only a little (it would zoom the video in for the whole line).
 		const yaw = (pose.yaw || 0) - (pose.faceYaw || 0) * 0.72;
 		const pitch = (pose.pitch || 0) - (pose.facePitch || 0) * 0.72;
-		x -= Math.sin((yaw * Math.PI) / 180) * plan.W * 0.42;
-		y += Math.sin((pitch * Math.PI) / 180) * plan.H * 0.42;
+		x -= Math.sin((yaw * Math.PI) / 180) * plan.W * 0.55;
+		y += Math.sin((pitch * Math.PI) / 180) * plan.H * 0.55;
 		const dolly = PERSPECTIVE_PX / (PERSPECTIVE_PX + (pose.dolly || 0) * 0.45);
-		const upright = uprightAt(plan, time);
-		const roll = upright ? pose.roll + (upright.target - pose.roll) * upright.weight : pose.roll;
-		const wanted = coverScale(-roll, plan.W, plan.H) * 1.14 * dolly * (1 + (pose.beat || 0) * 0.025);
+		let roll = pose.roll;
+		let breath = 1;
+		if (timed) {
+			roll += uprightAt(plan, time);
+			// Interludes: the picture comes back upright under the camera's swing.
+			const rest = restAt(plan, time);
+			if (rest > 0) roll += (Math.round(roll / 360) * 360 - roll) * rest;
+			const sway = BG_SWAY[plan.tempo] || BG_SWAY.mid;
+			roll += Math.sin(time * 0.00057 + 0.4) * sway + Math.sin(time * 0.00131 + 1.7) * sway * 0.3 + swing;
+			x += Math.sin(time * 0.00041 + 2.2) * plan.W * 0.018;
+			y += Math.sin(time * 0.00049 + 0.9) * plan.H * 0.018;
+			breath = 1 + 0.05 * (0.5 + 0.5 * Math.sin(time * 0.00071 + 1.1));
+		}
+		const wanted = coverScale(-roll, plan.W, plan.H) * 1.14 * dolly * breath * (1 + (pose.beat || 0) * 0.06);
 		const scale = Math.max(wanted, coverScale(-roll, plan.W, plan.H, x, y) * 1.01);
 		return { rotate: -roll, scale, x, y };
 	};
@@ -3112,25 +3703,70 @@
 		return null;
 	};
 
-	/** A plate (a card, a slot's band, an arch's ring) arriving with its line: 0 before, 1 once it has landed. */
+	/**
+	 * The clip a board opening out of a circle (iris) or a band across the
+	 * middle (open) is seen through while the camera comes in ("" once open).
+	 * In the board's own px, centred on its first line's frame.
+	 */
+	const revealClip = (plan, board, time) => {
+		if (!board.index || !REVEALS.has(board.enter)) return "";
+		const first = plan.lines[board.first];
+		const k = easeInOutCubic(clamp01((time - board.appear) / Math.max(1, first.arrive - board.appear)));
+		if (k >= 1) return "";
+		const centre = board.frames[0];
+		if (board.enter === "iris") return "circle(" + round(k * Math.hypot(plan.W, plan.H) * 0.62) + "px at " + round(centre.x) + "px " + round(centre.y) + "px)";
+		const half = k * plan.H * 0.62;
+		const along = plan.W * 3;
+		const turn = (centre.roll || 0) + (board.dutch || 0);
+		const points = [[-along, -half], [along, -half], [along, half], [-along, half]].map(([x, y]) => {
+			const point = rotate2d(x, y, turn);
+			return round(centre.x + point.x) + "px " + round(centre.y + point.y) + "px";
+		});
+		return "polygon(" + points.join(",") + ")";
+	};
+
+	/** A plate (a slot's band, an arch's ring) arriving with its line: 0 before, 1 once it has landed. */
 	const plateLevel = (plan, board, plate, time) => {
 		const since = time - (plan.lines[board.first + plate.line].start - 240);
 		if (since <= 0) return 0;
 		const amount = clamp01(since / (280 * fxPaceOf(plan.pace)));
-		return plate.kind === "card" ? Math.max(0.001, easeOutBack(amount)) : Math.max(0.001, easeOutExpo(amount));
+		let level = Math.max(0.001, easeOutExpo(amount));
+		// A plate that belongs to one line of a one-at-a-time composition (a seal) goes when the next line comes in.
+		const next = plate.solo ? plan.lines[board.first + plate.line + 1] : null;
+		if (next && next.board === board.index) level *= 1 - clamp01((time - (next.start - 260)) / 220);
+		return level <= 0.001 && next && time > next.start ? 0 : level;
 	};
 
 	/**
 	 * Outline and solid opacity of a line on its board. One-at-a-time
-	 * compositions show only the current line; a line on a card shows once
-	 * the card has landed.
+	 * compositions show only the current line.
 	 */
 	const levelsOn = (board, line, distance, time) => {
-		if (board.solo) return { ghost: 0, solid: distance <= 0 ? 1 : 1 - clamp01(distance / 0.4) };
-		// A line still being sung (overlapping the next one: a duet, an echo) stays bright.
-		const singing = distance > 0 && time >= line.start && time < line.end + 150;
-		const levels = lineLevels(singing ? Math.min(distance, 0.2) : distance);
-		return line.place.cover && time < line.start - 220 ? { ghost: 0, solid: levels.solid } : levels;
+		if (board.solo) {
+			if (distance <= 0) return { ghost: 0, solid: 1 };
+			return { ghost: 0, solid: Number.isFinite(line.soloOut) ? 1 - clamp01((time - line.soloOut) / 120) : 1 - clamp01(distance / 0.4) };
+		}
+		if (board.preview || !Number.isFinite(line.peekAt)) {
+			// A line still being sung (overlapping the next one: a duet, an echo) stays bright.
+			const singing = distance > 0 && time >= line.start && time < line.end + 150;
+			return lineLevels(singing ? Math.min(distance, 0.2) : distance);
+		}
+		return lifeLevels(line, time);
+	};
+
+	/**
+	 * A line that comes and goes: nothing until its outline peeks in, the
+	 * outline of its words still to come while it is sung, full while it is
+	 * the latest line, a dim echo once the next one starts, gone after its
+	 * exit (the words leave one after another, paintWords).
+	 */
+	const lifeLevels = (line, time) => {
+		if (time < line.peekAt || time >= line.exitAt + line.exitSpan) return { ghost: 0, solid: 0 };
+		const ghost = time < line.start
+			? PEEK_GHOST * easeOutCubic(clamp01((time - line.peekAt) / 320))
+			: SINGING_GHOST * (1 - clamp01((time - line.voicesEnd) / 260));
+		const solid = time > line.dimAt ? lerp(1, ECHO_SOLID, easeOutCubic(clamp01((time - line.dimAt) / ECHO_DIM_MS))) : 1;
+		return { ghost, solid };
 	};
 
 	const pure = Object.freeze({
@@ -3153,6 +3789,9 @@
 		boardVisibility,
 		restAt,
 		lineLevels,
+		lifeLevels,
+		exitFrame,
+		holdFrame,
 		wordEntrance,
 		solidFrame,
 		charFrame,
@@ -3166,6 +3805,10 @@
 		floodAt,
 		plateLevel,
 		levelsOn,
+		revealClip,
+		fillFrame,
+		travelFrame,
+		lineMotion,
 		deepOf,
 	});
 
@@ -3430,7 +4073,7 @@
 				+ (voice ? " is-voice is-" + voice.role : "")
 				+ (spot.vertical ? " is-upright" : "");
 			wordEl.style.fontSize = round(spot.size) + "px";
-			wordEl.style.transform = "translate3d(" + round(spot.x) + "px," + round(spot.y) + "px,0)"
+			wordEl.style.transform = "translate3d(" + round(spot.x) + "px," + round(spot.y) + "px," + round(spot.z || 0) + "px)"
 				+ (spot.rot ? " rotate(" + round(spot.rot, 2) + "deg)" : "")
 				+ (spot.vertical ? " translate(-50%,-50%)" : " translate(-50%,-56%)");
 			applyFont(wordEl, spot.spec || FALLBACK_SPEC);
@@ -3457,8 +4100,8 @@
 				box.style.left = round(-spot.size * 0.1) + "px";
 				box.style.top = round(spot.size * 0.94) + "px";
 				wordEl.appendChild(box);
-			} else if (spot.emph && board.accent === "trail") {
-				// Outlined copies that step out from behind the word as it is sung.
+			} else if (spot.emph && (board.accent === "trail" || board.accent === "spectrum")) {
+				// Copies that step out from behind the word as it is sung: outlines (trail) or coloured fills (spectrum).
 				box = document.createElement("span");
 				box.className = "ivlyrics-motion-trails";
 				for (let copy = 3; copy >= 1; copy -= 1) {
@@ -3483,7 +4126,7 @@
 					charEl.className = "ivlyrics-motion-char";
 					charEl.textContent = cased ? char.ch.toLocaleUpperCase() : char.ch;
 					solid.appendChild(charEl);
-					return { el: charEl, char, cache: {} };
+					return { el: charEl, char, text: charEl.textContent, cache: { text: charEl.textContent } };
 				});
 			} else {
 				solid.textContent = spot.text || word.text;
@@ -3498,7 +4141,7 @@
 			}
 			lineEl.appendChild(wordEl);
 			// Glowing words throb with the beat.
-			return { el: wordEl, solid, box, spark, chars, word, index: wordIndex, emph: spot.emph, pulse: spot.emph && board.accent === "glow", cache: {} };
+			return { el: wordEl, solid, box, spark, chars, word, index: wordIndex, size: spot.size, emph: spot.emph, pulse: spot.emph && (board.accent === "glow" || board.accent === "neon"), cache: {} };
 		};
 
 		const mountBoard = (index) => {
@@ -3542,6 +4185,8 @@
 				el.appendChild(plateEl);
 				return { el: plateEl, plate, cache: {} };
 			});
+			// Rows of a marquee belong to one line and stream sideways (paintBoard); a word wall's copies stand still.
+			const streams = [];
 			for (const fill of board.fills) {
 				const fillEl = document.createElement("div");
 				fillEl.className = "ivlyrics-motion-fill";
@@ -3550,15 +4195,21 @@
 				fillEl.style.transform = "translate3d(" + round(fill.x) + "px," + round(fill.y) + "px," + round(fill.z) + "px) rotateZ(" + round(fill.rot, 2) + "deg) translate(-50%,-56%)";
 				applyFont(fillEl, fill.spec || FALLBACK_SPEC);
 				el.appendChild(fillEl);
+				if (Number.isInteger(fill.line)) {
+					fillEl.style.opacity = "0";
+					streams.push({ el: fillEl, fill, cache: {} });
+				}
 			}
 			const lines = board.places.map((place, local) => {
 				const line = plan.lines[board.first + local];
 				const lineEl = document.createElement("div");
 				lineEl.className = "ivlyrics-motion-line" + (place.ground === "color" ? " on-color" : "");
 				if (line.info.lang) lineEl.lang = line.info.lang;
-				lineEl.style.transform = "translate3d(" + round(place.x) + "px," + round(place.y) + "px," + round(place.z) + "px) rotateZ(" + round(place.rot, 2) + "deg)"
+				// The line's place; its hold (holdFrame) is added after it every frame.
+				const base = "translate3d(" + round(place.x) + "px," + round(place.y) + "px," + round(place.z) + "px) rotateZ(" + round(place.rot, 2) + "deg)"
 					+ (place.tiltY ? " rotateY(" + round(place.tiltY, 2) + "deg)" : "")
 					+ (place.tiltX ? " rotateX(" + round(place.tiltX, 2) + "deg)" : "");
+				lineEl.style.transform = base;
 				let rule = null;
 				if (board.rule) {
 					rule = document.createElement("div");
@@ -3571,10 +4222,10 @@
 				}
 				const words = line.shown.map((word, wordIndex) => mountWord(board, line, word, wordIndex, place.block.words[wordIndex], lineEl));
 				el.appendChild(lineEl);
-				return { el: lineEl, line, words, rule, cache: {}, settled: null };
+				return { el: lineEl, line, words, rule, base, cache: {}, settled: null };
 			});
 			camera.appendChild(el);
-			return { el, board, lines, motifs, strokes, plates, echo, cache: {} };
+			return { el, board, lines, motifs, strokes, plates, streams, echo, reveal: board.index > 0 && REVEALS.has(board.enter), cache: {} };
 		};
 
 		const writeSolid = (word, frameState) => {
@@ -3589,29 +4240,64 @@
 			const state = sung ? "sung" : "waiting";
 			if (entry.settled === state) return;
 			entry.settled = state;
-			for (const word of entry.words) {
-				writeSolid(word, sung ? SETTLED : HIDDEN);
+			const flash = entry.line.place.flash === true;
+			entry.words.forEach((word, order) => {
+				// One word at a time: a sung line keeps only its last word.
+				const shown = sung && !(flash && order < entry.line.words.length - 1);
+				writeSolid(word, shown ? SETTLED : HIDDEN);
 				write(word.cache, "active", false, (value) => word.el.classList.toggle("is-active", value));
-				if (word.box) write(word.cache, "box", sung ? 1 : 0, (value) => word.box.style.setProperty("--b", String(value)));
+				if (word.box) write(word.cache, "box", shown ? 1 : 0, (value) => word.box.style.setProperty("--b", String(value)));
 				if (word.spark) write(word.cache, "spark", "hidden", (value) => { word.spark.style.visibility = value; });
 				if (word.pulse) write(word.cache, "pulse", "", (value) => { word.solid.style.scale = value; });
+				write(word.cache, "float", "", (value) => { word.el.style.translate = value; });
 				if (word.chars) {
 					for (const char of word.chars) {
 						write(char.cache, "opacity", 1, (value) => { char.el.style.opacity = String(value); });
 						write(char.cache, "transform", "none", (value) => { char.el.style.transform = value; });
+						write(char.cache, "text", char.text, (value) => { char.el.textContent = value; });
 					}
 				}
-			}
+			});
 			if (entry.rule) write(entry.cache, "rule", sung ? 1 : 0, (value) => entry.rule.style.setProperty("--r", String(value)));
 		};
 
 		const paintWords = (entry, time, distance, beat) => {
 			entry.settled = null;
 			const line = entry.line;
+			const board = plan.boards[line.board];
 			const sway = clamp01(1 - (distance - 0.3) / 0.9);
 			const seed = hashString(line.text);
 			const pace = plan.pace;
-			for (const word of entry.words) {
+			const exitLength = EXIT_MS * fxPaceOf(pace);
+			const floating = board.hold === "float";
+			const flash = line.place.flash === true;
+			entry.words.forEach((word, order) => {
+				if (floating) {
+					const lift = round(floatOffset(line, order, word.size || plan.F, time), 1);
+					write(word.cache, "float", Math.abs(lift) < 0.1 ? "" : "0 " + lift + "px", (value) => { word.el.style.translate = value; });
+				}
+				// One word at a time: a word gives way as the next one comes in.
+				const next = flash ? line.words[order + 1] : null;
+				if (next && time >= next.start - 40) {
+					writeSolid(word, HIDDEN);
+					write(word.cache, "active", false, (value) => word.el.classList.toggle("is-active", value));
+					if (word.box) write(word.cache, "box", 0, (value) => word.box.style.setProperty("--b", String(value)));
+					return;
+				}
+				if (time >= line.exitAt) {
+					// Leaving: the words go one after another with the shot's exit, settled in place until their turn.
+					const k = clamp01((time - (line.exitAt + order * line.exitStagger)) / exitLength);
+					writeSolid(word, exitFrame(board.exit, k, seed + word.index * 7919, line.info.rtl));
+					write(word.cache, "active", false, (value) => word.el.classList.toggle("is-active", value));
+					if (word.chars) {
+						for (const char of word.chars) {
+							write(char.cache, "opacity", 1, (value) => { char.el.style.opacity = String(value); });
+							write(char.cache, "transform", "none", (value) => { char.el.style.transform = value; });
+							write(char.cache, "text", char.text, (value) => { char.el.textContent = value; });
+						}
+					}
+					return;
+				}
 				const progress = wordEntrance(line.fx, word.word, time, pace);
 				writeSolid(word, solidFrame(line.fx, progress, seed + word.index * 7919, line.info.rtl));
 				write(word.cache, "active", time >= word.word.start && time < word.word.end, (value) => word.el.classList.toggle("is-active", value));
@@ -3639,9 +4325,10 @@
 						const state = charFrame(line.fx, char.char, index, time, context);
 						write(char.cache, "opacity", round(state.opacity, 3), (value) => { char.el.style.opacity = String(value); });
 						write(char.cache, "transform", state.transform, (value) => { char.el.style.transform = value; });
+						write(char.cache, "text", state.text || char.text, (value) => { char.el.textContent = value; });
 					});
 				}
-			}
+			});
 			if (entry.rule) {
 				const k = easeInOutCubic(clamp01((time - line.start + 220) / (900 * fxPaceOf(pace))));
 				write(entry.cache, "rule", round(k, 3), (value) => entry.rule.style.setProperty("--r", String(value)));
@@ -3667,8 +4354,11 @@
 				const solid = round(levels.solid * visibility * closeness, 3);
 				write(lineEntry.cache, "ghost", ghost, (value) => lineEntry.el.style.setProperty("--lg", String(value)));
 				write(lineEntry.cache, "solid", solid, (value) => lineEntry.el.style.setProperty("--ls", String(value)));
-				write(lineEntry.cache, "visibility", ghost <= 0.002 && solid <= 0.002 ? "hidden" : "visible", (value) => { lineEntry.el.style.visibility = value; });
-				if (time >= line.start - 900 && time <= line.end + 1700) paintWords(lineEntry, time, distance, beat);
+				const shown = ghost > 0.002 || solid > 0.002;
+				write(lineEntry.cache, "visibility", shown ? "visible" : "hidden", (value) => { lineEntry.el.style.visibility = value; });
+				if (shown) write(lineEntry.cache, "hold", lineMotion(board, line, time, beat, plan.F), (value) => { lineEntry.el.style.transform = lineEntry.base + value; });
+				const until = Number.isFinite(line.exitAt) ? Math.max(line.end + 1700, line.exitAt + line.exitSpan + 60) : line.end + 1700;
+				if (time >= line.start - 900 && time <= until) paintWords(lineEntry, time, distance, beat);
 				else settleLine(lineEntry, time > line.end);
 			}
 			for (const item of entry.motifs) {
@@ -3712,11 +4402,32 @@
 			for (const item of entry.plates) {
 				const plate = item.plate;
 				const level = round(plateLevel(plan, board, plate, time), 3);
-				write(item.cache, "opacity", round(level > 0 ? visibility : 0, 3), (value) => { item.el.style.opacity = String(value); });
+				write(item.cache, "opacity", round(level > 0 ? visibility * (plate.solo ? clamp01(level * 3) : 1) : 0, 3), (value) => { item.el.style.opacity = String(value); });
+				const turn = plate.spin ? plate.rot + (plate.spin * (time - plan.lines[board.first + plate.line].start)) / 1000 : plate.rot;
 				write(item.cache, "transform",
-					"translate3d(" + round(plate.x) + "px," + round(plate.y) + "px," + round(plate.z) + "px) translate(-50%,-50%) rotateZ(" + round(plate.rot, 2) + "deg) "
+					"translate3d(" + round(plate.x) + "px," + round(plate.y) + "px," + round(plate.z) + "px) translate(-50%,-50%) rotateZ(" + round(turn, 2) + "deg) "
 						+ (plate.kind === "band" ? "scaleY(" + level + ")" : "scale(" + round(0.7 + 0.3 * level, 3) + ")"),
 					(value) => { item.el.style.transform = value; });
+			}
+			for (const item of entry.streams) {
+				// A marquee row: shown while its line is the current one, streaming sideways.
+				const fill = item.fill;
+				const owner = plan.lines[board.first + fill.line];
+				const next = plan.lines[board.first + fill.line + 1];
+				let level = clamp01((time - (owner.start - 320)) / 260);
+				if (next && next.board === board.index) level *= 1 - clamp01((time - (next.start - 280)) / 220);
+				const opacity = round(0.24 * visibility * level, 3);
+				write(item.cache, "opacity", opacity, (value) => { item.el.style.opacity = String(value); });
+				if (opacity <= 0) continue;
+				const travel = (fill.speed * (time - owner.start)) / 1000;
+				const shift = ((travel % fill.step) + fill.step) % fill.step - fill.step / 2;
+				write(item.cache, "transform", "translate3d(" + round(fill.x + shift) + "px," + round(fill.y) + "px," + round(fill.z) + "px) translate(-50%,-56%)",
+					(value) => { item.el.style.transform = value; });
+			}
+			// The way into a board that opens out of a circle (iris) or a band (open).
+			if (entry.reveal) {
+				const clip = revealClip(plan, board, time);
+				write(entry.cache, "reveal", clip, (value) => { entry.el.style.clipPath = value; });
 			}
 			if (entry.echo) {
 				const echo = board.echo;

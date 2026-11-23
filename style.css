@@ -11781,7 +11781,79 @@ html.is-lp-view-switch::view-transition-new(root) {
   transform: translate(calc(var(--b, 0) * var(--k, 1) * 0.085em), calc(var(--b, 0) * var(--k, 1) * 0.11em));
 }
 
-/* Cards, a slot's band and an arch's ring: flat shapes the type sits on or round. */
+/* Spectrum: the copies are filled, in the accent colours and white, fanned out behind the word. */
+.accent-spectrum .ivlyrics-motion-trail {
+  -webkit-text-stroke: 0;
+  color: var(--iv-motion-accent, #ff5ca0);
+  opacity: calc(var(--ls, 1) * var(--b, 0));
+  transform: translate(calc(var(--b, 0) * var(--k, 1) * -0.06em), calc(var(--b, 0) * var(--k, 1) * 0.075em));
+}
+
+.accent-spectrum .ivlyrics-motion-trail:nth-child(1) {
+  color: var(--iv-motion-accent-2, #5cd6ff);
+}
+
+.accent-spectrum .ivlyrics-motion-trail:nth-child(2) {
+  color: color-mix(in srgb, var(--iv-motion-accent, #ff5ca0) 50%, var(--iv-motion-accent-2, #5cd6ff));
+}
+
+.accent-spectrum .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+  color: #fff;
+  text-shadow: none;
+}
+
+/* Neon: a hollow tube of the accent colour glowing round its letters (the engine throbs it with the beat). */
+.accent-neon .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+  color: transparent;
+  -webkit-text-stroke: max(1.5px, 0.05em) color-mix(in srgb, var(--iv-motion-accent, #ff5ca0) 45%, #fff);
+  text-shadow:
+    0 0 0.08em var(--iv-motion-accent, #ff5ca0),
+    0 0 0.28em var(--iv-motion-accent, #ff5ca0),
+    0 0 0.7em color-mix(in srgb, var(--iv-motion-accent, #ff5ca0) 70%, transparent);
+}
+
+/* Chrome: polished metal letters with a light sweeping across them (painted through the letters like the gradient). */
+@keyframes ivlyrics-motion-sheen {
+  from { background-position: 0 0, 180% 0; }
+  to { background-position: 0 0, -80% 0; }
+}
+
+.accent-chrome .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid:not(.has-letters),
+.accent-chrome .ivlyrics-motion-word.is-emph .ivlyrics-motion-char {
+  margin: -0.3em -0.2em;
+  padding: 0.3em 0.2em;
+  background-image:
+    linear-gradient(180deg, #ffffff 0.42em, #c9ced6 0.72em, #5d636d 0.86em, #eef1f5 0.92em, #9aa1ab 1.2em),
+    linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.95) 50%, transparent 60%);
+  background-size: 100% 100%, 260% 100%;
+  background-repeat: no-repeat;
+  background-blend-mode: screen;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 0.05em 0.12em rgba(0, 0, 0, 0.45));
+  animation: ivlyrics-motion-sheen 2.6s linear infinite;
+}
+
+.accent-chrome .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid.has-letters {
+  text-shadow: none;
+}
+
+/* A seal's outer ring is dashed. */
+.ivlyrics-motion-plate.is-ring.is-dash {
+  border-style: dashed;
+  border-width: max(2px, 0.28vh);
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+/* A seal's ring: a heavy band in the accent colour round the line. */
+.ivlyrics-motion-plate.is-ring.is-seal {
+  border: max(4px, 0.7vh) solid var(--iv-motion-accent, #ff5ca0);
+  box-shadow: 0 0 1.4vh color-mix(in srgb, var(--iv-motion-accent, #ff5ca0) 45%, transparent), inset 0 0 1.4vh color-mix(in srgb, var(--iv-motion-accent, #ff5ca0) 35%, transparent);
+}
+
+/* A slot's band and an arch's ring: flat shapes the type sits on or round. */
 .ivlyrics-motion-plate {
   position: absolute;
   top: 0;
@@ -11790,20 +11862,8 @@ html.is-lp-view-switch::view-transition-new(root) {
   backface-visibility: hidden;
 }
 
-.ivlyrics-motion-plate.is-deep {
-  background: var(--iv-motion-deep, #d01a5b);
-}
-
-.ivlyrics-motion-plate.is-deep2 {
-  background: var(--iv-motion-deep-2, #1a6fd0);
-}
-
 .ivlyrics-motion-plate.is-ink {
   background: rgba(11, 11, 16, 0.92);
-}
-
-.ivlyrics-motion-plate.is-card {
-  box-shadow: 0 0.6em 1.8em rgba(0, 0, 0, 0.34);
 }
 
 .ivlyrics-motion-plate.is-band {
