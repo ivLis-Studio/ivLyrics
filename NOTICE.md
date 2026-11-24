@@ -18,7 +18,7 @@ ivLyrics began as a modified version of [lyrics-plus](https://github.com/spiceti
 
 ### Contributed under LGPL-2.1
 
-These files contain code that others contributed while this repository was licensed under LGPL-2.1. They remain under LGPL-2.1 unless every contributor to the file agrees to the ivLyrics license. Contributors: PixelAxolotl, Ahmedxsaad, Oein, hohofught, kpnkpn1324, twoeater, and karma-skz.
+These files contain code that others contributed while this repository was licensed under LGPL-2.1. They remain under LGPL-2.1 unless every contributor to the file agrees to the ivLyrics license. Contributors: PixelAxolotl, Ahmedxsaad, Oein, hohofught, kpnkpn1324, twoeater, karma-skz, Junsu Park, alixti, and moxuun.
 
 - Runtime: `AIAddonManager.js`, `AIRequest.js`, `Addon_AI_ChatGPT.js`, `Addon_Lyrics_LrcRed.js`, `Addon_Lyrics_Lrclib.js`, `Addon_Lyrics_OpenLyrics.js`, `FullscreenOverlay.js`, `LyricsShareImage.js`, `LyricsWordSegmenter.js`, `PlaylistPicker.js`, `PronunciationFirst.js`, `SyncDataCreator.js`, `VideoBackground.js`, `VideoBackgroundDepend.js`, `VideoMatch.js`, `WordLevelSupplements.js`
 - Language files: every file in `langs/`
