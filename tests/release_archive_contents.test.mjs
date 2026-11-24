@@ -52,7 +52,8 @@ test('release archives retain the compiled local database bundle and every manif
 
   const runtimeFiles = new Set([
     'manifest.json', 'index.js', 'style.css', 'version.txt', 'LrclibLocalDatabaseRuntime.js',
-    'README.md', 'README_EN.md', 'marketplace.md', 'LICENSE', 'TinySegmenter.LICENSE.txt',
+    'README.md', 'README_EN.md', 'marketplace.md', 'LICENSE', 'NOTICE.md', 'LICENSES/LGPL-2.1.txt',
+    'TinySegmenter.LICENSE.txt',
     ...manifest.subfiles,
     ...manifest.subfiles_extension,
   ]);

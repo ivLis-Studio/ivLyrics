@@ -208,7 +208,9 @@ External AI features may send lyrics or song information to the provider you cho
 
 ## License and open-source notices
 
-The full ivLyrics license is available in [GNU LGPL v2.1](LICENSE). Included third-party components remain covered by their respective licenses.
+ivLyrics is source-available software under the [ivLyrics Source-Available License 1.0](LICENSE). You may read the source, install and use official releases, fork it to make your own changes, and contribute through pull requests. You may not redistribute the original or a modified version outside official channels, put ivLyrics code (including server communication code, endpoints, and keys) into other software, or use the ivLyrics servers from other software.
+
+Files derived from the original [Spicetify lyrics-plus](https://github.com/spicetify/cli/tree/main/CustomApps/lyrics-plus), and files containing outside contributions made under the LGPL, remain under [GNU LGPL v2.1](LICENSES/LGPL-2.1.txt). [NOTICE.md](NOTICE.md) lists them. Releases up to v7.1.17 also remain under LGPL v2.1. ivLyrics does not include lyrics, videos, or other third-party content, and grants no rights to use them. Included third-party components remain covered by their respective licenses.
 
 - **TinySegmenter** — Copyright (c) 2008, Taku Kudo. [Copyright and license notice](TinySegmenter.LICENSE.txt)
 - **wa-sqlite 1.0.0** — Copyright (c) 2023 Roy T. Hashimoto. MIT License; the full notice is also preserved in the distributed `LrclibLocalDatabaseRuntime.js`.
