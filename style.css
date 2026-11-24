@@ -12086,6 +12086,13 @@ html.is-lp-view-switch::view-transition-new(root) {
 .ivlyrics-motion-hud-title {
   top: 0;
   left: 0;
+  transition: translate 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* The app's generation pills (index.js) run along the top left over the title: while they
+   are up, the title steps down below them (the shot counter on the right stays). */
+.lyrics-lyricsContainer-LyricsContainer:has(> .lyrics-generation-status-stack) .ivlyrics-motion-hud-title {
+  translate: 0 calc(max(20px, env(safe-area-inset-top)) + 44px - clamp(18px, 3.2svh, 34px));
 }
 
 .ivlyrics-motion-hud-strong {
