@@ -1,7 +1,6 @@
 # Keep build inputs and reference notices in Git, not in release archives.
 # The compiled local database runtime and README license notices stay included.
-/local-db export-ignore
-/local-db/** export-ignore
+/.github/scripts/lrclib_local_database_worker.mjs export-ignore
 /third_party export-ignore
 /third_party/** export-ignore
 /mobile export-ignore

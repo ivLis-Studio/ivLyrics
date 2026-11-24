@@ -1,7 +1,7 @@
 /* Canonical ivLyrics sync v6 codec. No host, UI, network or storage dependency.
  * The backend vendors this exact file as SyncDataCodec.cjs. Golden vectors are
  * shared with the backend; older native readers use the legacy GET view.
- * Update both copies through scripts/sync-codec.mjs.
+ * Update both copies through .github/scripts/sync_codec.mjs.
  */
 (function (root, factory) {
   const api = factory();

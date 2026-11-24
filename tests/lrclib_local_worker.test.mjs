@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const workerSource = readFileSync(new URL('../local-db/LrclibLocalDatabaseWorker.mjs', import.meta.url), 'utf8');
+const workerSource = readFileSync(new URL('../.github/scripts/lrclib_local_database_worker.mjs', import.meta.url), 'utf8');
 const buildSource = readFileSync(new URL('../.github/scripts/build_lrclib_local_runtime.mjs', import.meta.url), 'utf8');
 const runtimeSource = readFileSync(new URL('../LrclibLocalDatabaseRuntime.js', import.meta.url), 'utf8');
 const DATABASE_NAME = 'lrclib.sqlite3';

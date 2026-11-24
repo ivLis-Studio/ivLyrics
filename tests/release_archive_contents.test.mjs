@@ -23,10 +23,10 @@ const archivedPaths = new Set(tar('-tf', '-').trim().split('\n'));
 const archivedFile = (path) => tar('-xOf', '-', `${prefix}${path}`);
 
 test('release archives omit source folders while their files remain in the repository', () => {
-  const trackedSources = git('ls-tree', '-r', '-z', '--name-only', 'HEAD', '--', 'local-db', 'third_party')
+  const trackedSources = git('ls-tree', '-r', '-z', '--name-only', 'HEAD', '--', 'third_party')
     .toString('utf8').split('\0').filter(Boolean);
 
-  for (const folder of ['local-db', 'third_party']) {
+  for (const folder of ['third_party']) {
     const sources = trackedSources.filter((path) => path.startsWith(`${folder}/`));
     assert.ok(sources.length > 0, `${folder}/ must remain tracked source`);
     for (const path of sources) {
@@ -36,6 +36,12 @@ test('release archives omit source folders while their files remain in the repos
       path === `${prefix}${folder}` || path.startsWith(`${prefix}${folder}/`));
     assert.deepEqual(leakedPaths, [], `${folder}/ must not appear in a release archive`);
   }
+});
+
+test('release archives omit the local database worker source while it remains in the repository', () => {
+  const workerSource = '.github/scripts/lrclib_local_database_worker.mjs';
+  assert.ok(existsSync(new URL(`../${workerSource}`, import.meta.url)), `${workerSource} must remain in the checkout`);
+  assert.equal(archivedPaths.has(`${prefix}${workerSource}`), false, `${workerSource} must not appear in a release archive`);
 });
 
 test('release archives retain the compiled local database bundle and every manifest runtime file', () => {

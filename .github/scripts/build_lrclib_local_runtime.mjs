@@ -18,7 +18,7 @@ const wasm = readFileSync(resolve(packageRoot, 'dist/wa-sqlite.wasm'));
 const wasmHash = createHash('sha256').update(wasm).digest('hex');
 if (wasmHash !== '5384bc7d80d7981c2516f3ad6b02d886629985d178e5037e765d655f440bbf9f') throw new Error('Unexpected SQLite WASM bytes');
 const built = await build({
-  entryPoints: [resolve(root, 'local-db/LrclibLocalDatabaseWorker.mjs')], bundle: true, write: false,
+  entryPoints: [resolve(root, '.github/scripts/lrclib_local_database_worker.mjs')], bundle: true, write: false,
   minify: true, format: 'iife', platform: 'browser', target: 'chrome110', nodePaths: [dependencies],
   define: { 'import.meta.url': '"file:///ivlyrics-local-database-worker.js"' },
   plugins: [{ name: 'inline-wasm', setup(build) {
