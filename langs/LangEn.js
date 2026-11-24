@@ -1616,6 +1616,14 @@ window.LANG_EN = {
       "wordDetailsEnabled": {
         "label": "Preload Word Details",
         "desc": "Preload per-word readings and translations for word-level karaoke"
+      },
+      "motionEnabled": {
+        "label": "Preload Motion Direction",
+        "desc": "Generate the motion-lyrics direction for the next song in advance"
+      },
+      "pronunciationTimingEnabled": {
+        "label": "Preload Pronunciation Timing",
+        "desc": "Generate AI pronunciation timing for the next song in advance"
       }
     },
     "communitySync": {

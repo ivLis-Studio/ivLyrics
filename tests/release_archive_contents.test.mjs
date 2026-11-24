@@ -19,7 +19,7 @@ const tar = (...args) => execFileSync('tar', args, {
   encoding: 'utf8',
   maxBuffer: 128 * 1024 * 1024,
 });
-const archivedPaths = new Set(tar('-tf', '-').trim().split('\n'));
+const archivedPaths = new Set(tar('-tf', '-').trim().split(/\r?\n/));
 const archivedFile = (path) => tar('-xOf', '-', `${prefix}${path}`);
 
 test('release archives omit source folders while their files remain in the repository', () => {

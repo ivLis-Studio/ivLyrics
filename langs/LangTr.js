@@ -1616,7 +1616,15 @@ window.LANG_TR = {
     "wordDetailsEnabled": {
       "label": "Kelime ayrıntılarını önceden yükle",
       "desc": "Kelime bazlı karaoke için her kelimenin okunuşunu ve çevirisini önceden yükler"
-    }
+    },
+      "motionEnabled": {
+        "label": "Hareket yönünü önyükle",
+        "desc": "Sonraki şarkı için motion-lyrics yönünü önceden oluştur"
+      },
+      "pronunciationTimingEnabled": {
+        "label": "Telaffuz zamanlamasını önyükle",
+        "desc": "Sonraki şarkı için AI telaffuz zamanlamasını önceden oluştur"
+      }
   },
   "communitySync": {
     "title": "Topluluk Senkronizasyonu",

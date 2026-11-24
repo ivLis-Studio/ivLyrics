@@ -1616,6 +1616,14 @@ window.LANG_JA = {
       "wordDetailsEnabled": {
         "label": "単語の詳細を事前読み込み",
         "desc": "単語単位カラオケ用に、単語ごとの読みと訳を事前に取得します"
+      },
+      "motionEnabled": {
+        "label": "モーション演出を先読み",
+        "desc": "次の曲のモーション歌詞演出を事前に生成"
+      },
+      "pronunciationTimingEnabled": {
+        "label": "発音タイミングを先読み",
+        "desc": "次の曲のAI発音タイミングを事前に生成"
       }
     },
     "communitySync": {

@@ -25,7 +25,7 @@ async (page) => {
   ));
   const keys = ["performance-frame-rate", "reduce-motion", "karaoke-bounce", "karaoke-line-transition",
     "karaoke-text-effects", "fade-blur", "highlight-mode", "text-shadow-enabled",
-    "prefetch-enabled", "prefetch-video-enabled", "prefetch-word-details-enabled"];
+    "prefetch-translation-enabled", "prefetch-video-enabled", "prefetch-word-details-enabled", "prefetch-motion-enabled", "prefetch-pronunciation-timing-enabled"];
   for (const [width, height, language, theme] of [[1440, 900, "en", "dark"], [640, 900, "ko", "light"], [390, 844, "ko", "dark"]]) {
     const label = `${width}-${language}-${theme}`;
     await page.setViewportSize({ width, height });
@@ -79,7 +79,7 @@ async (page) => {
       await settle();
     }
     assert(JSON.stringify(await counts()) === JSON.stringify(baseline), `${label}: reset did not restore menu counts`);
-    for (const [text, key] of [[labels.motion, "reduce-motion"], [labels.prefetch, "prefetch-enabled"]]) {
+    for (const [text, key] of [[labels.motion, "reduce-motion"], [labels.prefetch, "prefetch-translation-enabled"]]) {
       const search = page.locator(".settings-search-input");
       await search.fill(text);
       const option = page.getByRole("group", { name: labels.performance, exact: true })

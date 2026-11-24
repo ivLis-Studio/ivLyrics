@@ -1616,6 +1616,14 @@ window.LANG_ZH_CN = {
       "wordDetailsEnabled": {
         "label": "预加载单词详情",
         "desc": "为逐词卡拉OK预先获取每个单词的读音和翻译"
+      },
+      "motionEnabled": {
+        "label": "预加载动作方向",
+        "desc": "提前生成下一首歌的动作歌词方向"
+      },
+      "pronunciationTimingEnabled": {
+        "label": "预加载发音时机",
+        "desc": "提前生成下一首歌的AI发音时机"
       }
     },
     "communitySync": {

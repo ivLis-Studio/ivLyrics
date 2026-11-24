@@ -1616,6 +1616,14 @@ window.LANG_FR = {
       "wordDetailsEnabled": {
         "label": "Précharger les détails des mots",
         "desc": "Précharge la lecture et la traduction de chaque mot pour le karaoké mot à mot"
+      },
+      "motionEnabled": {
+        "label": "Précharger la direction de mouvement",
+        "desc": "Générer la direction motion-lyrics pour la prochaine chanson à l'avance"
+      },
+      "pronunciationTimingEnabled": {
+        "label": "Précharger le timing de prononciation",
+        "desc": "Générer le timing de prononciation IA pour la prochaine chanson à l'avance"
       }
     },
     "communitySync": {

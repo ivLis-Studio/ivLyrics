@@ -1616,6 +1616,14 @@ window.LANG_VI = {
       "wordDetailsEnabled": {
         "label": "Tải trước chi tiết từ",
         "desc": "Tải trước cách đọc và bản dịch của từng từ cho karaoke theo từ"
+      },
+      "motionEnabled": {
+        "label": "Tải trước hướng chuyển động",
+        "desc": "Tạo hướng motion-lyrics cho bài tiếp theo trước"
+      },
+      "pronunciationTimingEnabled": {
+        "label": "Tải trước thời gian phát âm",
+        "desc": "Tạo thời gian phát âm AI cho bài tiếp theo trước"
       }
     },
     "communitySync": {

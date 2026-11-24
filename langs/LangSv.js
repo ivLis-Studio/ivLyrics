@@ -1616,6 +1616,14 @@ window.LANG_SV = {
       "wordDetailsEnabled": {
         "label": "Förladda ordinformation",
         "desc": "Förladdar uttal och översättning för varje ord i karaoke ord för ord"
+      },
+      "motionEnabled": {
+        "label": "Förladda rörelseriktning",
+        "desc": "Generera motion-lyrics-riktning för nästa låt i förväg"
+      },
+      "pronunciationTimingEnabled": {
+        "label": "Förladda uttals-timing",
+        "desc": "Generera AI-uttals-timing för nästa låt i förväg"
       }
     },
     "communitySync": {

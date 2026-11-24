@@ -2924,8 +2924,8 @@ const CONFIG = {
       true
     ),
     // Prefetch settings
-    "prefetch-enabled": StorageManager.get(
-      "ivLyrics:visual:prefetch-enabled",
+    "prefetch-translation-enabled": StorageManager.get(
+      "ivLyrics:visual:prefetch-translation-enabled",
       true
     ),
     "prefetch-video-enabled": StorageManager.get(
@@ -2934,6 +2934,14 @@ const CONFIG = {
     ),
     "prefetch-word-details-enabled": StorageManager.get(
       "ivLyrics:visual:prefetch-word-details-enabled",
+      true
+    ),
+    "prefetch-motion-enabled": StorageManager.get(
+      "ivLyrics:visual:prefetch-motion-enabled",
+      true
+    ),
+    "prefetch-pronunciation-timing-enabled": StorageManager.get(
+      "ivLyrics:visual:prefetch-pronunciation-timing-enabled",
       true
     ),
     // Pronunciation-first mode: pronunciation and original swap rows.
@@ -3854,6 +3862,7 @@ const Prefetcher = {
 
       ivLyricsDebug(`[Prefetcher] Starting prefetch for: ${trackInfo.title}`);
 
+
       try {
         // 영상 배경 프리페치는 가사 유무와 무관하게 독립적으로 시작
         const prefetchPromises = [];
@@ -3870,7 +3879,7 @@ const Prefetcher = {
 
         if (!lyrics || (!lyrics.synced && !lyrics.unsynced && !lyrics.karaoke)) {
           ivLyricsDebug(`[Prefetcher] No lyrics found for: ${trackInfo.title}`);
-        } else if (CONFIG.visual["prefetch-enabled"] !== false) {
+        } else if (CONFIG.visual["prefetch-translation-enabled"] !== false) {
           // 2단계: 가사 로드 완료 후 번역/발음 프리페치
           prefetchPromises.push(this._prefetchTranslations(trackInfo, lyrics));
 
@@ -3881,6 +3890,16 @@ const Prefetcher = {
             prefetchMode === WORD_KARAOKE
           ) {
             prefetchPromises.push(this._prefetchWordSupplements(trackInfo, lyrics));
+          }
+
+          // 4단계: 모션 가사 연출 프리페치 (설정 ON)
+          if (CONFIG.visual["prefetch-motion-enabled"] !== false) {
+            prefetchPromises.push(this._prefetchMotionDirection(trackInfo, lyrics));
+          }
+
+          // 5단계: 발음 싱크(AI 타이밍) 프리페치 (설정 ON)
+          if (CONFIG.visual["prefetch-pronunciation-timing-enabled"] !== false) {
+            prefetchPromises.push(this._prefetchPronunciationTiming(trackInfo, lyrics));
           }
         }
 
@@ -4172,6 +4191,53 @@ const Prefetcher = {
       return true;
     } catch (error) {
       console.warn(`[Prefetcher] Word details prefetch failed:`, error?.message || error);
+      return null;
+    }
+  },
+
+  /**
+   * 모션 가사 연출 프리페치. MotionLyrics.requestDirection과 동일한 경로로
+   * AI 연출을 미리 생성/캐시하여 재생 시 지연을 줄인다.
+   */
+  async _prefetchMotionDirection(trackInfo, lyrics) {
+    try {
+      const lines = Array.isArray(lyrics?.karaoke) ? lyrics.karaoke
+        : (Array.isArray(lyrics?.synced) ? lyrics.synced : (Array.isArray(lyrics?.unsynced) ? lyrics.unsynced : []));
+      const motion = window.ivLyricsMotionLyrics;
+      if (!motion || typeof motion.buildModel !== "function" || typeof motion.requestDirection !== "function") return null;
+      const model = motion.buildModel(lines);
+      if (!Array.isArray(model) || model.length === 0) return null;
+      const uri = String(trackInfo?.uri || "");
+      const title = trackInfo?.title || "";
+      const artist = trackInfo?.artist || "";
+      const songLang = (window.LyricsService?.detectLanguage?.(lines) || window.Utils?.detectLanguage?.(lines) || "");
+      await motion.requestDirection({ trackUri: uri, model, title, artist, songLang });
+      return true;
+    } catch (error) {
+      console.warn(`[Prefetcher] Motion direction prefetch failed:`, error?.message || error);
+      return null;
+    }
+  },
+
+  /**
+   * 발음 싱크(AI 타이밍) 프리페치. PronunciationFirst.ensureTimed와 동일한
+   * 경로로 단위 타이밍을 미리 생성/캐시한다.
+   */
+  async _prefetchPronunciationTiming(trackInfo, lyrics) {
+    try {
+      const lines = Array.isArray(lyrics?.karaoke) ? lyrics.karaoke
+        : (Array.isArray(lyrics?.synced) ? lyrics.synced : (Array.isArray(lyrics?.unsynced) ? lyrics.unsynced : []));
+      if (!Array.isArray(lines) || lines.length === 0) return null;
+      const pf = window.ivLyricsPronunciationFirst;
+      if (!pf || typeof pf.ensureTimed !== "function") return null;
+      const uri = String(trackInfo?.uri || "");
+      const targetLang = (typeof getCurrentTranslationTargetLanguage === "function" ? getCurrentTranslationTargetLanguage() : "");
+      const sourceLang = (window.LyricsService?.detectLanguage?.(lines) || "auto");
+      const notation = (typeof getCurrentLyricsPronunciationNotation === "function" ? getCurrentLyricsPronunciationNotation() : "");
+      pf.ensureTimed({ trackUri: uri, lines, karaokeSource: null, targetLang, sourceLang, notation });
+      return true;
+    } catch (error) {
+      console.warn(`[Prefetcher] Pronunciation timing prefetch failed:`, error?.message || error);
       return null;
     }
   },

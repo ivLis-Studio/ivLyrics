@@ -7394,7 +7394,7 @@ const SETTINGS_DEFAULT_VALUES = Object.freeze({
   "karaoke-fill-correction-curve": "[[0,0],[0.25,0.25],[0.5,0.5],[0.75,0.75],[1,1]]",
   "spotify-fake-karaoke-enabled": false, "pseudo-karaoke-render-advance": 250,
   "prefer-sync-data-provider": true, "prefer-lyrics-type-over-provider-order": true,
-  "prefetch-enabled": true, "prefetch-video-enabled": true, "prefetch-word-details-enabled": true,
+  "prefetch-translation-enabled": true, "prefetch-video-enabled": true, "prefetch-word-details-enabled": true, "prefetch-motion-enabled": true, "prefetch-pronunciation-timing-enabled": true,
   "pronunciation-first": false,
   "synced-pronunciation": false,
   "pronunciation-karaoke-fill": false,
@@ -8787,9 +8787,11 @@ const getPerformanceSettingsSections = () => {
       subtitleKey: "settingsAdvanced.performance.backgroundWork.subtitle",
       searchKeys: ["settingsAdvanced.prefetch.title", "settingsAdvanced.prefetch.subtitle"],
       items: [
-        option("prefetch-enabled", "settingsAdvanced.prefetch.enabled.label", "settingsAdvanced.prefetch.enabled.desc"),
+        option("prefetch-translation-enabled", "settingsAdvanced.prefetch.enabled.label", "settingsAdvanced.prefetch.enabled.desc"),
         option("prefetch-video-enabled", "settingsAdvanced.prefetch.videoEnabled.label", "settingsAdvanced.prefetch.videoEnabled.desc"),
         option("prefetch-word-details-enabled", "settingsAdvanced.prefetch.wordDetailsEnabled.label", "settingsAdvanced.prefetch.wordDetailsEnabled.desc"),
+        option("prefetch-motion-enabled", "settingsAdvanced.prefetch.motionEnabled.label", "settingsAdvanced.prefetch.motionEnabled.desc"),
+        option("prefetch-pronunciation-timing-enabled", "settingsAdvanced.prefetch.pronunciationTimingEnabled.label", "settingsAdvanced.prefetch.pronunciationTimingEnabled.desc"),
       ],
     },
   ];

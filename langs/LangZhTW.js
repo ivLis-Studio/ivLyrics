@@ -1616,6 +1616,14 @@ window.LANG_ZH_TW = {
       "wordDetailsEnabled": {
         "label": "預先載入單字詳情",
         "desc": "為逐字卡拉OK預先取得每個單字的讀音與翻譯"
+      },
+      "motionEnabled": {
+        "label": "預載動作方向",
+        "desc": "提前產生下一首歌的動作歌詞方向"
+      },
+      "pronunciationTimingEnabled": {
+        "label": "預載發音時機",
+        "desc": "提前產生下一首歌的AI發音時機"
       }
     },
     "communitySync": {

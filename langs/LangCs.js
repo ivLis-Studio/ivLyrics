@@ -1616,6 +1616,14 @@ window.LANG_CS = {
       "wordDetailsEnabled": {
         "label": "Předem načíst podrobnosti slov",
         "desc": "Předem načte čtení a překlad každého slova pro karaoke po slovech"
+      },
+      "motionEnabled": {
+        "label": "Přednačíst směr pohybu",
+        "desc": "Vygenerovat směr pohybu lyrics pro další skladbu předem"
+      },
+      "pronunciationTimingEnabled": {
+        "label": "Přednačíst časování výslovnosti",
+        "desc": "Vygenerovat AI časování výslovnosti pro další skladbu předem"
       }
     },
     "communitySync": {

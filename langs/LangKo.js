@@ -1616,6 +1616,14 @@ window.LANG_KO = {
       "wordDetailsEnabled": {
         "label": "단어 상세 미리 로드",
         "desc": "단어 수준 가라오케의 단어별 읽기와 번역을 미리 가져옵니다"
+      },
+      "motionEnabled": {
+        "label": "모션 연출 미리 로드",
+        "desc": "다음 곡의 모션 가사 연출을 미리 생성합니다"
+      },
+      "pronunciationTimingEnabled": {
+        "label": "발음 싱크 미리 로드",
+        "desc": "다음 곡의 AI 발음 싱크를 미리 생성합니다"
       }
     },
     "communitySync": {

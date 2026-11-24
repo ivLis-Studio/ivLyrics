@@ -1616,6 +1616,14 @@ window.LANG_MS = {
       "wordDetailsEnabled": {
         "label": "Pramuat butiran perkataan",
         "desc": "Memuatkan lebih awal sebutan dan terjemahan setiap perkataan untuk karaoke mengikut perkataan"
+      },
+      "motionEnabled": {
+        "label": "Prabeban Arah Gerakan",
+        "desc": "Jana arah motion-lyrics untuk lagu seterusnya lebih awal"
+      },
+      "pronunciationTimingEnabled": {
+        "label": "Prabeban Masa Sebutan",
+        "desc": "Jana masa sebutan AI untuk lagu seterusnya lebih awal"
       }
     },
     "communitySync": {

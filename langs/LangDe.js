@@ -1616,6 +1616,14 @@ window.LANG_DE = {
       "wordDetailsEnabled": {
         "label": "Wortdetails vorab laden",
         "desc": "Lädt Lesung und Übersetzung jedes Wortes für das wortweise Karaoke vorab"
+      },
+      "motionEnabled": {
+        "label": "Bewegungsrichtung vorladen",
+        "desc": "Bewegungsrichtung der Lyrics für den nächsten Song vorab generieren"
+      },
+      "pronunciationTimingEnabled": {
+        "label": "Aussprache-Timing vorladen",
+        "desc": "KI-Aussprache-Timing für den nächsten Song vorab generieren"
       }
     },
     "communitySync": {

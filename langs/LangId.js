@@ -1616,6 +1616,14 @@ window.LANG_ID = {
       "wordDetailsEnabled": {
         "label": "Pramuat detail kata",
         "desc": "Memuat lebih dulu bacaan dan terjemahan setiap kata untuk karaoke per kata"
+      },
+      "motionEnabled": {
+        "label": "Pramuat Arah Gerakan",
+        "desc": "Buat arah motion-lyrics untuk lagu berikutnya lebih awal"
+      },
+      "pronunciationTimingEnabled": {
+        "label": "Pramuat Timing Pengucapan",
+        "desc": "Buat timing pengucapan AI untuk lagu berikutnya lebih awal"
       }
     },
     "communitySync": {

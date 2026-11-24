@@ -1616,6 +1616,14 @@ window.LANG_ES = {
       "wordDetailsEnabled": {
         "label": "Precargar detalles de palabras",
         "desc": "Precarga la lectura y la traducción de cada palabra para el karaoke por palabras"
+      },
+      "motionEnabled": {
+        "label": "Precargar dirección de movimiento",
+        "desc": "Generar la dirección de motion-lyrics para la próxima canción por adelantado"
+      },
+      "pronunciationTimingEnabled": {
+        "label": "Precargar timing de pronunciación",
+        "desc": "Generar timing de pronunciación IA para la próxima canción por adelantado"
       }
     },
     "communitySync": {

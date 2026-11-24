@@ -7,8 +7,8 @@ const source = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
 const performanceKeys = [
   "reduce-motion", "performance-frame-rate", "karaoke-bounce",
   "karaoke-line-transition", "karaoke-text-effects", "fade-blur",
-  "highlight-mode", "text-shadow-enabled", "prefetch-enabled",
-  "prefetch-video-enabled", "prefetch-word-details-enabled",
+  "highlight-mode", "text-shadow-enabled", "prefetch-translation-enabled",
+  "prefetch-video-enabled", "prefetch-word-details-enabled", "prefetch-motion-enabled", "prefetch-pronunciation-timing-enabled",
 ];
 const appearanceKeys = [
   "text-shadow-color", "text-shadow-opacity", "text-shadow-blur", "highlight-intensity",
@@ -515,7 +515,7 @@ test("legacy prefetch and stale owner links resolve through real navigation and 
     assert.equal(h.api.pendingTabScrollRef.current, "performance-background-work");
   }
   for (const [initialTab, initialSettingKey] of [
-    ["lyrics", "prefetch"], ["appearance", "reduce-motion"], ["lyrics", "prefetch-enabled"],
+    ["lyrics", "prefetch"], ["appearance", "reduce-motion"], ["lyrics", "prefetch-translation-enabled"],
   ]) {
     const linked = harness({}, { initialTab, initialSettingKey });
     assert.equal(linked.api.activeTab, "performance");

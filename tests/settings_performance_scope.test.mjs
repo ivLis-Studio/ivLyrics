@@ -65,7 +65,7 @@ test("Performance counts seven effects without duplicating the Appearance backgr
   assert.deepEqual(h.items.map((item) => item.key), [
     "performance-frame-rate", "reduce-motion", ...costKeys.filter((key) => key !== "video-background"),
     "video-background-settings",
-    "prefetch-enabled", "prefetch-video-enabled", "prefetch-word-details-enabled",
+    "prefetch-translation-enabled", "prefetch-video-enabled", "prefetch-word-details-enabled", "prefetch-motion-enabled", "prefetch-pronunciation-timing-enabled",
   ]);
   assert.ok(h.lists.every((list) => list.props.onChange === h.handlePerformanceSettingChange));
   const frameRate = h.items.find((item) => item.key === "performance-frame-rate");
