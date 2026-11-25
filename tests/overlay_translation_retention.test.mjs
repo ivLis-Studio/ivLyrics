@@ -415,6 +415,47 @@ test('legacy lyrics-ready events without mode fields display their supplied supp
 	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name));
 });
 
+test('a display-only provider change leaves late word timing in the old provider cache', async () => {
+	const h = load();
+	const trackInfo = { uri, title: 'Title', artist: 'Artist' };
+	const base = { uri, provider: 'lrcred', synced: rawLyrics(), lrcred: { isrc: 'JPAAA2600001' } };
+	h.service.publishLyricsSnapshot({
+		trackInfo, rawResult: base, displayLyrics: rawLyrics(), trackLyricsProviderOverride: 'lrcred',
+		lyricsType: 'synced',
+	});
+	h.window.dispatchEvent({ type: 'ivLyrics:lyrics-ready', detail: { trackInfo, lyrics: rawLyrics() } });
+	assert.strictEqual(h.service.getLyricsSnapshot(uri).rawResult, base);
+
+	const nextDisplay = richLyrics();
+	h.window.dispatchEvent({ type: 'ivLyrics:lyrics-ready', detail: {
+		...richContext(), trackInfo, lyrics: nextDisplay, provider: 'spotify',
+	} });
+	const next = h.service.getLyricsSnapshot(uri);
+	const karaoke = base.synced.map(line => ({ ...line, syllables: [
+		{ text: line.text, startTime: line.startTime, endTime: line.endTime },
+	] }));
+	let cached = base;
+	const deliver = createLrcRedTimingDelivery({
+		isEnabled: () => true, isKaraokeEnabled: () => true, isCurrentPlayback: value => value === uri,
+		getPage: () => null, getPageCache: () => null, getCacheId: () => 'current',
+		getService: () => ({
+			...h.service,
+			async updateCachedLyrics(_id, provider, update) {
+				assert.equal(provider, 'lrcred');
+				cached = update(cached);
+			},
+		}),
+		isPseudoSource: () => false,
+	});
+	assert.equal(await deliver({ uri }, { ...base, karaoke, karaokeSource: 'lrcred' }, () => true), false);
+	assert.strictEqual(cached.karaoke, karaoke);
+	assert.strictEqual(h.service.getLyricsSnapshot(uri), next);
+	assert.equal(next.provider, 'spotify');
+	assert.equal(next.rawResult, undefined);
+	assert.equal(next.trackLyricsProviderOverride, undefined);
+	assert.strictEqual(next.displayLyrics, nextDisplay);
+});
+
 test('the production publisher preserves notation and target language through events, snapshots and bootstrap replay', async () => {
 	const h = load();
 	const trackInfo = { uri, title: 'Title', artist: 'Artist' };

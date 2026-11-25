@@ -73,11 +73,16 @@ export function createLyricsPresentationStore({
                 if (!definedUpdate.displayLyrics && previous.lyricsType === 'karaoke') delete definedUpdate.karaokeSource;
             }
             const nextProvider = definedUpdate.provider || definedUpdate.rawResult?.provider || null;
-            const sourceChanged = !!definedUpdate.rawResult && !!previous.rawResult && (
-                (nextProvider || '') !== (previous.provider || previous.rawResult?.provider || '') ||
+            const previousProvider = previous.provider || previous.rawResult?.provider || null;
+            const rawSourceChanged = !!definedUpdate.rawResult && !!previous.rawResult && (
+                nextProvider !== previousProvider ||
                 (definedUpdate.trackLyricsProviderOverride || '') !== (previous.trackLyricsProviderOverride || '') ||
                 !areSameRawLyrics(definedUpdate.rawResult, previous.rawResult)
             );
+            // A legacy lyrics-ready event can change providers without supplying raw rows.
+            const displaySourceChanged = Array.isArray(definedUpdate.displayLyrics)
+                && !!nextProvider && !!previousProvider && nextProvider !== previousProvider;
+            const sourceChanged = rawSourceChanged || displaySourceChanged;
             if (
                 !sourceChanged
                 && previous.displayLyrics !== definedUpdate.displayLyrics
