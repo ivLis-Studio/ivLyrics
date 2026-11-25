@@ -1,4 +1,5 @@
-import { getNormalizedHotkeyFromEvent, isSyncCreatorDragHotkeyEvent } from './syncCreatorShortcutSettings.mjs';
+import { isKeyboardShortcutComposition } from '../../core/keyboardShortcut.mjs';
+import { getNormalizedHotkeyFromEvent, getSyncCreatorDragKeyByCode } from './syncCreatorShortcutSettings.mjs';
 import { startSyncCreatorKeyboardDrag, stopSyncCreatorKeyboardDrag } from './syncCreatorKeyboardDrag.mjs';
 import { seekSyncCreatorByOffset } from './syncCreatorSeek.mjs';
 
@@ -65,7 +66,8 @@ export function bindSyncCreatorRecordingShortcuts({
 	}
 
 	function handleKey(event, holdFallbackOnly = false) {
-		if (event.defaultPrevented || event.isComposing || isEditingControl(event.composedPath?.()[0] ?? event.target)) return;
+		if (event.defaultPrevented || isKeyboardShortcutComposition(event)
+			|| isEditingControl(event.composedPath?.()[0] ?? event.target)) return;
 		if (heldKey && matchesHeldKey(heldKey, event)) {
 			consume(event);
 			return;
@@ -83,11 +85,9 @@ export function bindSyncCreatorRecordingShortcuts({
 		}
 		if (isPointerRecording()) return;
 
-		const dragKey = isSyncCreatorDragHotkeyEvent(event, key);
-		if (holdFallbackOnly && !dragKey && !settings.matchesDrag(key)) return;
-		const action = settings.findAction(key);
-		if (holdFallbackOnly && action && action !== 'drag') return;
-		if (!action && !dragKey && !STATIC_RECORDING_KEYS.has(key)) return;
+		const action = settings.findAction(key, getSyncCreatorDragKeyByCode(event));
+		if (holdFallbackOnly && action !== 'drag') return;
+		if (!action && !STATIC_RECORDING_KEYS.has(key)) return;
 
 		if (action === 'lastCharEnd') {
 			consume(event);
@@ -119,7 +119,7 @@ export function bindSyncCreatorRecordingShortcuts({
 				recorder.revertWord();
 				return;
 		}
-		if (action === 'drag' || dragKey) {
+		if (action === 'drag') {
 			consume(event);
 			startHold(event, autoAdvanceBoundaries);
 		} else if (key === 'enter') {

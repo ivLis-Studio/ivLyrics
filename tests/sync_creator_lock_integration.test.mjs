@@ -122,6 +122,44 @@ test('a live custom hold shortcut starts from keypress and cancels its pending r
 	assert.deepEqual(h.times(), saved);
 });
 
+test('the physical slash fallbacks respect each configured hold shortcut', t => {
+	const h = createLockedEditor();
+	t.after(h.dispose);
+	const bindings = new Map([
+		['ivLyrics:visual:sync-creator-drag-key', ''],
+		['ivLyrics:visual:sync-creator-drag-alt-key', 'q'],
+	]);
+	h.context.localStorage.getItem = key => bindings.get(key) ?? null;
+	const prevent = () => assert.fail('a removed shortcut was consumed');
+	h.press('/', 9, { code: 'Slash', preventDefault: prevent });
+	h.press('/', 9, { code: 'NumpadDivide', preventDefault: prevent });
+	h.press('§', 9, { code: 'Slash', preventDefault: prevent });
+	assert.equal(h.advances, 0);
+	assert.equal(h.intervals.size, 0);
+
+	h.keypress('q', 9);
+	assert.equal(h.context.keyboardCharIndexRef.current, 2);
+	assert.equal(h.intervals.size, 1);
+	h.release('q');
+	h.press('Backspace', 9);
+	bindings.set('ivLyrics:visual:sync-creator-drag-key', '/');
+	h.press('§', 10, { code: 'Slash' });
+	assert.equal(h.context.keyboardCharIndexRef.current, 2, 'an assigned slash still works from its physical code');
+	h.release('§', { code: 'Slash' });
+	assert.equal(h.intervals.size, 0);
+});
+
+test('IME and AltGraph events do not use the physical slash fallback', t => {
+	const h = createLockedEditor();
+	t.after(h.dispose);
+	h.press('Process', 9, { code: 'Slash', keyCode: 229 });
+	h.press('Dead', 9, { code: 'Slash' });
+	h.press('/', 9, { code: 'Slash', getModifierState: key => key === 'AltGraph' });
+	assert.equal(h.advances, 0);
+	assert.equal(h.intervals.size, 0);
+	assert.equal(h.context.keyboardDragRef.current, null);
+});
+
 test('releasing a modifier stops a held recording shortcut', t => {
 	const h = createLockedEditor();
 	t.after(h.dispose);

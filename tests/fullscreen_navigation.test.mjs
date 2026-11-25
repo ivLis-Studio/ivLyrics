@@ -417,7 +417,7 @@ test("saved key sequences expire and reset after focus changes", () => {
     assert.equal(h.press("g"), false);
     h.window.dispatchEvent(new Event("blur"));
     assert.equal(h.press("f"), false);
-    for (const composition of [{ keyCode: 229 }, { getModifierState: name => name === "AltGraph" }]) {
+    for (const composition of [{ keyCode: 229 }, { key: "Dead" }, { getModifierState: name => name === "AltGraph" }]) {
         assert.equal(h.press("g"), false);
         assert.equal(h.press("f", composition), false);
         assert.equal(h.press("f"), false, "text composition must reset the sequence");

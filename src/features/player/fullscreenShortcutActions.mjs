@@ -1,3 +1,5 @@
+import { isKeyboardShortcutComposition } from "../../core/keyboardShortcut.mjs";
+
 const OVERLAY_ID = "lyrics-fullscreen-container";
 const LYRICS_CONTAINER = ".lyrics-lyricsContainer-LyricsContainer";
 const FULLSCREEN_CONTAINER = LYRICS_CONTAINER + ".fullscreen-active";
@@ -51,8 +53,7 @@ export function createFullscreenShortcutActions({
         const value = readSetting(TV_MODE_SETTING);
         return value === true || value === "true";
     };
-    const ignoreShortcut = (event) => event.defaultPrevented || event.repeat || event.isComposing || event.keyCode === 229
-        || event.getModifierState?.("AltGraph")
+    const ignoreShortcut = (event) => event.defaultPrevented || event.repeat || isKeyboardShortcutComposition(event)
         || isEditableElement(event.composedPath?.()[0] ?? event.target) || isEditableElement(document.activeElement);
     const hasOpenDialog = () => !!document.querySelector(DIALOGS);
 

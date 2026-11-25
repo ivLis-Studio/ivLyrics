@@ -5,7 +5,8 @@ const KEY_ALIASES = new Map(Object.entries({
   spacebar: "space", return: "enter", escape: "esc", del: "delete", ins: "insert",
   slash: "/", divide: "numpaddivide", "num /": "numpaddivide", "num/": "numpaddivide", "+": "plus",
 }));
-const UNASSIGNABLE_KEYS = new Set(["", "unidentified", "dead", "process", "altgraph", "compose"]);
+const COMPOSITION_KEYS = new Set(["dead", "process", "altgraph", "compose"]);
+const UNASSIGNABLE_KEYS = new Set(["", "unidentified", ...COMPOSITION_KEYS]);
 const SHIFTED_PUNCTUATION = new Map(Object.entries({
   "~": "`", "!": "1", "@": "2", "#": "3", "$": "4", "%": "5", "^": "6", "&": "7", "*": "8", "(": "9", ")": "0",
   "_": "-", plus: "=", "{": "[", "}": "]", "|": "\\", ":": ";", '"': "'", "<": ",", ">": ".", "?": "/",
@@ -53,8 +54,12 @@ export function parseKeyboardShortcut(value, primaryModifier = "ctrl") {
 
 export const getPrimaryKeyboardModifier = platform => /^(Mac|iPhone|iPad|iPod)/i.test(platform || "") ? "meta" : "ctrl";
 
+export const isKeyboardShortcutComposition = event =>
+  event.isComposing || event.keyCode === 229 || event.getModifierState?.("AltGraph")
+    || COMPOSITION_KEYS.has(normalizeKey(event.key));
+
 export function captureKeyboardShortcut(event) {
-  if (!event || event.isComposing || event.keyCode === 229 || event.getModifierState?.("AltGraph")) return "";
+  if (!event || isKeyboardShortcutComposition(event)) return "";
   const key = event.code === "NumpadDivide" ? "numpaddivide" : normalizeKey(event.key);
   if (UNASSIGNABLE_KEYS.has(key) || MODIFIERS.includes(key)) return "";
   const modifiers = [["ctrl", event.ctrlKey], ["alt", event.altKey], ["shift", event.shiftKey], ["meta", event.metaKey]];
