@@ -55,7 +55,7 @@ function installerFixture(context, {
     failApply = false, rejectRoute = false, rejectApp = false, skipRegistrationWrite = false,
     badHash = false, needsBackup = false, incomplete = false, useProxy = false,
     multilineApps = false, githubDownloadFails = false, githubTimeout = '', proxyVersion = useProxy ? latest : "",
-    differentMirrorArchive = false, uninstallFailure = '',
+    differentMirrorArchive = false, uninstallFailure = '', compactGithubMetadata = false,
     archive = null, releaseVersion = latest,
     manifest = { name: 'ivLyrics', subfiles_extension: ['startup.js'] }, failProtocolRegistration = false,
 } = {}) {
@@ -77,6 +77,14 @@ function installerFixture(context, {
     writeFileSync(join(root, 'custom-apps'), registered ? 'other|ivLyrics\n' : 'other\n');
     const protocolFailure = join(root, 'protocol-failure');
     if (failProtocolRegistration) writeFileSync(protocolFailure, 'unavailable');
+    const metadata = {
+        url: 'https://api.github.com/repos/ivLis-Studio/ivLyrics/releases/123',
+        tag_name: useProxy ? 'invalid' : `v${releaseVersion}`,
+        assets: ['ivLyrics.zip.sha256', 'ivLyrics.zip'].map(name => ({
+            name, browser_download_url: `https://release.example.test/${name}`,
+        })),
+    };
+    writeFileSync(join(root, 'release.json'), JSON.stringify(metadata, null, compactGithubMetadata ? 0 : 2));
     if (installedVersion) {
         writeFileSync(join(app, 'version.txt'), installedVersion);
         writeFileSync(join(app, 'index.js'), 'original app');
@@ -160,9 +168,7 @@ done
 case "$url" in
     https://api.github.com) [ "$IVL_TEST_OFFLINE" != true ] ;;
     https://api.github.com/repos/ivLis-Studio/ivLyrics/releases/latest)
-        tag="v$IVL_TEST_RELEASE_VERSION"
-        if [ "$IVL_TEST_PROXY" = true ]; then tag=invalid; fi
-        printf '{\n"tag_name": "%s",\n"browser_download_url": "https://release.example.test/ivLyrics.zip",\n"browser_download_url": "https://release.example.test/ivLyrics.zip.sha256"\n}\n' "$tag"
+        cat "$IVL_TEST_ROOT/release.json"
         if [ "$IVL_TEST_GITHUB_TIMEOUT" = metadata ]; then exit 28; fi
         ;;
     https://release.example.test/ivLyrics.zip)
@@ -277,6 +283,15 @@ test('the Unix installer upgrades the CustomApps beside the active Spicetify con
     assert.deepEqual(fx.readEvents(), ['probe', 'probe', `apply:${latest}`, 'register']);
     assert.equal(fx.readApps(), 'other|ivLyrics');
     assert.equal(existsSync(join(fx.apps, '.ivLyrics-install.lock')), false);
+});
+
+test('the Unix installer obtains both GitHub assets from compact release metadata', { skip: !canRun }, context => {
+    const fx = installerFixture(context, { compactGithubMetadata: true });
+    const result = fx.run();
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /Found version: v7\.1\.17 \(via GitHub\)/);
+    assert.equal(readFileSync(join(fx.app, 'version.txt'), 'utf8').trim(), latest);
+    assert.deepEqual(fx.readEvents(), ['probe', 'probe', `apply:${latest}`, 'register']);
 });
 
 test('a redundant Unix update does not probe or stop Spotify', { skip: !canRun }, context => {

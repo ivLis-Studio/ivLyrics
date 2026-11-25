@@ -621,13 +621,20 @@ VERSION_TAG="unknown"
 EXPECTED_SHA256=""
 CHECKSUM_URL=""
 
-# Try GitHub with retry
+read_release_string_fields() {
+    grep -oE "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | cut -d'"' -f4
+}
+
 fetch_from_github() {
-    local response
+    local response asset_urls
     response=$(request_release "$METADATA_TIMEOUT" "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null) || return 1
-    DOWNLOAD_URL=$(grep '"browser_download_url"' <<< "$response" | grep '/ivLyrics\.zip"' | head -n 1 | cut -d'"' -f4)
-    CHECKSUM_URL=$(grep '"browser_download_url"' <<< "$response" | grep '/ivLyrics\.zip\.sha256"' | head -n 1 | cut -d'"' -f4)
-    VERSION_TAG=$(grep '"tag_name"' <<< "$response" | head -n 1 | cut -d'"' -f4)
+    # Extract complete fields before testing asset names, even when all assets
+    # share a line or the JSON separates a key and value across lines.
+    response=$(tr -d '\r\n' <<< "$response")
+    asset_urls=$(read_release_string_fields browser_download_url <<< "$response")
+    DOWNLOAD_URL=$(awk '/\/ivLyrics\.zip$/ { print; exit }' <<< "$asset_urls")
+    CHECKSUM_URL=$(awk '/\/ivLyrics\.zip\.sha256$/ { print; exit }' <<< "$asset_urls")
+    VERSION_TAG=$(read_release_string_fields tag_name <<< "$response" | head -n 1)
 
     [ -n "$DOWNLOAD_URL" ] && [ -n "$CHECKSUM_URL" ] &&
         is_release_version "$(normalize_version "$VERSION_TAG")"
