@@ -5,6 +5,7 @@ import vm from "node:vm";
 import { readTranslationRuntimeFixture } from "./fixtures/legacy-page-source.mjs";
 import { createPageLyricsPresenter } from "../src/lyrics/pageLyricsPresenter.mjs";
 import { createPageTranslationMemoryCache } from "../src/lyrics/pageMemoryCache.mjs";
+import { createTranslationPresentation } from "../src/lyrics/translationPresentation.mjs";
 
 const source = readFileSync(new URL("../src/spicetify/index.js", import.meta.url), "utf8");
 const section = (from, to) => {
@@ -14,6 +15,45 @@ const section = (from, to) => {
   return source.slice(start, end);
 };
 const flush = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
+
+test("streaming one vocal row keeps the rest of the translated presentation stable", () => {
+  let comparisons = 0;
+  const presentation = createTranslationPresentation({
+    areEquivalent(a, b) { comparisons++; return a === b; },
+    getPhoneticHyphenMode: () => "keep",
+  });
+  const lead = { text: "First voice", translation: "Old lead", syllables: [{ text: "First voice", startTime: 1000 }] };
+  const reply = { text: "Second voice", translation: "Old reply", syllables: [{ text: "Second voice", startTime: 1300 }] };
+  const lyrics = [
+    { text: "[Chorus]" },
+    { text: lead.text, vocals: { lead, background: [reply] } },
+    { text: "" },
+    { text: "Last line", startTime: 2500 },
+  ];
+  const map = presentation.createTranslationLineMapper(lyrics, { targetField: "translation" });
+  const first = map(["[Chorus]", "Lead"]);
+  const initialComparisons = comparisons;
+  assert.equal(first[0].text, null);
+  assert.equal(first[1].vocals.lead.translation, "Lead");
+  assert.equal(first[1].vocals.background[0].translation, undefined);
+  assert.equal(first[2].text, "");
+  assert.equal(first[3].text, "Last line");
+
+  const second = map(["[Chorus]", "Lead", "Reply"]);
+  assert.equal(comparisons - initialComparisons, 2, "only the affected vocal row is compared");
+  assert.equal(second[1].text, "Lead / Reply");
+  assert.equal(second[1].vocals.background[0].translation, "Reply");
+  assert.equal(first[1].vocals.background[0].translation, undefined, "prior progress stays immutable");
+  assert.strictEqual(second[1].vocals.lead.syllables, lead.syllables);
+  for (const index of [0, 2, 3]) assert.strictEqual(second[index], first[index]);
+  assert.strictEqual(map(["[Chorus]", "Lead", "Reply"]), second);
+
+  const reset = map([]);
+  assert.equal(reset[1].text, lead.text);
+  assert.equal(reset[1].vocals.lead.translation, undefined);
+  assert.equal(reset[1].vocals.background[0].translation, undefined);
+  assert.equal(reply.translation, "Old reply");
+});
 
 // Exercise production presentation, mapping, memory and persistent-cache reads.
 // All text is synthetic; an unexpected AI request fails instead of using a network.

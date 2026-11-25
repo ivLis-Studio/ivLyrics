@@ -190,81 +190,36 @@ function createTranslationPresentation({
     return `${lyrics.length}:${requests.length}:${sourceHash}:${vocalShape}`;
   };
 
-  const mapTranslationLinesToLyrics = (lyrics = [], linesInput = [], options = {}) => {
-    if (!Array.isArray(lyrics) || !Array.isArray(linesInput)) {
-      return null;
-    }
-
+  const createTranslationLineMapper = (lyrics = [], options = {}) => {
+    if (!Array.isArray(lyrics)) return () => null;
     const targetField = options?.targetField || null;
     const splitVocalParts = options?.splitVocalParts !== false;
     const userEdited = options?.userEdited === true;
-    const translationRequests = buildTranslationLineRequests(lyrics, { splitVocalParts });
-    const requestResultsByLine = new Map();
-    let resultLineIndex = 0;
-
-    const readNextResultLine = () => {
-      while (
-        !userEdited && resultLineIndex < linesInput.length &&
-        linesInput[resultLineIndex] !== undefined &&
-        linesInput[resultLineIndex] !== null &&
-        isSectionHeader(String(linesInput[resultLineIndex]).trim())
-      ) {
-        resultLineIndex++;
-      }
-
-      return String(linesInput[resultLineIndex++] ?? "").trim();
-    };
-
-    translationRequests.forEach((request) => {
-      const entry = {
-        ...request,
-        resultText: readNextResultLine(),
-      };
-      const entries = requestResultsByLine.get(request.lineIndex) || [];
-      entries.push(entry);
-      requestResultsByLine.set(request.lineIndex, entries);
-    });
-
-    return lyrics.map((line, lineIndex) => {
+    const rows = lyrics.map((line) => {
       const originalText = line?.originalText || line?.text || "";
+      return { line, originalText, requests: [], values: null };
+    });
+    for (const request of buildTranslationLineRequests(lyrics, { splitVocalParts })) {
+      rows[request.lineIndex].requests.push(request);
+    }
+    const normalizedInputs = [];
+    let previousOutput = null;
 
-      if (isSectionHeader(originalText)) {
-        return {
-          ...line,
-          text: null,
-          originalText,
-        };
-      }
+    const renderLine = ({ line, originalText, requests }, values) => {
+      if (isSectionHeader(originalText)) return { ...line, text: null, originalText };
+      if (originalText.trim() === "") return { ...line, text: "", originalText };
 
-      if (originalText.trim() === "") {
-        return {
-          ...line,
-          text: "",
-          originalText,
-        };
-      }
-
-      const requestEntries = requestResultsByLine.get(lineIndex) || [];
-      const translatedText = requestEntries
-        .map((entry) => areEquivalent(entry.resultText, entry.text)
-          ? ""
-          : entry.resultText)
-        .filter(Boolean)
-        .join(" / ");
-
-      const vocalEntries = requestEntries.filter((entry) => entry.vocalPart);
+      const translated = values.map((value, index) => areEquivalent(value, requests[index].text) ? "" : value);
+      const translatedText = translated.filter(Boolean).join(" / ");
       let vocals = line?.vocals;
-      if (targetField && vocalEntries.length > 0 && line?.vocals?.lead) {
-        vocals = cloneTranslationVocals(line.vocals);
+      if (targetField && vocals?.lead && requests.some(request => request.vocalPart)) {
+        vocals = cloneTranslationVocals(vocals);
         delete vocals.lead[targetField];
         if (Array.isArray(vocals.background)) {
           vocals.background.forEach((part) => delete part[targetField]);
         }
-        vocalEntries.forEach((entry) => {
-          const value = areEquivalent(entry.resultText, entry.text)
-            ? ""
-            : entry.resultText;
-          assignTranslationVocalResult(vocals, entry.vocalPart, targetField, value);
+        requests.forEach(({ vocalPart }, index) => {
+          if (vocalPart) assignTranslationVocalResult(vocals, vocalPart, targetField, translated[index]);
         });
       }
 
@@ -274,8 +229,50 @@ function createTranslationPresentation({
         text: userEdited ? translatedText : (translatedText || line?.text || ""),
         originalText,
       }, userEdited && targetField === "phonetic", userEdited && targetField === "translation");
-    });
+    };
+
+    return (linesInput = []) => {
+      if (!Array.isArray(linesInput)) return null;
+      let inputIndex = 0;
+      const readNextResultLine = () => {
+        while (inputIndex < linesInput.length) {
+          const index = inputIndex++;
+          const raw = linesInput[index];
+          let input = normalizedInputs[index];
+          if (!input || input.raw !== raw) {
+            const text = String(raw ?? "").trim();
+            input = { raw, text, skip: !userEdited && raw != null && isSectionHeader(text) };
+            normalizedInputs[index] = input;
+          }
+          if (!input.skip) return input.text;
+        }
+        return "";
+      };
+
+      let output = previousOutput || new Array(rows.length);
+      rows.forEach((row, lineIndex) => {
+        const previousValues = row.values;
+        let values = previousValues || [];
+        for (let requestIndex = 0; requestIndex < row.requests.length; requestIndex++) {
+          const current = readNextResultLine();
+          if (values[requestIndex] === current) continue;
+          if (values === previousValues) values = previousValues.slice();
+          values[requestIndex] = current;
+        }
+
+        // Snapshots already delivered to the page may still be on screen.
+        if (values === previousValues) return;
+        if (output === previousOutput) output = previousOutput.slice();
+        output[lineIndex] = renderLine(row, values);
+        row.values = values;
+      });
+      previousOutput = output;
+      return output;
+    };
   };
+
+  const mapTranslationLinesToLyrics = (lyrics = [], linesInput = [], options = {}) =>
+    Array.isArray(linesInput) ? createTranslationLineMapper(lyrics, options)(linesInput) : null;
 
   const areTranslationTextsSimilar = (text1, text2) => {
     if (!text1 || !text2) return false;
@@ -500,6 +497,7 @@ function createTranslationPresentation({
   return {
     buildTranslationLineRequests,
     composeLyricSupplements,
+    createTranslationLineMapper,
     getLegacyNonSectionLyricsText,
     getLyricsProcessingShapeSignature,
     getNonSectionLyricsText,

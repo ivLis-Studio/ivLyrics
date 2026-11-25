@@ -4,7 +4,7 @@ import { createTranslationStream } from "./translationStream.mjs";
 export function createTranslationRequester({
   registerLegacySettings, getMemoryCacheKey, getGenerationOptions, readMemoryCache, writeMemoryCache,
   getNonSectionLyricsText, getLegacyNonSectionLyricsText, getTranslationCacheId, getCachedTranslationForText,
-  mapTranslationLinesToLyrics, canMakeCall, getRateLimitError, callProvider, shouldRequestPronunciationSlots, getCacheRevision,
+  createTranslationLineMapper, canMakeCall, getRateLimitError, callProvider, shouldRequestPronunciationSlots, getCacheRevision,
 }) {
   return async function requestLyricsTranslation({ lyricsState, lyrics, mode, onProgress, session }) {
     registerLegacySettings();
@@ -21,11 +21,14 @@ export function createTranslationRequester({
     if (cached) return cached;
 
     const trackId = getTranslationCacheId(lyricsState.uri);
-    const mapResult = (lines, splitVocalParts = true, userEdited = false) => mapTranslationLinesToLyrics(lyrics, lines, {
-      targetField,
-      splitVocalParts,
-      userEdited,
-    });
+    let mapStream;
+    const mapResult = (lines, splitVocalParts = true, userEdited = false) => {
+      const options = { targetField, splitVocalParts, userEdited };
+      const map = splitVocalParts && !userEdited
+        ? mapStream ??= createTranslationLineMapper(lyrics, options)
+        : createTranslationLineMapper(lyrics, options);
+      return map(lines);
+    };
     const subscribe = (stream) => {
       if (!onProgress) return;
       const streamedLines = [];

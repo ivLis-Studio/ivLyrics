@@ -145,6 +145,37 @@ test('a foreground consumer joins the background lyrics stream without starting 
     assert.deepEqual(visible.at(-1), [1, 'Second line']);
 });
 
+test('an observer-triggered retry reaches every display before its replacement rows', async () => {
+    const h = load();
+    const started = Promise.withResolvers();
+    const output = Promise.withResolvers();
+    h.window.AIAddonManager.translateLyrics = params => {
+        started.resolve(params);
+        return output.promise;
+    };
+
+    let stream;
+    const first = h.api.callGemini({
+        ...request,
+        onLine(_index, text) {
+            if (text !== 'Discarded line') return;
+            stream.onStreamReset({ reason: 'retry' });
+            stream.onLine(0, 'Replacement line');
+        },
+    });
+    stream = await started.promise;
+    const observed = [];
+    const second = h.api.callGemini({
+        ...request,
+        onLine: (_index, text) => observed.push(text),
+        onStreamReset: detail => observed.push(detail.reason),
+    });
+    stream.onLine(0, 'Discarded line');
+    output.resolve({ translation: ['Replacement line', 'Second final'] });
+    await Promise.all([first, second]);
+    assert.deepEqual(observed, ['Discarded line', 'retry', 'Replacement line']);
+});
+
 test('cache clearing settles all old readers even if the provider ignores cancellation', { timeout: 2000 }, async () => {
     const h = load();
     const started = Promise.withResolvers();

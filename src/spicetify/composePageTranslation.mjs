@@ -70,7 +70,7 @@ export function createPageTranslation({
     getLegacyNonSectionLyricsText: presentation.getLegacyNonSectionLyricsText,
     getTranslationCacheId,
     getCachedTranslationForText: cache.getCachedTranslationForText,
-    mapTranslationLinesToLyrics: presentation.mapTranslationLinesToLyrics,
+    createTranslationLineMapper: presentation.createTranslationLineMapper,
     canMakeCall,
     getRateLimitError: () => translate('notifications.tooManyTranslationRequests'),
     callProvider: (request) => getService('Translator').callGemini(request),
