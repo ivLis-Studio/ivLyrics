@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createIndexedDbBackup } from "#ivlyrics/core/indexedDbBackup.mjs";
+import { DATABASE_BACKUP_RECEIPT_KEY, DATABASE_BACKUP_RECOVERY_HINT_KEY } from "#ivlyrics/core/indexedDbBackupReceipt.mjs";
 import { createSettingsStorage } from "#ivlyrics/core/createSettingsStorage.mjs";
 import { createSelectedVideoStore } from "#ivlyrics/features/video/selectedVideoStore.mjs";
 import { runIdbTransaction } from "#ivlyrics/core/indexedDbTransaction.mjs";
@@ -10,12 +11,12 @@ import {
 } from "#ivlyrics/core/trackSyncOffsetStore.mjs";
 import { runSettingsImportLocked, SETTINGS_IMPORT_JOURNAL_KEY } from "#ivlyrics/core/settingsImportJournal.mjs";
 
-function fixture({ legacyVideos } = {}) {
-  const databases = new Map(legacyVideos ? [["ivLyricsSelectedVideos", {
+function fixture({ legacyVideos, disk } = {}) {
+  const databases = disk?.databases ?? new Map(legacyVideos ? [["ivLyricsSelectedVideos", {
     version: 1,
     stores: new Map([["selectedVideos", { keyPath: null, records: new Map(legacyVideos), indexes: new Set() }]]),
   }]] : []);
-  const settings = new Map();
+  const settings = disk?.settings ?? new Map();
   const writes = [];
   const opens = [];
   const failures = new Map();
@@ -144,6 +145,7 @@ function fixture({ legacyVideos } = {}) {
     get length() { return settings.size; },
     key: index => [...settings.keys()][index] ?? null,
     getItem: key => settings.get(key) ?? null,
+    setItem: (key, value) => settings.set(key, value),
     removeItem: key => settings.delete(key),
   };
   const offsetStore = createTrackSyncOffsetStore({ getIndexedDB: () => indexedDB, debug() {} });
@@ -163,6 +165,7 @@ function fixture({ legacyVideos } = {}) {
       return pause;
     },
     liveRows: (name, store) => databases.get(name).stores.get(store).records,
+    snapshotDisk: () => structuredClone({ databases, settings }),
   };
 }
 
@@ -489,4 +492,67 @@ test("the next backup retries an unfinished recovery even after the backup manag
   const afterRecovery = h.liveRows("ivLyrics-db", "track-sync-offsets");
   afterRecovery.set(track, 60);
   assert.equal((await exportedOffsets())[track], 60);
+});
+
+test("reopening after an interruption between database commits restores the previous rows", async () => {
+  const h = fixture();
+  const offsets = value => ({ "ivLyrics-db": { "track-sync-offsets": [{ key: track, value }] } });
+  await h.backup.importAllDBs({ ...offsets(25), ...cache("Before") });
+  const last = h.pause("ivLyricsCache");
+  const restore = h.backup.importAllDBs({ ...offsets(125), ...cache("After") });
+  await last.entered.promise;
+  const disk = h.snapshotDisk();
+  last.release.resolve();
+  await restore;
+
+  const reopened = fixture({ disk });
+  assert.equal(reopened.settings.get(DATABASE_BACKUP_RECOVERY_HINT_KEY), "true");
+  const previous = reopened.liveRows("ivLyrics-db", "track-sync-offsets");
+  assert.equal(previous.get(track), 125);
+  assert.equal(previous.has(DATABASE_BACKUP_RECEIPT_KEY), true);
+  previous.set("spotify:track:added-later", 75);
+  await reopened.backup.recover();
+  const after = await reopened.backup.exportAllDBs();
+  assert.deepEqual(after["ivLyrics-db"]["track-sync-offsets"], [
+    { key: track, value: 25 }, { key: "spotify:track:added-later", value: 75 },
+  ]);
+  assert.equal(after.ivLyricsCache.metadata[0].value.data.title, "Before");
+  assert.equal(reopened.settings.has(DATABASE_BACKUP_RECOVERY_HINT_KEY), false);
+});
+
+test("reopening after the final database commits keeps the restore and removes its receipts", async () => {
+  const h = fixture();
+  const offsets = value => ({ "ivLyrics-db": { "track-sync-offsets": [{ key: track, value }] } });
+  await h.backup.importAllDBs({ ...offsets(25), ...cache("Before") });
+  const last = h.pause("ivLyricsCache");
+  const restore = h.backup.importAllDBs({ ...offsets(125), ...cache("After") });
+  await last.entered.promise;
+  const cleanup = h.pause("ivLyrics-db");
+  last.release.resolve();
+  await cleanup.entered.promise;
+  const disk = h.snapshotDisk();
+  cleanup.release.resolve();
+  await restore;
+
+  const reopened = fixture({ disk });
+  assert.deepEqual(await reopened.offsetStore.getAllOffsets(), { [track]: 125 });
+  assert.equal(reopened.liveRows("ivLyricsCache", "metadata").has(DATABASE_BACKUP_RECEIPT_KEY), true);
+  await reopened.backup.recover();
+  const after = await reopened.backup.exportAllDBs();
+  assert.deepEqual(after["ivLyrics-db"]["track-sync-offsets"], [{ key: track, value: 125 }]);
+  assert.deepEqual(after.ivLyricsCache.metadata, cache("After").ivLyricsCache.metadata);
+  assert.equal(reopened.settings.has(DATABASE_BACKUP_RECOVERY_HINT_KEY), false);
+  assert.equal(reopened.liveRows("ivLyricsCache", "metadata").has(DATABASE_BACKUP_RECEIPT_KEY), false);
+});
+
+test("a failed recovery journal write leaves all target databases untouched", async () => {
+  const h = fixture();
+  const offsets = value => ({ "ivLyrics-db": { "track-sync-offsets": [{ key: track, value }] } });
+  await h.backup.importAllDBs({ ...offsets(25), ...cache("Before") });
+  h.reject("ivLyrics-database-backup-recovery");
+  await assert.rejects(h.backup.importAllDBs({ ...offsets(125), ...cache("After") }), /fixture commit aborted/);
+  const after = await h.backup.exportAllDBs();
+  assert.deepEqual(after["ivLyrics-db"]["track-sync-offsets"], [{ key: track, value: 25 }]);
+  assert.equal(after.ivLyricsCache.metadata[0].value.data.title, "Before");
+  assert.equal(h.settings.has(DATABASE_BACKUP_RECOVERY_HINT_KEY), false);
 });

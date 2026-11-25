@@ -7,7 +7,10 @@ import {
   openLyricsCacheDatabase,
 } from "../lyrics/lyricsCacheDatabase.mjs";
 import { runIdbTransaction } from "./indexedDbTransaction.mjs";
-import { recoverBackupStores, replaceBackupStores, scanBackupStore } from "./indexedDbBackupRestore.mjs";
+import { recoverBackupStores, replaceBackupStores, rollbackBackupReceipt, scanBackupStore } from "./indexedDbBackupRestore.mjs";
+import {
+  clearBackupReceipt, DATABASE_BACKUP_RECEIPT_KEY, DATABASE_BACKUP_RECOVERY_HINT_KEY, readBackupReceipt,
+} from "./indexedDbBackupReceipt.mjs";
 import { createIndexedDbBackupJournal } from "./indexedDbBackupJournal.mjs";
 import { redactLyricsCacheDataForPersistence } from "../lyrics/lyricsCachePrivacy.mjs";
 import { SELECTED_VIDEO_DATABASE, openSelectedVideoDatabase } from "../features/video/selectedVideoStore.mjs";
@@ -33,8 +36,8 @@ const DATABASES = [
 ];
 
 const isRecord = value => value !== null && typeof value === "object" && !Array.isArray(value);
-const isPublicRecord = (storeName, record) => storeName !== TRACK_SYNC_OFFSETS.storeName
-  || !isPrivateTrackSyncOffsetKey(record.key);
+const isPublicRecord = (storeName, record) => record.key !== DATABASE_BACKUP_RECEIPT_KEY
+  && (storeName !== TRACK_SYNC_OFFSETS.storeName || !isPrivateTrackSyncOffsetKey(record.key));
 
 function sanitizeRecord(dbName, storeName, record) {
   const { key, value } = record;
@@ -63,7 +66,8 @@ function exportStoreRecords(name, records, readLocalStorage) {
 async function readStores(db, storeNames, readLocalStorage) {
   const entries = await runIdbTransaction(db, storeNames, "readonly", tx => Promise.all(
     storeNames.map(name => scanBackupStore(tx, tx.objectStore(name),
-      records => [name, exportStoreRecords(name, records, readLocalStorage)],
+      records => [name, exportStoreRecords(name,
+        records.filter(record => record.key !== DATABASE_BACKUP_RECEIPT_KEY), readLocalStorage)],
       record => sanitizeRecord(db.name, name, record)))
   ));
   return Object.fromEntries(entries);
@@ -137,6 +141,12 @@ export function createIndexedDbBackup({
     backupQueue = request.catch(() => {});
     return request;
   };
+  const clearRecoveryHint = () => {
+    const storage = readLocalStorage();
+    if (storage?.getItem(DATABASE_BACKUP_RECOVERY_HINT_KEY) != null) {
+      storage.removeItem(DATABASE_BACKUP_RECOVERY_HINT_KEY);
+    }
+  };
 
   async function saveRecoveryPlan(plan) {
     try {
@@ -147,12 +157,11 @@ export function createIndexedDbBackup({
     }
   }
 
-  async function rollbackDatabases(plan, indexedDB, withDatabase) {
+  async function resolveDatabases(plan, withDatabase, resolve) {
     const failed = [];
-    const compareKeys = indexedDB.cmp.bind(indexedDB);
     for (const entry of plan) {
       try {
-        await withDatabase(entry.name, db => recoverBackupStores(db, entry.stores, entry.undo, compareKeys));
+        await withDatabase(entry.name, db => resolve(db, entry));
       } catch (error) {
         failed.push({ entry, error });
       }
@@ -160,28 +169,71 @@ export function createIndexedDbBackup({
     return failed;
   }
 
-  async function recoverInterruptedRollback(indexedDB) {
-    const pending = await journal.read();
-    if (!pending) return;
-    if (pending.some(entry => entry.name === TRACK_SYNC_OFFSETS.dbName)) {
+  const openForRecovery = indexedDB => async (name, recover) => {
+    const target = DATABASES.find(database => database.name === name);
+    if (!target) throw new Error(`Unknown database in the backup recovery record: ${name}.`);
+    const db = await target.open(indexedDB);
+    try {
+      return await recover(db);
+    } finally {
+      db.close();
+    }
+  };
+  const assertOffsetsReady = entries => {
+    if (entries.some(entry => entry.name === TRACK_SYNC_OFFSETS.dbName)) {
       assertSettingsImportRecovered(readLocalStorage());
     }
-    const failed = await rollbackDatabases(pending, indexedDB, async (name, recover) => {
-      const target = DATABASES.find(database => database.name === name);
-      if (!target) throw new Error(`Unknown database in the backup recovery record: ${name}.`);
-      const db = await target.open(indexedDB);
-      try {
-        await recover(db);
-      } finally {
-        db.close();
-      }
-    });
+  };
+
+  async function recoverLegacyRollback(pending, indexedDB) {
+    assertOffsetsReady(pending);
+    const compareKeys = indexedDB.cmp.bind(indexedDB);
+    const failed = await resolveDatabases(pending, openForRecovery(indexedDB),
+      (db, entry) => recoverBackupStores(db, entry.stores, entry.undo, compareKeys));
     const saveError = await saveRecoveryPlan(failed.map(({ entry }) => entry));
     if (failed.length) {
       throw new AggregateError([...failed.map(({ error }) => error), ...(saveError ? [saveError] : [])],
         `Could not finish recovering ${failed.map(({ entry }) => entry.name).join(", ")}.`);
     }
     if (saveError) throw new Error("Could not clear the database backup recovery record.", { cause: saveError });
+  }
+
+  async function resolveRestore(plan, indexedDB, withDatabase) {
+    const final = plan.targets.at(-1);
+    const committed = await withDatabase(final.name, db => readBackupReceipt(db, final.store))
+      .then(receipt => receipt?.id === plan.id);
+    const previous = plan.targets.slice(0, -1).reverse();
+    const compareKeys = indexedDB.cmp.bind(indexedDB);
+    const failed = await resolveDatabases(previous, withDatabase, (db, entry) => committed
+      ? clearBackupReceipt(db, entry.store, plan.id)
+      : rollbackBackupReceipt(db, entry, plan.id, compareKeys));
+    if (failed.length) return { committed, failed };
+
+    const saveError = await saveRecoveryPlan(null);
+    if (!saveError && committed) {
+      // The final receipt must survive until the journal is cleared.
+      await withDatabase(final.name, db => clearBackupReceipt(db, final.store, plan.id)).catch(() => {});
+    }
+    if (!saveError) clearRecoveryHint();
+    return { committed, failed, saveError };
+  }
+
+  function assertRecoveryComplete({ failed, saveError }, message, cause) {
+    if (failed.length) {
+      const names = failed.map(({ entry }) => entry.name).join(", ");
+      const errors = [...failed.map(({ error }) => error), ...(saveError ? [saveError] : [])];
+      throw new AggregateError(cause ? [cause, ...errors] : errors,
+        message ? `${message} Recovery failed for ${names}.` : `Could not finish recovering ${names}.`);
+    }
+    if (saveError) throw new Error("Could not clear the database backup recovery record.", { cause: saveError });
+  }
+
+  async function recoverInterruptedRestore(indexedDB) {
+    const pending = await journal.read();
+    if (!pending) return clearRecoveryHint();
+    if (Array.isArray(pending)) return recoverLegacyRollback(pending, indexedDB);
+    assertOffsetsReady(pending.targets);
+    assertRecoveryComplete(await resolveRestore(pending, indexedDB, openForRecovery(indexedDB)));
   }
 
   async function exportDatabases(indexedDB) {
@@ -211,7 +263,6 @@ export function createIndexedDbBackup({
     plan.sort((left, right) => Number(left.target.name === LYRICS_CACHE_DB_NAME)
       - Number(right.target.name === LYRICS_CACHE_DB_NAME));
     const opened = [];
-    const committed = [];
     try {
       // Preflight every database before any store is cleared.
       for (const { target, stores } of plan) {
@@ -219,28 +270,44 @@ export function createIndexedDbBackup({
         opened.push({ db, stores });
         validateStoreKeys(indexedDB, db, stores);
       }
+
+      if (opened.length === 1) {
+        const [{ db, stores }] = opened;
+        try {
+          await replaceBackupStores(db, stores);
+        } catch (error) {
+          throw new Error(`Could not restore ${db.name}.`, { cause: error });
+        }
+        return;
+      }
+
+      const recovery = {
+        id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+        targets: opened.map(({ db, stores }) => ({
+          name: db.name,
+          store: db.name === LYRICS_CACHE_DB_NAME ? "metadata" : stores[0].name,
+          names: stores.map(store => store.name),
+        })),
+      };
+      // Establish recovery before any target database can commit.
+      readLocalStorage()?.setItem?.(DATABASE_BACKUP_RECOVERY_HINT_KEY, "true");
+      await journal.write(recovery);
+      const useOpen = (name, operation) => operation(opened.find(({ db }) => db.name === name).db);
       for (const [index, { db, stores }] of opened.entries()) {
         try {
-          const undo = await replaceBackupStores(db, stores, index < opened.length - 1);
-          if (index < opened.length - 1) committed.push({ name: db.name, stores, undo });
+          await replaceBackupStores(db, stores, {
+            id: recovery.id,
+            store: recovery.targets[index].store,
+            keepUndo: index < opened.length - 1,
+          });
         } catch (error) {
           const message = `Could not restore ${db.name}.`;
-          if (!committed.length) throw new Error(message, { cause: error });
-          const pending = committed.reverse();
-          // Save the undo before compensation so closing Spotify while a
-          // rollback is running leaves enough information to retry it.
-          await saveRecoveryPlan(pending);
-          const failed = await rollbackDatabases(pending, indexedDB, (name, recover) =>
-            recover(opened.find(database => database.db.name === name).db));
-          const saveError = await saveRecoveryPlan(failed.map(({ entry }) => entry));
-          if (failed.length) {
-            throw new AggregateError([error, ...failed.map(item => item.error), ...(saveError ? [saveError] : [])],
-              `${message} Recovery failed for ${failed.map(({ entry }) => entry.name).join(", ")}.`);
-          }
-          if (saveError) throw new AggregateError([error, saveError], `${message} Could not clear the recovery record.`);
+          assertRecoveryComplete(await resolveRestore(recovery, indexedDB, useOpen), message, error);
           throw new Error(message, { cause: error });
         }
       }
+      // A failure to remove receipts does not undo a completed restore.
+      await resolveRestore(recovery, indexedDB, useOpen).catch(() => {});
     } finally {
       for (const { db } of opened) db.close();
     }
@@ -248,11 +315,12 @@ export function createIndexedDbBackup({
 
   const runAfterRecovery = operation => runBackupOperation(() => runSettingsImportLocked(async () => {
     const indexedDB = readIndexedDb();
-    await recoverInterruptedRollback(indexedDB);
+    await recoverInterruptedRestore(indexedDB);
     return operation(indexedDB);
   }));
 
   return {
+    recover: () => runAfterRecovery(() => undefined),
     exportAllDBs: () => runAfterRecovery(exportDatabases),
     importAllDBs: data => runAfterRecovery(indexedDB => restore(data, indexedDB)),
   };

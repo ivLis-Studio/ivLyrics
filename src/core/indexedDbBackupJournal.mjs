@@ -21,11 +21,11 @@ export function createIndexedDbBackupJournal(getIndexedDB) {
   return {
     read: async () => unsaved ?? withStore("readonly", store => awaitIdbRequest(store.get(ACTIVE_KEY))),
     async write(entries) {
-      // Quota errors can prevent journaling. Retain the undo while this
-      // manager is active so it still refuses to back up a partial restore.
-      unsaved = entries;
+      // Retain a legacy rollback plan in memory if saving it fails.
+      // A new restore writes its durable plan before replacing any data.
+      unsaved = Array.isArray(entries) ? entries : undefined;
       await withStore("readwrite", store => {
-        if (entries.length) store.put(entries, ACTIVE_KEY);
+        if (entries && (!Array.isArray(entries) || entries.length)) store.put(entries, ACTIVE_KEY);
         else store.delete(ACTIVE_KEY);
       });
       unsaved = undefined;

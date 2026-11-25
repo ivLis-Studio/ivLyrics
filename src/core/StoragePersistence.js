@@ -2,6 +2,8 @@ import { createSettingsPersistence } from "./createSettingsPersistence.mjs";
 import { isIvLyricsRoute } from "../spicetify/lyricsRoute.mjs";
 import { requestAppRouteReload } from "../spicetify/routeReload.mjs";
 import { publishSettingsPersistence, readSettingsPersistence } from "./settingsRuntime.mjs";
+import { createIndexedDbBackup } from "./indexedDbBackup.mjs";
+import { DATABASE_BACKUP_RECOVERY_HINT_KEY } from "./indexedDbBackupReceipt.mjs";
 
 const PLATFORM_STORAGE_WAIT_MS = 3000;
 const PLATFORM_STORAGE_RETRY_MS = 100;
@@ -55,5 +57,15 @@ export default function initializeSettingsPersistence() {
   });
   publishSettingsPersistence(window, api);
   api.ready = startRecovery();
+  if (api.getItem(DATABASE_BACKUP_RECOVERY_HINT_KEY) !== null) {
+    api.ready = api.ready.then(async result => {
+      try {
+        await createIndexedDbBackup().recover();
+      } catch (error) {
+        console.warn("[ivLyrics] Could not recover the interrupted database restore.", error);
+      }
+      return result;
+    });
+  }
   return api;
 }

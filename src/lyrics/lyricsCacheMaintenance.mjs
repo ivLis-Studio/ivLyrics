@@ -1,4 +1,5 @@
 import { awaitIdbRequest } from "../core/indexedDbTransaction.mjs";
+import { DATABASE_BACKUP_RECEIPT_KEY, putBackupReceipt } from "../core/indexedDbBackupReceipt.mjs";
 import {
     LYRICS_CACHE_STORES, visitLyricsCacheRecords, writeLyricsCacheTransaction,
 } from './lyricsCacheDatabase.mjs';
@@ -50,17 +51,31 @@ export async function clearLyricsCacheStores(db) {
     const stores = presentStores(db);
     if (!stores.length) return;
     await writeLyricsCacheTransaction(db, stores, tx => {
-        for (const name of stores) tx.objectStore(name).clear();
+        for (const name of stores) {
+            const store = tx.objectStore(name);
+            if (name !== 'metadata') {
+                store.clear();
+                continue;
+            }
+            const receipt = store.get(DATABASE_BACKUP_RECEIPT_KEY);
+            receipt.onsuccess = () => {
+                store.clear();
+                if (receipt.result) putBackupReceipt(store, receipt.result);
+            };
+        }
     });
 }
 
 export async function countLyricsCacheRecords(db, keyRange) {
     const stats = {};
     for (const name of LYRICS_CACHE_STORES) {
-        stats[name] = hasStore(db, name)
-            ? await awaitIdbRequest(db.transaction(name, 'readonly').objectStore(name)
-                .count(name === 'youtube' ? keyRange.upperBound([], true) : undefined))
-            : 0;
+        stats[name] = 0;
+        if (!hasStore(db, name)) continue;
+        const store = db.transaction(name, 'readonly').objectStore(name);
+        const total = awaitIdbRequest(store.count(name === 'youtube' ? keyRange.upperBound([], true) : undefined));
+        const internal = name === 'metadata' ? awaitIdbRequest(store.count(DATABASE_BACKUP_RECEIPT_KEY)) : 0;
+        const [rows, receiptRows] = await Promise.all([total, internal]);
+        stats[name] = rows - receiptRows;
     }
     return stats;
 }
@@ -75,6 +90,7 @@ export async function removeExpiredLyricsCacheRecords(db, isExpired) {
     for (const name of presentStores(db)) {
         await writeLyricsCacheTransaction(db, name, tx => {
             visitLyricsCacheRecords(tx.objectStore(name), null, cursor => {
+                if (cursor.primaryKey === DATABASE_BACKUP_RECEIPT_KEY) return;
                 const record = cursor.value;
                 if (isExpired(record.cachedAt, expiryType(name, record))) cursor.delete();
             });
@@ -90,6 +106,7 @@ export async function enforceLyricsCacheSizeLimit(db, limit, measure) {
         const store = db.transaction(name, 'readonly').objectStore(name);
         await new Promise((resolve, reject) => {
             const request = visitLyricsCacheRecords(store, null, cursor => {
+                if (cursor.primaryKey === DATABASE_BACKUP_RECEIPT_KEY) return;
                 const record = cursor.value;
                 const sizeBytes = sizeOf(record);
                 totalBytes += sizeBytes;

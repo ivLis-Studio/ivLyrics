@@ -1,4 +1,5 @@
 import { awaitIdbRequest, openIdbDatabase, runIdbTransaction } from "./indexedDbTransaction.mjs";
+import { DATABASE_BACKUP_RECEIPT_KEY } from "./indexedDbBackupReceipt.mjs";
 
 export const TRACK_SYNC_OFFSETS = Object.freeze({
   dbName: "ivLyrics-db",
@@ -80,6 +81,7 @@ export function readAllTrackPreferences(db, storeName, normalize) {
       valuesRequest.onsuccess = () => {
         const result = {};
         keys.forEach((key, index) => {
+          if (key === DATABASE_BACKUP_RECEIPT_KEY) return;
           const value = normalize ? normalize(valuesRequest.result[index]) : valuesRequest.result[index];
           if (!normalize || value) result[key] = value;
         });

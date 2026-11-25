@@ -1,4 +1,5 @@
 import { putIdbRecord, runIdbTransaction } from "./indexedDbTransaction.mjs";
+import { DATABASE_BACKUP_RECEIPT_KEY, putBackupReceipt } from "./indexedDbBackupReceipt.mjs";
 
 // The cursor's final callback is still inside the transaction. Queue writes
 // there so capturing the previous rows and replacing them are indivisible.
@@ -24,22 +25,33 @@ export function scanBackupStore(tx, store, complete, project = record => record)
   });
 }
 
-export function replaceBackupStores(db, stores, keepUndo) {
+export function replaceBackupStores(db, stores, receipt) {
   const undo = new Map();
-  return runIdbTransaction(db, stores.map(store => store.name), "readwrite", tx => Promise.all(
+  const names = stores.map(store => store.name);
+  if (receipt && !names.includes(receipt.store)) names.push(receipt.store);
+  let remaining = stores.length;
+  return runIdbTransaction(db, names, "readwrite", tx => Promise.all(
     stores.map(({ name, records }) => {
       const store = tx.objectStore(name);
       const replace = () => {
         store.clear();
         for (const { key, value } of records) putIdbRecord(store, key, value);
+        if (--remaining === 0 && receipt) {
+          // The receipt commits with the replacement. Only stores before
+          // the final transaction need to carry their previous rows.
+          putBackupReceipt(tx.objectStore(receipt.store), {
+            id: receipt.id,
+            ...(receipt.keepUndo ? { undo, stores } : {}),
+          });
+        }
       };
-      if (!keepUndo) return replace();
+      if (!receipt?.keepUndo) return replace();
       return scanBackupStore(tx, store, previous => {
-        undo.set(name, previous);
+        undo.set(name, previous.filter(record => record.key !== DATABASE_BACKUP_RECEIPT_KEY));
         replace();
       });
     })
-  )).then(() => undo);
+  ));
 }
 
 function matchesBackupValue(current, imported) {
@@ -86,4 +98,29 @@ export function recoverBackupStores(db, stores, undo, compareKeys) {
       return scanBackupStore(tx, store, current => recoverStore(store, undo.get(name), records, current, compareKeys));
     })
   ));
+}
+
+export function rollbackBackupReceipt(db, target, id, compareKeys) {
+  const { store: receiptStore, names } = target;
+  return runIdbTransaction(db, names, "readwrite", tx => new Promise((resolve, reject) => {
+    const receipts = tx.objectStore(receiptStore);
+    const request = receipts.get(DATABASE_BACKUP_RECEIPT_KEY);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      try {
+        const receipt = request.result;
+        if (receipt?.id !== id) return resolve();
+        const recovery = receipt.stores.map(({ name, records }) => {
+          const store = tx.objectStore(name);
+          return scanBackupStore(tx, store, current =>
+            recoverStore(store, receipt.undo.get(name), records, current, compareKeys));
+        });
+        // The receipt is removed only if every recovery write commits.
+        receipts.delete(DATABASE_BACKUP_RECEIPT_KEY);
+        resolve(Promise.all(recovery));
+      } catch (error) {
+        reject(error);
+      }
+    };
+  }));
 }
