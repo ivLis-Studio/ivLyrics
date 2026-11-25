@@ -56,7 +56,7 @@ Registration and removal scripts:
 - Windows: [register](windows/register-updater-protocol.ps1) / [unregister](windows/unregister-updater-protocol.ps1)
 - macOS and Linux: [register](unix/register-updater-protocol.sh) / [unregister](unix/unregister-updater-protocol.sh)
 
-Windows registers the protocol for the current user. macOS registers an updater app in the installed app's `updater/macos` folder. Linux registers a desktop entry with the protocol handler.
+Windows registers the protocol for the current user. macOS signs the updater app locally in `updater/macos` and verifies that Launch Services resolves the update URL to that installation. Backup copies of the updater stay on disk. Linux registers a desktop entry with the protocol handler.
 
 The public commands download their bootstrap scripts rather than relying on an already installed copy, so they also work for first-time installation and removal.
 

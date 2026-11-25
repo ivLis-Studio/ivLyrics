@@ -37,22 +37,68 @@ remember_spicetify_state() {
     fi
 }
 
-register_macos() {
+read_macos_updater_handler() {
+    osascript -l JavaScript - 'ivlyrics-updater://update' <<'JS'
+ObjC.import("AppKit");
+function run(args) {
+    const app = $.NSWorkspace.sharedWorkspace.URLForApplicationToOpenURL($.NSURL.URLWithString(args[0]));
+    if (app.isNil()) return "";
+    const id = ObjC.unwrap($.NSBundle.bundleWithURL(app).bundleIdentifier) || "";
+    return id + "\n" + ObjC.unwrap(app.URLByResolvingSymlinksInPath.path);
+}
+JS
+}
+
+verify_macos_updater_handler() {
+    local lsregister="$1" app_path="$2" bundle_id="$3"
+    local selected stale_path previous_path
+    local -a removed_paths=("$app_path")
+
+    # Registering a bundle does not make it the selected handler. Launch
+    # Services may continue to favor a backup with the same bundle identifier.
+    while :; do
+        selected=$(read_macos_updater_handler) || return 1
+        if [[ "$selected" == "$bundle_id"$'\n'"$app_path" ]]; then
+            return 0
+        fi
+        if [[ -z "$selected" ]]; then
+            echo "macOS has not selected an app for ivlyrics-updater://." >&2
+            return 1
+        fi
+        if [[ "$selected" != "$bundle_id"$'\n'* ]]; then
+            echo "macOS has assigned ivlyrics-updater:// to another application." >&2
+            return 1
+        fi
+
+        stale_path=${selected#*$'\n'}
+        for previous_path in "${removed_paths[@]}"; do
+            if [[ "$stale_path" == "$previous_path" ]]; then
+                echo "macOS still selects the previous ivLyrics updater at $stale_path." >&2
+                return 1
+            fi
+        done
+        "$lsregister" -u "$stale_path" || return 1
+        removed_paths+=("$stale_path")
+    done
+}
+
+register_macos() (
     local updater_script="${APP_DIR}/updater/unix/ivlyrics-updater.sh"
-    local app_path="${APP_DIR}/updater/macos/ivLyrics Updater.app"
-    local generated_applescript="${APP_DIR}/updater/macos/ivlyrics-updater.generated.applescript"
+    local macos_dir="${APP_DIR}/updater/macos"
+    local app_path="${macos_dir}/ivLyrics Updater.app"
+    local bundle_id="kr.ivlis.ivlyrics.updater"
     local legacy_updater_root="${HOME}/Library/Application Support/ivLyrics/Updater"
     local legacy_app_path="${legacy_updater_root}/ivLyrics Updater.app"
     local lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
     lsregister="$(type -P lsregister || printf '%s' "$lsregister")"
-    local escaped_updater_script
+    local escaped_updater_script staging candidate generated_applescript plist
 
     if [[ ! -f "$updater_script" ]]; then
         echo "Updater script not found in app directory: $updater_script" >&2
         exit 1
     fi
 
-    mkdir -p "$(dirname "$app_path")"
+    mkdir -p "$macos_dir"
     chmod +x "$updater_script"
 
     if ! command -v osacompile >/dev/null 2>&1; then
@@ -60,10 +106,13 @@ register_macos() {
         return 1
     fi
 
-    if [[ -d "$legacy_app_path" && -x "$lsregister" ]]; then
-        "$lsregister" -u "$legacy_app_path" >/dev/null 2>&1 || true
-    fi
-    rm -rf "$legacy_updater_root"
+    staging=$(mktemp -d "${macos_dir}/.updater-bundle.XXXXXX")
+    trap 'if [[ -d "$staging/previous.app" && ! -e "$app_path" ]]; then
+              mv "$staging/previous.app" "$app_path" || exit 1
+          fi
+          rm -rf "$staging"' EXIT
+    candidate="$staging/ivLyrics Updater.app"
+    generated_applescript="$staging/ivlyrics-updater.applescript"
 
     escaped_updater_script="$(printf '%s' "$updater_script" | sed 's/\\/\\\\/g; s/"/\\"/g')"
     cat > "$generated_applescript" <<EOF
@@ -86,26 +135,39 @@ on run
 end run
 EOF
 
-    rm -rf "$app_path"
-    osacompile -o "$app_path" "$generated_applescript"
-    rm -f "$generated_applescript"
+    osacompile -o "$candidate" "$generated_applescript"
 
-    local plist="${app_path}/Contents/Info.plist"
+    plist="${candidate}/Contents/Info.plist"
     /usr/libexec/PlistBuddy \
         -c "Add :CFBundleURLTypes array" \
         -c "Add :CFBundleURLTypes:0 dict" \
         -c "Add :CFBundleURLTypes:0:CFBundleURLName string ivLyrics Updater" \
         -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" \
         -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string ivlyrics-updater" "$plist"
-    /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier kr.ivlis.ivlyrics.updater" "$plist" 2>/dev/null || \
-        /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string kr.ivlis.ivlyrics.updater" "$plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $bundle_id" "$plist" 2>/dev/null || \
+        /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string $bundle_id" "$plist"
+    # osacompile may have signed the app before Info.plist was updated.
+    /usr/bin/codesign --force --sign - "$candidate"
 
-    if [[ -x "$lsregister" ]]; then
-        "$lsregister" -f "$app_path"
+    if [[ -e "$app_path" ]]; then
+        mv "$app_path" "$staging/previous.app"
     fi
+    mv "$candidate" "$app_path"
+
+    if [[ -d "$legacy_app_path" && -x "$lsregister" ]]; then
+        "$lsregister" -u "$legacy_app_path" >/dev/null 2>&1 || true
+    fi
+    rm -rf "$legacy_updater_root"
+
+    if [[ ! -x "$lsregister" ]]; then
+        echo "Launch Services registration is unavailable." >&2
+        return 1
+    fi
+    "$lsregister" -f "$app_path"
+    verify_macos_updater_handler "$lsregister" "$(cd "$app_path" && pwd -P)" "$bundle_id"
 
     echo "Registered ivlyrics-updater:// protocol for macOS."
-}
+)
 
 register_linux() {
     local data_home="${XDG_DATA_HOME:-${HOME}/.local/share}"

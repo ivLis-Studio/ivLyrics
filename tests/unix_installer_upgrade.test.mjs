@@ -58,6 +58,7 @@ function installerFixture(context, {
     differentMirrorArchive = false, uninstallFailure = '', compactGithubMetadata = false,
     archive = null, releaseVersion = latest,
     manifest = { name: 'ivLyrics', subfiles_extension: ['startup.js'] }, failProtocolRegistration = false,
+    macosDefaultHandler = null,
 } = {}) {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'ivlyrics-unix-installer-')));
     context.after(() => rmSync(root, { recursive: true, force: true }));
@@ -67,6 +68,7 @@ function installerFixture(context, {
     const apps = join(profile, 'CustomApps');
     const app = join(apps, 'ivLyrics');
     const legacyBundle = join(home, 'Library/Application Support/ivLyrics/Updater/ivLyrics Updater.app');
+    const backupBundle = join(root, 'archived profile/ivLyrics Updater.app');
     const activeConfig = join(profile, 'config-xpui.ini');
     const log = join(root, 'events');
     mkdirSync(bin);
@@ -77,6 +79,11 @@ function installerFixture(context, {
     writeFileSync(join(root, 'custom-apps'), registered ? 'other|ivLyrics\n' : 'other\n');
     const protocolFailure = join(root, 'protocol-failure');
     if (failProtocolRegistration) writeFileSync(protocolFailure, 'unavailable');
+    if (macosDefaultHandler) {
+        mkdirSync(backupBundle, { recursive: true });
+        writeFileSync(join(backupBundle, 'marker'), 'existing bundle');
+        writeFileSync(join(root, 'default-handler'), `${macosDefaultHandler}\n${backupBundle}\n`);
+    }
     const metadata = {
         url: 'https://api.github.com/repos/ivLis-Studio/ivLyrics/releases/123',
         tag_name: useProxy ? 'invalid' : `v${releaseVersion}`,
@@ -204,6 +211,19 @@ printf '%s\n' "$@" >> "$IVL_TEST_ROOT/launch-services"
 if [ "$1" = '-f' ]; then
     printf 'register\n' >> "$IVL_TEST_ROOT/events"
     [ ! -f "$IVL_TEST_ROOT/protocol-failure" ] || exit 1
+    printf '%s\n' "$2" > "$IVL_TEST_ROOT/registered-handler"
+elif [ "$1" = '-u' ] && [ -f "$IVL_TEST_ROOT/default-handler" ]; then
+    [ "$(tail -n +2 "$IVL_TEST_ROOT/default-handler")" != "$2" ] || rm "$IVL_TEST_ROOT/default-handler"
+fi
+`);
+    command('osascript', String.raw`
+[ "$*" = '-l JavaScript - ivlyrics-updater://update' ] || exit 1
+cat > /dev/null
+if [ -f "$IVL_TEST_ROOT/default-handler" ]; then
+    cat "$IVL_TEST_ROOT/default-handler"
+elif [ -f "$IVL_TEST_ROOT/registered-handler" ]; then
+    printf 'kr.ivlis.ivlyrics.updater\n'
+    cat "$IVL_TEST_ROOT/registered-handler"
 fi
 `);
     if (archive && process.platform === 'darwin') {
@@ -258,7 +278,7 @@ fi
         XDG_DATA_HOME: join(root, 'desktop data'),
     };
     return {
-        app, apps, legacyBundle,
+        app, apps, legacyBundle, backupBundle,
         desktopFile: join(env.XDG_DATA_HOME, 'applications', 'ivlyrics-updater.desktop'),
         run: (args, overrides) => spawnSync('bash', [installer, ...(args || [])], {
             encoding: 'utf8', timeout: 15000, env: { ...env, ...overrides },
@@ -399,6 +419,8 @@ if (builtVersion) {
             const bundle = join(fx.app, 'updater/macos/ivLyrics Updater.app');
             const plist = spawnSync('/usr/bin/plutil', ['-convert', 'json', '-o', '-', join(bundle, 'Contents', 'Info.plist')], { encoding: 'utf8' });
             assert.equal(plist.status, 0, plist.stderr);
+            const signature = spawnSync('/usr/bin/codesign', ['--verify', '--strict', bundle], { encoding: 'utf8' });
+            assert.equal(signature.status, 0, signature.stderr);
             const info = JSON.parse(plist.stdout);
             assert.equal(info.CFBundleIdentifier, 'kr.ivlis.ivlyrics.updater');
             assert.deepEqual(info.CFBundleURLTypes, [{
@@ -434,6 +456,36 @@ if (builtVersion) {
         const repaired = fx.run();
         assert.equal(repaired.status, 0, repaired.stdout + repaired.stderr);
         assert.deepEqual(fx.readEvents(), ['probe', 'probe', `apply:${builtVersion}`, 'register', 'register']);
+    });
+
+    test('the macOS installer removes only the stale ivLyrics handler registration', {
+        skip: !canRun || process.platform !== 'darwin',
+    }, context => {
+        const archive = readFileSync(new URL('../dist/ivLyrics.zip', import.meta.url));
+        const fx = installerFixture(context, {
+            archive, releaseVersion: builtVersion, macosDefaultHandler: 'kr.ivlis.ivlyrics.updater',
+        });
+        const result = fx.run();
+        assert.equal(result.status, 0, result.stdout + result.stderr);
+        assert.deepEqual(fx.readLaunchServices(), [
+            '-u', fx.legacyBundle, '-f', join(fx.app, 'updater/macos/ivLyrics Updater.app'), '-u', fx.backupBundle,
+        ]);
+        assert.equal(readFileSync(join(fx.backupBundle, 'marker'), 'utf8'), 'existing bundle');
+    });
+
+    test('the macOS installer reports a URL assigned to another application without unregistering it', {
+        skip: !canRun || process.platform !== 'darwin',
+    }, context => {
+        const archive = readFileSync(new URL('../dist/ivLyrics.zip', import.meta.url));
+        const fx = installerFixture(context, {
+            archive, releaseVersion: builtVersion, macosDefaultHandler: 'test.another.handler',
+        });
+        const result = fx.run();
+        assert.equal(result.status, 1, result.stdout + result.stderr);
+        assert.match(result.stdout, /Updater protocol registration failed/);
+        assert.deepEqual(fx.readLaunchServices(), [
+            '-u', fx.legacyBundle, '-f', join(fx.app, 'updater/macos/ivLyrics Updater.app'),
+        ]);
     });
 }
 
