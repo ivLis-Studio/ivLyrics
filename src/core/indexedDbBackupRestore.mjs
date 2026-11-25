@@ -1,5 +1,5 @@
 import { putIdbRecord, runIdbTransaction } from "./indexedDbTransaction.mjs";
-import { DATABASE_BACKUP_RECEIPT_KEY, putBackupReceipt } from "./indexedDbBackupReceipt.mjs";
+import { BACKUP_DURABILITY, DATABASE_BACKUP_RECEIPT_KEY, putBackupReceipt } from "./indexedDbBackupReceipt.mjs";
 
 // The cursor's final callback is still inside the transaction. Queue writes
 // there so capturing the previous rows and replacing them are indivisible.
@@ -51,7 +51,7 @@ export function replaceBackupStores(db, stores, receipt) {
         replace();
       });
     })
-  ));
+  ), undefined, BACKUP_DURABILITY);
 }
 
 function matchesBackupValue(current, imported) {
@@ -97,7 +97,7 @@ export function recoverBackupStores(db, stores, undo, compareKeys) {
       const store = tx.objectStore(name);
       return scanBackupStore(tx, store, current => recoverStore(store, undo.get(name), records, current, compareKeys));
     })
-  ));
+  ), undefined, BACKUP_DURABILITY);
 }
 
 export function rollbackBackupReceipt(db, target, id, compareKeys) {
@@ -122,5 +122,5 @@ export function rollbackBackupReceipt(db, target, id, compareKeys) {
         reject(error);
       }
     };
-  }));
+  }), undefined, BACKUP_DURABILITY);
 }

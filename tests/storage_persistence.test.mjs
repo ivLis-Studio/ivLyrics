@@ -93,6 +93,7 @@ const createHarness = ({
     location: { reload: () => {} },
     setTimeout: (callback, delay) => timers.push({ callback, delay }),
     indexedDB: {
+      databases: async () => [],
       open: name => {
         const request = {};
         queueMicrotask(() => {

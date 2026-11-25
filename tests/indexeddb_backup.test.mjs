@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createIndexedDbBackup } from "#ivlyrics/core/indexedDbBackup.mjs";
-import { DATABASE_BACKUP_RECEIPT_KEY, DATABASE_BACKUP_RECOVERY_HINT_KEY } from "#ivlyrics/core/indexedDbBackupReceipt.mjs";
+import { DATABASE_BACKUP_RECEIPT_KEY } from "#ivlyrics/core/indexedDbBackupReceipt.mjs";
+import { createIndexedDbBackupJournal } from "#ivlyrics/core/indexedDbBackupJournal.mjs";
 import { createSettingsStorage } from "#ivlyrics/core/createSettingsStorage.mjs";
 import { createSelectedVideoStore } from "#ivlyrics/features/video/selectedVideoStore.mjs";
 import { runIdbTransaction } from "#ivlyrics/core/indexedDbTransaction.mjs";
@@ -22,6 +23,7 @@ function fixture({ legacyVideos, disk } = {}) {
   const failures = new Map();
   const pauses = new Map();
   const indexedDB = {
+    async databases() { return [...databases.keys()].map(name => ({ name })); },
     cmp(a, b) {
       const valid = key => typeof key === "string" || Number.isFinite(key);
       if (!valid(a) || !valid(b)) throw new TypeError("Invalid key");
@@ -145,7 +147,6 @@ function fixture({ legacyVideos, disk } = {}) {
     get length() { return settings.size; },
     key: index => [...settings.keys()][index] ?? null,
     getItem: key => settings.get(key) ?? null,
-    setItem: (key, value) => settings.set(key, value),
     removeItem: key => settings.delete(key),
   };
   const offsetStore = createTrackSyncOffsetStore({ getIndexedDB: () => indexedDB, debug() {} });
@@ -506,7 +507,6 @@ test("reopening after an interruption between database commits restores the prev
   await restore;
 
   const reopened = fixture({ disk });
-  assert.equal(reopened.settings.get(DATABASE_BACKUP_RECOVERY_HINT_KEY), "true");
   const previous = reopened.liveRows("ivLyrics-db", "track-sync-offsets");
   assert.equal(previous.get(track), 125);
   assert.equal(previous.has(DATABASE_BACKUP_RECEIPT_KEY), true);
@@ -517,7 +517,6 @@ test("reopening after an interruption between database commits restores the prev
     { key: track, value: 25 }, { key: "spotify:track:added-later", value: 75 },
   ]);
   assert.equal(after.ivLyricsCache.metadata[0].value.data.title, "Before");
-  assert.equal(reopened.settings.has(DATABASE_BACKUP_RECOVERY_HINT_KEY), false);
 });
 
 test("reopening after the final database commits keeps the restore and removes its receipts", async () => {
@@ -541,7 +540,6 @@ test("reopening after the final database commits keeps the restore and removes i
   const after = await reopened.backup.exportAllDBs();
   assert.deepEqual(after["ivLyrics-db"]["track-sync-offsets"], [{ key: track, value: 125 }]);
   assert.deepEqual(after.ivLyricsCache.metadata, cache("After").ivLyricsCache.metadata);
-  assert.equal(reopened.settings.has(DATABASE_BACKUP_RECOVERY_HINT_KEY), false);
   assert.equal(reopened.liveRows("ivLyricsCache", "metadata").has(DATABASE_BACKUP_RECEIPT_KEY), false);
 });
 
@@ -554,5 +552,20 @@ test("a failed recovery journal write leaves all target databases untouched", as
   const after = await h.backup.exportAllDBs();
   assert.deepEqual(after["ivLyrics-db"]["track-sync-offsets"], [{ key: track, value: 25 }]);
   assert.equal(after.ivLyricsCache.metadata[0].value.data.title, "Before");
-  assert.equal(h.settings.has(DATABASE_BACKUP_RECOVERY_HINT_KEY), false);
+});
+
+test("startup recovery still reads the earlier rollback journal format", async () => {
+  const h = fixture();
+  const name = "ivLyrics-db";
+  const store = "track-sync-offsets";
+  await h.backup.importAllDBs({ [name]: { [store]: [{ key: track, value: 125 }] } });
+  const journal = createIndexedDbBackupJournal(() => h.indexedDB);
+  await journal.write([{
+    name,
+    stores: [{ name: store, records: [{ key: track, value: 125 }] }],
+    undo: new Map([[store, [{ key: track, value: 25 }]]]),
+  }]);
+  await h.backup.recover();
+  assert.equal(await h.offsetStore.getOffset(track), 25);
+  assert.equal(await journal.read(), undefined);
 });

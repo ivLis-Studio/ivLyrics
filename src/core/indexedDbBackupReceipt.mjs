@@ -1,7 +1,7 @@
 import { awaitIdbRequest, putIdbRecord, runIdbTransaction } from "./indexedDbTransaction.mjs";
 
 export const DATABASE_BACKUP_RECEIPT_KEY = "ivLyrics:database-backup-receipt";
-export const DATABASE_BACKUP_RECOVERY_HINT_KEY = "ivLyrics:database-backup-recovery-needed";
+export const BACKUP_DURABILITY = Object.freeze({ durability: "strict" });
 
 export function putBackupReceipt(store, receipt) {
   const value = store.keyPath == null ? receipt : { ...receipt, [store.keyPath]: DATABASE_BACKUP_RECEIPT_KEY };
@@ -20,5 +20,5 @@ export function clearBackupReceipt(db, storeName, id) {
     request.onsuccess = () => {
       if (request.result?.id === id) store.delete(DATABASE_BACKUP_RECEIPT_KEY);
     };
-  });
+  }, undefined, BACKUP_DURABILITY);
 }

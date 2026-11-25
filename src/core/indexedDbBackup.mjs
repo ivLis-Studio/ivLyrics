@@ -8,9 +8,7 @@ import {
 } from "../lyrics/lyricsCacheDatabase.mjs";
 import { runIdbTransaction } from "./indexedDbTransaction.mjs";
 import { recoverBackupStores, replaceBackupStores, rollbackBackupReceipt, scanBackupStore } from "./indexedDbBackupRestore.mjs";
-import {
-  clearBackupReceipt, DATABASE_BACKUP_RECEIPT_KEY, DATABASE_BACKUP_RECOVERY_HINT_KEY, readBackupReceipt,
-} from "./indexedDbBackupReceipt.mjs";
+import { clearBackupReceipt, DATABASE_BACKUP_RECEIPT_KEY, readBackupReceipt } from "./indexedDbBackupReceipt.mjs";
 import { createIndexedDbBackupJournal } from "./indexedDbBackupJournal.mjs";
 import { redactLyricsCacheDataForPersistence } from "../lyrics/lyricsCachePrivacy.mjs";
 import { SELECTED_VIDEO_DATABASE, openSelectedVideoDatabase } from "../features/video/selectedVideoStore.mjs";
@@ -141,12 +139,6 @@ export function createIndexedDbBackup({
     backupQueue = request.catch(() => {});
     return request;
   };
-  const clearRecoveryHint = () => {
-    const storage = readLocalStorage();
-    if (storage?.getItem(DATABASE_BACKUP_RECOVERY_HINT_KEY) != null) {
-      storage.removeItem(DATABASE_BACKUP_RECOVERY_HINT_KEY);
-    }
-  };
 
   async function saveRecoveryPlan(plan) {
     try {
@@ -214,7 +206,6 @@ export function createIndexedDbBackup({
       // The final receipt must survive until the journal is cleared.
       await withDatabase(final.name, db => clearBackupReceipt(db, final.store, plan.id)).catch(() => {});
     }
-    if (!saveError) clearRecoveryHint();
     return { committed, failed, saveError };
   }
 
@@ -230,7 +221,7 @@ export function createIndexedDbBackup({
 
   async function recoverInterruptedRestore(indexedDB) {
     const pending = await journal.read();
-    if (!pending) return clearRecoveryHint();
+    if (!pending) return;
     if (Array.isArray(pending)) return recoverLegacyRollback(pending, indexedDB);
     assertOffsetsReady(pending.targets);
     assertRecoveryComplete(await resolveRestore(pending, indexedDB, openForRecovery(indexedDB)));
@@ -290,7 +281,6 @@ export function createIndexedDbBackup({
         })),
       };
       // Establish recovery before any target database can commit.
-      readLocalStorage()?.setItem?.(DATABASE_BACKUP_RECOVERY_HINT_KEY, "true");
       await journal.write(recovery);
       const useOpen = (name, operation) => operation(opened.find(({ db }) => db.name === name).db);
       for (const [index, { db, stores }] of opened.entries()) {
@@ -320,7 +310,9 @@ export function createIndexedDbBackup({
   }));
 
   return {
-    recover: () => runAfterRecovery(() => undefined),
+    recover: () => runBackupOperation(() => runSettingsImportLocked(async () => {
+      if (await journal.exists()) await recoverInterruptedRestore(readIndexedDb());
+    })),
     exportAllDBs: () => runAfterRecovery(exportDatabases),
     importAllDBs: data => runAfterRecovery(indexedDB => restore(data, indexedDB)),
   };

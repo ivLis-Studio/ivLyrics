@@ -55,8 +55,8 @@ export function awaitIdbTransaction(tx, abortMessage = "IndexedDB transaction ab
     });
 }
 
-export async function runIdbTransaction(db, storeNames, mode, queueRequests, abortMessage) {
-    const tx = db.transaction(storeNames, mode);
+export async function runIdbTransaction(db, storeNames, mode, queueRequests, abortMessage, options) {
+    const tx = options ? db.transaction(storeNames, mode, options) : db.transaction(storeNames, mode);
     const done = awaitIdbTransaction(tx, abortMessage);
     try {
         const [result] = await Promise.all([queueRequests(tx), done]);

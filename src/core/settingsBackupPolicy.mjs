@@ -1,6 +1,5 @@
 import { TRACK_SYNC_OFFSETS_STORAGE_KEY } from "./trackSyncOffsetStore.mjs";
 import { SETTINGS_IMPORT_JOURNAL_KEY } from "./settingsImportJournal.mjs";
-import { DATABASE_BACKUP_RECOVERY_HINT_KEY } from "./indexedDbBackupReceipt.mjs";
 
 export const SETTINGS_NAMESPACE = "ivLyrics";
 export const STORAGE_KEYS_METADATA_KEY = `${SETTINGS_NAMESPACE}:storage-keys`;
@@ -24,7 +23,6 @@ const PRIVATE_OR_TRANSIENT_STORAGE_KEYS = new Set([
   SETTINGS_RECOVERY_RECORD_KEY,
   SETTINGS_RESET_RECORD_KEY,
   SETTINGS_IMPORT_JOURNAL_KEY,
-  DATABASE_BACKUP_RECOVERY_HINT_KEY,
   `${SETTINGS_NAMESPACE}:user-hash`,
   `${SETTINGS_NAMESPACE}:client-id`,
   `${SETTINGS_NAMESPACE}:auth-token`,
