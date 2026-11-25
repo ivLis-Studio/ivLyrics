@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createLyricsCache } from "#ivlyrics/lyrics/createLyricsCache.mjs";
+import { DATABASE_BACKUP_RECEIPT_KEY } from "#ivlyrics/core/indexedDbBackupReceipt.mjs";
 
 function createCacheFixture({ clearGate, onInvalidating, onInvalidated } = {}) {
     const stores = new Map(["lyrics", "translations", "metadata", "youtube", "sync", "tmi"]
@@ -14,10 +15,24 @@ function createCacheFixture({ clearGate, onInvalidating, onInvalidated } = {}) {
         transaction(name, mode) {
             if (Array.isArray(name)) {
                 if (mode === "readwrite") {
-                    const cleared = [];
-                    const tx = { objectStore: storeName => ({ clear: () => cleared.push(storeName) }) };
+                    const requests = [];
+                    const tx = { objectStore: storeName => ({
+                        keyPath: "cacheKey",
+                        clear: () => requests.push(() => stores.get(storeName).clear()),
+                        get(key) {
+                            const request = {};
+                            requests.push(() => {
+                                request.result = structuredClone(stores.get(storeName).get(key));
+                                request.onsuccess();
+                            });
+                            return request;
+                        },
+                        put(record) {
+                            requests.push(() => stores.get(storeName).set(record.cacheKey, structuredClone(record)));
+                        },
+                    }) };
                     Promise.resolve(clearGate).then(() => {
-                        for (const storeName of cleared) stores.get(storeName).clear();
+                        for (const request of requests) request();
                         tx.oncomplete();
                     });
                     return tx;
@@ -190,6 +205,16 @@ test("clearing the cache retires older lyric reads and writes and holds fresh wo
     assert.equal(await write, true);
     assert.deepEqual(await cache.getLyrics("track", "provider"), fresh);
     assert.deepEqual(notifications, [["start", null], ["end", null]]);
+});
+
+test("clearing the cache preserves an unresolved database restore receipt", async () => {
+    const { cache, stores } = createCacheFixture();
+    const metadata = stores.get("metadata");
+    const receipt = { id: "interrupted-restore", cacheKey: DATABASE_BACKUP_RECEIPT_KEY };
+    metadata.set(DATABASE_BACKUP_RECEIPT_KEY, receipt);
+    metadata.set("track:ko", { cacheKey: "track:ko", data: { title: "Old" } });
+    assert.equal(await cache.clearAll(), true);
+    assert.deepEqual([...metadata], [[DATABASE_BACKUP_RECEIPT_KEY, receipt]]);
 });
 
 test("all cache stores abandon stale reads and writes during a clear and admit fresh work after commit", async () => {

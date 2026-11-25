@@ -14,6 +14,7 @@ import {
 } from "./trackSyncOffsetStore.mjs";
 import { applyStorageBatch, noteStorageWrite } from "./settingsStorageBatch.mjs";
 import { assertSettingsImportRecovered, beginSettingsImportBatch, runSettingsImportLocked } from "./settingsImportJournal.mjs";
+import { DATABASE_BACKUP_RECOVERY_HINT_KEY } from "./indexedDbBackupReceipt.mjs";
 
 function collectLocalKeys(storage) {
   const keys = [];
@@ -314,7 +315,8 @@ export function createSettingsStorage({
         await persistence?.ready;
         return runSettingsImportLocked(async () => {
           const keys = collectLocalKeys(localStorage).filter(key =>
-            key.startsWith(`${SETTINGS_NAMESPACE}:`) && key !== SETTINGS_RESET_RECORD_KEY);
+            key.startsWith(`${SETTINGS_NAMESPACE}:`) && key !== SETTINGS_RESET_RECORD_KEY
+              && key !== DATABASE_BACKUP_RECOVERY_HINT_KEY);
           let finished;
           if (persistence?.clear) finished = persistence.clear(keys);
           else applyStorageBatch(localStorage, keys.map(key => [key, null]));
