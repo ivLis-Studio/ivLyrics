@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { createLyricsPresentationStore } from "#ivlyrics/lyrics/lyricsPresentationStore.mjs";
+import { createLyricSupplementPresentation } from "#ivlyrics/lyrics/lyricSupplementPresentation.mjs";
 import { installLyricsReadySnapshotListener } from "#ivlyrics/lyrics/installLyricsReadySnapshotListener.mjs";
 import { createLyricsProviderRequests } from "#ivlyrics/lyrics/lyricsProviderRequests.mjs";
 import { createLrcRedTimingDelivery } from "#ivlyrics/providers/lyrics/lrcRedTimingDelivery.mjs";
@@ -46,6 +47,69 @@ test('an older shared raw response cannot discard compatible word timing and com
 	const different = store.publish({ trackUri: uri, rawResult: { ...base, lrcred: { isrc: 'JPAAA2600002' } } });
 	assert.equal(different.rawResult.karaoke, undefined);
 	assert.equal(different.displayLyrics, undefined);
+});
+
+test('republishing the same raw lyric rows does not traverse their timing data again', () => {
+    let timingReads = 0, presentationKeyReads = 0;
+    const store = createLyricsPresentationStore({
+        onPublish() {},
+        getPresentationKey() { presentationKeyReads++; return 'fixture'; },
+        preserveAuxiliaryLyrics: (_previous, lyrics) => ({ lyrics }),
+    });
+    const rows = rawLyrics().map(line => ({
+        ...line,
+        get syllables() {
+            timingReads++;
+            return [{ text: line.text, startTime: line.startTime }];
+        },
+    }));
+    const raw = { provider: 'spotify', uri, karaoke: rows };
+    const display = richLyrics();
+    store.publish({ trackUri: uri, rawResult: raw, displayLyrics: display, presentationComplete: true });
+
+    const updated = store.publish({ trackUri: uri, rawResult: { ...raw, karaoke: [...rows], attribution: 'Updated' },
+        displayLyrics: display });
+    assert.strictEqual(updated.displayLyrics, display);
+    assert.equal(updated.rawResult.attribution, 'Updated');
+    assert.equal(updated.presentationComplete, true);
+    assert.equal(timingReads, 0);
+    assert.equal(presentationKeyReads, 0);
+});
+
+test('a copied raw source preserves the display until a backing vocal timing changes', () => {
+    const store = createLyricsPresentationStore({ onPublish() {} });
+    const vocals = {
+        lead: { id: 'lead', text: 'Hello', syllables: [{ text: 'Hello', startTime: 1000, endTime: 1500 }] },
+        background: [{ id: 'reply', text: 'World', syllables: [{ text: 'World', startTime: 1500, endTime: 2000 }] }],
+    };
+    const karaoke = [{ ...rawLyrics()[0], vocals }];
+    const raw = { provider: 'fixture', uri, karaoke };
+    const display = richLyrics();
+    store.publish({ trackUri: uri, rawResult: raw, displayLyrics: display, presentationComplete: true });
+    const copy = clone(raw);
+    assert.strictEqual(store.publish({ trackUri: uri, rawResult: copy }).displayLyrics, display);
+
+    const retimed = clone(copy);
+    retimed.karaoke[0].vocals.background[0].syllables[0].startTime = 1550;
+    const updated = store.publish({ trackUri: uri, rawResult: retimed });
+    assert.equal(updated.displayLyrics, undefined);
+    assert.equal(updated.presentationComplete, undefined);
+});
+
+test('preserving supplements reuses an unchanged presentation and only copies the affected vocal', () => {
+    const { preserveAuxiliaryLyrics } = createLyricSupplementPresentation({ getDisplayComparison: () => null });
+    const lead = { id: 'lead', text: 'Hello', translation: '안녕' };
+    const background = [{ id: 'reply', text: 'World', translation: '세상' }];
+    const next = [{ ...richLyrics()[0], vocals: { lead, background } }];
+    const unchanged = preserveAuxiliaryLyrics(next, next);
+    assert.strictEqual(unchanged.lyrics, next);
+
+    const previous = [{ ...next[0], vocals: { lead: { ...lead, phonetic: 'herro' }, background } }];
+    const updated = preserveAuxiliaryLyrics(previous, next);
+    assert.equal(updated.preservedPronunciationCount, 1);
+    assert.equal(updated.lyrics[0].vocals.lead.phonetic, 'herro');
+    assert.strictEqual(updated.lyrics[0].vocals.background, background);
+    assert.equal(next[0].vocals.lead.phonetic, undefined);
 });
 
 // Exercise the actual sender, preservation and mapper. Capture the complete

@@ -34,6 +34,18 @@ export const readVocalOriginalText = (part, syllables = part?.syllables) => {
         || (Array.isArray(syllables) ? syllables.map(syllable => syllable?.text ?? '').join('') : '');
 };
 
+function mapChangedLyrics(lyrics, mapLine) {
+    let mapped = lyrics;
+    for (let index = 0; index < lyrics.length; index++) {
+        const line = lyrics[index];
+        const next = mapLine(line, index);
+        if (next !== line) {
+            if (mapped === lyrics) mapped = lyrics.slice();
+            mapped[index] = next;
+        }
+    }
+    return mapped;
+}
 
 export function createLyricSupplementPresentation({ getDisplayComparison, hashSourceText }) {
   const areTextsEquivalent = (left, right) => {
@@ -109,7 +121,8 @@ export function createLyricSupplementPresentation({ getDisplayComparison, hashSo
       visibility = { pronunciation: true, translation: true }
   ) => {
       if (
-          !Array.isArray(previousLyrics)
+          previousLyrics === nextLyrics
+          || !Array.isArray(previousLyrics)
           || !Array.isArray(nextLyrics)
           || previousLyrics.length !== nextLyrics.length
           || (!visibility.pronunciation && !visibility.translation)
@@ -124,7 +137,7 @@ export function createLyricSupplementPresentation({ getDisplayComparison, hashSo
       let preservedPronunciationCount = 0;
       let preservedTranslationCount = 0;
       const preserveLine = (previousLine, line, isVocal = false, retention = visibility) => {
-          if (!previousLine || !line) return line;
+          if (!previousLine || !line || previousLine === line) return line;
           const getOriginalText = isVocal ? readVocalOriginalText : readLineOriginalText;
           const previousOriginal = getOriginalText(previousLine).normalize('NFC').trim();
           const nextOriginal = getOriginalText(line).normalize('NFC').trim();
@@ -177,27 +190,28 @@ export function createLyricSupplementPresentation({ getDisplayComparison, hashSo
               preservedTranslationCount += 1;
           }
 
-          if (!isVocal && previousLine.vocals && line.vocals) {
+          if (!isVocal && previousLine.vocals && line.vocals && previousLine.vocals !== line.vocals) {
               const previousVocals = previousLine.vocals;
               const vocalRetention = { pronunciation: retainPronunciation, translation: retainTranslation };
               const lead = preserveLine(previousVocals.lead, line.vocals.lead, true, vocalRetention);
               const previousBackground = Array.isArray(previousVocals.background) ? previousVocals.background : [];
-              const background = Array.isArray(line.vocals.background)
-                  ? line.vocals.background.map((part, index) => {
+              const nextBackground = line.vocals.background;
+              const background = Array.isArray(nextBackground) && previousBackground !== nextBackground
+                  ? mapChangedLyrics(nextBackground, (part, index) => {
                       if (!part || typeof part !== 'object') return part;
                       const previousPart = part.id
                           ? previousBackground.find(candidate => candidate?.id === part.id)
                           : previousBackground[index];
                       return preserveLine(previousPart, part, true, vocalRetention);
                   })
-                  : line.vocals.background;
-              nextLine = { ...nextLine, vocals: { ...line.vocals, lead, background } };
+                  : nextBackground;
+              if (lead !== line.vocals.lead || background !== nextBackground) {
+                  nextLine = { ...nextLine, vocals: { ...line.vocals, lead, background } };
+              }
           }
           return nextLine;
       };
-      const lyrics = nextLyrics.map((line, index) => {
-          return preserveLine(previousLyrics[index], line);
-      });
+      const lyrics = mapChangedLyrics(nextLyrics, (line, index) => preserveLine(previousLyrics[index], line));
 
       return {
           lyrics,
