@@ -51,26 +51,34 @@ JS
 
 verify_macos_updater_handler() {
     local lsregister="$1" app_path="$2" bundle_id="$3"
-    local selected stale_path previous_path
+    local selected stale_path previous_path last_removed="" retries=0
     local -a removed_paths=("$app_path")
 
     # Registering a bundle does not make it the selected handler. Launch
     # Services may continue to favor a backup with the same bundle identifier.
     while :; do
         selected=$(read_macos_updater_handler) || return 1
-        if [[ "$selected" == "$bundle_id"$'\n'"$app_path" ]]; then
+        stale_path=${selected#*$'\n'}
+        if [[ "$selected" == "$bundle_id"$'\n'/* ]] &&
+            [[ "$stale_path" == "$app_path" || "$stale_path" -ef "$app_path" ]]; then
             return 0
         fi
-        if [[ -z "$selected" ]]; then
-            echo "macOS has not selected an app for ivlyrics-updater://." >&2
-            return 1
+
+        # The handler lookup can lag behind lsregister's database update.
+        if [[ -z "$selected" || "$selected" == "$last_removed" ]]; then
+            if [[ "$retries" -ge 5 ]]; then
+                echo "macOS has not selected the installed app for ivlyrics-updater://." >&2
+                return 1
+            fi
+            retries=$((retries + 1))
+            sleep .2
+            continue
         fi
-        if [[ "$selected" != "$bundle_id"$'\n'* ]]; then
+        if [[ "$selected" != "$bundle_id"$'\n'/* ]]; then
             echo "macOS has assigned ivlyrics-updater:// to another application." >&2
             return 1
         fi
 
-        stale_path=${selected#*$'\n'}
         for previous_path in "${removed_paths[@]}"; do
             if [[ "$stale_path" == "$previous_path" ]]; then
                 echo "macOS still selects the previous ivLyrics updater at $stale_path." >&2
@@ -79,6 +87,8 @@ verify_macos_updater_handler() {
         done
         "$lsregister" -u "$stale_path" || return 1
         removed_paths+=("$stale_path")
+        last_removed="$selected"
+        retries=0
     done
 }
 

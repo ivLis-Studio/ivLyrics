@@ -58,7 +58,7 @@ function installerFixture(context, {
     differentMirrorArchive = false, uninstallFailure = '', compactGithubMetadata = false,
     archive = null, releaseVersion = latest,
     manifest = { name: 'ivLyrics', subfiles_extension: ['startup.js'] }, failProtocolRegistration = false,
-    macosDefaultHandler = null,
+    macosDefaultHandler = null, macosHandlerDelay = 0,
 } = {}) {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'ivlyrics-unix-installer-')));
     context.after(() => rmSync(root, { recursive: true, force: true }));
@@ -79,6 +79,7 @@ function installerFixture(context, {
     writeFileSync(join(root, 'custom-apps'), registered ? 'other|ivLyrics\n' : 'other\n');
     const protocolFailure = join(root, 'protocol-failure');
     if (failProtocolRegistration) writeFileSync(protocolFailure, 'unavailable');
+    writeFileSync(join(root, 'handler-delay'), `${macosHandlerDelay}\n`);
     if (macosDefaultHandler) {
         mkdirSync(backupBundle, { recursive: true });
         writeFileSync(join(backupBundle, 'marker'), 'existing bundle');
@@ -219,6 +220,11 @@ fi
     command('osascript', String.raw`
 [ "$*" = '-l JavaScript - ivlyrics-updater://update' ] || exit 1
 cat > /dev/null
+read -r delay < "$IVL_TEST_ROOT/handler-delay"
+if [ "$delay" -gt 0 ]; then
+    printf '%s\n' "$((delay - 1))" > "$IVL_TEST_ROOT/handler-delay"
+    exit 0
+fi
 if [ -f "$IVL_TEST_ROOT/default-handler" ]; then
     cat "$IVL_TEST_ROOT/default-handler"
 elif [ -f "$IVL_TEST_ROOT/registered-handler" ]; then
@@ -463,7 +469,7 @@ if (builtVersion) {
     }, context => {
         const archive = readFileSync(new URL('../dist/ivLyrics.zip', import.meta.url));
         const fx = installerFixture(context, {
-            archive, releaseVersion: builtVersion, macosDefaultHandler: 'kr.ivlis.ivlyrics.updater',
+            archive, releaseVersion: builtVersion, macosDefaultHandler: 'kr.ivlis.ivlyrics.updater', macosHandlerDelay: 2,
         });
         const result = fx.run();
         assert.equal(result.status, 0, result.stdout + result.stderr);
