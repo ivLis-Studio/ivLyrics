@@ -22,6 +22,7 @@ import { createPageTraditionalConversion } from "#ivlyrics/lyrics/pageTraditiona
 import { createLyricsPagePlayback } from "#ivlyrics/spicetify/lyricsPagePlayback.mjs";
 import { createPageCulturalAnnotations } from "#ivlyrics/lyrics/createPageCulturalAnnotations.mjs";
 import { getPlaybackPositionService } from "#ivlyrics/core/playbackPositionService.mjs";
+import { LRUCache } from "#ivlyrics/core/LRUCache.mjs";
 import { resolveModeSpecificLyrics } from "#ivlyrics/lyrics/lyricsRenderModes.mjs";
 import { createInitialLyricsContainerState, emptyLyricsState as emptyState } from "#ivlyrics/lyrics/pageLyricsLoadState.mjs";
 import { getSyncDataRendererCacheVersion } from "#ivlyrics/lyrics/pageLyricsCacheIdentity.mjs";
@@ -205,7 +206,7 @@ export function initializeLyricsRoutePage(page, {
     getSourceLanguage: (lyrics) => page.provideLanguageCode(lyrics),
     getNotation: getCurrentLyricsPronunciationNotation,
   });
-  page._sharedPresentationKeys = new Map();
+  page._sharedPresentationKeys = new LRUCache();
   page._invalidatedSharedPresentationSnapshots = new WeakSet();
   page.culturalAnnotations = createPageCulturalAnnotations({
     page, getVisualSettings: () => CONFIG.visual, buildTranslationLineRequests,

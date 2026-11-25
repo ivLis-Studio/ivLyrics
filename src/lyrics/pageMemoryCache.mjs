@@ -1,9 +1,54 @@
-export const pageLyricsMemoryCache = {};
+const PAGE_CACHE_LIMIT = 100;
+
+function createPageLyricsMemoryCache() {
+  const recentKeys = new Set();
+
+  // The startup extension and add-ons use CACHE as a dictionary, including
+  // property assignment, enumeration and deletion. Keep that interface.
+  return new Proxy({}, {
+    get(target, key, receiver) {
+      if (recentKeys.delete(key)) recentKeys.add(key);
+      return Reflect.get(target, key, receiver);
+    },
+
+    defineProperty(target, key, descriptor) {
+      if (!Reflect.defineProperty(target, key, descriptor)) return false;
+      if (typeof key !== "string") return true;
+
+      recentKeys.delete(key);
+      if (Object.getOwnPropertyDescriptor(target, key).configurable) {
+        recentKeys.add(key);
+        if (recentKeys.size > PAGE_CACHE_LIMIT) {
+          const oldest = recentKeys.values().next().value;
+          Reflect.deleteProperty(target, oldest);
+          recentKeys.delete(oldest);
+        }
+      }
+      return true;
+    },
+
+    deleteProperty(target, key) {
+      if (!Reflect.deleteProperty(target, key)) return false;
+      recentKeys.delete(key);
+      return true;
+    },
+  });
+}
+
+export const pageLyricsMemoryCache = createPageLyricsMemoryCache();
+
+function evictOldestEntries(cache, remaining) {
+  for (const key of cache.keys()) {
+    if (remaining <= 0) break;
+    cache.delete(key);
+    remaining--;
+  }
+}
 
 export function createPageTranslationMemoryCache({ now = () => Date.now() } = {}) {
   return {
     _cache: new Map(),
-    _maxSize: 100, // Limit cache to 100 songs
+    _maxSize: PAGE_CACHE_LIMIT,
     _ttl: 30 * 60 * 1000, // 30 minutes TTL
     _cleanupTimer: null,
     _statsEnabled: false,
@@ -41,9 +86,8 @@ export function createPageTranslationMemoryCache({ now = () => Date.now() } = {}
         return null;
       }
 
-      // Update access time for LRU (move to end)
+      // Move the most recently used entry to the end.
       this._cache.delete(key);
-      item.lastAccessed = now();
       this._cache.set(key, item);
 
       if (this._statsEnabled) this._stats.hits++;
@@ -51,29 +95,21 @@ export function createPageTranslationMemoryCache({ now = () => Date.now() } = {}
     },
 
     set(key, data) {
-      // Clean up if cache is getting too large
+      this._cache.delete(key);
       if (this._cache.size >= this._maxSize) {
         this._cleanupOldEntries();
       }
-
+      if (this._maxSize <= 0) return;
       this._cache.set(key, {
         data,
         expiry: now() + this._ttl,
-        lastAccessed: now(),
       });
     },
 
     _cleanupOldEntries() {
-      // LRU eviction - remove oldest entries
-      const entries = Array.from(this._cache.entries());
-      const toRemove = Math.floor(entries.length * 0.3); // Remove 30% to reduce frequent cleanups
-
-      // Sort by last accessed time (oldest first)
-      entries.sort((a, b) => a[1].lastAccessed - b[1].lastAccessed);
-
-      for (let i = 0; i < toRemove; i++) {
-        this._cache.delete(entries[i][0]);
-      }
+      const size = this._cache.size;
+      const toRemove = Math.min(size, Math.max(Math.floor(size * 0.3), size - this._maxSize + 1));
+      evictOldestEntries(this._cache, toRemove);
 
       if (this._statsEnabled) {
         this._stats.evictions += toRemove;
@@ -85,17 +121,15 @@ export function createPageTranslationMemoryCache({ now = () => Date.now() } = {}
       // Clean up expired entries every 5 minutes
       this._cleanupTimer = setInterval(() => {
         const currentTime = now();
-        const keysToDelete = [];
-
-        for (const [key, item] of this._cache.entries()) {
+        let removed = false;
+        for (const [key, item] of this._cache) {
           if (currentTime > item.expiry) {
-            keysToDelete.push(key);
+            this._cache.delete(key);
+            removed = true;
           }
         }
 
-        keysToDelete.forEach((key) => this._cache.delete(key));
-
-        if (this._statsEnabled && keysToDelete.length > 0) {
+        if (this._statsEnabled && removed) {
           this._stats.cleanups++;
         }
       }, 5 * 60 * 1000);
@@ -126,14 +160,7 @@ export function createPageTranslationMemoryCache({ now = () => Date.now() } = {}
     },
 
     _aggressiveCleanup() {
-      const entries = Array.from(this._cache.entries());
-      const toRemove = Math.floor(entries.length * 0.5);
-
-      entries.sort((a, b) => a[1].lastAccessed - b[1].lastAccessed);
-
-      for (let i = 0; i < toRemove; i++) {
-        this._cache.delete(entries[i][0]);
-      }
+      evictOldestEntries(this._cache, Math.floor(this._cache.size * 0.5));
     },
 
     clear() {
@@ -142,14 +169,11 @@ export function createPageTranslationMemoryCache({ now = () => Date.now() } = {}
 
     // Clear cache entries for a specific URI
     clearByUri(uri) {
-      const keysToDelete = [];
-      for (const [key] of this._cache) {
-        if (key.includes(uri)) {
-          keysToDelete.push(key);
-        }
+      let removed = 0;
+      for (const key of this._cache.keys()) {
+        if (key.includes(uri) && this._cache.delete(key)) removed++;
       }
-      keysToDelete.forEach((key) => this._cache.delete(key));
-      return keysToDelete.length;
+      return removed;
     },
 
     // Get cache statistics
