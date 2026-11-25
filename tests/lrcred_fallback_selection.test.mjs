@@ -1,9 +1,9 @@
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../LyricsAddonManager.js', import.meta.url), 'utf8');
+const source = bundleInitializer(new URL('../src/providers/lyrics/LyricsAddonManager.js', import.meta.url));
 const info = { uri: 'spotify:track:AAAAAAAAAAAAAAAAAAAAAA', title: 'Fixture', artist: 'Artist' };
 const lines = [{ text: 'Fixture lyric', startTime: 1000, endTime: 3000 }];
 

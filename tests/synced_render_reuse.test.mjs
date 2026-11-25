@@ -1,3 +1,4 @@
+import { createKaraokeHarnessFactory } from "./fixtures/karaoke-page-modules.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -35,7 +36,7 @@ let harness = helper.slice(helper.indexOf('const repoRoot'), helper.indexOf('tes
     'CONFIG, window, motionPreference, getCreates: () => creates, resetCreates: () => { creates = 0; },')
   .replace('items: result.renderItems, isKara: props.isKara, position,',
     'items: result.renderItems, isKara: props.isKara, position, cache,');
-const { createEngine, currentSource, baselineSource, makeLyrics, lyric } = new Function(
+const { createEngine, currentSource, baselineSource, makeLyrics, lyric } = createKaraokeHarnessFactory(
   'assert', 'execFileSync', 'readFileSync', 'fileURLToPath', 'vm', harness +
   '\nreturn { createEngine, currentSource, baselineSource, makeLyrics, lyric };'
 )(assert, execFileSync, readFileSync, fileURLToPath, vm);

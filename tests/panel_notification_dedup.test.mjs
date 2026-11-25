@@ -1,18 +1,12 @@
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
+import { startPanelPlaybackSubscription } from '../src/lyrics/panelPlaybackSubscription.mjs';
 
-const source = readFileSync(new URL('../NowPlayingPanelLyrics.js', import.meta.url), 'utf8');
-function effectBetween(startMarker, endMarker) {
-  const start = source.indexOf(startMarker);
-  const body = source.indexOf('useEffect(() => {', start) + 'useEffect(() => {'.length;
-  const end = source.indexOf(endMarker, body);
-  assert.ok(start >= 0 && body > start && end > body);
-  return source.slice(body, end);
-}
+import { observePanelVocalAnchor } from "../src/lyrics/panelVocalLayout.mjs";
 
-function positionHarness({sourceType = 'open-lyrics', trackOffset = 0, globalOffset = 0, snapshot = null, reducePanelMotion = false} = {}) {
+function positionHarness({sourceType = 'open-lyrics', trackOffset = 0, globalOffset = 0, snapshot = null,
+  reducePanelMotion = false, getPronunciationLead = () => 0, storedTrackDelay = () => null,
+  lyrics = [{startTime: 0}, {startTime: 1000}]} = {}) {
   const events = [], updates = [], polls = [];
   let position = 0, nextId = 1, poll = null, frame = null, stopped = false;
   const cancelled = [];
@@ -25,32 +19,42 @@ function positionHarness({sourceType = 'open-lyrics', trackOffset = 0, globalOff
     addEventListener: (type, fn) => {if (type === 'visibilitychange') visibilityListeners.add(fn);},
     removeEventListener: (type, fn) => {if (type === 'visibilitychange') visibilityListeners.delete(fn);},
   };
-  const context = vm.createContext({
-    window, document, Spicetify: {Player: player, LocalStorage: {get: () => null}}, Event: class {constructor(type) {this.type = type;}},
-    lyrics: [{startTime: 0}, {startTime: 1000}], isEnabled: true,
-    panelPlaybackTimeline: [], getPanelSingingLineIndices: () => [], setSingingLineIndices: () => {},
-    currentIndex: -1, visualIndex: -1, trackOffset, globalOffset,
-    karaokeSource: sourceType, pseudoKaraokeAdvanceMs: 150, PSEUDO_KARAOKE_SOURCES: new Set(['pseudo']),
-    hasKaraokeTiming: true, reducePanelMotion, PANEL_LINE_TRANSITION_DURATION_MS: 520,
-    createTrailingKaraokeInterludeResolver: () => () => null,
-    getPanelTimedLineIndex: (_, p) => {polls.push(p); return p >= 1000 ? 1 : 0;},
-    getPrecenteredPanelLineIndex: (_, p) => p >= 480 ? 1 : 0,
-    getPanelTrailingInterludeState: () => ({activeKey: null, visualKey: null}),
-    setCurrentIndex: value => updates.push(['current', value]),
-    setVisualIndex: value => updates.push(['visual', value]),
-    setActiveTrailingInterludeKey: value => updates.push(['trailing', value]),
-    setVisualTrailingInterludeKey: value => updates.push(['visualTrailing', value]),
-    setTimeout: (callback, delay) => {assert.equal(poll, null); poll = {id: nextId++, callback, delay}; return poll.id;},
-    clearTimeout: id => {cancelled.push(['poll', id]); if (poll?.id === id) poll = null;},
-    requestAnimationFrame: callback => {assert.equal(frame, null); frame = {id: nextId++, callback}; return frame.id;},
-    cancelAnimationFrame: id => {cancelled.push(['frame', id]); if (frame?.id === id) frame = null;},
+  const cleanup = startPanelPlaybackSubscription({
+    lyrics,
+    timeline: [], enabled: true, hasKaraokeTiming: true, reduceMotion: reducePanelMotion,
+    startIndex: -1, startVisualIndex: -1, transitionMs: 520,
+    offsetMs: {track: trackOffset, global: globalOffset, pseudo: sourceType === 'pseudo' ? 150 : 0},
+    resolveTrailingInterlude: () => null,
+    read: {
+      snapshot: () => window.Utils?.getPlayerPlaybackSnapshot?.(),
+      fallbackPlayback: () => ({position: player.getProgress(), isPlaying: false}),
+      trackUri: () => player.data.item.uri,
+      storedTrackDelay,
+      pronunciationLead: getPronunciationLead,
+    },
+    on: {
+      position: value => {window._ivLyricsPanelCurrentTime = value; polls.push(value);},
+      positionChanged: () => window.dispatchEvent({type: 'ivlyrics-panel-time-update'}),
+      activeLineChanged: value => updates.push(['current', value]),
+      visualLineChanged: value => updates.push(['visual', value]),
+      singingLinesChanged() {},
+      activeInterludeChanged: value => updates.push(['trailing', value]),
+      visualInterludeChanged: value => updates.push(['visualTrailing', value]),
+    },
+    scheduler: {
+      visibilityTarget: document,
+      isHidden: () => document.hidden,
+      scheduleTimer: (callback, delay) => {assert.equal(poll, null); poll = {id: nextId++, callback, delay}; return poll.id;},
+      cancelTimer: id => {cancelled.push(['poll', id]); if (poll?.id === id) poll = null;},
+      requestFrame: callback => {assert.equal(frame, null); frame = {id: nextId++, callback}; return frame.id;},
+      cancelFrame: id => {cancelled.push(['frame', id]); if (frame?.id === id) frame = null;},
+    },
   });
-  const body = effectBetween('// 현재 재생 위치 추적 및 노래방 가사 타이밍 업데이트', '        }, [lyrics, isEnabled, trackOffset');
-  const cleanup = vm.runInContext(`(() => {${body}})()`, context);
   const runPoll = () => {const {callback, delay} = poll; assert.equal(delay, 30); poll = null; callback();};
   return {
     events, updates, polls, window, player, document, cancelled,
     pending: () => ({poll: poll && poll.delay, frame: Boolean(frame)}),
+    getCallback: () => (poll || frame)?.callback,
     tick: (p = position) => {position = p; runPoll();},
     poll: runPoll,
     frame: (frameTime) => {const {callback} = frame; frame = null; callback(frameTime);},
@@ -68,6 +72,20 @@ test('paused panel retains position polling but sends one notification for an un
   assert.deepEqual(h.events, [['ivlyrics-panel-time-update', 0, 'track-a']]);
   assert.deepEqual(h.updates, [['current', 0], ['visual', 0]]);
   h.cleanup(); assert.ok(h.stopped()); assert.equal(h.window._ivLyricsPanelCurrentTime, 0);
+});
+
+test('panel delay uses the sampled track even when the public Spotify item is late', () => {
+  const reads = [];
+  const snapshot = {position: 2000, isPlaying: false, uri: 'track-b'};
+  const h = positionHarness({ snapshot, storedTrackDelay: uri => {reads.push(uri); return '125';} });
+  assert.equal(h.player.data.item.uri, 'track-a');
+  assert.deepEqual(reads, ['track-b']);
+  assert.equal(h.polls[0], 2125);
+  snapshot.djNarration = true;
+  h.tick();
+  assert.deepEqual(reads, ['track-b']);
+  assert.equal(h.polls.at(-1), 2000);
+  h.cleanup();
 });
 
 test('seek, resume, reverse seek and same-position track changes all notify', () => {
@@ -165,15 +183,60 @@ test('vocal anchor notifications preserve every position change and skip identic
   let update, removedListener = false;
   const attrs = new Map(), toggles = [], events = [];
   const stack = {setAttribute: (k,v) => attrs.set(k,v), removeAttribute: k => attrs.delete(k), querySelectorAll: () => [0,1,2,3].map(i => ({getAttribute: () => String(i), classList: {toggle: (_, active) => toggles.push([i,active]), remove: () => {}}}))};
-  const window = {_ivLyricsPanelCurrentTime: 0, dispatchEvent: e => events.push([e.type, attrs.get('data-panel-vocal-anchor-position')]), addEventListener: (_, fn) => {update = fn;}, removeEventListener: () => {removedListener = true;}};
-  const context = vm.createContext({window, vocalStackRef: {current: stack}, vocalAnchorStateRef: {}, vocalRows: [], shouldUseVocalRowAnchor: true,
-    Event: class {constructor(type) {this.type = type;}}, buildVocalAnchorTimeline: () => ({key: 'fixture'}),
-    getVocalAnchorPosition: (_, time) => time / 1000, getStableVocalAnchorPosition: (_,__,___,position) => position,
+  let position = 0;
+  const host = {
+    Event: class { constructor(type) { this.type = type; } },
+    dispatchEvent: event => events.push([event.type, attrs.get('data-panel-vocal-anchor-position')]),
+    addEventListener: (_, callback) => { update = callback; },
+    removeEventListener: () => { removedListener = true; },
+  };
+  const cleanup = observePanelVocalAnchor({
+    host, stackElement: stack, readPlaybackPosition: () => position,
+    vocalAnchorStateRef: { current: { key: "", anchorPosition: -1, lastPlaybackPosition: NaN } },
+    vocalRows: [0, 1000, 2000, 3000].map(startTime => ({ syllables: [{ startTime, endTime: startTime + 1000 }] })),
+    shouldUseVocalRowAnchor: true,
   });
-  const body = effectBetween('    const KaraokeLine = memo(', '        }, [shouldUseVocalRowAnchor, vocalRows, textEffectRevision]);');
-  const cleanup = vm.runInContext(`(() => {${body}})()`, context);
-  for (const time of [0,0,250,250,1000,1000,2000,3000,3000,0]) {window._ivLyricsPanelCurrentTime = time; update();}
-  assert.deepEqual(events.map(e => e[1]), ['0','0.25','1','2','3','0']);
-  assert.equal(toggles.length, 24);
+  for (const time of [0, 0, 250, 250, 1000, 1000, 2000, 3000, 3000, 0]) { position = time; update(); }
+  assert.deepEqual(events.map(event => event[1]), ['0', '1', '2', '3', '0']);
+  assert.equal(toggles.length, 20);
   cleanup(); assert.ok(removedListener); assert.equal(attrs.size, 0);
+});
+
+test('obsolete panel frame callbacks cannot publish after visibility changes or unmount', () => {
+  const h = positionHarness({snapshot: {position: 3000, isPlaying: true, sampledAt: 1010}});
+  const fromVisible = h.getCallback();
+  h.setVisibility(true);
+  const fromHidden = h.getCallback();
+  assert.deepEqual(h.pending(), {poll: 30, frame: false});
+  assert.equal(h.polls.length, 2);
+  fromVisible(1000);
+  assert.equal(h.polls.length, 2);
+  h.cleanup();
+  const writesAfterUnmount = h.polls.length;
+  fromHidden();
+  assert.equal(h.polls.length, writesAfterUnmount);
+  assert.equal(h.window._ivLyricsPanelCurrentTime, 0);
+  assert.deepEqual(h.pending(), {poll: null, frame: false});
+});
+
+test('pronunciation lead is sampled separately from track and provider offsets', () => {
+  let lead = 200;
+  const h = positionHarness({
+    sourceType: 'pseudo', trackOffset: 100, globalOffset: -50, getPronunciationLead: () => lead,
+  });
+  assert.equal(h.events[0][1], 400);
+  lead = 0;
+  h.tick();
+  assert.equal(h.events.at(-1)[1], 200);
+  h.cleanup();
+});
+
+test('panel advances to the same source row as the main lyrics when starts overlap out of order', () => {
+  const h = positionHarness({lyrics: [{startTime: 1000}, {startTime: 7000}, {startTime: 3000}]});
+  for (const p of [2479, 2480, 2999, 3000, 1000]) h.tick(p);
+  assert.deepEqual(h.updates, [
+    ['current', 0], ['visual', 0], ['visual', 1], ['current', 2], ['visual', 2],
+    ['current', 0], ['visual', 0],
+  ]);
+  h.cleanup();
 });

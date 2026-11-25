@@ -1,26 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
-
-const source = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
-const helperStart = source.indexOf("const shouldIncludeSyncedLineInCompactView");
-const helperBoundary = source.indexOf("const getActiveTimedLineIndex", helperStart);
-assert.ok(helperStart > 0, "compact display-line helpers must remain in Pages.js");
-assert.ok(helperBoundary > helperStart, "compact display-line helpers must precede the active-line helper");
-
-const context = vm.createContext({});
-vm.runInContext(
-	`${source.slice(helperStart, helperBoundary)}\n` +
-	"globalThis.__compactDisplayLinesTest = { shouldIncludeSyncedLineInCompactView, createCompactDisplayLineCache, buildCompactDisplayLines };",
-	context
-);
-
-const {
-	shouldIncludeSyncedLineInCompactView,
-	createCompactDisplayLineCache,
-	buildCompactDisplayLines,
-} = context.__compactDisplayLinesTest;
+import { createCompactLyricsDisplay } from "#ivlyrics/lyrics/compactLyricsDisplay.mjs";
 
 const makeLine = (lineNumber, text, { interlude = false, translation = `${text} translation` } = {}) => ({
 	lineNumber,
@@ -37,7 +17,8 @@ const makeLine = (lineNumber, text, { interlude = false, translation = `${text} 
 
 const baselineCompactDisplayLines = (paddedLyrics, activeLineIndex, visualLineIndex = activeLineIndex) =>
 	paddedLyrics
-		.filter((line) => shouldIncludeSyncedLineInCompactView(line, activeLineIndex, visualLineIndex))
+		.filter((line) => !line.interludeInfo?.isInterlude
+			|| line.lineNumber === activeLineIndex || line.lineNumber === visualLineIndex)
 		.map((line, displayLineNumber) => ({
 			...line,
 			displayLineNumber,
@@ -51,10 +32,12 @@ test("reuses rows when their source line and display slot stay stable", () => {
 		makeLine(1, "second"),
 		makeLine(2, "third"),
 	];
-	const cache = createCompactDisplayLineCache();
+	const cache = new WeakMap();
 
-	const initial = buildCompactDisplayLines(paddedLyrics, 0, 0, cache);
-	const afterActiveLineChange = buildCompactDisplayLines(paddedLyrics, 2, 2, cache);
+	const readDisplay = createCompactLyricsDisplay(paddedLyrics, cache);
+	const initial = readDisplay(0).rows;
+	const afterActiveLineChange = readDisplay(2).rows;
+	assert.strictEqual(initial, afterActiveLineChange, "ordinary line changes reuse the same layout");
 
 	assert.deepEqual(afterActiveLineChange.map((line) => line.displayLineNumber), [0, 1, 2]);
 	assert.strictEqual(afterActiveLineChange[0], initial[0]);
@@ -71,19 +54,20 @@ test("keeps filtering and slots correct as interludes disappear, reappear, and r
 	const secondLine = makeLine(2, "second");
 	const thirdLine = makeLine(3, "third");
 	const paddedLyrics = [firstLine, interlude, secondLine, thirdLine];
-	const cache = createCompactDisplayLineCache();
+	const cache = new WeakMap();
 
-	const withInterlude = buildCompactDisplayLines(paddedLyrics, 1, 1, cache);
+	const readDisplay = createCompactLyricsDisplay(paddedLyrics, cache);
+	const withInterlude = readDisplay(1).rows;
 	assert.equal(serializeLines(withInterlude), serializeLines(baselineCompactDisplayLines(paddedLyrics, 1, 1)));
 
-	const withoutInterlude = buildCompactDisplayLines(paddedLyrics, 2, 2, cache);
+	const withoutInterlude = readDisplay(2).rows;
 	assert.equal(serializeLines(withoutInterlude), serializeLines(baselineCompactDisplayLines(paddedLyrics, 2, 2)));
 	assert.strictEqual(withoutInterlude[0], withInterlude[0]);
 	assert.notStrictEqual(withoutInterlude[1], withInterlude[2], "a shifted line must receive its new display slot");
 	assert.notStrictEqual(withoutInterlude[2], withInterlude[3], "every shifted line must avoid a stale display slot");
 
 	const reordered = [firstLine, thirdLine, interlude, secondLine];
-	const reorderedWithInterlude = buildCompactDisplayLines(reordered, 1, 1, cache);
+	const reorderedWithInterlude = createCompactLyricsDisplay(reordered, cache)(1).rows;
 	assert.equal(serializeLines(reorderedWithInterlude), serializeLines(baselineCompactDisplayLines(reordered, 1, 1)));
 	assert.equal(reorderedWithInterlude.map((line) => line.lineNumber).join(","), "0,3,1,2");
 	assert.equal(reorderedWithInterlude.map((line) => line.displayLineNumber).join(","), "0,1,2,3");
@@ -96,16 +80,16 @@ test("does not reuse a cached row when its source or translation object is repla
 	const translatedLine = makeLine(1, "second", { translation: "old translation" });
 	const lastLine = makeLine(2, "third");
 	const paddedLyrics = [firstLine, translatedLine, lastLine];
-	const cache = createCompactDisplayLineCache();
+	const cache = new WeakMap();
 
-	const initial = buildCompactDisplayLines(paddedLyrics, 1, 1, cache);
+	const initial = createCompactLyricsDisplay(paddedLyrics, cache)(1).rows;
 	const replacement = {
 		...translatedLine,
 		text2: "new translation",
 		translationText: "new translation",
 		metadata: { source: "second-replaced" },
 	};
-	const updated = buildCompactDisplayLines([firstLine, replacement, lastLine], 1, 1, cache);
+	const updated = createCompactLyricsDisplay([firstLine, replacement, lastLine], cache)(1).rows;
 
 	assert.strictEqual(updated[0], initial[0]);
 	assert.notStrictEqual(updated[1], initial[1]);
@@ -115,6 +99,28 @@ test("does not reuse a cached row when its source or translation object is repla
 	assert.deepEqual(updated[1].metadata, { source: "second-replaced" });
 	assert.equal(serializeLines(updated), serializeLines(baselineCompactDisplayLines([firstLine, replacement, lastLine], 1, 1)));
 
-	const otherEngine = buildCompactDisplayLines([firstLine, replacement, lastLine], 1, 1, createCompactDisplayLineCache());
+	const otherEngine = createCompactLyricsDisplay([firstLine, replacement, lastLine], new WeakMap())(1).rows;
 	assert.notStrictEqual(otherEngine[0], updated[0]);
+});
+
+test("an instrumental handoff can show both rows and reuse that layout through a reverse seek", () => {
+	const paddedLyrics = [
+		makeLine(0, "first"),
+		makeLine(1, "interlude", { interlude: true }),
+		makeLine(2, "second interlude", { interlude: true }),
+		makeLine(3, "next lyric"),
+	];
+	const readDisplay = createCompactLyricsDisplay(paddedLyrics, new WeakMap());
+	const approaching = readDisplay(0, 1);
+	assert.deepEqual(approaching.rows.map(line => line.lineNumber), [0, 1, 3]);
+	assert.equal(approaching.indexByLineNumber.get(3), 2);
+	assert.equal(approaching.indexByLineNumber.has(2), false);
+	assert.strictEqual(readDisplay(1, 3), approaching);
+	const handoff = readDisplay(1, 2);
+	assert.deepEqual(handoff.rows.map(line => line.lineNumber), [0, 1, 2, 3]);
+	assert.equal(handoff.indexByLineNumber.get(3), 3);
+	assert.strictEqual(readDisplay(2, 1), handoff);
+	const resumed = readDisplay(3);
+	assert.deepEqual(resumed.rows.map(line => line.lineNumber), [0, 3]);
+	assert.equal(resumed.indexByLineNumber.get(3), 1);
 });

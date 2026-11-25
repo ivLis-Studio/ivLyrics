@@ -1,16 +1,18 @@
+import { createKaraokeHarnessFactory } from "./fixtures/karaoke-page-modules.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { KaraokeWordTiming } from '../src/lyrics/karaokeWordTiming.mjs';
 
 const url = new URL('./karaoke_static_render_cache.test.mjs', import.meta.url);
 const source = readFileSync(url, 'utf8');
 const harness = source.slice(source.indexOf('const currentSource ='), source.indexOf("test('vocal presence"))
   .replaceAll('import.meta.url', JSON.stringify(url.href))
   .replace('getKaraokeVocalRows };', 'getKaraokeVocalRows, syncKaraokeLiveEntry, paintKaraokeLiveEntry, classifyKaraokeExpressiveUnits };');
-const { createHarness } = new Function('assert', 'execFileSync', 'readFileSync', 'vm',
-  harness + '\nreturn { createHarness };')(assert, execFileSync, readFileSync, vm);
+const { createHarness } = createKaraokeHarnessFactory('assert', 'execFileSync', 'readFileSync', 'vm', 'KaraokeWordTiming',
+  harness + '\nreturn { createHarness };')(assert, execFileSync, readFileSync, vm, KaraokeWordTiming);
 const element = key => {
   const values = new Map();
   return { values, getAttribute: () => key, style: {
@@ -71,9 +73,9 @@ test('shaped-run shortening invalidates motion even when the glyph array and tim
 });
 
 test('prepared and padded rows reuse unchanged source nodes while neighboring layout updates remain live', () => {
-  const pages = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
+  const pages = readFileSync(new URL('../src/lyrics/Pages.js', import.meta.url), 'utf8');
   const start = pages.indexOf('const buildPreparedSyncedLyrics =');
-  const end = pages.indexOf('const shouldIncludeSyncedLineInCompactView', start);
+  const end = pages.indexOf('const buildSyncedLinePlaybackWindows', start);
   let preparations = 0;
   const c = vm.createContext({ emptyLine: {}, getEmbeddedAuxiliaryDisplayValues: line => ({ originalText: line.text }),
     buildLyricDisplayState: () => { preparations++; return {}; }, getInterludeInfo: () => ({ isInterlude: false }) });

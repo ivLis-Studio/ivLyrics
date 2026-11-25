@@ -1,30 +1,11 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
+import {
+  buildSyncCreatorPreviewCharReadings as buildReadings,
+  getSyncCreatorPreviewFuriganaMap as furigana,
+} from '#ivlyrics/features/sync/syncCreatorPreviewReadings.mjs';
 
-const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
-const context = {};
-vm.createContext(context);
-
-const load = (name) => {
-  const start = source.indexOf(`const ${name}`);
-  assert.notEqual(start, -1, `missing ${name}`);
-  const end = source.indexOf('\n};', start) + 4;
-  vm.runInContext(`${source.slice(start, end)}\nglobalThis.__fn = ${name};`, context);
-  return context.__fn;
-};
-
-const buildReadings = load('buildSyncCreatorPreviewCharReadings');
-vm.runInContext(
-  source.slice(
-    source.indexOf('const SYNC_CREATOR_PREVIEW_FULLWIDTH_CHAR_REGEX'),
-    source.indexOf('\n', source.indexOf('const SYNC_CREATOR_PREVIEW_FULLWIDTH_CHAR_REGEX')) + 1
-  ),
-  context
-);
-
-const mapIn = (entries) => vm.runInContext(`new Map(${JSON.stringify(entries)})`, context);
+const mapIn = entries => new Map(entries);
 const plain = (map) => (map ? JSON.parse(JSON.stringify([...map.entries()])) : null);
 
 test('per-char readings keyed by glyph index, no shift', () => {
@@ -56,7 +37,6 @@ test('returns null without readings', () => {
   assert.equal(buildReadings([], mapIn([]), [], 32), null);
 });
 
-const furigana = load('getSyncCreatorPreviewFuriganaMap');
 test('cached empty furigana refreshes when converter readiness, revision or builder changes', () => {
   const cache = { maps: new Map() };
   let ready = false, calls = 0;

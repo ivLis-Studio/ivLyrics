@@ -1,6 +1,9 @@
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
+import { sourceUrl } from "./fixtures/source-paths.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 import vm from "node:vm";
 
@@ -8,7 +11,7 @@ import vm from "node:vm";
 // saved provider revision. Fixtures contain synthetic text only; no API access.
 const sourceFile = (name) => process.env.IVLYRICS_PROVIDER_SOURCE_DIR
 	? resolve(process.env.IVLYRICS_PROVIDER_SOURCE_DIR, name)
-	: new URL(`../${name}`, import.meta.url);
+	: sourceUrl(name);
 const normalize = (value) => JSON.parse(JSON.stringify(value));
 
 // Node has no DOMParser. Supply the small DOM surface used by the production
@@ -78,8 +81,12 @@ const createProviders = () => {
 		setTimeout() { throw new Error("provider tests must not schedule network/registration work"); },
 	});
 	for (const name of ["Unison", "LyricsPlus", "OpenLyrics"]) {
-		vm.runInContext(readFileSync(sourceFile(`Addon_Lyrics_${name}.js`), "utf8"), context,
-			{ filename: `Addon_Lyrics_${name}.js` });
+		const filename = `Addon_Lyrics_${name}.js`;
+		const path = sourceFile(filename);
+		const url = typeof path === "string" ? pathToFileURL(path) : path;
+		const rawSource = readFileSync(url, "utf8");
+		const providerSource = rawSource.includes("export default function") ? bundleInitializer(url) : rawSource;
+		vm.runInContext(providerSource, context, { filename });
 	}
 	return {
 		unison(rows) {

@@ -35,6 +35,7 @@
   window.qaLyricState = { ready: false, locale: "ja" };
   window.FuriganaConverter = { isAvailable: () => window.qaLyricState.ready };
   window.Utils = {
+    getTrackArtwork: item => item?.metadata?.image_url || "",
     getDetectedLanguage: () => window.qaLyricState.locale,
     getSafePlayerProgress: () => 2500,
     getPlayerPlaybackSnapshot: () => ({ position: 2500, sampledAt: performance.now(), isPlaying: false }),
@@ -113,6 +114,9 @@
       item.type === "toggle" && h("input", { type: "checkbox", checked: item.defaultValue,
         onChange: event => save(item.key, event.target.checked), "data-setting-key": item.key }),
       item.desc,
+      item.type === "selection" && h("select", { value: item.defaultValue, "data-setting-key": item.key,
+        onChange: event => save(item.key, event.target.value) },
+        Object.entries(item.options).map(([value, label]) => h("option", { key: value, value }, label))),
       item.type === "range" && h(React.Fragment, null,
         h("output", null, `${item.defaultValue}${item.unit}`),
         h("input", { type: "range", min: item.min, max: item.max, step: item.step,

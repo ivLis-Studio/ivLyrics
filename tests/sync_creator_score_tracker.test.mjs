@@ -1,17 +1,19 @@
+import { buildSyncCreatorImportedScoreWork, buildSyncCreatorScoreSnapshot } from "#ivlyrics/features/sync/syncCreatorScoreSnapshots.mjs";
+import codec from '#ivlyrics/features/sync/SyncDataCodec.mjs';
+import { useSyncCreatorRecordingProgress } from "#ivlyrics/features/sync/syncCreatorRecordingProgress.mjs";
+import { createSyncCreatorScoreTracker as create } from '#ivlyrics/features/sync/syncCreatorScoreTracker.mjs';
+import { prepareSyncCreatorRecordingScore } from '#ivlyrics/features/sync/syncCreatorLineCommit.mjs';
+import { requestSyncCreatorWork } from "#ivlyrics/features/sync/syncCreatorSubmissionTransport.mjs";
+import { readSyncCreatorFixture, readSyncCreatorScoreHandlersSource } from "./fixtures/legacy-page-source.mjs";
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
+import { getSyncCreatorLrclibTextShape, isCompleteSyncCreatorLrclibSource } from '#ivlyrics/features/sync/lrclibSyncSource.mjs';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const require = createRequire(import.meta.url);
-const { create } = require('../SyncCreatorScoreTracker.js');
 const copy = value => structuredClone(value);
-const creatorSource = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
-const sourceContext = vm.createContext({});
-vm.runInContext(creatorSource.slice(0, creatorSource.indexOf('const normalizeSyncCreatorPronunciationTargetMode ='))
-  + '\nglobalThis.completeSource = isCompleteSyncCreatorLrclibSource;', sourceContext);
-const isCompleteSyncCreatorLrclibSource = sourceContext.completeSource;
+const creatorSource = readSyncCreatorFixture();
+const scoreHandlers = readSyncCreatorScoreHandlersSource();
 const snapshot = (count, granularity = 'character') => ({
   version: 5,
   source: { provider: 'lrclib', lrclibId: '1', preferredLyricsSource: 'plain', duration: 120,
@@ -157,13 +159,15 @@ test('transient server errors remain retryable with the same durable event', asy
 });
 
 test('the actual work transport preserves HTTP 400 when its error body is not JSON', async () => {
-  const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
+  const source = scoreHandlers;
   const start = source.indexOf('\tconst ensureScoreTracker =');
   const end = source.indexOf('\tconst captureScoreWork =', start);
   let request;
   let cleared = 0;
   const sent = [];
   const context = vm.createContext({
+    syncCreatorDraftStore: {},
+    requestSyncCreatorWork,
     useCallback: callback => callback,
     isCompleteSyncCreatorLrclibSource,
     scoreContextRef: { current: { ready: true, accountId: 'account', isrc: 'USAAA2600001',
@@ -171,10 +175,12 @@ test('the actual work transport preserves HTTP 400 when its error body is not JS
     scoreTrackerRef: { current: null }, scorePendingEventsRef: { current: [] },
     Utils: { getUserHash: () => 'account', getApiHeaders: value => value },
     I18n: { t: (key, { status }) => `Server returned HTTP ${status}` },
-    window: { SyncCreatorScoreTracker: { create(options) {
+    readSyncCreatorCodec: () => undefined,
+    createSyncCreatorScoreTracker(options) {
+      assert.equal(options.storage, context.syncCreatorDraftStore);
       request = options.request;
       return { scope: 'account:USAAA2600001:lrclib' };
-    } } },
+    },
     AbortController, setTimeout: () => 1, clearTimeout: () => { cleared++; },
     fetch: async (url, options) => {
       sent.push({ url, payload: JSON.parse(options.body), signal: options.signal });
@@ -199,16 +205,16 @@ test('source validation rejects metadata the backend cannot accept before creati
   }
   assert.equal(isCompleteSyncCreatorLrclibSource({ ...valid, lineCharCounts: [2001], lineCount: 1, textCharCount: 2001 }), false);
   assert.equal(isCompleteSyncCreatorLrclibSource({ ...valid, lineCharCounts: Array(5001).fill(0), lineCount: 5001, textCharCount: 0 }), false);
-  const start = creatorSource.indexOf('\tconst ensureScoreTracker =');
-  const end = creatorSource.indexOf('\tconst captureScoreWork =', start);
+  const start = scoreHandlers.indexOf('\tconst ensureScoreTracker =');
+  const end = scoreHandlers.indexOf('\tconst captureScoreWork =', start);
   let creates = 0;
   const context = vm.createContext({
     useCallback: callback => callback, isCompleteSyncCreatorLrclibSource,
     scoreContextRef: { current: { ready: true, accountId: 'account', isrc: 'USAAA2600001',
       initialSyncData: { ...snapshot(0), source: { ...valid, duration: '120' } } } },
-    window: { SyncCreatorScoreTracker: { create() { creates++; } } }
+    createSyncCreatorScoreTracker() { creates++; }
   });
-  vm.runInContext(`${creatorSource.slice(start, end)}\nglobalThis.result = ensureScoreTracker();`, context);
+  vm.runInContext(`${scoreHandlers.slice(start, end)}\nglobalThis.result = ensureScoreTracker();`, context);
   assert.equal(creates, 0);
   assert.equal(context.result, null);
 });
@@ -589,19 +595,24 @@ test('an unrelated repeated 409 stops after one resume instead of looping foreve
 });
 
 test('login before submit claims only anonymous import provenance, never anonymous manual actions', () => {
-  const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
+  const source = scoreHandlers;
   const start = source.indexOf('\tconst ensureScoreTracker =');
   const end = source.indexOf('\tconst markScoreTimingInput =', start);
   let token = '';
   const events = [];
   let initial;
   const context = vm.createContext({
+    syncCreatorDraftStore: {},
     useCallback: callback => callback,
     isCompleteSyncCreatorLrclibSource,
     scoreContextRef: { current: { ready: true, accountId: '', isrc: 'USAAA2600001', trackUri: 'spotify:track:abc', initialSyncData: snapshot(0), buildSnapshot: data => copy(data) } },
     scoreTrackerRef: { current: null }, scorePendingEventsRef: { current: [] },
     Utils: { getAuthToken: () => token, getUserHash: () => token ? 'account' : '' },
-    window: { SyncCreatorScoreTracker: { create(options) { initial = options.initialSyncData; return { scope: `${options.accountId}:${options.isrc}:lrclib`, enqueue: (...args) => events.push(copy(args)) }; } } }
+    readSyncCreatorCodec: () => undefined,
+    createSyncCreatorScoreTracker(options) {
+      initial = options.initialSyncData;
+      return { scope: `${options.accountId}:${options.isrc}:lrclib`, enqueue: (...args) => events.push(copy(args)) };
+    }
   });
   vm.runInContext(`${source.slice(start, end)}\nglobalThis.capture = captureScoreWork; globalThis.ensure = ensureScoreTracker;`, context);
   context.capture('import', snapshot(50));
@@ -618,7 +629,7 @@ test('login before submit claims only anonymous import provenance, never anonymo
 });
 
 test('restored anonymous import hint only recreates an import event from the verified draft', () => {
-  const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
+  const source = readSyncCreatorFixture();
   const start = source.indexOf('\t\tif (editor.scoreImportBaseline && restoredSyncData)');
   const end = source.indexOf('\n\t\tsetProviderValue(restoredProvider);', start);
   const pending = [];
@@ -639,26 +650,51 @@ test('restored anonymous import hint only recreates an import event from the ver
 });
 
 test('creator emits import before replacing data and exports never attach trusted credit fields', () => {
-  const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
+  const source = readSyncCreatorFixture();
   const importCode = source.slice(source.indexOf('const importSyncData ='), source.indexOf('// 가사 전체 복사'));
-  assert.ok(importCode.indexOf("captureScoreWork('import', sanitizedData)") < importCode.indexOf('setSyncData(sanitizedData)'));
-  assert.match(source, /workMetadata = await tracker\.submission\(compactSyncDataToSubmit\)/);
-  const exportCode = source.slice(source.indexOf('const exportSyncData ='), source.indexOf('const importSyncData ='));
-  assert.match(exportCode, /JSON\.stringify\(exportData, null, 2\)/);
+  const captureIndex = importCode.indexOf("captureScoreWork('import', sanitizedData, undefined, work)");
+  assert.ok(captureIndex >= 0 && captureIndex < importCode.indexOf('applySyncCreatorImportedSession(sanitizedData, target'));
+  const replacement = readFileSync(new URL('../src/features/sync/syncCreatorSessionReplacement.mjs', import.meta.url), 'utf8');
+  assert.match(replacement, /export function applySyncCreatorImportedSession[\s\S]+?editor\.setSyncData\(data\)/);
+  assert.match(source, /saveWork: \(data, isrc\) => [\s\S]+?return tracker\.submission\(data\)/);
+  const exportCode = readFileSync(new URL('../src/features/sync/syncCreatorFileTransfer.mjs', import.meta.url), 'utf8');
+  assert.match(exportCode, /JSON\.stringify\(encoded, null, 2\)/);
   assert.doesNotMatch(exportCode, /workSessionId|workSequence|manualCredit/);
 });
 
+test('an import switching lyric versions encodes its work and baseline with the target source', () => {
+  const data = snapshot(2);
+  const publishedBaseline = snapshot(1);
+  const source = { ...data.source, lrclibId: '22', lyricsFingerprint: 'target-text' };
+  const target = { lrclibSource: source, lyricsChars: Array(100).fill('a'), publishedBaseline };
+  const options = { editingVersion: 5, trackDurationMs: 120000, compactSyncCreatorSyncData: codec.encode };
+  const work = buildSyncCreatorImportedScoreWork(data, target, options);
+  assert.deepEqual(codec.decode(work.snapshot).source, source);
+  assert.deepEqual(codec.decode(work.baseline).source, source);
+  assert.equal(codec.decode(work.snapshot).lines.length, 2);
+  assert.equal(codec.decode(work.baseline).lines.length, 1);
+  assert.equal(codec.decode(work.snapshot).trackDurationMs, 120000);
+  const newSourceWork = buildSyncCreatorImportedScoreWork(data, { ...target, publishedBaseline: null }, options);
+  assert.equal(codec.decode(newSourceWork.baseline).lines.length, 0);
+  assert.deepEqual(codec.decode(newSourceWork.baseline).source, source);
+});
+
 test('creator waits for draft hydration before starting a server work session', () => {
-  const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
+  const source = scoreHandlers;
   const start = source.indexOf('\tconst ensureScoreTracker =');
   const end = source.indexOf('\tconst captureScoreWork =', start);
   let created = 0;
   const context = vm.createContext({
+    syncCreatorDraftStore: {},
     useCallback: callback => callback,
     isCompleteSyncCreatorLrclibSource,
     scoreContextRef: { current: { ready: false, accountId: 'account', isrc: 'USAAA2600001', initialSyncData: snapshot(0) } },
     scoreTrackerRef: { current: null }, scorePendingEventsRef: { current: [] },
-    window: { SyncCreatorScoreTracker: { create(options) { created++; return { scope: `${options.accountId}:${options.isrc}:lrclib` }; } } }
+    readSyncCreatorCodec: () => undefined,
+    createSyncCreatorScoreTracker(options) {
+      created++;
+      return { scope: `${options.accountId}:${options.isrc}:lrclib` };
+    }
   });
   vm.runInContext(`${source.slice(start, end)}\nglobalThis.ensure = ensureScoreTracker;`, context);
   assert.equal(context.ensure(), null);
@@ -670,7 +706,6 @@ test('creator waits for draft hydration before starting a server work session', 
 });
 
 function recordingHarness({ indexes = [0, 1, 2, 3], partId = null, pendingEffects = [] } = {}) {
-  const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
   const capture = [];
   const refs = indexes.map(absoluteIndex => ({ absoluteIndex }));
   const lineStart = Math.min(...indexes);
@@ -693,15 +728,32 @@ function recordingHarness({ indexes = [0, 1, 2, 3], partId = null, pendingEffect
     captureScoreWork: (...args) => capture.push(copy(args)),
     recordingCharIndexRef: { current: indexes.length - 1 }
   });
-  const markStart = source.indexOf('\tconst markScoreTimingInput =');
-  const markEnd = source.indexOf('\tconst nextSessionClientRevision =', markStart);
-  vm.runInContext(`${source.slice(markStart, markEnd)}\nglobalThis.mark = markScoreTimingInput;`, context);
-  const commitStart = source.indexOf('\t\tconst scoreInput = scoreInputRef.current;');
-  const commitEnd = source.indexOf('\t\tsetSyncData(nextSyncData);', commitStart);
-  const commit = () => vm.runInContext(`(() => { ${source.slice(commitStart, commitEnd)} })()`, context);
-  const trimStart = source.indexOf('\t\tif (normalizedIndex < recordingCharIndexRef.current && scoreInputRef.current)');
-  const trimEnd = source.indexOf('\t\trecordingCharIndexRef.current = normalizedIndex;', trimStart);
-  const trim = index => vm.runInContext(`(() => { const normalizedIndex = ${index}; ${source.slice(trimStart, trimEnd)} })()`, context);
+  const markStart = scoreHandlers.indexOf('\tconst markScoreTimingInput =');
+  const markEnd = scoreHandlers.indexOf('\t}, [ensureScoreTracker]);', markStart) + '\t}, [ensureScoreTracker]);'.length;
+  vm.runInContext(`${scoreHandlers.slice(markStart, markEnd)}\nglobalThis.mark = markScoreTimingInput;`, context);
+  const commit = () => {
+    const score = prepareSyncCreatorRecordingScore({
+      scoreInput: context.scoreInputRef.current,
+      pendingEffectsByKey: context.scorePendingEffectsRef.current,
+      nextSyncData: context.nextSyncData,
+      existingLine: context.existingLine,
+      rawChars: context.rawChars,
+      charRefs: refs,
+      start: lineStart,
+      end: lineEnd,
+      activePart: part,
+      activeParallelTargetId: context.activeParallelTargetId,
+    });
+    if (score) context.captureScoreWork('record', score.snapshot, score.work);
+    context.scoreInputRef.current = null;
+  };
+  const recording = useSyncCreatorRecordingProgress({
+    react: { useCallback: callback => callback, useEffect: () => {}, useRef: current => ({ current }) },
+    mode: "record",
+    line: { charCount: 0 },
+    refs: { ...context, lyricsScrollRef: { current: null }, lastPaintedPlaybackIndexRef: { current: -1 } },
+  });
+  const trim = index => recording.setRecordingProgressIndex(index, { commitState: false, animate: false });
   return { mark: context.mark, commit, trim, capture };
 }
 
@@ -772,7 +824,6 @@ const overlappingSnapshot = () => {
 const codecAcknowledging = event => ({ success: true, sessionId: 'server-session', sequence: event.sequence, contentHash: event.resultHash });
 
 test('a queued snapshot the codec cannot encode is superseded by the next encodable one instead of blocking every submission', async () => {
-  const codec = require('../SyncDataCodec.js');
   assert.throws(() => codec.encode(overlappingSnapshot()), /line offset/);
   const broken = { eventId: 'legacy-overlap', action: 'record', syncData: overlappingSnapshot(), activeSeconds: 40,
     target: { start: 0, end: 1, granularity: 'character', inputCount: 2, inputIndexes: [0, 1], ranges: [{ start: 0, end: 1 }] } };
@@ -793,7 +844,6 @@ test('a queued snapshot the codec cannot encode is superseded by the next encoda
 });
 
 test('with no encodable snapshot anywhere the queue stays stopped and keeps its evidence', async () => {
-  const codec = require('../SyncDataCodec.js');
   const broken = { eventId: 'legacy-overlap', action: 'record', syncData: overlappingSnapshot(), activeSeconds: 40 };
   const saved = legacyWork([broken]);
   const value = fixture({ codec, initial: overlappingSnapshot(), saved, request: codecAcknowledging });
@@ -816,7 +866,6 @@ const sourceRejection = () => Object.assign(
   new Error('The lyric source has changed or its line boundaries do not match LRCLIB. Reload the source lyrics.'), { status: 400 });
 
 test('a queued snapshot with an unverifiable LRCLIB source gives way to the current one instead of blocking every submission', async () => {
-  const codec = require('../SyncDataCodec.js');
   const stale = { eventId: 'stale-record', action: 'record', syncData: staleSourced(1), activeSeconds: 30,
     target: { start: 0, end: 1, granularity: 'character', inputCount: 2, inputIndexes: [0, 1], ranges: [{ start: 0, end: 1 }] } };
   const staleLater = { eventId: 'stale-later', action: 'record', syncData: staleSourced(2), activeSeconds: 20 };
@@ -849,9 +898,26 @@ test('when the current snapshot names the same unverifiable source the queue sto
 });
 
 test('the creator keeps a carried source only when it was made from the shown lyrics', () => {
-  const start = creatorSource.indexOf('const buildScoreSnapshot = useCallback((data) => {');
-  const body = creatorSource.slice(start, creatorSource.indexOf('const repairScoreSnapshot', start));
-  assert.match(body, /if \(doesSyncCreatorLrclibSourceMatchShape\(raw\.source, lyricsTextLrclibShape\)\) expanded\.source = raw\.source;/);
-  assert.match(body, /lyricsTextLrclibShape, trackDurationMs\]\)/);
+  const lyricsText = 'The rain\nFalls slowly';
+  const lyricsTextLrclibShape = getSyncCreatorLrclibTextShape(lyricsText);
+  const base = { ...snapshot(0).source, lineCount: 2 };
+  const makeSource = shape => ({
+    ...base, ...shape, textCharCount: shape.lineCharCounts.reduce((sum, count) => sum + count, 0),
+  });
+  const carried = makeSource(lyricsTextLrclibShape);
+  const attached = { ...carried, lrclibId: '2' };
+  const stale = makeSource(getSyncCreatorLrclibTextShape('The moon\nRises slowly'));
+  const build = source => buildSyncCreatorScoreSnapshot({ source, lines: [] }, {
+    editingVersion: 5, trackDurationMs: 120000, lyricsFullTextChars: Array.from(lyricsText), lyricsLanguage: 'en',
+    lyricsTextLrclibShape,
+    prepareSyncCreatorWorkSnapshot: data => data,
+    clipSyncCreatorSyncDataToLineBounds: data => data,
+    attachSelectedLrclibSource: data => ({ ...data, source: attached }),
+    compactSyncCreatorSyncData: data => data,
+  });
+  assert.ok(isCompleteSyncCreatorLrclibSource(carried));
+  assert.equal(build(carried).source, carried);
+  assert.equal(build(stale).source, attached);
+  assert.equal(build(carried).trackDurationMs, 120000);
 });
 

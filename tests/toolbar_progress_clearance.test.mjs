@@ -1,13 +1,7 @@
+import { observeToolbarProgressClearance as observe } from "#ivlyrics/app/toolbar/toolbarProgressClearance.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { createToolbarInteraction } from "#ivlyrics/app/toolbar/createToolbarInteraction.mjs";
 import test from "node:test";
-import vm from "node:vm";
-
-const source = readFileSync(new URL("../OptionsMenu.js", import.meta.url), "utf8");
-const start = source.indexOf("const observeToolbarProgressClearance =");
-const end = source.indexOf("const IvLyricsFloatingToolbar =", start);
-assert.ok(start >= 0 && end > start, "the real toolbar measurement helper must exist");
-const helperSource = source.slice(start, end);
 const property = "--iv-fullscreen-toolbar-width";
 
 function createHarness({ width = 47.2, resizeObserver = true } = {}) {
@@ -83,15 +77,8 @@ function createHarness({ width = 47.2, resizeObserver = true } = {}) {
       return { width: this.width };
     },
   };
-  const context = vm.createContext({
-    window: view,
-    MutationObserver: class { constructor() { assert.fail("must not observe lyric mutations"); } },
-    setTimeout() { assert.fail("must not poll geometry"); },
-    setInterval() { assert.fail("must not poll geometry"); },
-  });
-  const observe = vm.runInContext(helperSource + "\nobserveToolbarProgressClearance;", context);
   return {
-    column, container, view, context, observe,
+    column, container, view, observe,
     frames, cancelled, observers, listeners, properties, writes, removals, lookups,
     reads: () => reads,
     start: () => observe(column),
@@ -291,31 +278,38 @@ test("missing or initially detached columns do not attach observers or schedule 
 });
 
 test("the toolbar layout effect only measures in fullscreen and cleans up on exit", () => {
-  const toolbarSource = source.slice(end);
-  const effect = toolbarSource.match(/  react\.useLayoutEffect\(\(\) => \{[\s\S]*?\n  \}, \[toolbar\.isFullscreen\]\);/);
-  assert.ok(effect, "the fullscreen measurement must run in a layout effect");
   const h = createHarness();
+  const toolbar = { isFullscreen: false };
   let cleanup;
-  Object.assign(h.context, {
-    toolbar: { isFullscreen: false },
-    columnRef: { current: h.column },
+  let refIndex;
+  const useToolbarInteraction = createToolbarInteraction({
+    host: h.view,
+    readTheme: () => "dark",
+    useToolbarSyncOffsets: () => ({}),
     react: {
+      useState: initial => [typeof initial === "function" ? initial() : initial, () => {}],
+      useRef: initial => ({ current: ++refIndex === 2 ? h.column : initial }),
+      useCallback: callback => callback,
+      useEffect() {},
       useLayoutEffect(callback, dependencies) {
-        assert.deepEqual([...dependencies], [h.context.toolbar.isFullscreen]);
+        assert.deepEqual(dependencies, [toolbar.isFullscreen]);
         cleanup = callback();
       },
     },
   });
-  const runEffect = () => vm.runInContext(effect[0], h.context);
+  const runEffect = () => {
+    refIndex = 0;
+    useToolbarInteraction(toolbar);
+  };
   runEffect();
   assert.equal(cleanup, undefined);
   assert.equal(h.observers.length, 0);
-  h.context.toolbar.isFullscreen = true;
+  toolbar.isFullscreen = true;
   runEffect();
   assert.equal(h.properties.get(property), "48px", "fullscreen entry measures before paint");
   h.notify(220);
   cleanup();
-  h.context.toolbar.isFullscreen = false;
+  toolbar.isFullscreen = false;
   runEffect();
   assert.equal(cleanup, undefined);
   assert.equal(h.frames.size, 0);

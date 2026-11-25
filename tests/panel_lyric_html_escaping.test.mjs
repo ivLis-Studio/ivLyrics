@@ -1,11 +1,13 @@
+import { createPanelLyricLines } from "#ivlyrics/lyrics/panelLyricLines.mjs";
+import { createPanelLyricLineStyles } from "#ivlyrics/lyrics/panelLyricLineStyles.mjs";
+import { rubyTextToHTML } from "#ivlyrics/lyrics/lyricTextMarkup.mjs";
+import { normalizeDisplayedCulturalAnnotations, partitionLyricAnnotations, renderAnnotatedLyricHTML } from "#ivlyrics/lyrics/lyricCulturalAnnotations.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
 
-const panelSource = readFileSync(new URL("../NowPlayingPanelLyrics.js", import.meta.url), "utf8");
-const utilsSource = readFileSync(new URL("../Utils.js", import.meta.url), "utf8");
-const lyricsServiceSource = readFileSync(new URL("../LyricsService.js", import.meta.url), "utf8");
+const panelSource = readFileSync(new URL("../src/lyrics/NowPlayingPanelLyrics.js", import.meta.url), "utf8");
+const lyricsServiceSource = readFileSync(new URL("../src/lyrics/LyricsService.js", import.meta.url), "utf8");
 
 // Slices a source region between two literal markers so the real component and
 // the real Utils helpers can be executed in isolation. `end` defaults to the
@@ -18,62 +20,54 @@ const slice = (source, startMarker, endMarker) => {
 	return source.slice(start, end);
 };
 
-// Executes the real Utils ruby/HTML helpers so the panel test asserts against
-// the same escaping the main lyrics view (Pages.js) already relies on.
-const loadUtils = () => {
-	const start = utilsSource.indexOf("  rubyTextToHTML(s) {");
-	const end = utilsSource.indexOf("  escapeHtml(value) {");
-	const context = vm.createContext({});
-	vm.runInContext(
-		`const Utils = {
-${utilsSource.slice(start, end)}
-};
-globalThis.Utils = Utils;`,
-		context
-	);
-	return context.Utils;
+// Render through the public row component with only the host and React
+// rendering primitives replaced. The startup extension has no app-only Utils.
+const renderNormalLine = (displayText) => {
+    const created = [];
+    const react = {
+        createElement(type, props, ...children) {
+            if (typeof type === "function") return type({ ...props, children });
+            const element = { type, props, children };
+            created.push(element);
+            return element;
+        },
+        memo: (render) => render,
+        useMemo: (compute) => compute(),
+    };
+    const lineStyles = createPanelLyricLineStyles({
+        react, getVisualSetting: (_key, fallback) => fallback,
+        isPanelMotionReduced: () => false, getSpeakerColors: () => null,
+    });
+    const LyricLine = createPanelLyricLines({
+        react, lineStyles, getVocalRowsFromLine: () => [], getInterludeInfo: () => ({ isInterlude: false }),
+    });
+    LyricLine({ line: { text: displayText } });
+    const paragraph = created.find((node) => node.type === "p");
+    assert.ok(paragraph, "NormalLine did not create a <p> element");
+    return paragraph.props;
 };
 
-// The panel is loaded as a Spotify extension at startup, before the custom
-// app's Utils.js. In that context the global Utils is the extension-only object
-// exported by LyricsService.js, which has no rendering helpers. Tests render
-// NormalLine against that shape so a dependency on app-only helpers fails here
-// instead of crashing Spotify.
-const extensionOnlyUtils = () => ({
-	extractTrackId(uri) {
-		return typeof uri === "string" && uri.startsWith("spotify:track:") ? uri.split(":")[2] : null;
-	},
+test("the panel refreshes a still-visible karaoke row when its timing changes", () => {
+    const react = {
+        createElement: (type, props) => ({ type, props }),
+        memo: (render, areEqual) => ({ render, areEqual }),
+        useMemo: compute => compute(),
+    };
+    const vocalRows = [];
+    const lineStyles = createPanelLyricLineStyles({
+        react, getVisualSetting: (_key, fallback) => fallback,
+        isPanelMotionReduced: () => false, getSpeakerColors: () => null,
+    });
+    const LyricLine = createPanelLyricLines({
+        react, lineStyles, getVocalRowsFromLine: () => vocalRows, getInterludeInfo: () => ({ isInterlude: false }),
+    });
+    const row = LyricLine.render({ isActive: true, line: { text: "Hello", syllables: [{ text: "Hello", startTime: 0, endTime: 500 }] } });
+    const updated = { ...row.props, syllables: [{ text: "Hello", startTime: 30, endTime: 350 }] };
+    assert.equal(row.type.areEqual(row.props, { ...row.props }), true);
+    assert.equal(row.type.areEqual(row.props, updated), false);
 });
 
-// Renders the real NormalLine component and returns the props it hands to the
-// <p> element, so we can inspect the __html string React would inject.
-const renderNormalLine = (displayText, utils = extensionOnlyUtils()) => {
-	const helpers = slice(panelSource, "const panelRubyTextToHTML = (text) => {", "const getSavedPanelLocalLyrics = (uri) => {");
-	const component = slice(panelSource, "const NormalLine = memo(", "const LyricLine = memo(");
-
-	const created = [];
-	const react = {
-		createElement(type, props, ...children) {
-			created.push({ type, props, children });
-			return { type, props, children };
-		},
-		memo(fn) {
-			return fn;
-		},
-	};
-
-	const context = vm.createContext({ react, memo: react.memo, Utils: utils, console });
-	vm.runInContext(`${helpers}\n${component}\nglobalThis.NormalLine = NormalLine;`, context);
-
-	created.length = 0;
-	context.NormalLine({ displayText, phonetic: undefined, translation: undefined, lineClass: "c", lineStyle: undefined });
-	const paragraph = created.find((node) => node.type === "p");
-	assert.ok(paragraph, "NormalLine did not create a <p> element");
-	return paragraph.props;
-};
-
 test("Now Playing panel escapes remote lyric markup before injecting it as HTML", () => {
-	const { rubyTextToHTML } = loadUtils();
 	const injected = "<img src=x onerror=window.__pwned=1>";
 	const props = renderNormalLine(injected);
 
@@ -95,7 +89,6 @@ test("Now Playing panel escapes remote lyric markup before injecting it as HTML"
 });
 
 test("Now Playing panel still renders the furigana markup it generates itself", () => {
-	const { rubyTextToHTML } = loadUtils();
 	const furigana = "<ruby>漢字<rt>かんじ</rt></ruby>";
 	const html = renderNormalLine(furigana).dangerouslySetInnerHTML.__html;
 
@@ -105,7 +98,6 @@ test("Now Playing panel still renders the furigana markup it generates itself", 
 });
 
 test("Now Playing panel renders plain lyric text unchanged", () => {
-	const { rubyTextToHTML } = loadUtils();
 	const plain = "아무노래";
 	const html = renderNormalLine(plain).dangerouslySetInnerHTML.__html;
 
@@ -113,23 +105,34 @@ test("Now Playing panel renders plain lyric text unchanged", () => {
 	assert.equal(html, plain);
 });
 
+test("culture markers follow lyric text across ruby readings and translation layers", () => {
+	const mainText = "<ruby>漢<rt>かん</rt></ruby>字";
+	const annotations = normalizeDisplayedCulturalAnnotations([
+		{ marker: 2, expression: "translation", note: "Translation note" },
+		{ marker: 1, expression: "漢", note: "Original note" },
+	]);
+	const targets = partitionLyricAnnotations({ annotations, mainText, subText: "かん", subText2: "translation" });
+	assert.deepEqual(targets.main, [annotations[0]]);
+	assert.deepEqual(targets.sub2, [annotations[1]]);
+	assert.equal(renderAnnotatedLyricHTML(mainText, targets.main),
+		'<ruby>漢<rt>かん</rt></ruby><sup class="lyrics-cultural-marker">[1]</sup>字');
+});
+
 test("Now Playing panel lines render with the extension-only Utils from LyricsService", () => {
 	// LyricsService.js publishes this object as window.Utils for extensions.
-	assert.match(lyricsServiceSource, /window\.Utils = Utils;/);
+	assert.match(lyricsServiceSource, /publishRuntimeService\("Utils", Utils, window\);/);
 	assert.doesNotMatch(
-		slice(lyricsServiceSource, "    const Utils = {", "window.Utils = Utils;"),
+		slice(lyricsServiceSource, "    const Utils = {", 'publishRuntimeService("Utils"'),
 		/createHTMLProps\s*\(/,
 		"the extension Utils is expected to lack app-only render helpers"
 	);
 
-	const { rubyTextToHTML } = loadUtils();
 	const text = "<ruby>漢字<rt>かんじ</rt></ruby> <b>x</b>";
 	let props;
 	assert.doesNotThrow(() => {
 		props = renderNormalLine(text);
 	});
 	assert.equal(props.dangerouslySetInnerHTML.__html, rubyTextToHTML(text));
-	assert.doesNotThrow(() => renderNormalLine(text, undefined));
 	assert.deepEqual(Object.keys(renderNormalLine("")), ["className"]);
 });
 
@@ -139,13 +142,16 @@ test("Now Playing panel does not call app-only Utils render helpers", () => {
 });
 
 test("Now Playing panel roots render behind an error boundary", () => {
+	const mountSource = readFileSync(new URL("../src/lyrics/nowPlayingPanelMount.mjs", import.meta.url), "utf8");
 	assert.match(panelSource, /class PanelLyricsErrorBoundary extends react\.Component/);
 	assert.match(panelSource, /static getDerivedStateFromError\(\)/);
+	assert.match(panelSource, /const createPanelLyricsElement = \(\) => react\.createElement\(\s*PanelLyricsErrorBoundary,/);
 	assert.doesNotMatch(
-		panelSource,
+		mountSource,
 		/\.render\(react\.createElement\(PanelLyrics\)/,
 		"panel roots must render through createPanelLyricsElement()"
 	);
-	const renderCalls = panelSource.match(/\.render\(createPanelLyricsElement\(\)/g) || [];
-	assert.equal(renderCalls.length, 4);
+	assert.match(mountSource, /createReactDomMount\(getReactDOM\(\), container\)/);
+	const renderCalls = mountSource.match(/\.render\(createPanelLyricsElement\(\)/g) || [];
+	assert.equal(renderCalls.length, 1);
 });

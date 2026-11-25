@@ -1,9 +1,10 @@
+import { isOpenAIReasoningModel } from "../src/providers/ai/openAiTransport.mjs";
+import { readAiProviderFixture } from "./fixtures/ai-provider.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../Addon_AI_ChatGPT.js', import.meta.url), 'utf8');
+const source = readAiProviderFixture("Addon_AI_ChatGPT.js");
 // The settings screen saves this default patch the first time it opens, so
 // most installs send it as an explicit setting.
 const SAVED_DEFAULT_PATCH = JSON.stringify({ max_completion_tokens: 16000, temperature: 0.3 }, null, 2);
@@ -55,7 +56,7 @@ function harness({ settings: values = {}, respond = reasoningServer } = {}) {
         }
     };
     vm.runInNewContext(source.replace('    registerAddon();',
-        '    window.hooks = { callChatGPTAPIRaw, callChatGPTAPIStream, callResponsesAPIStream, isOpenAIReasoningModel };\n    registerAddon();'),
+        '    window.hooks = { callChatGPTAPIRaw, callChatGPTAPIStream, callResponsesAPIStream };\n    registerAddon();'),
     { window, Spicetify: { React: {} }, URL, URLSearchParams, TextDecoder, setTimeout, clearTimeout, console });
     return { addon, hooks: window.hooks, settings, requests };
 }
@@ -63,10 +64,10 @@ function harness({ settings: values = {}, respond = reasoningServer } = {}) {
 test('reasoning model detection covers o-series and GPT-5+ but not chat or older models', () => {
     const { hooks } = harness();
     for (const model of ['gpt-6.1-sol', 'gpt-5.5', 'gpt-5', 'gpt-5-mini', 'GPT-5.2', 'gpt-10', 'o1', 'o3-mini', 'o4-mini', 'openai/gpt-5.5']) {
-        assert.equal(hooks.isOpenAIReasoningModel(model), true, model);
+        assert.equal(isOpenAIReasoningModel(model), true, model);
     }
     for (const model of ['gpt-5-chat-latest', 'gpt-4.1', 'gpt-4o-mini', 'chatgpt-4o-latest', 'gpt-oss-120b', 'openai/gpt-oss-20b', 'gpt-35-turbo', 'azure/gpt-35-turbo-16k', 'omni-moderation-latest', 'my-deployment', '', null]) {
-        assert.equal(hooks.isOpenAIReasoningModel(model), false, String(model));
+        assert.equal(isOpenAIReasoningModel(model), false, String(model));
     }
 });
 
@@ -115,6 +116,25 @@ test('an unsupported temperature on an unrecognized model is dropped once and re
     h.settings.set('model', 'other-deployment');
     assert.equal(await h.hooks.callChatGPTAPIRaw('hello', 1), 'OK');
     assert.deepEqual(h.requests.slice(4).map(request => 'temperature' in request.body), [true, false]);
+});
+
+test('concurrent requests rejected for the same field both retry with the learned configuration', async () => {
+    const firstResponse = Promise.withResolvers();
+    const secondResponse = Promise.withResolvers();
+    const h = harness({
+        settings: { model: 'my-deployment' },
+        respond: (request, index) => {
+            if (!('temperature' in request.body)) return completion(request.body.messages[0].content);
+            return index === 1 ? firstResponse.promise : secondResponse.promise;
+        },
+    });
+    const first = h.hooks.callChatGPTAPIRaw('first', 1);
+    const second = h.hooks.callChatGPTAPIRaw('second', 1);
+    firstResponse.resolve(rejected('temperature', TEMPERATURE_REJECTED));
+    assert.equal(await first, 'first');
+    secondResponse.resolve(rejected('temperature', TEMPERATURE_REJECTED));
+    assert.equal(await second, 'second');
+    assert.deepEqual(h.requests.map(request => 'temperature' in request.body), [true, true, false, false]);
 });
 
 test('a rejected max_tokens is re-sent as max_completion_tokens', async () => {

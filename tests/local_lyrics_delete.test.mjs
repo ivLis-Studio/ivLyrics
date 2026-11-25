@@ -1,19 +1,16 @@
+import { createSettingsServices } from "#ivlyrics/spicetify/settingsServices.mjs";
+import { createPageLocalLyrics } from "#ivlyrics/lyrics/pageLocalLyrics.mjs";
+import { createLocalLyricsStore, LOCAL_LYRICS_STORAGE_KEY, LOCAL_LYRICS_UPDATED_EVENT } from "#ivlyrics/lyrics/localLyricsStore.mjs";
+import { createToolbarLyricsProvider } from "#ivlyrics/app/toolbar/toolbarLyricsProvider.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { createLyricsPageToolbar } from "#ivlyrics/lyrics/lyricsPageToolbar.mjs";
 import test from "node:test";
-import vm from "node:vm";
-
-const indexSource = readFileSync(new URL("../index.js", import.meta.url), "utf8");
-const settingsSource = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
-const optionsSource = readFileSync(new URL("../OptionsMenu.js", import.meta.url), "utf8");
-
-const slice = (source, startMarker, endMarker) => {
-	const start = source.indexOf(startMarker);
-	assert.notEqual(start, -1, `start marker not found: ${startMarker}`);
-	const end = source.indexOf(endMarker, start + startMarker.length);
-	assert.notEqual(end, -1, `end marker not found: ${endMarker}`);
-	return source.slice(start, end);
-};
+import { createLocalCacheSettingsPanel } from "../src/features/settings/localCacheSettingsPanel.mjs";
+import { createSettingsCacheActions } from "../src/features/settings/settingsCacheActions.mjs";
+import { pageLyricsMemoryCache, pageTranslationMemoryCache } from "../src/lyrics/pageMemoryCache.mjs";
+import { trackIdentity } from "../src/core/trackIdentity.mjs";
+import { parseLocalLyrics } from "../src/lyrics/lyricFileFormats.mjs";
+import { createPageLyricsDataLoader } from "../src/lyrics/pageLyricsDataLoader.mjs";
 
 const LOCAL_URI = "spotify:local:Artist:Album:Song:215";
 const OTHER_URI = "spotify:local:Other:Album:Song:180";
@@ -27,66 +24,64 @@ const createStorage = (initial = {}) => {
 	};
 };
 
-// Runs the real local-lyrics methods of the ivLyrics page component.
-const createLyricsPage = ({ confirmResult = true, savedUris = [LOCAL_URI, OTHER_URI] } = {}) => {
-	const methods = slice(indexSource, "  getLocalLyricsStore() {", "  resetTranslationCache(uri) {");
-	const store = Object.fromEntries(savedUris.map((uri) => [uri, { synced: [{ text: "line", startTime: 0 }] }]));
-	const storage = createStorage({ "ivLyrics:local-lyrics": JSON.stringify(store) });
+const createLyricsPage = ({
+	confirmResult = true, savedUris = [LOCAL_URI, OTHER_URI], pseudoKaraoke = null,
+	parseLocalLyrics, createFileInput, createFileReader,
+} = {}) => {
+	const entries = Object.fromEntries(savedUris.map((uri) => [uri, { synced: [{ text: "line", startTime: 0 }] }]));
+	const storage = createStorage({ [LOCAL_LYRICS_STORAGE_KEY]: JSON.stringify(entries) });
 	const events = [];
 	const toasts = [];
 	const reloads = [];
 	const confirms = [];
-	const context = vm.createContext({
-		APP_NAME: "ivLyrics",
-		StorageManager: storage,
-		CACHE: {},
-		CacheManager: { clearByUri() {} },
-		Toast: {
+	const snapshots = [];
+	const lyricsCache = {};
+	let playerItem = { uri: LOCAL_URI, duration: { milliseconds: 215000 } };
+	let requestSeq = 0;
+	const page = {
+		state: { uri: null },
+		currentTrackUri: LOCAL_URI,
+		_isComponentMounted: true,
+		setState(update, done) { Object.assign(this.state, typeof update === "function" ? update(this.state) : update); done?.(); },
+		beginLyricsLoadRequest() { return ++requestSeq; },
+		isCurrentLyricsState(state) { return state.uri === this.currentTrackUri && state.lyricsRequestSeq === requestSeq; },
+		clearPendingLyricsUpdates() {},
+		getText(_key, fallback) { return fallback; },
+		async reloadLyrics(...args) { reloads.push(args); },
+		getTranslationStates() { return {}; },
+		applyTranslationStates() { return {}; },
+		getCurrentMode() { return 1; },
+		lyricsSource() {},
+	};
+
+	Object.assign(page, createPageLocalLyrics({
+		page,
+		store: createLocalLyricsStore({ readStorage: () => storage }),
+		lyricsCache,
+		translationCache: { clearByUri() {} },
+		readPlayerItem: () => playerItem,
+		isTrackCurrent: (uri) => page._isComponentMounted && uri === page.currentTrackUri && uri === playerItem.uri,
+		readLyricsService: () => ({ clearLyricsSnapshot() {}, publishLyricsSnapshot: snapshot => snapshots.push(snapshot) }),
+		readPseudoKaraoke: () => pseudoKaraoke,
+		readAddonManager: () => null,
+		parseLocalLyrics, createFileInput, createFileReader,
+		toast: {
 			success: (message) => toasts.push(["success", message]),
 			error: (message) => toasts.push(["error", message]),
 		},
-		CustomEvent: class {
-			constructor(type, init) {
-				this.type = type;
-				this.detail = init?.detail;
-			}
+		confirmAction: (message) => {
+			confirms.push(message);
+			return confirmResult;
 		},
-		Spicetify: { Player: { data: { item: { uri: LOCAL_URI } } } },
-		window: {
-			confirm: (message) => {
-				confirms.push(message);
-				return confirmResult;
-			},
-			dispatchEvent: (event) => events.push(event),
-			LyricsService: { clearLyricsSnapshot() {} },
-		},
-		console,
-	});
-	vm.runInContext(
-		`class LyricsPage {
-			constructor() {
-				this.state = { uri: null };
-				this.currentTrackUri = "${LOCAL_URI}";
-			}
-			setState(update) {
-				Object.assign(this.state, update);
-			}
-			getText(key, fallback) {
-				return fallback;
-			}
-			getTranslationStates() {
-				return {};
-			}
-${methods}
-		}
-		globalThis.LyricsPage = LyricsPage;`,
-		context
-	);
-	const page = new context.LyricsPage();
-	page.reloadLyrics = async (clearCache) => {
-		reloads.push(clearCache);
+		onLocalLyricsUpdated: (detail) => events.push({ type: LOCAL_LYRICS_UPDATED_EVENT, detail }),
+	}));
+	const play = (uri, title) => {
+		playerItem = { uri, duration: { milliseconds: 180000 } };
+		page.currentTrackUri = uri;
+		page.state = { ...page.state, uri, title };
+		page.beginLyricsLoadRequest();
 	};
-	return { page, storage, events, toasts, reloads, confirms };
+	return { page, storage, events, toasts, reloads, confirms, snapshots, lyricsCache, play };
 };
 
 test("deleting local lyrics removes only the current track's saved lyrics and reloads", async () => {
@@ -100,7 +95,7 @@ test("deleting local lyrics removes only the current track's saved lyrics and re
 	assert.ok(remaining[OTHER_URI], "other tracks must keep their local lyrics");
 	assert.equal(page.hasLocalLyricsForCurrentTrack(), false);
 	assert.equal(confirms.length, 1, "deletion asks for confirmation");
-	assert.deepEqual(reloads, [true], "lyrics and the local-uri cache are reloaded");
+	assert.deepEqual(reloads, [[true, LOCAL_URI]], "only the deleted track's cache is reloaded");
 	assert.equal(events.length, 1);
 	assert.equal(events[0].type, "ivLyrics:local-lyrics-updated");
 	assert.deepEqual({ ...events[0].detail }, { trackUri: LOCAL_URI, deleted: true });
@@ -115,6 +110,26 @@ test("cancelling the confirmation keeps the local lyrics", async () => {
 	assert.deepEqual(events, []);
 });
 
+test("deleting saved lyrics invalidates a pending attempt to rebuild their timing", async () => {
+	const { page, lyricsCache } = createLyricsPage();
+	const timing = Promise.withResolvers();
+	page.pageLyricsDataLoader = createPageLyricsDataLoader({
+		cache: lyricsCache,
+		getLyricsService: () => null,
+		getPseudoKaraoke: () => ({ applyToResult: () => timing.promise }),
+		isCacheCurrent: () => true,
+	});
+	const read = page.pageLyricsDataLoader.begin(LOCAL_URI).read({
+		info: { uri: LOCAL_URI }, mode: -1, hasSpotifyTrackId: false,
+		lyricsSaved: page.lyricsSaved, getSavedLocalLyrics: page.getSavedLocalLyrics,
+		isCurrent: () => true, onTrackPrepared() {}, onProviderLoad() {},
+	});
+	page.deleteLocalLyrics(LOCAL_URI);
+	timing.resolve();
+	assert.equal(await read, null);
+	assert.equal(lyricsCache[LOCAL_URI], undefined);
+});
+
 test("deleting reports when the track has no saved local lyrics", async () => {
 	const { page, toasts, confirms } = createLyricsPage({ savedUris: [OTHER_URI] });
 	assert.equal(await page.removeLocalLyricsForCurrentTrack(), false);
@@ -122,44 +137,420 @@ test("deleting reports when the track has no saved local lyrics", async () => {
 	assert.equal(toasts.at(-1)[0], "error");
 });
 
-test("local lyrics menu offers deletion only when the track has saved lyrics", () => {
-	const button = slice(optionsSource, "const LyricsProviderSelectButton = react.memo(", "function openRegenerateTranslationChoiceModal(");
-	assert.match(button, /const hasLocalLyrics = !!getHasLocalLyrics\?\.\(\);/);
-	assert.match(button, /hasLocalLyrics && \{[\s\S]*key: "local-lyrics-delete"[\s\S]*onDeleteLocalLyrics\?\.\(\);/);
-	assert.match(button, /\]\.filter\(Boolean\)/);
-	assert.match(indexSource, /getHasLocalLyrics: this\.hasLocalLyricsForCurrentTrack,/);
-	assert.match(indexSource, /onDeleteLocalLyrics: this\.removeLocalLyricsForCurrentTrack,/);
+test("applying imported lyrics saves them with the source and announces the update", async () => {
+	const { page, storage, events, toasts } = createLyricsPage({ savedUris: [OTHER_URI] });
+	const synced = [{ text: "Imported line", startTime: 1250 }];
+	assert.equal(await page.applyLocalLyrics({ synced }, { sourceLabel: "file" }), true);
+	const saved = storage.read(LOCAL_LYRICS_STORAGE_KEY);
+	assert.deepEqual(saved[LOCAL_URI].synced, synced);
+	assert.equal(saved[LOCAL_URI].localLyricsSource, "file");
+	assert.ok(saved[OTHER_URI]);
+	assert.equal(page.state.lyricsStatus, "ready");
+	assert.deepEqual(events, [{ type: LOCAL_LYRICS_UPDATED_EVENT, detail: { trackUri: LOCAL_URI } }]);
+	assert.deepEqual(toasts, [["success", "Lyrics loaded: Synced"]]);
 });
 
-test("cache manager clears local tracks by their local-uri cache id and can delete saved lyrics", () => {
-	const helpers = slice(settingsSource, "const LOCAL_LYRICS_STORAGE_KEY", "const LocalCacheManager = () => {");
+test("file picker preserves the chosen track through file reading and timing generation", async () => {
+	const pendingTiming = Promise.withResolvers();
+	let timingTrack;
+	const input = { click() {} };
+	const reader = { readAsText() {} };
+	const fixture = createLyricsPage({
+		createFileInput: () => input,
+		createFileReader: () => reader,
+		parseLocalLyrics: (text, duration) => parseLocalLyrics(text, () => duration),
+		pseudoKaraoke: { applyToResult(_lyrics, track) { timingTrack = track; return pendingTiming.promise; } },
+	});
+	const { page, storage, snapshots, play } = fixture;
+	page.state.title = "Original";
+	page.importLocalLyricsFile();
+	play(OTHER_URI, "Next");
+	input.onchange({ target: { files: [{ size: 100 }] } });
+	const imported = reader.onload({ target: { result: "[00:01.00]Imported<00:02.00> lyric" } });
+	await Promise.resolve();
+	assert.deepEqual(timingTrack, { uri: LOCAL_URI, duration: 215000 });
+	pendingTiming.resolve();
+	await imported;
+	assert.equal(page.state.uri, OTHER_URI);
+	assert.equal(page.state.title, "Next");
+	assert.equal(page.state.lyricsStatus, undefined);
+	assert.equal(storage.read(LOCAL_LYRICS_STORAGE_KEY)[LOCAL_URI].synced[0].text, "Imported lyric");
+	assert.equal(storage.read(LOCAL_LYRICS_STORAGE_KEY)[LOCAL_URI].karaoke[0].text.at(-1).time, 213000);
+	assert.equal(storage.read(LOCAL_LYRICS_STORAGE_KEY)[OTHER_URI].synced[0].text, "line");
+	assert.equal(snapshots[0].trackInfo.title, "Original");
+});
+
+test("an import completed after the page closes cannot write a saved lyric or publish a snapshot", async () => {
+	const timing = Promise.withResolvers();
+	const { page, storage, events, snapshots } = createLyricsPage({
+		savedUris: [],
+		pseudoKaraoke: { applyToResult: () => timing.promise },
+	});
+	const importing = page.applyLocalLyrics({ synced: [{ text: "Deferred" }] });
+	page._isComponentMounted = false;
+	timing.resolve();
+	assert.equal(await importing, false);
+	assert.equal(storage.read(LOCAL_LYRICS_STORAGE_KEY)[LOCAL_URI], undefined);
+	assert.deepEqual(events, []);
+	assert.deepEqual(snapshots, []);
+});
+
+test("a later import for the same track wins even if timing for the first import finishes last", async () => {
+	const timings = [];
+	const { page, storage, snapshots, lyricsCache } = createLyricsPage({
+		pseudoKaraoke: { applyToResult() {
+			const timing = Promise.withResolvers();
+			timings.push(timing);
+			return timing.promise;
+		} },
+	});
+	const active = page.applyLocalLyrics({ synced: [{ text: "Earlier" }] });
+	await Promise.resolve();
+	const latest = page.applyLocalLyrics({ synced: [{ text: "Latest" }] });
+	await Promise.resolve();
+	timings[1].resolve();
+	assert.equal(await latest, true);
+	timings[0].resolve();
+	assert.equal(await active, false);
+	assert.equal(storage.read(LOCAL_LYRICS_STORAGE_KEY)[LOCAL_URI].synced[0].text, "Latest");
+	assert.equal(lyricsCache[LOCAL_URI].synced[0].text, "Latest");
+	assert.equal(snapshots.length, 1);
+});
+
+test("an LRCLIB result remains tied to the track used to open its search", async () => {
+	const { page, storage, play } = createLyricsPage({
+		parseLocalLyrics: text => ({ synced: [{ text }] }),
+	});
+	const searchTrack = { uri: LOCAL_URI, title: "Original", duration: 215000 };
+	play(OTHER_URI, "Next");
+	await page.applyLocalLyricsFromLrclibCandidate({ plainLyrics: "LRCLIB lyric" }, {
+		source: "lrclib-local-search",
+		track: searchTrack,
+	});
+	assert.equal(storage.read(LOCAL_LYRICS_STORAGE_KEY)[LOCAL_URI].synced[0].text, "LRCLIB lyric");
+	assert.equal(page.state.uri, OTHER_URI);
+	assert.equal(page.state.title, "Next");
+});
+
+test("a slow file read cannot overwrite a file chosen later", async () => {
+	const readers = [];
+	const lateHandlers = [];
+	let aborted = 0;
+	const { page, storage, snapshots } = createLyricsPage({
+		parseLocalLyrics: text => ({ synced: [{ text }] }),
+		createFileReader() {
+			const reader = { readAsText() { this.readyState = 1; }, abort() { aborted++; this.readyState = 2; } };
+			readers.push(reader);
+			return reader;
+		},
+	});
+	for (let count = 0; count < 2; count++) {
+		page.processLyricsFromFile({ target: { files: [{ size: 100 }] } });
+		lateHandlers.push(readers[count].onload);
+	}
+	assert.equal(aborted, 1);
+	await lateHandlers[1]({ target: { result: "Second file" } });
+	await lateHandlers[0]({ target: { result: "First file" } });
+	assert.equal(storage.read(LOCAL_LYRICS_STORAGE_KEY)[LOCAL_URI].synced[0].text, "Second file");
+	assert.equal(snapshots.length, 1);
+});
+
+test("deleting saved lyrics also retires an open file picker for that track", async () => {
+	const input = { click() {} };
+	const reader = { readAsText() {} };
+	const { page, storage, snapshots } = createLyricsPage({
+		createFileInput: () => input, createFileReader: () => reader,
+		parseLocalLyrics: text => ({ synced: [{ text }] }),
+	});
+	page.importLocalLyricsFile(LOCAL_URI);
+	const choose = input.onchange;
+	await page.removeLocalLyricsForCurrentTrack({ trackUri: LOCAL_URI, confirm: false });
+	choose({ target: { files: [{ size: 50 }] } });
+	await reader.onload?.({ target: { result: "Would restore removed lyrics" } });
+	assert.equal(storage.read(LOCAL_LYRICS_STORAGE_KEY)[LOCAL_URI], undefined);
+	assert.deepEqual(snapshots, []);
+});
+
+test("a later LRCLIB import retires an older still-open file picker", async () => {
+	const input = { click() {} };
+	const reader = { readAsText() {} };
+	const { page, storage, snapshots } = createLyricsPage({
+		createFileInput: () => input, createFileReader: () => reader,
+		parseLocalLyrics: text => ({ synced: [{ text }] }),
+	});
+	page.importLocalLyricsFile(LOCAL_URI);
+	const choose = input.onchange;
+	await page.applyLocalLyricsFromLrclibCandidate({ plainLyrics: "Latest import" });
+	choose({ target: { files: [{ size: 50 }] } });
+	await reader.onload?.({ target: { result: "Older file picker" } });
+	assert.equal(storage.read(LOCAL_LYRICS_STORAGE_KEY)[LOCAL_URI].synced[0].text, "Latest import");
+	assert.equal(snapshots.length, 1);
+});
+
+test("a retired local lyrics menu cannot launch a picker or delete the next song's lyrics", async () => {
+	let pickers = 0;
+	const { page, storage, confirms, play } = createLyricsPage({
+		createFileInput: () => ({ click() { pickers++; } }),
+	});
+	play(OTHER_URI, "Next");
+	page.importLocalLyricsFile(LOCAL_URI);
+	assert.equal(await page.removeLocalLyricsForCurrentTrack({ trackUri: LOCAL_URI }), false);
+	assert.equal(pickers, 0);
+	assert.equal(confirms.length, 0);
+	assert.ok(storage.read(LOCAL_LYRICS_STORAGE_KEY)[OTHER_URI]);
+});
+
+test("closing a local search retires timing work before it can save the candidate", async () => {
+	const timing = Promise.withResolvers();
+	const controller = new AbortController();
+	const { page, storage, snapshots } = createLyricsPage({
+		parseLocalLyrics: text => ({ synced: [{ text }] }),
+		pseudoKaraoke: { applyToResult: () => timing.promise },
+	});
+	const pending = page.applyLocalLyricsFromLrclibCandidate({ plainLyrics: "Retired search result" }, {
+		track: { uri: LOCAL_URI }, signal: controller.signal,
+	});
+	await Promise.resolve();
+	controller.abort();
+	timing.resolve();
+	assert.equal(await pending, false);
+	assert.equal(storage.read(LOCAL_LYRICS_STORAGE_KEY)[LOCAL_URI].synced[0].text, "line");
+	assert.deepEqual(snapshots, []);
+});
+
+test("a remount rejects a previous picker selection, file read and timing result", async () => {
+	const timing = Promise.withResolvers();
+	const input = { click() {} };
+	const readers = [];
+	const { page, storage, snapshots, toasts, play } = createLyricsPage({
+		savedUris: [],
+		createFileInput: () => input,
+		createFileReader() {
+			const reader = { readAsText() {} };
+			readers.push(reader);
+			return reader;
+		},
+		parseLocalLyrics: text => ({ synced: [{ text }] }),
+		pseudoKaraoke: { applyToResult: () => timing.promise },
+	});
+	const importing = page.applyLocalLyrics({ synced: [{ text: "Deferred timing" }] });
+	play(OTHER_URI, "Next");
+	const fileEvent = () => ({ target: { files: [{ size: 100 }] } });
+	page.processLyricsFromFile(fileEvent(), { uri: LOCAL_URI });
+	const lateFileRead = readers[0].onload;
+	page.importLocalLyricsFile();
+	const latePicker = input.onchange;
+
+	page._isComponentMounted = false;
+	page.cancelPendingLocalLyricsImports();
+	page._isComponentMounted = true;
+	latePicker(fileEvent());
+	assert.equal(readers.length, 1);
+	await lateFileRead({ target: { result: "Deferred file" } });
+	timing.resolve();
+	assert.equal(await importing, false);
+	assert.deepEqual(storage.read(LOCAL_LYRICS_STORAGE_KEY), {});
+	assert.deepEqual(snapshots, []);
+	assert.deepEqual(toasts, []);
+
+	page.importLocalLyricsFile();
+	input.onchange(fileEvent());
+	await readers[1].onload({ target: { result: "New selection" } });
+	assert.equal(storage.read(LOCAL_LYRICS_STORAGE_KEY)[OTHER_URI].synced[0].text, "New selection");
+});
+
+test("local lyrics menu offers deletion only when the track has saved lyrics", () => {
+	const { buildLyricsProviderView } = createToolbarLyricsProvider({
+		react: { memo: component => component },
+		readProviders: () => [],
+		getOptionsText: (_key, fallback) => fallback,
+		translate: key => key,
+	});
+	const calls = [];
+	const view = hasLocalLyrics => buildLyricsProviderView({
+		isLocalTrack: true,
+		getHasLocalLyrics: () => hasLocalLyrics,
+		closeModal: () => calls.push("close"),
+		onDeleteLocalLyrics: () => calls.push("delete"),
+	});
+	const deleteRow = model => model.groups.flat().find(row => row.key === "local-lyrics-delete");
+	assert.equal(deleteRow(view(false)), undefined);
+	assert.equal(deleteRow(view(true)).danger, true);
+	deleteRow(view(true)).onClick();
+	assert.deepEqual(calls, ["close", "delete"]);
+	const page = {
+		hasLocalLyricsForCurrentTrack: () => true,
+		removeLocalLyricsForCurrentTrack: () => calls.push("remove from track"),
+	};
+	const { actions } = createLyricsPageToolbar({ page, modes: {} });
+	assert.equal(actions.getHasLocalLyrics, page.hasLocalLyricsForCurrentTrack);
+	assert.equal(actions.onDeleteLocalLyrics, page.removeLocalLyricsForCurrentTrack);
+});
+
+test("settings clear the local-uri cache and delete saved lyrics only after a successful clear and confirmation", async context => {
+	context.mock.method(console, "error", () => {});
 	const storage = createStorage({
 		"ivLyrics:local-lyrics": JSON.stringify({ [LOCAL_URI]: { synced: [] }, [OTHER_URI]: { synced: [] } }),
 	});
-	const events = [];
-	const context = vm.createContext({
-		StorageManager: storage,
-		CustomEvent: class {
-			constructor(type, init) {
-				this.type = type;
-				this.detail = init?.detail;
-			}
+	const calls = [];
+	let confirmed = false;
+	let failClear = false;
+	let stateIndex = 0;
+	let pendingTrackClear;
+	const host = {
+		LyricsCache: {
+			getStats: async () => ({ lyrics: 1 }),
+			async clearTrack(id) {
+				calls.push(["clear", id]);
+				if (pendingTrackClear) await pendingTrackClear.promise;
+				return !failClear;
+			},
+			async clearAll() {
+				calls.push(["clearAll"]);
+				return !failClear;
+			},
 		},
-		window: { dispatchEvent: (event) => events.push(event) },
-		console,
+		LyricsService: {
+			clearLyricsSnapshot: (uri) => calls.push(["snapshot", uri]),
+		},
+		SyncDataService: {
+			clearCache: (id, options) => calls.push(["sync", id, options]),
+		},
+	};
+	const cache = createSettingsCacheActions({
+		storage,
+		services: createSettingsServices(host),
+		getLyricsPage: () => null,
+		onLocalLyricsDeleted: (uri) => calls.push(["deleted", uri]),
 	});
-	vm.runInContext(`${helpers}\nglobalThis.helpers = { hasSavedLocalLyrics, deleteSavedLocalLyrics };`, context);
-	assert.equal(context.helpers.hasSavedLocalLyrics(LOCAL_URI), true);
-	assert.equal(context.helpers.deleteSavedLocalLyrics(LOCAL_URI), true);
-	assert.equal(context.helpers.hasSavedLocalLyrics(LOCAL_URI), false);
-	assert.equal(context.helpers.hasSavedLocalLyrics(OTHER_URI), true);
-	assert.equal(context.helpers.deleteSavedLocalLyrics(LOCAL_URI), false);
-	assert.equal(events.length, 1);
-	assert.equal(events[0].type, "ivLyrics:local-lyrics-updated");
+	const Panel = createLocalCacheSettingsPanel({
+		react: {
+			useState: (value) => [stateIndex++ === 0 ? { sync: 1, tmi: 1 } : value, () => {}],
+			useEffect() {},
+			createElement: (type, props, ...children) => ({ type, props, children }),
+		},
+		cache,
+		readLanguage: () => "en",
+		readTrackUri: () => LOCAL_URI,
+		extractTrackId: trackIdentity.extractTrackId,
+		getTranslationCacheId: trackIdentity.getTranslationCacheId,
+		getSettingsText: (key) => key,
+		translate: (key) => key,
+		confirm: (message) => {
+			calls.push(["confirm", message]);
+			return confirmed;
+		},
+		reloadLyrics: (...args) => calls.push(["reload", ...args]),
+		notifySuccess: (message) => calls.push(["success", message]),
+		notifyError: (message) => calls.push(["error", message]),
+	});
+	function* walk(node) {
+		if (!node || typeof node !== "object") return;
+		yield node;
+		for (const child of node.children || []) yield* walk(child);
+	}
+	const elements = [...walk(Panel())];
+	const button = elements.find((node) => node.type === "button"
+		&& node.children.includes("settingsAdvanced.cacheManagement.localCache.clearCurrent"));
+	assert.ok(button);
 
-	const clearCurrent = slice(settingsSource, "  const handleClearCurrent = async () => {", "  // 통계 문자열 생성");
-	assert.doesNotMatch(clearCurrent, /split\(':'\)\[2\]/, "local URIs must not be keyed by their artist segment");
-	assert.match(clearCurrent, /Utils\.getTranslationCacheId\?\.\(trackUri\)/);
-	assert.match(clearCurrent, /hasSavedLocalLyrics\(trackUri\)/);
-	assert.match(clearCurrent, /window\.confirm\(/);
+	for (const uri of [LOCAL_URI, OTHER_URI]) {
+		pageLyricsMemoryCache[uri] = { provider: "local" };
+		pageTranslationMemoryCache.set(`${uri}:translation`, ["translated"]);
+	}
+	const cacheId = `local-uri:${LOCAL_URI}`;
+	await button.props.onClick();
+	assert.deepEqual(calls, [
+		["confirm", "menu.localLyricsDeleteConfirm"], ["snapshot", LOCAL_URI], ["sync", cacheId, { preserveOpenDb: true }],
+		["clear", cacheId], ["reload", false, LOCAL_URI], ["success", "notifications.localCacheTrackCleared"],
+	]);
+	assert.equal(cache.hasSavedLocalLyrics(LOCAL_URI), true);
+	assert.equal(pageLyricsMemoryCache[LOCAL_URI], undefined);
+	assert.equal(pageTranslationMemoryCache.get(`${LOCAL_URI}:translation`), null);
+	assert.ok(pageLyricsMemoryCache[OTHER_URI]);
+	assert.ok(pageTranslationMemoryCache.get(`${OTHER_URI}:translation`));
+
+	confirmed = true;
+	calls.length = 0;
+	failClear = true;
+	await button.props.onClick();
+	assert.deepEqual(calls, [
+		["confirm", "menu.localLyricsDeleteConfirm"], ["snapshot", LOCAL_URI],
+		["sync", cacheId, { preserveOpenDb: true }], ["clear", cacheId], ["error", "messages.error"],
+	]);
+	assert.equal(cache.hasSavedLocalLyrics(LOCAL_URI), true);
+
+	const allButton = elements.find((node) => node.type === "button"
+		&& node.children.includes("settingsAdvanced.cacheManagement.localCache.clearAll"));
+	assert.equal(allButton.props.disabled, false);
+	calls.length = 0;
+	await allButton.props.onClick();
+	assert.deepEqual(calls, [
+		["snapshot", undefined], ["sync", undefined, { preserveOpenDb: true }], ["clearAll"], ["error", "messages.error"],
+	]);
+
+	failClear = false;
+	calls.length = 0;
+	pendingTrackClear = Promise.withResolvers();
+	const previousClear = button.props.onClick();
+	const newLyrics = { synced: [{ text: "Imported during the cache clear" }] };
+	storage.setItem(LOCAL_LYRICS_STORAGE_KEY, JSON.stringify({
+		...storage.read(LOCAL_LYRICS_STORAGE_KEY),
+		[LOCAL_URI]: newLyrics,
+	}));
+	pendingTrackClear.resolve();
+	await previousClear;
+	assert.deepEqual(storage.read(LOCAL_LYRICS_STORAGE_KEY)[LOCAL_URI], newLyrics);
+	assert.deepEqual(calls.slice(-2), [["reload", false, LOCAL_URI], ["success", "notifications.localCacheTrackCleared"]]);
+	assert.ok(!calls.some(([name]) => name === "deleted"));
+	pendingTrackClear = null;
+
+	calls.length = 0;
+	await button.props.onClick();
+	assert.deepEqual(calls, [
+		["confirm", "menu.localLyricsDeleteConfirm"], ["snapshot", LOCAL_URI],
+		["sync", cacheId, { preserveOpenDb: true }], ["clear", cacheId], ["snapshot", LOCAL_URI],
+		["deleted", LOCAL_URI], ["reload", false, LOCAL_URI],
+		["success", "notifications.localLyricsDeleted"],
+	]);
+	assert.equal(cache.hasSavedLocalLyrics(LOCAL_URI), false);
+	assert.equal(cache.hasSavedLocalLyrics(OTHER_URI), true);
+	await cache.clearAll();
+	assert.equal(cache.hasSavedLocalLyrics(OTHER_URI), true);
+	assert.equal(pageLyricsMemoryCache[OTHER_URI], undefined);
+	assert.equal(pageTranslationMemoryCache.get(`${OTHER_URI}:translation`), null);
+});
+
+test("settings deletion invalidates lyrics warmed during the disk clear after the page closes", async context => {
+	const uri = "spotify:local:Artist:Album:Pending delete:188";
+	const diskClear = Promise.withResolvers();
+	const saved = { provider: "local", synced: [{ text: "Previously imported" }] };
+	const storage = createStorage({ [LOCAL_LYRICS_STORAGE_KEY]: JSON.stringify({ [uri]: saved }) });
+	const snapshots = new Map([[uri, saved]]);
+	const cache = createSettingsCacheActions({
+		storage,
+		services: {
+			getLyricsService: () => ({ clearLyricsSnapshot: key => snapshots.delete(key) }),
+			getLyricsCache: () => ({ clearTrack: () => diskClear.promise }),
+			getSyncDataService: () => null,
+			getTranslator: () => null,
+		},
+		getLyricsPage: () => null,
+		onLocalLyricsDeleted: () => {},
+	});
+	context.after(() => {
+		delete pageLyricsMemoryCache[uri];
+		pageTranslationMemoryCache.clearByUri(uri);
+	});
+	const clearing = cache.clearTrack(uri, `local-uri:${uri}`, true);
+	assert.equal(snapshots.has(uri), false);
+	pageLyricsMemoryCache[uri] = saved;
+	pageTranslationMemoryCache.set(`${uri}:translation`, ["Previously translated"]);
+	snapshots.set(uri, saved);
+	diskClear.resolve(true);
+	assert.equal(await clearing, true);
+	assert.equal(cache.hasSavedLocalLyrics(uri), false);
+	assert.equal(pageLyricsMemoryCache[uri], undefined);
+	assert.equal(pageTranslationMemoryCache.get(`${uri}:translation`), null);
+	assert.equal(snapshots.has(uri), false);
 });

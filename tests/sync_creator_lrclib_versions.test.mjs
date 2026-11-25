@@ -1,9 +1,14 @@
+import { setUpSyncCreatorLrclibActions } from "./fixtures/sync-creator-lrclib.mjs";
+import {
+    buildLrclibSyncSource, buildLrclibIdCandidate, getLrclibRecordVariantForSource,
+} from '#ivlyrics/features/sync/syncCreatorLrclibLyrics.mjs';
+import { readSyncCreatorFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
+const source = readSyncCreatorFixture();
 const slice = (startMarker, endMarker) => {
     const start = source.indexOf(startMarker);
     const end = source.indexOf(endMarker, start + startMarker.length);
@@ -11,9 +16,7 @@ const slice = (startMarker, endMarker) => {
     return source.slice(start, end);
 };
 const callbacks = [
-    slice('\tconst stripLrclibTimestamp =', '\tconst clearLrclibCandidateState ='),
-    slice('\tconst buildLrclibIdCandidate =', '\tconst searchLrclibByQuery ='),
-    slice('\t// Shape of the shown lyrics and the versions', '\t// Capture the baseline before edits.'),
+    slice('\tconst { lyricsTextLrclibShape, attachSelectedLrclibSource } =', '\t// Capture the baseline before edits.'),
 ].join('\n');
 const plain = value => JSON.parse(JSON.stringify(value));
 
@@ -57,18 +60,38 @@ function harness({ fetchRecord = RECORD, fetchStatus = 200, lyricsText = '', lrc
         isCurrentSyncCreatorSourceChange: () => true,
         resetSyncCreatorLyricsLoadingState() {}, clearLrclibCandidateState() {},
         applyLoadedLyricsResult: async result => { calls.loaded.push(plain(result)); return true; },
+        prepareImportedLyricsSource: async (result, text) => ({
+            publishedBaseline: null,
+            activate() {
+                context.beginSyncCreatorSourceChange();
+                calls.loaded.push(plain(result));
+                context.lyricsText = text;
+                context.selectedLrclibSourceRef.current = result.lrclibSource;
+            },
+        }),
         sanitizeSyncCreatorSyncData: data => structuredClone(data),
     });
     for (const [, setter] of callbacks.matchAll(/\b(set[A-Z]\w*)\b/g)) {
         const property = setter.slice(3, 4).toLowerCase() + setter.slice(4);
         context[setter] ??= value => { context[property] = value; };
     }
+    context.react = { useMemo: context.useMemo, useCallback: context.useCallback };
     context.setSelectedLrclibSourceValue = value => { context.selectedLrclibSourceRef.current = value || null; };
     context.setProviderValue = value => { context.providerRef.current = value || ''; };
     vm.runInContext(source.slice(0, source.indexOf('const SyncDataCreator =')), context);
-    vm.runInContext(`${callbacks}
-        globalThis.api = { buildLrclibSyncSource, buildLrclibIdCandidate, getLrclibRecordVariantForSource,
-            loadLrclibById, loadLrclibSourceForImport, attachSelectedLrclibSource };`, context);
+    vm.runInContext(`globalThis.api = {
+        attachSelectedLrclibSource(data) {
+            ${callbacks}
+            return attachSelectedLrclibSource(data);
+        }
+    };`, context);
+    Object.assign(context.api, setUpSyncCreatorLrclibActions(context, (name, value) => {
+        const property = name.slice(3, 4).toLowerCase() + name.slice(4);
+        context[property] = value;
+    }), {
+        buildLrclibSyncSource, getLrclibRecordVariantForSource,
+        buildLrclibIdCandidate: (candidate, id) => buildLrclibIdCandidate(candidate, id, '', context),
+    });
     const sourceFor = variant => plain(context.api.buildLrclibSyncSource({ ...RECORD, preferredLyricsSource: variant }));
     const publish = syncSource => {
         context.window.SyncDataService.getSyncData = async () => ({ syncData: { version: 5, lines: [], source: syncSource } });
@@ -125,11 +148,15 @@ test('Load by ID keeps the version of the source the editor already uses', async
 test('an imported file loads the LRCLIB version it was made on', async () => {
     const h = harness({ lyricsText: SYNCED_TEXT });
     const fileSource = { ...h.sourceFor('plain'), preferredLyricsSource: 'synced' };
-    const loaded = await h.api.loadLrclibSourceForImport(fileSource);
+    const loaded = await h.api.prepareLrclibSourceForImport(fileSource, () => true);
     assert.deepEqual(h.calls.fetch, ['https://lrclib.net/api/get/424242']);
+    assert.equal(h.calls.sourceChanges, 0);
+    assert.equal(h.calls.loaded.length, 0);
+    assert.equal(h.context.lyricsText, SYNCED_TEXT);
+    loaded.activate();
     assert.equal(h.calls.sourceChanges, 1);
     assert.equal(h.calls.loaded.length, 1);
-    assert.equal(h.context.lyricsText, PLAIN_TEXT, 'the text is shown even if the load asked about multi-vocal mode');
+    assert.equal(h.context.lyricsText, PLAIN_TEXT);
     assert.equal(h.context.lrclibIdInput, '424242');
     assert.deepEqual(plain(loaded.lyricsChars), Array.from(PLAIN_TEXT.replaceAll('\n', '')));
     assert.equal(loaded.lyricsFingerprint, fileSource.lyricsFingerprint);
@@ -140,15 +167,29 @@ test('an imported file loads the LRCLIB version it was made on', async () => {
 
 test('an import whose lyrics cannot be found fails clearly without replacing the lyrics', async () => {
     const edited = harness({ fetchRecord: { ...RECORD, plainLyrics: 'Morning light\nchanged since the export' } });
-    await assert.rejects(edited.api.loadLrclibSourceForImport(edited.sourceFor('plain')),
+    await assert.rejects(edited.api.prepareLrclibSourceForImport(edited.sourceFor('plain'), () => true),
         { message: 'syncCreator.importLyricsMismatch {"id":"424242"}' });
     const offline = harness({ fetchStatus: 503 });
-    await assert.rejects(offline.api.loadLrclibSourceForImport(offline.sourceFor('plain')),
+    await assert.rejects(offline.api.prepareLrclibSourceForImport(offline.sourceFor('plain'), () => true),
         { message: 'syncCreator.lrclibIdLoadError (424242): LRCLIB 503' });
     for (const h of [edited, offline]) {
         assert.equal(h.calls.sourceChanges, 0);
         assert.equal(h.calls.loaded.length, 0);
     }
+});
+
+test('activating imported lyrics keeps the LRCLIB ID typed during preparation', async () => {
+    const h = harness({ lyricsText: SYNCED_TEXT });
+    const pending = h.api.prepareLrclibSourceForImport(h.sourceFor('plain'), () => true);
+    h.context.lrclibIdInput = '858585';
+    h.context.lrclibIdInputEditedRef.current = true;
+    h.context.lrclibIdInputRevisionRef.current++;
+    const prepared = await pending;
+    prepared.activate();
+    assert.equal(h.context.lrclibIdInput, '858585');
+    assert.equal(h.context.lrclibIdInputEditedRef.current, true);
+    assert.equal(loadedText(h.calls.loaded[0]), PLAIN_TEXT);
+    assert.equal(h.context.selectedLrclibSourceRef.current.lrclibId, '424242');
 });
 
 test('exports and submissions attach the source of the lyrics the timings are on', () => {

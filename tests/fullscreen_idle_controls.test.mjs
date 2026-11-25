@@ -1,35 +1,89 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-
-const read = (name) => readFileSync(new URL("../" + name, import.meta.url), "utf8");
+import { createLyricsPointerControls } from "../src/lyrics/lyricsPointerControls.mjs";
+import { createLyricsPageToolbar } from "../src/lyrics/lyricsPageToolbar.mjs";
 
 // Issue #154: in fullscreen, every song change brought back the cursor, the
 // menu and the sync-offset buttons until the mouse moved again.
 test("a render that rewrites the page's class list keeps idle controls hidden", () => {
-	const source = read("index.js");
+	const source = readFileSync(new URL("../src/lyrics/lyricsPageView.mjs", import.meta.url), "utf8");
 	const start = source.indexOf("className: \`lyrics-lyricsContainer-LyricsContainer");
-	const end = source.indexOf("style: this.styleVariables", start);
+	const end = source.indexOf("style: styleVariables", start);
 	assert.ok(start > 0 && end > start);
 	const className = source.slice(start, end);
-	assert.match(className, /this\.isMouseActive === false \? " controls-hidden ui-hidden" : ""/,
+	assert.match(className, /page\.isMouseActive === false \? " controls-hidden ui-hidden" : ""/,
 		"the idle classes the timer sets are part of every rendered class list");
-	assert.match(className, /this\.state\.isPlaybackPaused \? " playback-paused"/, "a pause between songs rewrites the class list");
-	const hide = source.slice(source.indexOf("const hideWhenIdle = () => {"), source.indexOf("this._handleMouseLeave = () => {"));
-	assert.match(hide, /this\.isMouseActive = false;[\s\S]*classList\.add\('controls-hidden'\)/, "idle state and classes change together");
+	assert.match(className, /page\.state\.isPlaybackPaused \? " playback-paused"/, "a pause between songs rewrites the class list");
 });
 
 test("a mousemove without movement does not wake the controls", () => {
-	const source = read("index.js");
-	const handler = source.slice(source.indexOf("this._handleMouseMove = (event) => {"), source.indexOf("const hideWhenIdle = () => {"));
-	assert.ok(handler.length > 0);
-	assert.ok(handler.indexOf("if (last && last.x === event.screenX && last.y === event.screenY) return;") < handler.indexOf("this.isMouseActive = true;"));
-	// The handler also starts the idle timer without an event.
-	assert.match(handler, /if \(event && Number\.isFinite\(event\.screenX\)/);
+	const container = new EventTarget();
+	const hidden = new Set();
+	container.classList = {
+		toggle(name, force) {
+			if (force) hidden.add(name);
+			else hidden.delete(name);
+		},
+	};
+	let idle;
+	const activities = [];
+	const listener = createLyricsPointerControls({
+		isToolbarEngaged: () => false,
+		onActivityChange: (active) => activities.push(active),
+		onWheel: () => {},
+		scheduleTimer: (callback) => { idle = callback; },
+		cancelTimer: () => { idle = undefined; },
+	});
+	const moveTo = (x, y) => container.dispatchEvent(Object.assign(new Event("mousemove"), { screenX: x, screenY: y }));
+	listener.attach(container);
+	moveTo(10, 20);
+	idle();
+	assert.deepEqual(hidden, new Set(["controls-hidden", "ui-hidden"]));
 
-	const overlay = read("FullscreenOverlay.js");
-	const own = overlay.slice(overlay.indexOf("const handleMouseMove = (event) => {"), overlay.indexOf("document.addEventListener('mousemove', handleMouseMove"));
-	assert.ok(own.indexOf("last.x === event.screenX && last.y === event.screenY) return;") < own.indexOf("setUiVisible(true)"),
-		"the fullscreen controller ignores it too");
+	moveTo(10, 20);
+	assert.equal(activities.at(-1), false);
+	assert.equal(hidden.size, 2);
+	moveTo(20, 20);
+	assert.equal(activities.at(-1), true);
+	assert.equal(hidden.size, 0);
+
+	const staleIdle = idle;
+	listener.attach(null);
+	assert.equal(idle, undefined);
+	assert.equal(container.onmousewheel, null);
+	moveTo(30, 20);
+	staleIdle();
+	assert.deepEqual(activities, [true, true, false, true]);
 });
 
+test("toolbar engagement wakes hidden controls and disengagement restarts the idle timer", () => {
+	const container = new EventTarget();
+	const active = [];
+	container.classList = { toggle() {} };
+	let idle;
+	let delay;
+	const controls = createLyricsPointerControls({
+		isToolbarEngaged: () => toolbar.isEngaged(),
+		onActivityChange: value => active.push(value),
+		onWheel() {},
+		scheduleTimer: (callback, timeout) => { idle = callback; delay = timeout; },
+		cancelTimer: () => { idle = null; },
+	});
+	const toolbar = createLyricsPageToolbar({
+		page: { containerRef: { current: container } }, modes: {},
+		wakeControls: controls.wake,
+	});
+	controls.attach(container);
+	idle();
+	assert.equal(active.at(-1), false);
+	toolbar.actions.setEngaged(true);
+	assert.equal(active.at(-1), true);
+	idle();
+	assert.equal(active.at(-1), true);
+	assert.equal(delay, 1200);
+	toolbar.actions.setEngaged(false);
+	assert.equal(delay, 2500);
+	idle();
+	assert.equal(active.at(-1), false);
+});

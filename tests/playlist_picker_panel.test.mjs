@@ -1,29 +1,14 @@
+import { readLanguageTable } from "./fixtures/language-source.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
+import { PlaylistPickerPanel } from '../src/features/player/PlaylistPicker.js';
 
-const read = (name) => readFileSync(new URL('../' + name, import.meta.url), 'utf8');
-const source = read('PlaylistPicker.js');
-
-const KO = (() => {
-	const context = { window: {} };
-	vm.runInNewContext(read('langs/LangKo.js'), context);
-	return Object.values(context.window)[0];
-})();
+const KO = readLanguageTable("LangKo.js");
 const t = (key) => key.split('.').reduce((value, part) => value?.[part], KO) ?? key;
-
-const start = source.indexOf('const PLAYLIST_POPOVER_GAP');
-const end = source.indexOf('const PlaylistPicker = (() => {');
-const context = vm.createContext({
-	react: {
-		Fragment: Symbol('Fragment'),
-		createElement: (type, props, ...children) => ({ type, props, children })
-	},
-	I18n: { t }
-});
-vm.runInContext(`${source.slice(start, end)}\nglobalThis.Panel = PlaylistPickerPanel;`, context);
-const Panel = context.Panel;
+const react = {
+	Fragment: Symbol('Fragment'),
+	createElement: (type, props, ...children) => ({ type, props, children })
+};
 
 const COPY = {
 	title: t('fullscreen.controls.addToPlaylist'),
@@ -35,7 +20,7 @@ const COPY = {
 };
 
 const playlist = (id, overrides = {}) => ({ id, uri: `spotify:playlist:${id}`, name: `List ${id}`, total: 12, ...overrides });
-const render = (props = {}) => Panel({ copy: COPY, playlists: [], error: '', loading: false, statuses: {}, pendingPlaylistId: '', onItemAction: () => {}, ...props });
+const render = (props = {}) => PlaylistPickerPanel({ react, copy: COPY, playlists: [], error: '', loading: false, statuses: {}, pendingPlaylistId: '', onItemAction: () => {}, ...props });
 
 const walk = (node, visit) => {
 	if (Array.isArray(node)) return node.forEach((child) => walk(child, visit));

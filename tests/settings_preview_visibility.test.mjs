@@ -1,13 +1,18 @@
+import { readSettingsSource } from "./fixtures/legacy-page-source.mjs";
+import { useSettingsConfigSignal } from "../src/features/settings/settingsSignals.mjs";
+import { createSettingsLyricsPreview, getSettingsPreviewSupplementVisibility } from "#ivlyrics/features/settings/createSettingsLyricsPreview.mjs";
+import { createSettingsPanelPreview } from "#ivlyrics/features/settings/createSettingsPanelPreview.mjs";
+import { readSettingFlag, readSettingNumber } from "#ivlyrics/features/settings/settingsPreviewValues.mjs";
+import { sourceUrl } from "./fixtures/source-paths.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { getPanelSupplementVisibility } from "../src/lyrics/panelLyricPresentation.mjs";
+import { getPanelLineSlotHeight } from "../src/lyrics/panelLyricsStyles.mjs";
 
-const read = (name) => readFileSync(new URL("../" + name, import.meta.url), "utf8");
-const settings = read("Settings.js");
-const pages = read("Pages.js");
-const panel = read("NowPlayingPanelLyrics.js");
-const index = read("index.js");
+const read = (name) => readFileSync(sourceUrl(name), "utf8");
+const settings = readSettingsSource();
 const section = (source, start, end) => {
   const from = source.indexOf(start), to = source.indexOf(end, from + start.length);
   assert.ok(from >= 0 && to > from, "missing production section: " + start);
@@ -52,7 +57,7 @@ function createHarness({ component = "SettingsLyricsPreview", visual = {}, props
     memo: (render) => render, useState, useEffect,
   };
   const context = vm.createContext({
-    react, useState, useEffect, CONFIG: { visual: { ...visual } },
+    useSettingsConfigSignal, react, useState, useEffect, CONFIG: { visual: { ...visual } },
     window: {
       addEventListener(name, callback) {
         if (!listeners.has(name)) listeners.set(name, new Set());
@@ -73,22 +78,17 @@ function createHarness({ component = "SettingsLyricsPreview", visual = {}, props
       "settingsUi.preview.annotationSample": "sample annotation",
     }[key] || key) },
     KaraokeLine: function KaraokeLine() {},
-    InterludeIndicator: function InterludeIndicator() {},
+    SettingsInterludeIndicator: function InterludeIndicator() {},
+    createSettingsLyricsPreview, createSettingsPanelPreview, getSettingsPreviewSupplementVisibility,
     getCurrentSettingsBackgroundMode: () => "none", SETTINGS_BACKGROUND_PRESETS: [],
     normalizeSettingsHexColor: (value) => value || null,
+    getPanelSupplementVisibility, readSettingFlag, readSettingNumber,
   });
   vm.runInContext([
-    section(index, "const PRONUNCIATION_DISPLAY_MODES =", "const assignTranslationVocalResult ="),
-    section(pages, "const safeRenderText =", "const getFirstTrimmedString ="),
-    section(pages, "const getFiniteLyricsStyleNumber =", "const getCurrentTrackDurationMs ="),
-    section(pages, "const getRubySourceText =", "const renderLyricMainContent ="),
-    section(panel, "    const PANEL_PRONUNCIATION_MODES =", "    const arePanelTextsEquivalent ="),
-    section(settings, "const SETTINGS_LYRICS_PREVIEW_TEXT =", "const syncSettingsLyricsPreviewStyles ="),
-    section(settings, "const NowPlayingPanelPreview =", "const KARAOKE_FILL_CURVE_DEFAULT_POINTS ="),
     section(settings, "const getSettingsText =", "// ---------------------------------------------------------------------------"),
-    section(settings, "const useSettingsConfigRevision =", "const SettingsSection ="),
-    section(settings, "const getSettingsPreviewSupplementVisibility =", "// Same hue wheel as the CD canvas"),
-    "globalThis.api = { SettingsLyricsPreview, NowPlayingPanelPreview, renderSettingsPreviewLine, getPanelSupplementVisibility, getLyricsDisplayMode };",
+    section(settings, "const settingsSignalHost =", "const SettingsSection ="),
+    section(settings, "const getSettingsPreviewNumber =", "const { SettingsCdDiscPreview"),
+    "globalThis.api = { SettingsLyricsPreview, NowPlayingPanelPreview, getPanelSupplementVisibility };",
   ].join("\n"), context);
   const render = () => {
     cursor = 0;
@@ -222,16 +222,13 @@ test("panel retains its live original-first presentation when the main-page mode
 });
 
 test("panel slot height and active original weight match production defaults and configured sizes", () => {
-  const weight = Number(/\.ivlyrics-panel-line\.active \.ivlyrics-panel-line-text\s*\{[^}]*font-weight:\s*(\d+)/.exec(panel)[1]);
-  const slotSource = section(panel, "        const panelLineSlotHeight = useMemo(", "        // 폰트 스케일 스타일");
-  for (const [size, scale] of [[26, 100], [10, 50], [20, 100], [12, 150], [26, 200], [0, 0]]) {
+  const panelStyles = readFileSync(new URL("../src/lyrics/panelLyricsStyles.mjs", import.meta.url), "utf8");
+  const weight = Number(/\.ivlyrics-panel-line\.active \.ivlyrics-panel-line-text\s*\{[^}]*font-weight:\s*(\d+)/.exec(panelStyles)[1]);
+  for (const [size, scale, expected] of [[26, 100, 72], [10, 50, 52], [20, 100, 58], [12, 150, 52], [26, 200, 72], [0, 0, 72]]) {
     const h = createHarness({ component: "NowPlayingPanelPreview", visual: {
       "panel-lyrics-original-size": size, "panel-font-scale": scale,
     } });
-    const expected = vm.runInNewContext(slotSource + "\npanelLineSlotHeight;", {
-      useMemo: (build) => build(), fontScale: scale, instrumentalBreakRevision: 0,
-      getStorageValue: () => size, ORIGINAL_SIZE_KEY: "original", DEFAULT_ORIGINAL_SIZE: 26,
-    });
+    assert.equal(getPanelLineSlotHeight(size, scale), expected);
     const row = nodes(h.tree).find((node) => node.props.style?.flex?.startsWith("0 0 "));
     assert.equal(row.props.style.flex, `0 0 ${expected}px`);
     assert.equal(panelOriginals(h.tree).find((node) => node.props.style.color === "#ffffff").props.style.fontWeight, weight);

@@ -5,10 +5,11 @@
 
 # --- Configuration ---
 REPO="ivLis-Studio/ivLyrics"
-TARGET_DIR="$HOME/.config/spicetify/CustomApps"
 FINAL_APP_NAME="ivLyrics"
 PROXY_URL="https://ivlis.kr/ivLyrics/proxy.php"
 MAX_RETRIES=3
+METADATA_TIMEOUT=20
+ARCHIVE_TIMEOUT=180
 SCRIPT_VERSION="2.0.0"
 
 # --- Colors ---
@@ -176,10 +177,22 @@ print_footer() {
     echo ""
 }
 
+resolve_custom_apps_dir() {
+    local config_path config_dir
+    config_path=$(spicetify -c 2>/dev/null) || return 1
+    case "$config_path" in
+        */config-xpui.ini)
+            config_dir=$(cd "${config_path%/*}" && pwd -P) || return 1
+            printf '%s/CustomApps\n' "$config_dir"
+            ;;
+        *) return 1 ;;
+    esac
+}
+
 get_current_version() {
     local version_file="$TARGET_DIR/$FINAL_APP_NAME/version.txt"
     if [ -f "$version_file" ]; then
-        cat "$version_file" | tr -d '\n\r'
+        tr -d '\n\r' < "$version_file"
     fi
 }
 
@@ -187,10 +200,41 @@ normalize_version() {
     printf '%s' "$1" | tr -d '[:space:]' | sed 's/^[vV]//'
 }
 
+is_release_version() {
+    [[ "$1" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+}
+
+is_version_newer() {
+    local IFS=. LC_ALL=C index installed remote
+    local -a installed_parts remote_parts
+    read -r -a installed_parts <<< "$1"
+    read -r -a remote_parts <<< "$2"
+    for index in 0 1 2; do
+        installed="${installed_parts[index]}"
+        remote="${remote_parts[index]}"
+        if [ "${#installed}" -ne "${#remote}" ]; then
+            [ "${#installed}" -gt "${#remote}" ]
+            return
+        fi
+        if [ "$installed" != "$remote" ]; then
+            [[ "$installed" > "$remote" ]]
+            return
+        fi
+    done
+    return 1
+}
+
+request_release() {
+    local timeout="$1"
+    shift
+    curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
+        --connect-timeout 10 --max-time "$timeout" "$@"
+}
+
 check_network() {
-    if curl --fail --silent --show-error --proto '=https' --tlsv1.2 --connect-timeout 5 "https://api.github.com" > /dev/null 2>&1; then
+    if request_release 5 "https://api.github.com" > /dev/null 2>&1; then
         return 0
-    elif curl --fail --silent --show-error --proto '=https' --tlsv1.2 --connect-timeout 5 "$PROXY_URL" > /dev/null 2>&1; then
+    elif request_release 5 "$PROXY_URL" > /dev/null 2>&1; then
         return 0
     fi
     return 1
@@ -199,42 +243,79 @@ check_network() {
 close_spotify() {
     if pgrep -x "Spotify" > /dev/null 2>&1 || pgrep -x "spotify" > /dev/null 2>&1; then
         print_substep "Spotify is running, closing..." "warning"
-        pkill -x "Spotify" 2>/dev/null || pkill -x "spotify" 2>/dev/null
+        pkill -x "Spotify" 2>/dev/null || true
+        pkill -x "spotify" 2>/dev/null || true
         sleep 2
+        if pgrep -x "Spotify" >/dev/null 2>&1 || pgrep -x "spotify" >/dev/null 2>&1; then
+            print_substep "Could not close Spotify. Close it and retry." "error"
+            return 1
+        fi
         print_substep "Spotify closed" "success"
         return 0
     fi
     print_substep "Spotify is not running" "success"
-    return 1
+    return 0
+}
+
+list_manifest_runtime_files() {
+    # Spicetify's legacy manifests declare both lists, while a bundled release
+    # only loads startup.js. Inspect them without a new installer dependency.
+    awk '
+        { manifest = manifest $0 " " }
+        END {
+            if (manifest !~ /"name"[[:space:]]*:[[:space:]]*"ivLyrics"/) exit 1
+            while (match(manifest, /"subfiles(_extension)?"[[:space:]]*:[[:space:]]*/)) {
+                manifest = substr(manifest, RSTART + RLENGTH)
+                if (!match(manifest, /^\[[^]]*\]/)) exit 1
+                entries = substr(manifest, 2, RLENGTH - 2)
+                manifest = substr(manifest, RLENGTH + 1)
+                if (entries ~ /^[[:space:]]*$/) continue
+                count = split(entries, paths, ",")
+                for (i = 1; i <= count; i++) {
+                    path = paths[i]
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", path)
+                    if (path !~ /^"[[:alnum:]_.\/-]+"$/) exit 1
+                    print substr(path, 2, length(path) - 2)
+                }
+            }
+        }
+    ' "$1"
 }
 
 verify_installation() {
-    local app_dir="$TARGET_DIR/$FINAL_APP_NAME"
-    local required_files=("index.js" "manifest.json")
-
-    for file in "${required_files[@]}"; do
-        if [ ! -f "$app_dir/$file" ]; then
-            return 1
-        fi
+    local app_dir="$1"
+    local file runtime_files
+    for file in index.js manifest.json style.css version.txt; do
+        [ -s "$app_dir/$file" ] || return 1
     done
-    return 0
+    [ "$(normalize_version "$(cat "$app_dir/version.txt")")" = "$LATEST_VERSION_NORMALIZED" ] || return 1
+    runtime_files=$(list_manifest_runtime_files "$app_dir/manifest.json") || return 1
+    while IFS= read -r file; do
+        [ -n "$file" ] || continue
+        case "/$file/" in
+            *//*|*/../*|*/./*) return 1 ;;
+        esac
+        [ -f "$app_dir/$file" ] && [ -s "$app_dir/$file" ] || return 1
+    done <<< "$runtime_files"
 }
 
 register_updater_protocol() {
     local app_dir="$TARGET_DIR/$FINAL_APP_NAME"
     local register_script="$app_dir/updater/unix/register-updater-protocol.sh"
+    local output
 
     if [ ! -f "$register_script" ]; then
         print_substep "Updater protocol script not found, skipping" "warning"
-        return 1
+        return 0
     fi
 
-    if bash "$register_script" "$app_dir" >/dev/null 2>&1; then
+    if output=$(bash "$register_script" "$app_dir" 2>&1); then
         print_substep "Updater protocol registered" "success"
         return 0
     fi
 
-    print_substep "Updater protocol registration failed" "warning"
+    [ -z "$output" ] || printf '%s\n' "$output" >&2
+    print_substep "Updater protocol registration failed. ivLyrics is installed. Run the installer again to retry registration." "warning"
     return 1
 }
 
@@ -242,11 +323,9 @@ retry_command() {
     local max_attempts=$1
     local delay=$2
     shift 2
-    local cmd="$@"
-
     local attempt=1
     while [ $attempt -le $max_attempts ]; do
-        if eval "$cmd"; then
+        if "$@"; then
             return 0
         fi
 
@@ -260,41 +339,172 @@ retry_command() {
     return 1
 }
 
+app_path_exists() {
+    [ -e "$1" ] || [ -L "$1" ]
+}
+
+begin_installation() {
+    local apps=$1 incoming=${2:-} had_app=false registered=false
+    if app_path_exists "$FINAL_APP_DIR"; then had_app=true; fi
+    if is_ivlyrics_registered "$apps"; then registered=true; fi
+    mkdir -- "$INSTALL_TRANSACTION" || return 1
+    if [ -n "$incoming" ]; then
+        mv -- "$incoming" "$INSTALL_TRANSACTION/incoming" || return 1
+    fi
+    # Record the old state before changing either the app directory or custom_apps.
+    printf '%s %s\n' "$had_app" "$registered" > "$INSTALL_TRANSACTION/before.next" &&
+        mv -- "$INSTALL_TRANSACTION/before.next" "$INSTALL_TRANSACTION/before"
+}
+
+restore_previous_installation() {
+    local restart=${1:-false} had_app registered current_apps
+    local previous="$INSTALL_TRANSACTION/previous" rejected="$INSTALL_TRANSACTION/rejected"
+    [ ! -L "$INSTALL_TRANSACTION" ] || return 1
+    [ -d "$INSTALL_TRANSACTION" ] || return 0
+    if [ ! -f "$INSTALL_TRANSACTION/before" ] || [ -f "$INSTALL_TRANSACTION/committed" ]; then
+        rm -rf -- "$INSTALL_TRANSACTION" || return 1
+        return 0
+    fi
+    read -r had_app registered < "$INSTALL_TRANSACTION/before" || return 1
+    case "$had_app:$registered" in
+        true:true|true:false|false:true|false:false) ;;
+        *) return 1 ;;
+    esac
+    if [ "$restart" = true ] && [ -f "$INSTALL_TRANSACTION/apply-started" ]; then
+        close_spotify || return 1
+    fi
+    if app_path_exists "$previous"; then
+        if app_path_exists "$FINAL_APP_DIR"; then
+            ! app_path_exists "$rejected" && mv -- "$FINAL_APP_DIR" "$rejected" || return 1
+        fi
+        mv -- "$previous" "$FINAL_APP_DIR" || return 1
+    elif [ "$had_app" = true ]; then
+        app_path_exists "$FINAL_APP_DIR" || return 1
+    elif ! app_path_exists "$INSTALL_TRANSACTION/incoming" && app_path_exists "$FINAL_APP_DIR"; then
+        ! app_path_exists "$rejected" && mv -- "$FINAL_APP_DIR" "$rejected" || return 1
+    fi
+    current_apps=$(read_spicetify_apps) || return 1
+    if { [ "$registered" = true ] && ! is_ivlyrics_registered "$current_apps"; } ||
+        { [ "$registered" = false ] && is_ivlyrics_registered "$current_apps"; }; then
+        set_ivlyrics_registration "$registered" >/dev/null || return 1
+    fi
+    if [ -f "$INSTALL_TRANSACTION/apply-started" ]; then
+        apply_spicetify >/dev/null || return 1
+    fi
+    rm -rf -- "$INSTALL_TRANSACTION"
+}
+
+lock_installer_guard() {
+    local guard="$TARGET_DIR/.ivLyrics-install.guard"
+    if command -v flock >/dev/null 2>&1; then
+        exec 8>>"$guard" && flock -n 8
+    elif command -v perl >/dev/null 2>&1; then
+        # macOS supplies Perl with flock(2). The shell keeps the open descriptor.
+        exec 8>>"$guard" && perl -e '
+            use Fcntl qw(LOCK_EX LOCK_NB);
+            open my $guard, ">>&=8" or exit 1;
+            exit(flock($guard, LOCK_EX | LOCK_NB) ? 0 : 1);
+        '
+    else
+        return 2
+    fi
+}
+
+read_spicetify_apps() {
+    if ! spicetify config custom_apps; then
+        print_substep "Could not read the active Spicetify configuration." "error" >&2
+        return 1
+    fi
+}
+
+is_ivlyrics_registered() {
+    local apps=${1//$'\r'/}
+    # Spicetify may print one app per line instead of the INI pipe list.
+    case "|${apps//$'\n'/|}|" in
+        *"|$FINAL_APP_NAME|"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+set_ivlyrics_registration() {
+    local expected=$1 app_argument="$FINAL_APP_NAME" apps
+    if [ "$expected" = false ]; then app_argument="$FINAL_APP_NAME-"; fi
+    spicetify config custom_apps "$app_argument" || return 1
+    apps=$(read_spicetify_apps) || return 1
+    if is_ivlyrics_registered "$apps"; then
+        [ "$expected" = true ]
+    else
+        [ "$expected" = false ]
+    fi
+}
+
+apply_spicetify() {
+    local log_file="$INSTALL_LOCK/apply.log"
+    spicetify apply 2>&1 | tee "$log_file"
+    local -a pipeline_status=("${PIPESTATUS[@]}")
+    # Spicetify can skip a custom app and still report success.
+    [ "${pipeline_status[0]}" -eq 0 ] && [ "${pipeline_status[1]}" -eq 0 ] &&
+        ! grep -Fq -e "Spotify version mismatch with Spicetify." \
+            -e "Custom app \"$FINAL_APP_NAME\" not found" \
+            -e "Custom app \"$FINAL_APP_NAME\" does not have index.js" "$log_file"
+}
+
+apply_installation() {
+    print_section "CONFIGURING"
+    print_step 7 7 "Applying Spicetify configuration..." "running"
+    if ! is_ivlyrics_registered "$1"; then
+        if ! set_ivlyrics_registration true; then
+            print_substep "Could not register ivLyrics in Spicetify." "error"
+            return 1
+        fi
+    fi
+    print_substep "Custom app registered" "success"
+
+    : > "$INSTALL_TRANSACTION/apply-started" || return 1
+    # On first setup, Spicetify can create its missing Spotify backup with auto.
+    if ! apply_spicetify && ! { [ "$IS_UPDATE" = false ] && spicetify -n auto && apply_spicetify; }; then
+        print_substep "Spicetify could not apply the update. Rolling back the installation." "error"
+        return 1
+    fi
+    : > "$INSTALL_TRANSACTION/committed" || return 1
+    print_substep "Spicetify applied" "success"
+}
+
+cleanup_installer_temp() {
+    local status=$?
+    if ! restore_previous_installation; then
+        print_substep "Could not finish restoration. Recovery files: $INSTALL_TRANSACTION" "error" >&2
+        return 1
+    fi
+    local download
+    for download in "$INSTALL_LOCK"/download.*; do
+        if [ -d "$download" ]; then rm -rf -- "$download" || return 1; fi
+    done
+    rm -f -- "$INSTALL_LOCK/apply.log" "$INSTALL_LOCK/installer-v1"
+    rmdir -- "$INSTALL_LOCK"
+    return "$status"
+}
 # --- Main Script ---
 clear
 print_logo
-
-# Check if this is an update
-CURRENT_VERSION=$(get_current_version)
-if [ -n "$CURRENT_VERSION" ]; then
-    IS_UPDATE=true
-fi
-
-if [ "$IS_UPDATE" = true ]; then
-    echo -e "                    ${YELLOW}[ UPDATING ]${NC}"
-    echo -e "              ${GRAY}Current version: $CURRENT_VERSION${NC}"
-else
-    echo -e "                    ${GREEN}[ INSTALLING ]${NC}"
-fi
-echo ""
 
 # Step 1: Check network connectivity
 print_section "CHECKING REQUIREMENTS"
 print_step 1 7 "Checking network connectivity..." "running"
 
-if ! check_network; then
-    print_substep "No network connection!" "error"
-    echo ""
-    echo -e "  ${RED}Please check your internet connection and try again.${NC}"
-    echo ""
-    exit 1
+NETWORK_AVAILABLE=true
+if check_network; then
+    print_substep "Network connected" "success"
+else
+    NETWORK_AVAILABLE=false
+    print_substep "No network connection!" "warning"
 fi
-print_substep "Network connected" "success"
 
 # Step 2: Check Spicetify
 print_step 2 7 "Checking Spicetify installation..." "running"
 
 if ! command -v spicetify &> /dev/null; then
+    if [ "$NETWORK_AVAILABLE" = false ]; then exit 1; fi
     print_substep "Spicetify is not installed!" "warning"
     echo ""
     echo -e "  ${YELLOW}Spicetify is required to use ivLyrics.${NC}"
@@ -319,13 +529,6 @@ if ! command -v spicetify &> /dev/null; then
                 echo ""
                 print_substep "Spicetify installed successfully!" "success"
 
-                # Close Spotify if it was opened during Spicetify installation
-                sleep 2
-                if pgrep -x "Spotify" > /dev/null 2>&1 || pgrep -x "spotify" > /dev/null 2>&1; then
-                    print_substep "Closing Spotify opened by Spicetify..." "info"
-                    pkill -x "Spotify" 2>/dev/null || pkill -x "spotify" 2>/dev/null
-                    sleep 1
-                fi
             else
                 echo ""
                 print_substep "Spicetify installation may require a terminal restart." "warning"
@@ -351,9 +554,13 @@ else
     print_substep "Spicetify found" "success"
 fi
 
-# Step 3: Close Spotify
-print_step 3 7 "Checking Spotify process..." "running"
-close_spotify
+# Step 3: Resolve the active Spicetify profile
+print_step 3 7 "Finding the active Spicetify app directory..." "running"
+if ! TARGET_DIR=$(resolve_custom_apps_dir); then
+    print_substep "Could not locate the active config with 'spicetify -c'." "error"
+    exit 1
+fi
+print_substep "Using $TARGET_DIR" "success"
 
 # Step 4: Check target directory
 print_step 4 7 "Checking target directory..." "running"
@@ -368,6 +575,43 @@ if [ ! -d "$TARGET_DIR" ]; then
 fi
 print_substep "Directory ready" "success"
 
+INSTALL_LOCK="$TARGET_DIR/.ivLyrics-install.lock"
+INSTALL_TRANSACTION="$INSTALL_LOCK/transaction"
+FINAL_APP_DIR="$TARGET_DIR/$FINAL_APP_NAME"
+lock_installer_guard
+guard_status=$?
+if [ "$guard_status" -ne 0 ] && [ "$guard_status" -ne 2 ]; then
+    print_substep "Another installation or removal may be in progress at $INSTALL_LOCK." "error"
+    exit 1
+fi
+if ! mkdir -- "$INSTALL_LOCK"; then
+    if [ "$guard_status" -ne 0 ] || [ -L "$INSTALL_LOCK" ] || [ ! -f "$INSTALL_LOCK/installer-v1" ]; then
+        print_substep "Another installation or removal may be in progress at $INSTALL_LOCK." "error"
+        exit 1
+    fi
+    if ! restore_previous_installation true; then
+        print_substep "Could not recover the interrupted installation. Recovery files: $INSTALL_TRANSACTION" "error"
+        exit 1
+    fi
+    print_substep "Recovered interrupted ivLyrics installation" "success"
+fi
+: > "$INSTALL_LOCK/installer-v1" || exit 1
+trap cleanup_installer_temp EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+if [ "$NETWORK_AVAILABLE" = false ]; then exit 1; fi
+
+CURRENT_VERSION=$(get_current_version)
+if [ -n "$CURRENT_VERSION" ]; then
+    IS_UPDATE=true
+    echo -e "                    ${YELLOW}[ UPDATING ]${NC}"
+    echo -e "              ${GRAY}Current version: $CURRENT_VERSION${NC}"
+else
+    echo -e "                    ${GREEN}[ INSTALLING ]${NC}"
+fi
+echo ""
+
 # Step 5: Fetch version info
 print_section "DOWNLOADING"
 print_step 5 7 "Fetching latest version..." "running"
@@ -379,33 +623,37 @@ CHECKSUM_URL=""
 
 # Try GitHub with retry
 fetch_from_github() {
-    GITHUB_RESPONSE=$(curl --fail --silent --show-error --proto '=https' --tlsv1.2 "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null)
-    DOWNLOAD_URL=$(echo "$GITHUB_RESPONSE" | grep '"browser_download_url"' | grep '/ivLyrics\.zip"' | head -n 1 | cut -d'"' -f4)
-    CHECKSUM_URL=$(echo "$GITHUB_RESPONSE" | grep '"browser_download_url"' | grep '/ivLyrics\.zip\.sha256"' | head -n 1 | cut -d'"' -f4)
-    VERSION_TAG=$(echo "$GITHUB_RESPONSE" | grep '"tag_name"' | head -n 1 | cut -d'"' -f4)
+    local response
+    response=$(request_release "$METADATA_TIMEOUT" "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null) || return 1
+    DOWNLOAD_URL=$(grep '"browser_download_url"' <<< "$response" | grep '/ivLyrics\.zip"' | head -n 1 | cut -d'"' -f4)
+    CHECKSUM_URL=$(grep '"browser_download_url"' <<< "$response" | grep '/ivLyrics\.zip\.sha256"' | head -n 1 | cut -d'"' -f4)
+    VERSION_TAG=$(grep '"tag_name"' <<< "$response" | head -n 1 | cut -d'"' -f4)
 
-    if [ -n "$DOWNLOAD_URL" ] && [ -n "$CHECKSUM_URL" ]; then
-        return 0
-    fi
-    return 1
+    [ -n "$DOWNLOAD_URL" ] && [ -n "$CHECKSUM_URL" ] &&
+        is_release_version "$(normalize_version "$VERSION_TAG")"
 }
 
 fetch_from_proxy() {
-    VERSION_RESPONSE=$(curl --fail --silent --show-error --proto '=https' --tlsv1.2 --connect-timeout 10 "${PROXY_URL}?action=version" 2>/dev/null)
-
-    if [ $? -eq 0 ] && [ -n "$VERSION_RESPONSE" ]; then
-        local ZIP_AVAILABLE=$(echo "$VERSION_RESPONSE" | grep -o '"zip_available":\s*true' | head -n 1)
-
-        if [ -n "$ZIP_AVAILABLE" ]; then
-            VERSION_TAG=$(echo "$VERSION_RESPONSE" | grep -o '"tag_name":\s*"[^"]*"' | head -n 1 | cut -d'"' -f4)
-            EXPECTED_SHA256=$(echo "$VERSION_RESPONSE" | grep -o '"sha256":\s*"[A-Fa-f0-9]\{64\}"' | head -n 1 | cut -d'"' -f4 | tr '[:upper:]' '[:lower:]')
-            DOWNLOAD_URL="${PROXY_URL}?action=download"
-            if [ -n "$VERSION_TAG" ] && [ -n "$EXPECTED_SHA256" ]; then
-                return 0
-            fi
-        fi
+    local expected_version="${1:-}" expected_hash="${2:-}" response tag hash version
+    response=$(request_release "$METADATA_TIMEOUT" "${PROXY_URL}?action=version" 2>/dev/null) || return 1
+    grep -q '"zip_available":[[:space:]]*true' <<< "$response" || return 1
+    tag=$(grep -o '"tag_name":[[:space:]]*"[^"]*"' <<< "$response" | head -n 1 | cut -d'"' -f4)
+    hash=$(grep -o '"sha256":[[:space:]]*"[A-Fa-f0-9]\{64\}"' <<< "$response" | head -n 1 | cut -d'"' -f4 | tr '[:upper:]' '[:lower:]')
+    version=$(normalize_version "$tag")
+    is_release_version "$version" && [ -n "$hash" ] || return 1
+    if [ -n "$expected_version" ] && [ "$expected_version" != "$version" ]; then
+        print_substep "Proxy offers $version, but GitHub selected $expected_version." "warning"
+        return 1
     fi
-    return 1
+    if [ -n "$expected_hash" ] && [ "$expected_hash" != "$hash" ]; then
+        print_substep "Proxy checksum does not match the GitHub release." "warning"
+        return 1
+    fi
+
+    VERSION_TAG="$tag"
+    EXPECTED_SHA256="$hash"
+    DOWNLOAD_URL="${PROXY_URL}?action=download"
+    CHECKSUM_URL=""
 }
 
 # Try GitHub first with retries
@@ -426,18 +674,27 @@ fi
 # Check if already up to date
 CURRENT_VERSION_NORMALIZED=$(normalize_version "$CURRENT_VERSION")
 LATEST_VERSION_NORMALIZED=$(normalize_version "$VERSION_TAG")
-if [ -z "$LATEST_VERSION_NORMALIZED" ]; then
-    print_substep "Latest version is invalid" "error"
-    exit 1
+if [ "$FORCE_INSTALL" = false ] && is_release_version "$CURRENT_VERSION_NORMALIZED" &&
+    is_version_newer "$CURRENT_VERSION_NORMALIZED" "$LATEST_VERSION_NORMALIZED"; then
+    print_substep "Installed version $CURRENT_VERSION_NORMALIZED is newer than the available release $LATEST_VERSION_NORMALIZED." "info"
+    exit 0
 fi
 
-if [ "$IS_UPDATE" = true ] && [ "$CURRENT_VERSION_NORMALIZED" = "$LATEST_VERSION_NORMALIZED" ] && [ "$FORCE_INSTALL" = false ]; then
+if [ "$IS_UPDATE" = true ] && [ "$CURRENT_VERSION_NORMALIZED" = "$LATEST_VERSION_NORMALIZED" ] &&
+    [ "$FORCE_INSTALL" = false ] && verify_installation "$TARGET_DIR/$FINAL_APP_NAME"; then
+    previous_custom_apps=$(read_spicetify_apps) || exit 1
     echo ""
-    echo -e "  ${GREEN}Already up to date! (v$LATEST_VERSION_NORMALIZED)${NC}"
-    echo -e "  ${GRAY}Use --force to reinstall anyway.${NC}"
+    if is_ivlyrics_registered "$previous_custom_apps"; then
+        echo -e "  ${GREEN}Already up to date! (v$LATEST_VERSION_NORMALIZED)${NC}"
+        echo -e "  ${GRAY}Use --force to reinstall anyway.${NC}"
+    else
+        close_spotify || exit 1
+        begin_installation "$previous_custom_apps" || exit 1
+        apply_installation "$previous_custom_apps" || exit 1
+    fi
     echo ""
     print_substep "Checking updater protocol..." "info"
-    register_updater_protocol || true
+    register_updater_protocol || exit 1
     echo ""
     exit 0
 fi
@@ -445,18 +702,13 @@ fi
 # Step 6: Download and extract
 print_step 6 7 "Downloading ivLyrics..." "running"
 
-TEMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/ivLyrics_install.XXXXXX") || {
+# Stage on the same filesystem as the installed app, so replacing it is a rename.
+TEMP_ROOT=$(mktemp -d "$INSTALL_LOCK/download.XXXXXX") || {
     print_substep "Could not create a secure temporary directory" "error"
     exit 1
 }
 TEMP_ZIP="$TEMP_ROOT/ivLyrics.zip"
 TEMP_EXTRACT="$TEMP_ROOT/extract"
-
-cleanup_installer_temp() {
-    rm -rf -- "$TEMP_ROOT"
-}
-trap cleanup_installer_temp EXIT HUP INT TERM
-
 calculate_sha256() {
     if command -v shasum >/dev/null 2>&1; then
         shasum -a 256 "$1" | awk '{print $1}'
@@ -467,24 +719,24 @@ calculate_sha256() {
     fi
 }
 
-# Download with retry
-download_file() {
-    rm -f -- "$TEMP_ZIP"
-    curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 "$DOWNLOAD_URL" -o "$TEMP_ZIP" || return 1
-    if [ ! -f "$TEMP_ZIP" ] || [ "$(stat -f%z "$TEMP_ZIP" 2>/dev/null || stat -c%s "$TEMP_ZIP" 2>/dev/null)" -le 1000 ]; then
-        rm -f -- "$TEMP_ZIP"
-        return 1
-    fi
-
-    if [ -n "$CHECKSUM_URL" ]; then
-        EXPECTED_SHA256=$(curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 "$CHECKSUM_URL" 2>/dev/null | awk 'NR == 1 {print tolower($1)}') || return 1
-    fi
-    case "$EXPECTED_SHA256" in
+read_github_checksum() {
+    local response hash
+    response=$(request_release "$METADATA_TIMEOUT" --location "$CHECKSUM_URL" 2>/dev/null) || return 1
+    hash=$(awk 'NR == 1 {print tolower($1)}' <<< "$response")
+    case "$hash" in
         ''|*[!0-9a-f]*) return 1 ;;
     esac
-    [ "${#EXPECTED_SHA256}" -eq 64 ] || return 1
-    ACTUAL_SHA256=$(calculate_sha256 "$TEMP_ZIP") || return 1
-    [ "$ACTUAL_SHA256" = "$EXPECTED_SHA256" ]
+    [ "${#hash}" -eq 64 ] || return 1
+    EXPECTED_SHA256="$hash"
+}
+
+download_file() {
+    local actual_sha256
+    rm -f -- "$TEMP_ZIP"
+    request_release "$ARCHIVE_TIMEOUT" --location "$DOWNLOAD_URL" -o "$TEMP_ZIP" || return 1
+    [ -f "$TEMP_ZIP" ] && [ "$(wc -c < "$TEMP_ZIP")" -ge 1000 ] || return 1
+    actual_sha256=$(calculate_sha256 "$TEMP_ZIP") || return 1
+    [ "$actual_sha256" = "$EXPECTED_SHA256" ]
 }
 
 # Progress simulation + download
@@ -493,9 +745,24 @@ for i in 0 20 40 60; do
     sleep 0.05
 done
 
-if ! retry_command $MAX_RETRIES 2 "download_file"; then
+download_release_archive() {
+    if [ -z "$CHECKSUM_URL" ]; then
+        retry_command "$MAX_RETRIES" 2 download_file
+        return
+    fi
+    if retry_command "$MAX_RETRIES" 2 read_github_checksum && retry_command "$MAX_RETRIES" 2 download_file; then
+        return 0
+    fi
+
+    print_substep "GitHub archive download failed, trying proxy..." "warning"
+    retry_command "$MAX_RETRIES" 2 fetch_from_proxy "$LATEST_VERSION_NORMALIZED" "$EXPECTED_SHA256" || return 1
+    print_substep "Found version: $VERSION_TAG (via proxy)" "success"
+    retry_command "$MAX_RETRIES" 2 download_file
+}
+
+if ! download_release_archive; then
     echo ""
-    print_step 6 7 "Download failed after $MAX_RETRIES attempts" "error"
+    print_step 6 7 "Download failed" "error"
     exit 1
 fi
 
@@ -514,8 +781,11 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Find extracted folder
-EXTRACTED_DIR=$(find "$TEMP_EXTRACT" -maxdepth 1 -type d -name "ivLis-Studio-ivLyrics-*" -print -quit)
+# Prefer the release folder, then accept the layout used by earlier archives.
+EXTRACTED_DIR="$TEMP_EXTRACT/$FINAL_APP_NAME"
+if [ ! -d "$EXTRACTED_DIR" ]; then
+    EXTRACTED_DIR=$(find "$TEMP_EXTRACT" -maxdepth 1 -type d -name "ivLis-Studio-ivLyrics-*" -print -quit)
+fi
 if [ -z "$EXTRACTED_DIR" ]; then
     EXTRACTED_DIR=$(find "$TEMP_EXTRACT" -maxdepth 1 -mindepth 1 -type d -print -quit)
 fi
@@ -525,50 +795,27 @@ if [ -z "$EXTRACTED_DIR" ]; then
     exit 1
 fi
 
-# Install
-FINAL_APP_DIR="$TARGET_DIR/$FINAL_APP_NAME"
-if [ -d "$FINAL_APP_DIR" ]; then
-    rm -rf "$FINAL_APP_DIR"
-fi
-
-mv "$EXTRACTED_DIR" "$FINAL_APP_DIR"
-print_substep "Extraction complete" "success"
-
-# Cleanup
-rm -f "$TEMP_ZIP"
-rm -rf "$TEMP_EXTRACT"
-
-# Verify installation
-print_substep "Verifying installation..." "info"
-if verify_installation; then
-    print_substep "Installation verified" "success"
-else
-    print_substep "Installation verification failed!" "error"
-    echo -e "  ${RED}Some required files are missing. Please try again.${NC}"
+print_substep "Verifying extracted release..." "info"
+if ! verify_installation "$EXTRACTED_DIR"; then
+    print_substep "The archive is missing required files or its version does not match $VERSION_TAG." "error"
     exit 1
 fi
+print_substep "Extracted release verified" "success"
 
-print_section "CONFIGURING"
+previous_custom_apps=$(read_spicetify_apps) || exit 1
+close_spotify || exit 1
 
-print_substep "Registering updater protocol..." "info"
-register_updater_protocol || true
+begin_installation "$previous_custom_apps" "$EXTRACTED_DIR" || exit 1
+if app_path_exists "$FINAL_APP_DIR"; then
+    mv -- "$FINAL_APP_DIR" "$INSTALL_TRANSACTION/previous" || exit 1
+fi
+mv -- "$INSTALL_TRANSACTION/incoming" "$FINAL_APP_DIR" || exit 1
 
 # Step 7: Apply Spicetify
-print_step 7 7 "Applying Spicetify configuration..." "running"
+apply_installation "$previous_custom_apps" || exit 1
 
-spicetify config custom_apps ivLyrics 2>/dev/null
-if [ $? -eq 0 ]; then
-    print_substep "Custom app registered" "success"
-else
-    print_substep "Config warning (may be ok)" "warning"
-fi
-
-spicetify apply 2>/dev/null
-if [ $? -eq 0 ]; then
-    print_substep "Spicetify applied" "success"
-else
-    print_substep "Run 'spicetify apply' manually if needed" "warning"
-fi
+print_substep "Registering updater protocol..." "info"
+register_updater_protocol || exit 1
 
 # Done!
 print_success "$VERSION_TAG" "$IS_UPDATE"

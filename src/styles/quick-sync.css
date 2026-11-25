@@ -1,0 +1,672 @@
+/* Current-track sync adjustment pill */
+.lyrics-track-sync-pill {
+  --iv-track-sync-pill-edge: 16px;
+  --iv-track-sync-pill-radius: 999px;
+  position: absolute;
+  isolation: isolate;
+  overflow: hidden;
+  left: var(--iv-track-sync-pill-edge);
+  bottom: 16px;
+  z-index: var(--iv-layer-floating-toolbar, 1000);
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  max-width: calc(100% - 104px);
+  height: 36px;
+  min-height: 0;
+  padding: 3px 5px;
+  box-sizing: border-box;
+  color: var(--spice-text, #fff);
+  background: rgba(var(--spice-rgb-card), 0.5);
+  background-clip: padding-box;
+  border: 1px solid rgba(var(--spice-rgb-text), 0.1);
+  border-radius: var(--iv-track-sync-pill-radius);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(16px) saturate(135%);
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  font-family: var(--font-family);
+  direction: ltr;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    background var(--iv-motion-duration-fast) ease,
+    box-shadow var(--iv-motion-duration-fast) ease;
+}
+
+/* One quick-sync control switches between lyrics and the current video. */
+.lyrics-quick-sync-stack {
+  --iv-track-sync-pill-edge: 16px;
+  position: absolute;
+  left: var(--iv-track-sync-pill-edge);
+  bottom: 16px;
+  z-index: var(--iv-layer-floating-toolbar, 1000);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: calc(100% - 104px);
+  max-width: calc(100% - 104px);
+  container: ivl-quick-sync / inline-size;
+  pointer-events: none;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.lyrics-quick-sync-stack .lyrics-track-sync-pill {
+  position: static;
+  max-width: 100%;
+  pointer-events: auto;
+}
+
+.lyrics-quick-sync-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lyrics-quick-sync-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(var(--spice-rgb-text), 0.55);
+  padding-left: 10px;
+  user-select: none;
+}
+
+/* In the standard fullscreen split, anchor the pill to the lyrics half. */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active:not(.layout-reversed):not(.fullscreen-single-column):not(.fullscreen-no-lyrics):not(.portrait-mode):not(.tv-mode-active) .lyrics-track-sync-pill {
+  left: calc(50% + var(--iv-track-sync-pill-edge));
+}
+
+/* In the standard fullscreen split, anchor the stack to the lyrics half. */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active:not(.layout-reversed):not(.fullscreen-single-column):not(.fullscreen-no-lyrics):not(.portrait-mode):not(.tv-mode-active) .lyrics-quick-sync-stack {
+  left: calc(50% + var(--iv-track-sync-pill-edge));
+  width: calc(50% - 104px);
+  max-width: calc(50% - 104px);
+}
+
+.lyrics-track-sync-pill:hover,
+.lyrics-track-sync-pill:focus-within {
+  background-color: rgba(var(--spice-rgb-card), 0.62);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
+}
+
+/* Lyrics/Video switch at the start of the sync pill, shown while a background
+   video plays: the steps then adjust the selected timing. */
+.lyrics-track-sync-mode {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+  padding: 2px;
+  /* Follow the compact shell's inset instead of leaving capsule ends in it. */
+  border-radius: min(14px, calc(var(--iv-track-sync-pill-radius) - 5px));
+  overflow: hidden;
+  background: rgba(var(--spice-rgb-text), 0.07);
+}
+
+.lyrics-track-sync-mode-button,
+.lyrics-track-sync-share {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  color: rgba(var(--spice-rgb-text), 0.56);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color var(--iv-motion-duration-fast) ease,
+    background var(--iv-motion-duration-fast) ease;
+}
+
+.lyrics-track-sync-mode-button {
+  width: 28px;
+  height: 24px;
+  border-radius: min(12px, calc(var(--iv-track-sync-pill-radius) - 7px));
+}
+
+.lyrics-track-sync-mode-button:hover,
+.lyrics-track-sync-share:hover:not(:disabled) {
+  color: var(--spice-text, #fff);
+}
+
+.lyrics-track-sync-mode-button[aria-pressed="true"] {
+  color: var(--spice-text, #fff);
+  background: rgba(var(--spice-rgb-text), 0.16);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+
+/* Appears once the video timing changed: share it as the community start. */
+.lyrics-track-sync-share {
+  width: 28px;
+  height: 28px;
+  margin-left: 2px;
+  color: rgba(var(--spice-rgb-text), 0.76);
+  animation: lyrics-track-sync-share-in var(--iv-motion-duration-medium) var(--iv-motion-ease-standard) both;
+}
+
+.lyrics-track-sync-share:hover:not(:disabled) {
+  background: rgba(var(--spice-rgb-text), 0.08);
+}
+
+.lyrics-track-sync-share:disabled {
+  opacity: 0.52;
+  cursor: wait;
+}
+
+.lyrics-track-sync-mode-button:focus-visible,
+.lyrics-track-sync-share:focus-visible {
+  outline: 2px solid var(--spice-button-active, #fff);
+  outline-offset: -2px;
+}
+
+@keyframes lyrics-track-sync-share-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+
+.lyrics-track-sync-controls {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  width: max-content;
+  gap: 0;
+}
+
+.lyrics-track-sync-step,
+.lyrics-track-sync-value {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 9px;
+  box-sizing: border-box;
+  color: rgba(var(--spice-rgb-text), 0.76);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  z-index: 1;
+  transition:
+    color var(--iv-motion-duration-fast) ease,
+    background var(--iv-motion-duration-fast) ease,
+    box-shadow var(--iv-motion-duration-fast) ease,
+    transform var(--iv-motion-duration-fast) ease;
+}
+
+.lyrics-track-sync-step:hover:not(:disabled),
+.lyrics-track-sync-value:hover:not(:disabled) {
+  color: var(--spice-text, #fff);
+  background: rgba(var(--spice-rgb-text), 0.08);
+}
+
+.lyrics-track-sync-step:disabled,
+.lyrics-track-sync-value:disabled {
+  opacity: 0.52;
+  cursor: wait;
+}
+
+.lyrics-track-sync-step[data-feedback-source="true"],
+.lyrics-track-sync-step[data-feedback-source="true"]:hover {
+  background: transparent;
+}
+
+.lyrics-track-sync-step:active:not(:disabled),
+.lyrics-track-sync-value:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.lyrics-track-sync-step:focus-visible,
+.lyrics-track-sync-value:focus-visible {
+  outline: 2px solid var(--spice-button-active, #fff);
+  outline-offset: -2px;
+}
+
+.lyrics-track-sync-value {
+  position: relative;
+  min-width: 64px;
+  color: var(--spice-text, #fff);
+  font-size: 12px;
+  font-weight: 750;
+  overflow: hidden;
+}
+
+.lyrics-track-sync-value[data-active="true"] {
+  color: var(--spice-button-active, var(--spice-text, #fff));
+}
+
+.lyrics-track-sync-value-current,
+.lyrics-track-sync-value-reset,
+.lyrics-track-sync-value-reset-done {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  z-index: 2;
+  transition:
+    opacity var(--iv-motion-duration-fast) ease,
+    transform var(--iv-motion-duration-fast) var(--iv-motion-ease-standard);
+}
+
+.lyrics-track-sync-value-current {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.lyrics-track-sync-value-reset,
+.lyrics-track-sync-value-reset-done {
+  position: absolute;
+  inset: 0;
+  padding-inline: 3px;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.lyrics-track-sync-value-reset-done {
+  color: #ff9aa4;
+  font-size: 10px;
+  opacity: 0;
+  transform: scale(0.78);
+}
+
+.lyrics-track-sync-value:hover:not(:disabled),
+.lyrics-track-sync-value:focus-visible {
+  color: #ff7583;
+  background: rgba(255, 75, 94, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 107, 122, 0.18);
+}
+
+.lyrics-track-sync-value:not([data-feedback-kind="reset"]):hover:not(:disabled) .lyrics-track-sync-value-current,
+.lyrics-track-sync-value:not([data-feedback-kind="reset"]):focus-visible .lyrics-track-sync-value-current {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.lyrics-track-sync-value:not([data-feedback-kind="reset"]):hover:not(:disabled) .lyrics-track-sync-value-reset,
+.lyrics-track-sync-value:not([data-feedback-kind="reset"]):focus-visible .lyrics-track-sync-value-reset {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Video pill center is a static readout (no reset action): no red hover swap. */
+.lyrics-track-sync-value.lyrics-track-sync-value-static {
+  cursor: default;
+}
+
+.lyrics-track-sync-value.lyrics-track-sync-value-static:hover:not(:disabled),
+.lyrics-track-sync-value.lyrics-track-sync-value-static:focus-visible {
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+}
+
+.lyrics-track-sync-value.lyrics-track-sync-value-static:hover:not(:disabled) .lyrics-track-sync-value-current,
+.lyrics-track-sync-value.lyrics-track-sync-value-static:focus-visible .lyrics-track-sync-value-current {
+  opacity: 1;
+  transform: none;
+}
+
+.lyrics-track-sync-value[data-feedback-kind="reset"] .lyrics-track-sync-value-current,
+.lyrics-track-sync-value[data-feedback-kind="reset"] .lyrics-track-sync-value-reset {
+  opacity: 0;
+  transform: scale(0.8);
+}
+
+.lyrics-track-sync-value[data-feedback-kind="reset"] {
+  color: #ff9aa4;
+  background: rgba(255, 75, 94, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(255, 128, 141, 0.26);
+}
+
+.lyrics-track-sync-value[data-feedback-kind="reset"] .lyrics-track-sync-value-reset-done {
+  opacity: 1;
+  transform: scale(1);
+  animation: lyrics-track-sync-reset-confirm 420ms var(--iv-motion-ease-emphasis) both;
+}
+
+.lyrics-track-sync-value-current[data-change-direction="left"] {
+  animation: lyrics-track-sync-value-from-left 320ms var(--iv-motion-ease-emphasis) both;
+}
+
+.lyrics-track-sync-value-current[data-change-direction="right"] {
+  animation: lyrics-track-sync-value-from-right 320ms var(--iv-motion-ease-emphasis) both;
+}
+
+.lyrics-track-sync-movement-feedback {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.lyrics-track-sync-hover-transfer {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: var(--sync-feedback-from-width);
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(var(--spice-rgb-text), 0.08);
+  opacity: 1;
+  transform-origin: center;
+  animation: lyrics-track-sync-hover-transfer 340ms cubic-bezier(0.22, 0.76, 0.22, 1) both;
+}
+
+.lyrics-track-sync-value-impact {
+  position: absolute;
+  left: var(--sync-feedback-target-center-x);
+  top: 50%;
+  z-index: 0;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  border: 1px solid rgba(var(--spice-rgb-text), 0.3);
+  border-radius: 999px;
+  background: rgba(var(--spice-rgb-text), 0.08);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lyrics-track-sync-value-impact.is-reset {
+  border-color: rgba(255, 112, 126, 0.5);
+  background: rgba(255, 75, 94, 0.16);
+  animation: lyrics-track-sync-reset-impact 420ms var(--iv-motion-ease-emphasis) both;
+}
+
+@keyframes lyrics-track-sync-hover-transfer {
+  0% {
+    width: var(--sync-feedback-from-width);
+    opacity: 1;
+    transform: translate3d(var(--sync-feedback-from-x), -50%, 0) scale(1);
+  }
+
+  72% {
+    width: var(--sync-feedback-to-width);
+    opacity: 0.92;
+    transform: translate3d(var(--sync-feedback-to-x), -50%, 0) scale(1);
+  }
+
+  100% {
+    width: var(--sync-feedback-to-width);
+    opacity: 0;
+    transform: translate3d(var(--sync-feedback-to-x), -50%, 0) scale(0.94);
+  }
+}
+
+@keyframes lyrics-track-sync-reset-impact {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.42);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.48);
+  }
+}
+
+@keyframes lyrics-track-sync-reset-confirm {
+  0% {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+
+  45% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes lyrics-track-sync-value-from-left {
+  0% {
+    opacity: 0.45;
+    transform: translateX(-4px) scale(0.92);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes lyrics-track-sync-value-from-right {
+  0% {
+    opacity: 0.45;
+    transform: translateX(4px) scale(0.92);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.lyrics-track-sync-separator {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 1px;
+  width: 1px;
+  height: 14px;
+  margin: 0 1px;
+  background: rgba(var(--spice-rgb-text), 0.16);
+}
+
+.lyrics-lyricsContainer-LyricsContainer.controls-hidden .lyrics-track-sync-pill,
+.lyrics-lyricsContainer-LyricsContainer.controls-hidden .lyrics-quick-sync-stack {
+  opacity: 0;
+  transform: translateY(var(--iv-motion-distance-md, 12px)) scale(0.98);
+  pointer-events: none;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.controls-hidden .lyrics-track-sync-pill:focus-within,
+.lyrics-lyricsContainer-LyricsContainer.controls-hidden .lyrics-quick-sync-stack:focus-within {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fad-enabled .lyrics-track-sync-pill,
+.lyrics-lyricsContainer-LyricsContainer.fad-enabled .lyrics-quick-sync-stack {
+  opacity: 0;
+  transform: translateY(var(--iv-motion-distance-md, 12px)) scale(0.98);
+  pointer-events: none;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fad-enabled:hover .lyrics-track-sync-pill,
+.lyrics-lyricsContainer-LyricsContainer.fad-enabled .lyrics-track-sync-pill:focus-within,
+.lyrics-lyricsContainer-LyricsContainer.fad-enabled:hover .lyrics-quick-sync-stack,
+.lyrics-lyricsContainer-LyricsContainer.fad-enabled .lyrics-quick-sync-stack:focus-within {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.motion-reduced .lyrics-track-sync-pill,
+.lyrics-lyricsContainer-LyricsContainer.motion-reduced .lyrics-quick-sync-stack,
+.lyrics-lyricsContainer-LyricsContainer.motion-reduced .lyrics-track-sync-pill * {
+  transition: none !important;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.motion-reduced .lyrics-track-sync-hover-transfer,
+.lyrics-lyricsContainer-LyricsContainer.motion-reduced .lyrics-track-sync-value-impact,
+.lyrics-lyricsContainer-LyricsContainer.motion-reduced .lyrics-track-sync-value-current,
+.lyrics-lyricsContainer-LyricsContainer.motion-reduced .lyrics-track-sync-value-reset-done {
+  animation: none !important;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.motion-reduced .lyrics-track-sync-share {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyrics-track-sync-hover-transfer,
+  .lyrics-track-sync-value-impact,
+  .lyrics-track-sync-value-current,
+  .lyrics-track-sync-value-reset-done {
+    animation: none !important;
+  }
+
+  .lyrics-track-sync-share {
+    animation: none !important;
+  }
+}
+
+@media (max-width: 680px) {
+  .lyrics-quick-sync-stack {
+    --iv-track-sync-pill-edge: 12px;
+    left: var(--iv-track-sync-pill-edge);
+    bottom: 12px;
+    /* 12px left + 68px toolbar + 16px right + 8px between controls. */
+    width: calc(100% - 104px);
+    max-width: calc(100% - 104px);
+  }
+
+  .lyrics-track-sync-pill {
+    --iv-track-sync-pill-edge: 12px;
+    left: var(--iv-track-sync-pill-edge);
+    bottom: 12px;
+    max-width: calc(100% - 104px);
+  }
+
+  .lyrics-track-sync-step {
+    padding-inline: 6px;
+    font-size: 10px;
+  }
+
+  .lyrics-track-sync-value {
+    min-width: 58px;
+    padding-inline: 7px;
+  }
+}
+
+/* Use the actual lyrics pane width, not just the browser width: Spotify's
+   sidebar or split fullscreen can leave a narrow pane in a wide window. */
+@container ivl-quick-sync (max-width: 480px) {
+  .lyrics-track-sync-pill {
+    width: 100%;
+  }
+
+  .lyrics-track-sync-pill:has(.lyrics-track-sync-mode) {
+    --iv-track-sync-pill-radius: 16px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 3px;
+    height: auto;
+    padding: 4px;
+  }
+
+  .lyrics-track-sync-mode {
+    justify-self: start;
+  }
+
+  .lyrics-track-sync-share {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .lyrics-track-sync-controls {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(60px, 1.5fr) repeat(3, minmax(0, 1fr));
+    min-width: 0;
+    width: 100%;
+  }
+
+  .lyrics-track-sync-controls .lyrics-track-sync-separator {
+    display: none;
+  }
+
+  .lyrics-track-sync-controls .lyrics-track-sync-step,
+  .lyrics-track-sync-controls .lyrics-track-sync-value {
+    min-width: 0;
+    padding-inline: 2px;
+    font-size: 10px;
+  }
+}
+
+@container ivl-quick-sync (max-width: 260px) {
+  .lyrics-track-sync-controls {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .lyrics-track-sync-controls .lyrics-track-sync-value {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .lyrics-track-sync-pill {
+    --iv-track-sync-pill-radius: 16px;
+    height: auto;
+  }
+}
+
+@keyframes fadeInSlide {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes expandDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+
+  to {
+    opacity: 1;
+    max-height: 500px;
+  }
+}
+

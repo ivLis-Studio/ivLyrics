@@ -13,6 +13,7 @@ async page => {
   await page.addScriptTag({ url: origin + "/FullscreenOverlay.js" });
   await page.evaluate(() => {
     window.ivLyricsCloseConfig?.(true);
+    Utils.getTrackArtwork = (item) => item?.metadata?.image_url || "";
     const container = document.createElement("div");
     container.id = "controller-background-runtime";
     container.style.cssText = "position:fixed;inset:0;color:#fff;--spice-text:#fff;--spice-main:#17191d;--lyrics-color-active:#fff;--lyrics-color-inactive:rgba(255,255,255,.7);--lyrics-align-text:center;--lyrics-original-font-size:36px;";

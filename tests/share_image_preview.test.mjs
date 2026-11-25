@@ -1,36 +1,35 @@
+import { useShareImagePreview } from '../src/features/share/useShareImagePreview.mjs';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
 
-const source = readFileSync(new URL('../OptionsMenu.js', import.meta.url), 'utf8');
-const start = source.indexOf('  const previewGenerationRef =');
-const end = source.indexOf('  const toggleLine =', start);
-
-function createPreviewHarness() {
+function createPreviewHarness({ signal, abortRender = false, settings = {} } = {}) {
   const queue = {current: {running: false, pending: null}};
   const frames = new Map();
   const requests = [];
   const previews = [];
   const busy = [];
   const errors = [];
+  const rendered = [];
   let cleanup, effect, frameId = 0;
-  const context = vm.createContext({
-    react: {useRef: () => queue, useEffect: callback => {effect = callback;}},
-    selectedLines: [{originalText: 'A'}], template: 'cover', customSettings: {},
-    trackInfo: {name: 'Song', artist: 'Artist'},
+  const react = {useRef: () => queue, useEffect: callback => {effect = callback;}};
+  const trackInfo = {name: 'Song', artist: 'Artist'};
+  const render = selectedLines => useShareImagePreview(react, {
+    selectedLines, trackInfo, template: 'cover', customSettings: settings, signal,
     setPreviewUrl: value => previews.push(value),
+    onRendered: result => rendered.push(result?.dataUrl ?? null),
     setIsGenerating: value => busy.push(value),
-    requestAnimationFrame: callback => {frames.set(++frameId, callback); return frameId;},
-    cancelAnimationFrame: id => frames.delete(id),
-    console: {error: (...args) => errors.push(args)},
-    LyricsShareImage: {generateImage: options => new Promise((resolve, reject) => requests.push({options, resolve, reject}))},
+    scheduleFrame: callback => {frames.set(++frameId, callback); return frameId;},
+    cancelFrame: id => frames.delete(id),
+    reportError: error => errors.push(error),
+    generateImage: (options, { signal } = {}) => new Promise((resolve, reject) => {
+      requests.push({options, signal, resolve, reject});
+      if (abortRender) signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }),
   });
-  const render = vm.runInContext(`(function render() {${source.slice(start, end)}})`, context);
   return {
-    requests, previews, busy, errors,
+    requests, previews, busy, errors, rendered,
     render(lines = [{originalText: 'A'}]) {
-      cleanup?.(); context.selectedLines = lines; render(); cleanup = effect();
+      cleanup?.(); render(lines); cleanup = effect();
     },
     frame() {
       const callbacks = [...frames.values()]; frames.clear();
@@ -42,16 +41,18 @@ function createPreviewHarness() {
 }
 
 test('preview changes in one frame render only the latest full-size image', async () => {
-  const h = createPreviewHarness();
+  const h = createPreviewHarness({ settings: { imageWidth: 1440 } });
   h.render(); h.render([{originalText: 'B'}]); h.render([{originalText: 'C'}]);
   assert.equal(h.pendingFrames(), 1);
   const run = h.frame();
   assert.equal(h.requests.length, 1);
   assert.equal(h.requests[0].options.lyrics[0].originalText, 'C');
-  assert.equal(h.requests[0].options.width, 1080);
+  assert.equal(h.requests[0].options.width, undefined);
+  assert.equal(h.requests[0].options.customSettings.imageWidth, 1440);
   assert.equal(h.requests[0].options.output, 'dataUrl');
   h.requests[0].resolve({dataUrl: 'C.png'}); await run;
   assert.deepEqual(h.previews, ['C.png']);
+  assert.deepEqual(h.rendered, ['C.png']);
 });
 
 test('in-flight previews serialize work, discard stale results, and skip superseded requests', async () => {
@@ -67,6 +68,7 @@ test('in-flight previews serialize work, discard stale results, and skip superse
   assert.deepEqual(h.previews, []);
   h.requests[1].resolve({dataUrl: 'C.png'}); await run;
   assert.deepEqual(h.previews, ['C.png']);
+  assert.deepEqual(h.rendered, ['C.png']);
   assert.equal(h.busy.at(-1), false);
 });
 
@@ -88,5 +90,40 @@ test('failed generation releases the queue so a later preview can succeed', asyn
   assert.equal(h.errors.length, 1); assert.equal(h.busy.at(-1), false);
   h.render(); const retry = h.frame();
   h.requests[1].resolve({dataUrl: 'retry.png'}); await retry;
-  assert.deepEqual(h.previews, ['retry.png']);
+  assert.deepEqual(h.previews, [null, 'retry.png']);
+});
+
+test('a newer selection releases an obsolete preview that is still preparing resources', async () => {
+  const h = createPreviewHarness({ abortRender: true });
+  h.render();
+  const rendering = h.frame();
+  h.render([{ originalText: 'New selection' }]);
+  assert.equal(h.requests[0].signal?.aborted, true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests.length, 2);
+  h.requests[1].resolve({ dataUrl: 'new.png' });
+  await rendering;
+  assert.deepEqual(h.previews, ['new.png']);
+  assert.deepEqual(h.errors, []);
+  assert.equal(h.busy.at(-1), false);
+});
+
+test('closing the dialog cancels both an active render and a queued frame', async () => {
+  const active = new AbortController();
+  const h = createPreviewHarness({ signal: active.signal, abortRender: true });
+  h.render();
+  const rendering = h.frame();
+  active.abort();
+  assert.equal(h.requests[0].signal?.aborted, true);
+  await rendering;
+  assert.deepEqual(h.previews, []);
+  assert.deepEqual(h.errors, []);
+
+  const queued = new AbortController();
+  const k = createPreviewHarness({ signal: queued.signal });
+  k.render();
+  queued.abort();
+  assert.equal(k.pendingFrames(), 0);
+  await k.frame();
+  assert.equal(k.requests.length, 0);
 });

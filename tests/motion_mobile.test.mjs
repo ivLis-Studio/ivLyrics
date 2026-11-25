@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import vm from "node:vm";
 
-import { SCRIPTS, buildPage, motionCss } from "../.github/scripts/build_motion_mobile.mjs";
+import { SCRIPTS, buildPage, motionCss, readMotionScript } from "../.github/scripts/build_motion_mobile.mjs";
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
 
-const read = (name) => readFileSync(new URL("../" + name, import.meta.url), "utf8");
+const scripts = new Map(SCRIPTS.map((name) => [name, readMotionScript(name)]));
 
 // The mobile page in a bare window: Preact is replaced by a recorder, the app by a message list.
 const load = () => {
@@ -42,8 +47,7 @@ const load = () => {
 	context.globalThis = context;
 	for (const name of SCRIPTS) {
 		if (name.startsWith("third_party/preact/")) continue;
-		vm.runInContext(read(name), context);
-		if (name === "LyricsWordSegmenter.js") window.LyricsWordSegmenter = context.LyricsWordSegmenter;
+		vm.runInContext(scripts.get(name), context);
 	}
 	return { window, host: window.ivLyricsMotionHost, posted, rendered, rootStyle, classes, advance: (ms) => { clock += ms; } };
 };
@@ -73,15 +77,35 @@ test("the page is one self-contained file holding the desktop motion scripts and
 		from = at + 1;
 	}
 	assert.ok(!/<script[^>]*\ssrc=/.test(page), "no script is fetched");
-	assert.ok(page.includes(read("MotionLyrics.js").trimEnd()), "the motion script is taken as it is");
+	assert.ok(page.includes(scripts.get("MotionLyrics.js").trimEnd()), "the shared motion entry is bundled inline");
 	assert.ok(page.trimEnd().endsWith("<script>ivLyricsMotionHost.start();</script>\n</body>\n</html>"));
 	const css = motionCss();
 	assert.ok(css.startsWith("/* Motion lyrics (MotionLyrics.js)"));
 	for (const selector of [".ivlyrics-motion-stage {", ".ivlyrics-motion-word", ".ivlyrics-motion-hud {", ".ivlyrics-motion-subtitle {"]) assert.ok(css.includes(selector), selector);
 	assert.ok(!css.includes(".fullscreen-motion-notice"), "desktop-only rules stay out");
 	assert.ok(page.includes(css.trimEnd()));
+	assert.ok(readPcStylesheet().includes(css), "PC and mobile consume the same motion rules");
 	assert.ok(page.includes("Copyright (c) 2015-present Jason Miller"), "Preact's licence travels with it");
-	assert.ok(read(".gitattributes").includes("/mobile export-ignore"), "the page sources stay out of the Spicetify archive");
+});
+
+test("the mobile asset check accepts CRLF and runs through a linked checkout path", context => {
+	const folder = mkdtempSync(join(tmpdir(), "ivlyrics-motion-page-"));
+	context.after(() => rmSync(folder, { recursive: true, force: true }));
+	const page = join(folder, "MotionLyricsPage.html");
+	const windowsPage = buildPage().replace(/\r?\n/g, "\r\n");
+	writeFileSync(page, windowsPage);
+	const linkedCheckout = join(folder, "linked checkout");
+	symlinkSync(fileURLToPath(new URL("../", import.meta.url)), linkedCheckout, "junction");
+	const script = join(linkedCheckout, ".github", "scripts", "build_motion_mobile.mjs");
+	const result = spawnSync(process.execPath, [script, "--check", page], { encoding: "utf8" });
+	assert.ifError(result.error);
+	assert.equal(result.status, 0, result.stdout + result.stderr);
+	assert.match(result.stdout, /current /);
+	writeFileSync(page, windowsPage.replace('lang="en"', 'lang="ko"'));
+	const stale = spawnSync(process.execPath, [script, "--check", page], { encoding: "utf8" });
+	assert.ifError(stale.error);
+	assert.equal(stale.status, 1, stale.stdout + stale.stderr);
+	assert.match(stale.stdout, /STALE /);
 });
 
 test("the host shows the desktop Stage for songs with real word timing and tells the app", () => {
@@ -224,6 +248,6 @@ test("the app's safe area and labels reach the page", () => {
 	host.configure({ hud: true, insets: { top: -4 } });
 	assert.ok(!classes.has("no-hud"));
 	assert.equal(rootStyle.get("--iv-inset-top"), "0px");
-	const css = read("mobile/motion/motion-mobile.css");
+	const css = readMotionScript("src/features/motion/mobile/motion-mobile.css");
 	for (const name of ["--iv-inset-top", "--iv-inset-right", "--iv-inset-bottom", "--iv-inset-left"]) assert.ok(css.includes("var(" + name), name + " is used");
 });

@@ -1,9 +1,9 @@
+import { createCdVisualizerApi } from "../src/features/player/CdVisualizer.js";
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const api = createRequire(import.meta.url)("../CdVisualizer.js");
+const api = createCdVisualizerApi(globalThis);
 const uri = index => `spotify:track:${String(index).padStart(22, "0")}`;
 const segment = (overrides = {}) => ({
   start: 0, duration: 1, loudness_start: -20, loudness_max: 0,
@@ -557,7 +557,7 @@ test("playback rejects wrong tracks/ads/narration and never invents progress whe
 });
 
 test("adapted source ships the full MIT notice in both the runtime and standalone license", () => {
-  const runtime = readFileSync(new URL("../CdVisualizer.js", import.meta.url), "utf8");
+  const runtime = readFileSync(new URL("../src/features/player/CdVisualizer.js", import.meta.url), "utf8");
   const license = readFileSync(new URL("../third_party/spicetify-visualizer.LICENSE", import.meta.url), "utf8");
   assert.match(runtime, /12cb2a9066690b4e023bccc9466ae784ebb62364/);
   assert.match(runtime, /Copyright \(c\) 2026 Konsl/);

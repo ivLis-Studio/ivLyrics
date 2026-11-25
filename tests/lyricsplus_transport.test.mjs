@@ -1,9 +1,9 @@
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../Addon_Lyrics_LyricsPlus.js', import.meta.url), 'utf8');
+const source = bundleInitializer(new URL('../src/providers/lyrics/Addon_Lyrics_LyricsPlus.js', import.meta.url));
 const track = { uri: 'spotify:track:fixture', title: 'Fixture', artist: 'Artist', duration: 120000 };
 const payload = text => ({ type: 'Line', lyrics: [{ time: 0, duration: 1000, text }] });
 const response = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body });

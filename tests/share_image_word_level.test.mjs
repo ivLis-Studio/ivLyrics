@@ -1,22 +1,16 @@
+import { DEFAULT_SETTINGS, PRESETS } from '../src/features/share/shareImagePresets.mjs';
+import { getShareImageRenderOptions } from '../src/features/share/shareImageRenderOptions.mjs';
+import { normalizeShareImageLyrics, resolveShareWordDetails } from '../src/features/share/shareImageLyricSelection.mjs';
+import { readShareImageRendererFixture } from './fixtures/legacy-page-source.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const shareSource = readFileSync(new URL('../LyricsShareImage.js', import.meta.url), 'utf8');
-const menuSource = readFileSync(new URL('../OptionsMenu.js', import.meta.url), 'utf8');
-
-const section = (source, start, end) => {
-  const from = source.indexOf(start);
-  const to = source.indexOf(end, from);
-  assert.ok(from >= 0 && to > from, `section ${start} -> ${end} not found`);
-  return source.slice(from, to);
-};
-
-const { DEFAULT_SETTINGS, PRESETS } = vm.runInNewContext(`(() => {
-  ${section(shareSource, '  const DEFAULT_SETTINGS =', '  // TEMPLATES')}
-  return { DEFAULT_SETTINGS, PRESETS };
-})()`);
+const shareSource = readShareImageRendererFixture();
+const layoutSource = readFileSync(new URL('../src/features/share/shareImageLyricsLayout.mjs', import.meta.url), 'utf8');
+const controlSource = readFileSync(new URL('../src/features/share/renderShareImageControls.mjs', import.meta.url), 'utf8');
+const dialogSource = readFileSync(new URL('../src/features/share/shareImageDialog.mjs', import.meta.url), 'utf8');
 
 test('share image defaults to line-level detail', () => {
   assert.equal(DEFAULT_SETTINGS.lyricsDetail, 'line');
@@ -112,6 +106,95 @@ test('centered cover never overlaps title, artist or lyrics', async () => {
   assert.ok(lyricY >= artistY + 18, `lyrics must clear the artist (${lyricY} >= ${artistY} + 18)`);
 });
 
+test('share lyrics include karaoke supplements and retain legacy pronunciation', () => {
+  assert.deepEqual(normalizeShareImageLyrics([
+    null,
+    { text: '♪' },
+    { text: '日本語', phoneticText: '니혼고', translationText: '일본어' },
+    { text: '겐고', originalText: '言語', text2: '언어' },
+    { text: 'Same', originalText: ' Same ' },
+  ]).map(({ idx, originalText, pronText, transText }) => [idx, originalText, pronText, transText]), [
+    [2, '日本語', '니혼고', '일본어'], [3, '言語', '겐고', '언어'], [4, 'Same', null, null],
+  ]);
+});
+
+test('word readings and glosses run together for the captured track and fail independently', async () => {
+  const calls = [];
+  const reading = Promise.withResolvers();
+  const options = { trackId: 'captured-track', wanted: () => true };
+  const pending = resolveShareWordDetails([{ idx: 3, originalText: '日本' }], {
+    options,
+    segmenter: { segmentLyrics: () => ['日本'] },
+    supplements: {
+      resolveSourceLanguage: () => 'ja',
+      resolveReadingMode: () => 'romaji',
+      isGlossModeActive: () => true,
+      getWordReadings: (...args) => { calls.push(['reading', args.at(-1)]); return reading.promise; },
+      getWordGlosses: async (...args) => { calls.push(['gloss', args.at(-1)]); return ['Japan']; },
+    },
+  });
+  assert.deepEqual(calls, [['reading', options], ['gloss', options]]);
+  reading.reject(new Error('Pronunciation unavailable'));
+  assert.deepEqual((await pending).get(3), [{ w: '日本', reading: '', gloss: 'Japan' }]);
+});
+
+test('preview, export and palette extraction share one normalized artwork load', async () => {
+  const { api, calls } = loadRenderer({ cover: true });
+  const url = 'https://i.scdn.co/image/share-test';
+  const options = { lyrics: [{ originalText: 'Line' }], albumCover: url, template: 'cover' };
+  await Promise.all([
+    api.generateImage({ ...options, output: 'dataUrl', customSettings: { backgroundType: 'coverBlur' } }),
+    api.generateImage({ ...options, output: 'blob', albumCover: 'spotify:image:share-test',
+      customSettings: { backgroundType: 'gradient' } }),
+    api.extractColors(url),
+  ]);
+  assert.deepEqual(calls.imageRequests, [url]);
+  assert.equal(calls.paletteReads, 1);
+});
+
+test('failed artwork uses the same header spacing as a text-only cover', async () => {
+  const { api, calls, canvas } = loadRenderer({ cover: 'error' });
+  const options = {
+    lyrics: [{ originalText: 'Line' }], albumCover: 'https://example.com/missing',
+    trackName: 'Song', artistName: 'Artist', output: 'dataUrl',
+  };
+  await api.generateImage({ ...options, customSettings: { coverPosition: 'center', coverSize: 144 } });
+  const fallbackHeight = canvas.height;
+  const fallbackText = calls.text.splice(0);
+  await api.generateImage({ ...options, customSettings: { showCover: false } });
+  assert.equal(canvas.height, fallbackHeight);
+  assert.deepEqual(calls.text, fallbackText);
+  assert.deepEqual(calls.imageRequests, [options.albumCover]);
+});
+
+test('cancelled image work stops before canvas drawing and leaves shared artwork usable', async () => {
+  const { api, sandbox, calls } = loadRenderer();
+  const controller = new AbortController();
+  let loadingImage;
+  const cover = 'https://example.com/pending-share-cover.png';
+  sandbox.Image = class {
+    width = 300;
+    height = 300;
+    set src(value) { calls.imageRequests.push(value); loadingImage = this; }
+  };
+  const options = { albumCover: cover, output: 'dataUrl' };
+  const cancelled = api.generateImage({ ...options, lyrics: [{ originalText: 'Retired' }] }, { signal: controller.signal });
+  const survivor = api.generateImage({ ...options, lyrics: [{ originalText: 'Still active' }] });
+  await Promise.resolve();
+  assert.deepEqual(calls.imageRequests, [cover]);
+  controller.abort();
+  try {
+    const result = await Promise.race([cancelled.then(() => 'completed', error => error.name), new Promise(setImmediate)]);
+    assert.equal(result, 'AbortError');
+    assert.deepEqual(calls.fillText, []);
+  } finally {
+    loadingImage.onload();
+    await Promise.allSettled([cancelled, survivor]);
+  }
+  assert.ok(calls.fillText.includes('Still active'));
+  assert.ok(!calls.fillText.includes('Retired'));
+});
+
 for (const detail of ['line', 'word']) {
   test(`original weight reaches the canvas in ${detail} mode and supports legacy settings`, async () => {
     for (const settings of [{ origWeight: '400' }, { origWeight: '700' }, { fontWeight: '300' }]) {
@@ -131,20 +214,21 @@ for (const detail of ['line', 'word']) {
 }
 
 test('share image renderer handles per-word columns', () => {
-  assert.match(shareSource, /lyricsDetail/);
-  assert.match(shareSource, /words/);
+  assert.match(layoutSource, /lyricsDetail/);
+  assert.match(layoutSource, /words/);
 });
 
 test('share image controls expose a line/word export-type choice', () => {
-  assert.match(menuSource, /lyricsDetail/);
+  assert.match(controlSource, /lyricsDetail/);
 });
 
 test('share modal shell is wide', () => {
-  assert.match(menuSource, /max-width: 1600px/);
+  assert.match(dialogSource, /max-width: 1600px/);
 });
 
 function loadRenderer({ cover = false } = {}) {
-  const calls = { fillText: [], text: [], fillStyle: [], font: [], textAlign: [], transform: null };
+  const calls = { fillText: [], text: [], fillStyle: [], font: [], textAlign: [], transform: null,
+    imageRequests: [], paletteReads: 0 };
   const canvas = {
     width: 0,
     height: 0,
@@ -176,23 +260,33 @@ function loadRenderer({ cover = false } = {}) {
     lineTo: () => {},
     quadraticCurveTo: () => {},
     closePath: () => {},
-    getImageData: () => ({ data: new Array(50 * 50 * 4).fill(128) }),
+    createLinearGradient: () => ({ addColorStop() {} }),
+    getImageData: () => {
+      calls.paletteReads++;
+      return { data: new Array(50 * 50 * 4).fill(128) };
+    },
   };
   const sandbox = {
     window: {},
     document: { createElement: () => canvas },
     navigator: {},
     console,
+    setTimeout,
+    clearTimeout,
   };
   if (cover) {
     sandbox.Image = class {
       constructor() { this.width = 300; this.height = 300; }
-      set src(_value) { if (typeof this.onload === 'function') this.onload(); }
+      set src(value) {
+        calls.imageRequests.push(value);
+        if (cover === 'error') this.onerror?.();
+        else this.onload?.();
+      }
     };
   }
   vm.createContext(sandbox);
-  vm.runInContext(`${shareSource}\nwindow.__api = LyricsShareImage;`, sandbox);
-  return { api: sandbox.window.__api, calls, canvas, sandbox };
+  vm.runInContext(shareSource, sandbox);
+  return { api: sandbox.window.LyricsShareImage, calls, canvas, sandbox };
 }
 
 test('word mode draws per-word columns with reading and gloss', async () => {
@@ -255,6 +349,20 @@ test('export scale renders a true higher-resolution canvas', async () => {
   assert.ok(result.canvas.height > first.canvas.height * 1.5);
   for (const expected of ['Scale', 'me']) {
     assert.ok(second.calls.fillText.includes(expected), `expected canvas text ${expected}`);
+  }
+});
+
+test('the share dialog width reaches both preview and export encoding', async () => {
+  const { api } = loadRenderer();
+  const selection = {
+    selectedLines: [{ originalText: 'Fit the selected width' }],
+    trackInfo: { name: 'Song', artist: 'Artist' },
+    template: 'minimal',
+    customSettings: { imageWidth: 1440, exportScale: 2 },
+  };
+  for (const output of ['dataUrl', 'blob']) {
+    const result = await api.generateImage(getShareImageRenderOptions(selection, output));
+    assert.equal(result.canvas.width, 2880);
   }
 });
 

@@ -1,10 +1,8 @@
+import { createToolbarTooltip } from "../src/app/toolbar/createToolbarTooltip.mjs";
+import { createStudyButton } from "#ivlyrics/features/learning/studyComponents.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
 
-const source = readFileSync(new URL('../OptionsMenu.js', import.meta.url), 'utf8');
-const code = source.slice(source.indexOf('const IvLyricsTooltip ='), source.indexOf('function getSettingsSurfaceTheme()'));
 const react = {
     Fragment: 'fragment',
     memo: component => component,
@@ -19,9 +17,12 @@ test('toolbar tooltips preserve refs and actions, portal outside scroll clipping
         cloneElement: (child, props) => ({ ...child, props: { ...child.props, ...props } }) };
     const window = { innerWidth: 1000, innerHeight: 800, ...document,
         ReactDOM: { createPortal: (content, target) => ({ content, target }) } };
-    const context = { react, window, document, useState: () => [anchor, value => { anchor = value; }],
-        useEffect: effect => { cleanup?.(); cleanup = effect(); } };
-    const render = vm.runInNewContext(code + '\nIvLyricsTooltip;', context);
+    const render = createToolbarTooltip({
+        host: window, document, react: {
+            ...react, useState: () => [anchor, value => { anchor = value; }],
+            useEffect: effect => { cleanup?.(); cleanup = effect(); },
+        },
+    });
     const ref = { current: {} };
     let clicks = 0, enters = 0;
     const children = { type: 'button', ref, props: { onClick: () => clicks++, onMouseEnter: () => enters++ } };
@@ -49,10 +50,10 @@ test('disabled controls expose their tooltip without enabling or forwarding the 
     const document = { body: {}, addEventListener() {}, removeEventListener() {} };
     const window = { innerWidth: 1000, innerHeight: 800, addEventListener() {}, removeEventListener() {},
         ReactDOM: { createPortal: (content, target) => ({ content, target }) } };
-    const render = vm.runInNewContext(code + '\nIvLyricsTooltip;', {
-        react, window, document, useState: () => [anchor, value => { anchor = value; }], useEffect() {},
+    const render = createToolbarTooltip({
+        host: window, document,
+        react: { ...react, useState: () => [anchor, value => { anchor = value; }], useEffect() {} },
     });
-    assert.equal(window.IvLyricsTooltip, render);
     const ref = { current: {} };
     const action = () => assert.fail('disabled action must not run');
     const children = { type: 'button', ref, props: { disabled: true, onClick: action } };
@@ -81,8 +82,9 @@ test('long tooltip labels remain inside the viewport at either corner', () => {
     const document = { body: {} };
     const window = { innerWidth: 800, innerHeight: 600,
         ReactDOM: { createPortal: content => content } };
-    const render = vm.runInNewContext(code + '\nIvLyricsTooltip;', {
-        react, window, document, useState: () => [anchor, value => { anchor = value; }], useEffect() {},
+    const render = createToolbarTooltip({
+        host: window, document,
+        react: { ...react, useState: () => [anchor, value => { anchor = value; }], useEffect() {} },
     });
     const children = { type: 'button', props: {} };
     for (const [left, top] of [[10, 0], [790, 580], [400, 300]]) {
@@ -105,15 +107,13 @@ test('long tooltip labels remain inside the viewport at either corner', () => {
 });
 
 test('study control shares the toolbar tooltip and keeps a native fallback', () => {
-    const learningSource = readFileSync(new URL('../LearningMode.js', import.meta.url), 'utf8');
-    const studyCode = learningSource.slice(learningSource.indexOf('const StudyButton ='), learningSource.indexOf('const TabButton ='));
     let opens = 0;
     const tooltip = () => {};
     const window = { IvLyricsTooltip: tooltip, Spicetify: { ReactComponent: {
         TooltipWrapper: () => assert.fail('Spotify private tooltip must not be used'),
     } } };
-    const render = vm.runInNewContext(studyCode + '\nStudyButton;', {
-        react, window, t: () => 'Study', BookIcon: {}, open: () => opens++,
+    const render = createStudyButton({
+        react, readTooltip: () => window.IvLyricsTooltip, t: () => 'Study', open: () => opens++,
     });
     let result = render({ disabled: false });
     assert.equal(result.type, tooltip);

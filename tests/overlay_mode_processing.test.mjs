@@ -1,10 +1,13 @@
+import { fixtureFullLyricsRequest } from "./fixtures/full-lyrics-request.mjs";
+import { getRuntimeService } from "#ivlyrics/spicetify/runtimeServices.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { createLyricsProviderRequests } from "#ivlyrics/lyrics/lyricsProviderRequests.mjs";
+import { createTranslationPresentation } from "#ivlyrics/lyrics/translationPresentation.mjs";
 
-const serviceSource = readFileSync(new URL('../LyricsService.js', import.meta.url), 'utf8');
-const helperSource = readFileSync(new URL('../TranslationModeHelper.js', import.meta.url), 'utf8');
+const serviceSource = readFileSync(new URL('../src/lyrics/LyricsService.js', import.meta.url), 'utf8');
 
 const section = (source, start, end) => {
     const from = source.indexOf(start);
@@ -61,18 +64,18 @@ const makeTranslator = ({ language = 'en', ai = null, conversions = {} } = {}) =
     return FixtureTranslator;
 };
 
-function load({ language = 'en', ai = null, conversions = {}, values = new Map(), lyrics = null } = {}) {
+function load({ language = 'en', ai = null, conversions = {}, values = new Map(), lyrics = null, provider = 'fixture' } = {}) {
     const snapshots = new Map();
     const sent = [];
     const current = lyrics || [{ text: 'Original', startTime: 1000, endTime: 2000 }];
     const Translator = makeTranslator({ language, ai, conversions });
     const context = vm.createContext({
+        getRuntimeService,
         window: {
-            ivLyricsTranslationModes: undefined,
             LyricsAddonManager: {
                 getLyrics: async () => ({
                     uri: track.uri,
-                    provider: 'fixture',
+                    provider,
                     synced: current
                 })
             },
@@ -97,20 +100,13 @@ function load({ language = 'en', ai = null, conversions = {}, values = new Map()
         sendLyricsToConsumers: async (payload) => { sent.push(payload); },
     });
 
-    vm.runInContext(helperSource, context);
-    vm.runInContext(section(
-        serviceSource,
-        '    const getTranslationPartText =',
-        '    const getLyricsTextCacheHash ='
-    ), context);
-    vm.runInContext(`let lyricsProviderRequestGeneration = 0;
-        const lyricsProviderInflightRequests = new Map();
-        globalThis.service = {
+    context.providerRequests = createLyricsProviderRequests(() => context.window.LyricsAddonManager);
+    vm.runInContext(`globalThis.service = {
             ${method(serviceSource, '        async getLyricsFromProviders(', '\n        /**\n         * 싱크 데이터 서비스 접근')},
-            ${method(serviceSource, '        async getFullLyrics(', '\n        /**\n         * 커뮤니티 싱크 데이터 가져오기')}
         };`, context);
 
     const service = context.service;
+    service.getFullLyrics = fixtureFullLyricsRequest(context);
     service.getLyricsSnapshot = (uri) => snapshots.get(uri) || null;
     service.publishLyricsSnapshot = (update) => {
         const previous = snapshots.get(update.trackUri);
@@ -146,6 +142,61 @@ test('maps swapped AI modes into their semantic pronunciation and translation sl
     assert.equal(h.sent.at(-1).lyrics[0].text2, 'Translated');
     assert.equal(h.sent.at(-1).lyrics[0].phoneticText, 'Pronounced');
     assert.equal(h.sent.at(-1).presentationContext.presentationComplete, true);
+});
+
+test('the overlay keeps the pending translation request when word timing upgrades its source', async () => {
+    const waiting = Promise.withResolvers();
+    const called = Promise.withResolvers();
+    let calls = 0;
+    const h = load({ provider: 'lrcred', ai: () => { calls++; called.resolve(); return waiting.promise; } });
+    const output = h.service.getFullLyrics(track, { displayMode1: 'gemini_ko' });
+    await called.promise;
+    const previous = h.service.getLyricsSnapshot(track.uri);
+    const karaoke = [{
+        text: 'Original', startTime: 1010, endTime: 2050, syllables: [{ text: 'Original', startTime: 1010, endTime: 2030 }],
+    }];
+    h.service.publishLyricsSnapshot({
+        trackUri: track.uri,
+        rawResult: { ...previous.rawResult, karaoke, karaokeSource: 'lrcred' },
+        source: 'lrcred-word-sync',
+        timingUpgradeFromRevision: previous.revision,
+    });
+    waiting.resolve({ translation: ['Translated'] });
+    const result = await output;
+    assert.equal(calls, 1);
+    assert.equal(result.lyrics[0].text2, 'Translated');
+    assert.equal(result.lyrics[0].startTime, 1010);
+    assert.deepEqual(result.lyrics[0].syllables, karaoke[0].syllables);
+    assert.equal(h.sent.at(-1).presentationContext.lyricsType, 'karaoke');
+});
+
+test('uses the saved source override and the page’s cache text for overlay fallback', async () => {
+    const source = [
+        { text: '[Verse 1]', startTime: 1 },
+        { text: '日本語', startTime: 2000 },
+        { text: '自由', startTime: 4000 },
+    ];
+    const calls = [];
+    const h = load({
+        language: 'en',
+        lyrics: source,
+        values: new Map([
+            ['ivLyrics:visual:translate:detect-language-override', 'ko'],
+            ['ivLyrics:visual:translation-mode-2:japanese', 'gemini_ko'],
+        ]),
+        ai: async args => { calls.push(args); return { translation: ['일본어', '자유'] }; },
+    });
+    h.service.getTrackLanguageOverride = async uri => {
+        assert.equal(uri, track.uri);
+        return 'ja';
+    };
+    const output = await h.service.getFullLyrics(track);
+    const pageText = createTranslationPresentation({}).getNonSectionLyricsText(source);
+    assert.deepEqual(calls.map(({ text, sourceLang }) => [text, sourceLang]), [[pageText, 'ja']]);
+    assert.equal(output.lyrics[0].text2, null);
+    assert.equal(output.lyrics[1].text2, '일본어');
+    assert.equal(h.snapshots.get(track.uri).detectedLanguage, 'ja');
+    assert.equal(h.snapshots.get(track.uri).translationSourceText, pageText);
 });
 
 test('runs one local conversion per active slot and preserves Japanese karaoke timing', async () => {

@@ -1,9 +1,9 @@
+import { readLanguageTable } from "./fixtures/language-source.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
 
-const directory = new URL('../langs/', import.meta.url);
+const directory = new URL('../src/i18n/langs/', import.meta.url);
 function flatten(value, prefix = '', result = {}) {
     for (const [key, item] of Object.entries(value)) {
         const path = prefix ? `${prefix}.${key}` : key;
@@ -27,9 +27,7 @@ function load(name) {
             objects.at(-1).add(key);
         }
     }
-    const context = { window: {} };
-    vm.runInNewContext(source, context);
-    return flatten(Object.values(context.window)[0]);
+    return flatten(readLanguageTable(name));
 }
 const reference = load('LangKo.js');
 const placeholders = text => (text.match(/\{\w+\}|%(?:\d+\$)?[sd]/g) || []).sort();

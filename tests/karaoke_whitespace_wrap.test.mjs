@@ -1,8 +1,10 @@
+import { createKaraokeHarnessFactory } from "./fixtures/karaoke-page-modules.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { KaraokeWordTiming } from '../src/lyrics/karaokeWordTiming.mjs';
 
 const url = new URL('./karaoke_static_render_cache.test.mjs', import.meta.url);
 const source = readFileSync(url, 'utf8');
@@ -10,8 +12,8 @@ const harness = source.slice(source.indexOf('const currentSource ='), source.ind
   .replaceAll('import.meta.url', JSON.stringify(url.href))
   .replace('const tree = resolve(component(props), path);',
     'window.lastRawTree = component(props); const tree = resolve(window.lastRawTree, path);');
-const { createHarness } = new Function('assert', 'execFileSync', 'readFileSync', 'vm',
-  harness + '\nreturn { createHarness };')(assert, execFileSync, readFileSync, vm);
+const { createHarness } = createKaraokeHarnessFactory('assert', 'execFileSync', 'readFileSync', 'vm', 'KaraokeWordTiming',
+  harness + '\nreturn { createHarness };')(assert, execFileSync, readFileSync, vm, KaraokeWordTiming);
 const nodes = (tree, name) => {
   if (Array.isArray(tree)) return tree.flatMap(child => nodes(child, name));
   if (!tree || typeof tree !== 'object') return [];

@@ -1,11 +1,17 @@
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
+import { readKaraokeRendererDeclarations } from "./fixtures/karaoke-renderer-declarations.mjs";
+import { getRuntimeService as getPageRuntimeService } from "#ivlyrics/spicetify/runtimeServices.mjs";
+import { createSyncCreatorVocalStyles } from "#ivlyrics/features/sync/syncCreatorVocalStyles.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { getSyncCreatorPreviewVariables, useSyncCreatorLivePreview } from "#ivlyrics/features/sync/syncCreatorLivePreview.mjs";
 
-const creatorSource = readFileSync(new URL("../SyncDataCreator.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
-const pageSource = readFileSync(new URL("../Pages.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
-const styles = readFileSync(new URL("../style.css", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const creatorSource = readFileSync(new URL("../src/features/sync/SyncDataCreator.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const previewSource = readFileSync(new URL("../src/features/sync/syncCreatorLivePreview.mjs", import.meta.url), "utf8");
+const pageSource = readKaraokeRendererDeclarations();
+const styles = readPcStylesheet();
 
 const section = (source, startMarker, endMarker) => {
 	const start = source.indexOf(startMarker);
@@ -14,36 +20,25 @@ const section = (source, startMarker, endMarker) => {
 	return source.slice(start, end);
 };
 
-test("the renderer exports its typography contract for other previews", () => {
+test("the page and creator use the shared renderer code", () => {
 	assert.match(
 		pageSource,
-		/window\.ivLyricsLyricRendererPrimitives = Object\.freeze\(\{[\s\S]*?\n\tgetLyricsTypographyStyleVariables,/,
-		"the editor preview must be able to reuse the page's typography/shadow variables"
+		/import \{ getLyricsTypographyStyleVariables as getPageLyricsTypography \} from "#ivlyrics\/lyrics\/lyricsTypography\.mjs";/,
+		"the page must import its typography variables from the shared module"
 	);
+	assert.match(creatorSource, /getRenderer: readLyricRenderer/);
+	const composer = readFileSync(new URL("../src/spicetify/composePageMenus.js", import.meta.url), "utf8");
+	assert.match(composer, /readLyricRenderer: \(\) => lyricRendererPrimitives/);
 });
 
 test("the sync preview builds lyric variables from the shared typography contract", () => {
-	const vars = section(
-		creatorSource,
-		"const livePreviewLyricVars = useMemo(() => {",
-		"}, [showLivePreview, previewVisualSignature]);"
-	);
+	const vars = section(previewSource, "export function getSyncCreatorPreviewVariables", "export function useSyncCreatorLivePreview");
 	assert.match(vars, /getLyricsTypographyStyleVariables/, "font/shadow/outline metrics must not be duplicated");
 	assert.doesNotMatch(vars, /"--lyrics-phonetic-font-size"/, "the preview must not keep its own metric table");
 	assert.match(vars, /SYNC_CREATOR_PREVIEW_CONTAINER_VAR_EXCLUSIONS/, "the minimized page's pin must not disable the preview's glow");
 });
 
 test("preview shadow variables survive the minimized page behind the editor", () => {
-	const body = section(
-		creatorSource,
-		"const livePreviewLyricVars = useMemo(() => {",
-		"}, [showLivePreview, previewVisualSignature]);"
-	);
-	const start = body.indexOf("() => {") + "() => {".length;
-	const run = new Function(
-		"window", "document", "editorGlyphSize", "SYNC_CREATOR_PREVIEW_CONTAINER_VAR_EXCLUSIONS",
-		`return (() => {${body.slice(start)}})();`
-	);
 	const visual = {
 		"text-shadow-enabled": true,
 		"text-shadow-blur": "3",
@@ -53,53 +48,106 @@ test("preview shadow variables survive the minimized page behind the editor", ()
 		"inactive-color": "#123456",
 		"font-size": "40",
 	};
-	const result = run(
-		{
-			CONFIG: { visual },
-			ivLyricsLyricRendererPrimitives: {
-				getLyricsTypographyStyleVariables: (config) => ({
-					"--lyrics-font-size": `${config["font-size"]}px`,
-					"--lyrics-shadow-enabled": config["text-shadow-enabled"] ? 1 : 0,
-					"--lyrics-text-shadow": config["text-shadow-enabled"] ? "0 0 3px rgba(0,0,0,.5)" : "0 0 0 transparent",
-					"--lyrics-text-drop-shadow": config["text-shadow-enabled"] ? "drop-shadow(0 0 3px rgba(0,0,0,.5))" : "none",
-				}),
-			},
-			getComputedStyle: () => ({
-				// The sync creator hides the page and pins these to neutral values.
-				getPropertyValue: (name) => ({
-					"--lyrics-shadow-enabled": "0",
-					"--lyrics-text-shadow": "0 0 0 transparent",
-					"--lyrics-text-drop-shadow": "none",
-					"--lyrics-active-probe": "ignored",
-				}[name] ?? ""),
-			}),
-		},
-		{ querySelector: () => ({}) },
-		32,
-		new Set(["--lyrics-text-shadow", "--lyrics-shadow-enabled", "--lyrics-text-drop-shadow"])
-	);
+	const result = getSyncCreatorPreviewVariables({
+		visualConfig: visual,
+		readComputedStyle: () => ({
+			// The sync creator hides the page and pins these to neutral values.
+			getPropertyValue: (name) => ({
+				"--lyrics-shadow-enabled": "0",
+				"--lyrics-text-shadow": "0 0 0 transparent",
+				"--lyrics-text-drop-shadow": "none",
+				"--lyrics-active-probe": "ignored",
+			}[name] ?? ""),
+		}),
+		getLyricsContainer: () => ({}),
+		editorGlyphSize: 32,
+	});
 	assert.equal(result["--lyrics-shadow-enabled"], 1, "the glow switch must come from the shared contract");
-	assert.equal(result["--lyrics-text-shadow"], "0 0 3px rgba(0,0,0,.5)");
-	assert.equal(result["--lyrics-text-drop-shadow"], "drop-shadow(0 0 3px rgba(0,0,0,.5))");
+	assert.equal(result["--lyrics-text-shadow"], "0 0 3px rgba(0, 0, 0, 0.5)");
+	assert.equal(result["--lyrics-text-drop-shadow"], "drop-shadow(0 0 3px rgba(0, 0, 0, 0.5))");
 	assert.equal(result["--lyrics-original-font-size"], "32px", "the editor box still owns the glyph size");
 });
 
 test("the preview mounts the production synced page shell", () => {
 	assert.match(
-		creatorSource,
+		previewSource,
 		/className: `sync-creator-live-preview-stage lyrics-lyricsContainer-SyncedLyricsPage is-karaoke\$\{[^}]*karaoke-line-transition-enabled/,
 		"page-scoped karaoke rules need the same page classes as the app"
 	);
 	assert.match(
-		creatorSource,
+		previewSource,
 		/className: ['"]sync-creator-live-preview-rows lyrics-lyricsContainer-SyncedLyrics['"]/,
 		"rows must live in the same list element the page uses"
 	);
 });
 
 test("the preview passes a real settings revision instead of freezing it", () => {
-	assert.doesNotMatch(creatorSource, /settingsRevision: 0/, "a frozen revision keeps stale renderer caches");
-	assert.match(creatorSource, /settingsRevision: previewSettingsRevision/, "the renderer needs the live revision");
+	assert.doesNotMatch(previewSource, /settingsRevision: 0/, "a frozen revision keeps stale renderer caches");
+	assert.match(previewSource, /settingsRevision: previewSettingsRevision/, "the renderer needs the live revision");
+});
+
+test("the live preview uses the playback line, both vocals and the original Escape handler", () => {
+	const changes = [];
+	const listeners = new Map();
+	let cleanup;
+	const syncData = { lines: [
+		{ start: 0, end: 3, chars: [1, 1.1, 1.2, 1.3], parallel: { parts: [
+			{ id: 'lead', role: 'lead', ranges: [{ start: 0, end: 1 }], chars: [1, 1.1] },
+			{ id: 'echo', role: 'background', ranges: [{ start: 2, end: 3 }], chars: [1.2, 1.3] },
+		] } },
+		{ start: 4, end: 6, chars: [4, 4.1, 4.2] },
+	] };
+	const liveClock = { getPosition: () => 1400 };
+	const react = {
+		Component: class {},
+		createElement: (type, props, ...children) => ({ type, props, children }),
+		useMemo: compute => compute(),
+		useRef: current => ({ current }),
+		useEffect: effect => { cleanup = effect(); },
+	};
+	const { renderLivePreviewOverlay } = useSyncCreatorLivePreview({
+		react,
+		mode: 'preview',
+		setMode: mode => changes.push(mode),
+		syncData,
+		lyricsLines: ['ABCD', 'End'],
+		lineCharOffsets: [0, 4],
+		getMergedLineIndexesForStart: index => [index],
+		materializeSyncCreatorParallelDrafts: data => data,
+		lineMetadata: {
+			normalizeSpeaker: speaker => speaker || 'NORMAL', defaultSpeaker: 'NORMAL',
+			normalizeKind: kind => kind || 'vocal', defaultKind: 'vocal', normalizeStyleRanges: () => [],
+		},
+		playbackTimeline: [{ startTime: 1000, lineIndex: 0 }, { startTime: 4000, lineIndex: 1 }],
+		currentLineIndex: 0,
+		positionStore: { get: liveClock.getPosition },
+		SyncCreatorLivePreviewClock: 'clock',
+		getLiveClock: () => liveClock,
+		currentLineChars: ['A', 'B', 'C', 'D'],
+		getRenderer: () => ({ LyricsLineBlock: 'line', IdlingIndicator: 'prelude' }),
+		getVisualSettings: () => ({}),
+		getDocument: () => ({
+			addEventListener: (event, handler) => listeners.set(event, handler),
+			removeEventListener: event => listeners.delete(event),
+			querySelector: () => null,
+		}),
+		translate: key => key,
+	});
+	const find = (node, type) => {
+		if (Array.isArray(node)) return node.flatMap(child => find(child, type));
+		if (!node || typeof node !== "object") return [];
+		return [...(node.type === type ? [node] : []), ...find(node.children, type)];
+	};
+	const overlayAt = renderLivePreviewOverlay().props.render;
+	assert.equal(find(overlayAt(700), 'prelude').length, 1);
+	const duet = find(overlayAt(1400), 'line');
+	assert.deepEqual(duet.map(node => node.props.mainText), ['AB', 'CD']);
+	assert.ok(duet.every(node => node.props.position === 1400 && node.props.liveClock === liveClock));
+	assert.equal(find(overlayAt(4100), 'line')[0].props.mainText, 'End');
+	listeners.get('keydown')({ key: 'Escape' });
+	assert.deepEqual(changes, ['idle']);
+	cleanup();
+	assert.equal(listeners.size, 0);
 });
 
 test("the preview page shell resets only the page layout it borrows", () => {
@@ -125,16 +173,17 @@ test("the editor field uses the app's lyric colour for NORMAL lines", () => {
 	// painted with the listener's active lyric colour. The editor stage used to
 	// paint it with the hardcoded #f2f4f7 palette white, so the field showed a
 	// white base the preview (and the app) never show.
-	const fn = section(
-		creatorSource,
-		"const getSyncCreatorSpeakerTextColor =",
-		"const getSyncCreatorHexColorWithAlpha"
-	);
-	assert.match(
-		fn,
-		/fallbackSpeaker === 'NORMAL'[\s\S]{0,160}active-color/,
-		"NORMAL must resolve to the lyric page's active colour, not the editor palette"
-	);
+	let activeColor = '#123456';
+	const { getSyncCreatorSpeakerTextColor } = createSyncCreatorVocalStyles({
+		getSpeakerColors: () => ({ getTextColor: () => '#ffffff' }),
+		getActiveColor: () => activeColor,
+		translate: () => '',
+	});
+	assert.equal(getSyncCreatorSpeakerTextColor('NORMAL'), '#123456');
+	activeColor = '#abcdef';
+	assert.equal(getSyncCreatorSpeakerTextColor('NORMAL 1'), '#abcdef');
+	activeColor = '';
+	assert.equal(getSyncCreatorSpeakerTextColor('NORMAL'), 'var(--spice-text)');
 });
 
 test("a NORMAL range resets the line speaker's colour to the page colours", () => {
@@ -176,6 +225,7 @@ test("a NORMAL range keeps a speaker class so it can reset the row colour", () =
 		"globalThis.pick = getKaraokeInlineStylePresentation;",
 	].join("\n");
 	const context = vm.createContext({
+		getPageRuntimeService,
 		CONFIG: { visual: { "karaoke-text-effects": true, "sync-data-custom-speaker-colors-enabled": true } },
 		window: {
 			ivLyricsSpeakerColors: {

@@ -19,6 +19,8 @@ The helper fetches the published release through the official installer; it does
 
 Run the installation command from the main guide again. This also registers the helper if registration was missing. If you only installed by copying files manually, the protocol handler may not be registered yet.
 
+If the installer was interrupted during an update, start it again. It restores the previous app files and Spicetify registration before downloading a release. If the new app was already applied, the installer keeps it and finishes registering the updater.
+
 If GitHub cannot be reached, the helper can try a GitHub proxy. The installer can also use its configured download mirror. Do not replace these URLs with a source you do not trust.
 
 An update log can help explain a failed download or installation:

@@ -3,7 +3,7 @@
 async page => {
   const origin = new URL(page.url()).origin;
   if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) throw new Error('Open the loopback karaoke fixture');
-  const guard = /\tif \(expressive && Number\.isFinite\(frameTime\) && Number\.isFinite\(entry\.lastMotionFrameTime\)\n\t\t&& frameTime < entry\.lastMotionFrameTime\) return false;/;
+  const guard = /if \(expressive && Number\.isFinite\(frameTime\) && Number\.isFinite\(entry\.lastMotionFrameTime\)\s*&& frameTime < entry\.lastMotionFrameTime\) return false;/;
   let canary = false;
   await page.route(origin + '/renderer.js', async route => {
     const response = await route.fetch();

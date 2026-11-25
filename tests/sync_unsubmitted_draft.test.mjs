@@ -1,9 +1,14 @@
+import { renderSyncCreatorHeader } from '#ivlyrics/features/sync/syncCreatorHeader.mjs';
+import { TOSS_RED } from '#ivlyrics/features/sync/syncCreatorStyles.mjs';
+import { readSyncCreatorFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { bundleInitializer } from './fixtures/initializer-bundle.mjs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { useSyncCreatorDraftAutosave, readSyncCreatorWorkingRecord, cancelSyncCreatorAutosave } from '../src/features/sync/syncCreatorDraftAutosave.mjs';
+import { finishSyncCreatorPublication } from '#ivlyrics/features/sync/syncCreatorSessionReplacement.mjs';
 
-const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
+const source = readSyncCreatorFixture();
 const helpersSource = source.slice(0, source.indexOf('const SyncDataCreator ='));
 
 const loadHelpers = () => {
@@ -11,6 +16,15 @@ const loadHelpers = () => {
 	vm.runInContext(`${helpersSource}\nglobalThis.compare = areSyncCreatorSyncBodiesEqual;`, context);
 	return context.compare;
 };
+
+const renderHeader = props => renderSyncCreatorHeader({
+	react: { createElement: (tag, options, ...children) => ({ tag, props: options, children }) },
+	i18n: { t: key => key },
+	isSubmitting: false, isReverting: false, hasUnsubmittedSync: false, hasPublishedSync: false,
+	styles: { loadBtn: { background: 'original' }, submitBtn: { background: 'original' } },
+	...props,
+});
+const headerButton = (header, name) => header.children.find(child => child?.props?.className === name);
 
 const line = (start, chars, extra = {}) => ({ start, end: start + chars.length - 1, chars, ...extra });
 
@@ -74,95 +88,285 @@ test('unsubmitted comparison includes speaker styling, granularity and vocal par
 });
 
 test('deleting the final published line stays marked as unsubmitted', () => {
-	const start = source.indexOf('\tuseEffect(() => {\n\t\tconst baseline = serverBaselineSyncDataRef.current;');
-	const effect = source.slice(start, source.indexOf('\n\tuseEffect(', start + 1));
+	const start = source.indexOf('\tuseEffect(() => {\n\t\tconst previous = latestSessionRecordRef.current;\n\t\tsetHasUnsubmittedSync(');
+	const end = source.indexOf('\n\tconst isSourceLoading =', start + 1);
+	assert.ok(start >= 0 && end > start);
+	const effect = source.slice(start, end);
 	const baseline = { lines: [line(0, [1])] };
 	let result;
 	const context = vm.createContext({
+		window: {}, structuredClone, console,
 		useEffect: callback => callback(), serverBaselineSyncDataRef: { current: baseline },
 		syncData: { lines: [] }, setHasUnsubmittedSync: value => { result = value; },
-		areSyncCreatorSyncBodiesEqual: loadHelpers(),
+		activeSessionDraftKey: 'fixture', hasPublishedSync: true,
+		latestSessionRecordRef: { current: null },
+		manualParallelSplitDrafts: {}, parentheticalLayoutDrafts: {}, mergedLineDrafts: {},
+		materializeSyncCreatorParallelDrafts: () => assert.fail('no layouts to project'),
 	});
-	vm.runInContext(effect, context);
+	vm.runInContext(helpersSource + '\n' + effect, context);
 	assert.equal(result, true);
 });
 
-test('loading prefers the unsubmitted draft and remembers the server baseline', () => {
-	const loader = source.slice(
-		source.indexOf('const text = extractLyricsText(result.synced || result.unsynced);'),
-		source.indexOf('const resolveMultiVocalDecision =')
-	);
-	assert.ok(loader.includes('tryRestoreUnsubmittedSyncDraft'));
-	assert.ok(loader.indexOf('tryRestoreUnsubmittedSyncDraft') < loader.indexOf('setSyncData(loadedSyncBody)'));
-	assert.ok(loader.includes('serverBaselineSyncDataRef.current = loadedSyncBody'));
-	assert.ok(loader.includes('restoredUnsubmittedDraft?.draft?.syncData || loadedSyncBody'));
-});
-
-test('submit clears the unsubmitted flag and refreshes the baseline', () => {
-	const submit = source.slice(source.indexOf('const handleSubmit ='), source.indexOf('// 싱크 데이터 내보내기'));
-	assert.equal((submit.match(/setHasUnsubmittedSync\(false\)/g) || []).length, 2);
-	assert.ok(submit.includes('serverBaselineSyncDataRef.current = syncCreatorDraftStore?.cloneValue?.(syncDataToSubmit)'));
+test('submit clears the unsubmitted flag, clones the baseline and closes the editor', async () => {
+	const data = { lines: [line(0, [1])] };
+	const serverBaselineSyncDataRef = { current: null };
+	const calls = [];
+	await finishSyncCreatorPublication('GBARL1901205', data, {
+		clearPublishedCaches: async isrc => { calls.push(['clear', isrc]); },
+		isDraftCurrent: () => true,
+		isEditorOpen: () => true,
+		draft: {
+			serverBaselineSyncDataRef,
+			syncCreatorDraftStore: { cloneValue: structuredClone },
+			deleteActiveSyncCreatorDraft: async () => { calls.push('delete'); return true; },
+		},
+		editor: {
+			setHasUnsubmittedSync: value => calls.push(['unsubmitted', value]),
+			setHasPublishedSync: value => calls.push(['published', value]),
+			onClose: () => calls.push('close'),
+		},
+	});
+	assert.deepEqual(calls, [['clear', 'GBARL1901205'], 'delete', ['unsubmitted', false], ['published', true], 'close']);
+	assert.deepEqual(serverBaselineSyncDataRef.current, data);
+	assert.notEqual(serverBaselineSyncDataRef.current, data);
 });
 
 test('submit button turns red while sync changes are unsubmitted', () => {
-	const header = source.slice(source.indexOf('const renderHeader ='), source.indexOf('const renderCharacterPronunciationTargetControl ='));
-	assert.ok(header.includes('hasUnsubmittedSync && !isSubmitting && !isReverting && syncData ? TOSS_RED : s.submitBtn.background'));
-	assert.ok(header.includes("I18n.t('syncCreator.unsubmittedChanges')"));
+	const red = headerButton(renderHeader({ hasUnsubmittedSync: true, syncData: {} }), 'sync-creator-submit');
+	assert.equal(red.props.style.background, TOSS_RED);
+	assert.equal(red.props.title, 'syncCreator.unsubmittedChanges');
+	assert.equal(red.props.disabled, false);
+	const clean = headerButton(renderHeader({ hasUnsubmittedSync: false, syncData: {} }), 'sync-creator-submit');
+	assert.equal(clean.props.style.background, 'original');
+	assert.equal(clean.props.title, undefined);
 });
 
-test('autosave runs promptly so closing the editor keeps the draft', () => {
-	const match = source.match(/const SYNC_CREATOR_AUTOSAVE_INTERVAL_MS = ([\d_]+);/);
-	assert.ok(match);
-	assert.ok(Number(match[1].replace(/_/g, '')) <= 5000);
-	assert.ok(source.includes('await syncCreatorDraftStore.saveDraft(record);'));
+test('autosave writes the latest revision and flushes it when the editor closes', async () => {
+	const effects = [], timers = new Map(), writes = [], saves = [];
+	const ref = current => ({ current });
+	const refs = {
+		sessionAutosaveTimerRef: ref(null), latestSessionRecordRef: ref(null),
+		activeSessionDraftKeyRef: ref('first'), sessionAppliedDraftKeyRef: ref(''),
+		sessionBaselineDraftRef: ref(null),
+		sessionAutosaveEnabledRef: ref(true), sessionAutosaveSuppressedRef: ref(false),
+		sessionWriteGenerationRef: ref(0), sessionDraftResetRevisions: new Map(), sessionPendingSnapshotRef: ref(null),
+	};
+	const windowEvents = new EventTarget();
+	const documentEvents = Object.assign(new EventTarget(), { visibilityState: 'visible' });
+	let revision = 1;
+	let serialized = 0;
+	let queuedWrite;
+	const cancelledWrites = [];
+	useSyncCreatorDraftAutosave({
+		useEffect: callback => effects.push(callback),
+		useLayoutEffect: callback => effects.push(callback),
+		store: {
+			async saveDraft(record, { isCurrent }) {
+				writes.push(record);
+				if (queuedWrite) await queuedWrite;
+				if (!isCurrent()) {
+					cancelledWrites.push(record.clientRevision);
+					return null;
+				}
+				return record;
+			},
+		},
+		draftKey: 'first', readyDraftKey: 'first', hydrated: true, lyricsText: 'fixture', enabled: true,
+		buildRecord: () => { serialized++; return { draftKey: 'first', clientRevision: revision }; },
+		setSaveState() {},
+		onSave: record => saves.push(record),
+		refs,
+		host: {
+			windowEvents, documentEvents,
+			scheduleTimer(callback, delay) {
+				assert.equal(delay, 3000);
+				timers.set(1, callback);
+				return 1;
+			},
+			cancelTimer: id => timers.delete(id),
+		},
+	});
+	const [autosave, subscribe] = effects;
+	const cleanup = subscribe();
+
+	autosave();
+	revision = 2;
+	autosave();
+	assert.equal(timers.size, 1);
+	assert.equal(serialized, 0, 'renders only stage the editor state');
+	const firstTimer = timers.get(1);
+	timers.delete(1);
+	await firstTimer();
+	assert.deepEqual(writes.map(record => record.clientRevision), [2]);
+	assert.deepEqual(saves.map(record => record.clientRevision), [2]);
+	assert.equal(serialized, 1);
+
+	revision = 3;
+	autosave();
+	const write = Promise.withResolvers();
+	queuedWrite = write.promise;
+	const olderSave = timers.get(1);
+	timers.delete(1);
+	const olderSaveInProgress = olderSave();
+	revision = 4;
+	autosave();
+	write.resolve();
+	await olderSaveInProgress;
+	assert.equal(readSyncCreatorWorkingRecord(refs).clientRevision, 4);
+	assert.deepEqual(saves.map(record => record.clientRevision), [2]);
+
+	const currentSave = timers.get(1);
+	timers.delete(1);
+	await currentSave();
+	assert.deepEqual(writes.map(record => record.clientRevision), [2, 3, 4]);
+	assert.deepEqual(saves.map(record => record.clientRevision), [2, 4]);
+
+	revision = 5;
+	autosave();
+	const sourceWrite = Promise.withResolvers();
+	queuedWrite = sourceWrite.promise;
+	const saveBeforeSwitch = timers.get(1);
+	timers.delete(1);
+	const sourceSaveInProgress = saveBeforeSwitch();
+	refs.activeSessionDraftKeyRef.current = 'other';
+	refs.sessionWriteGenerationRef.current++;
+	refs.latestSessionRecordRef.current = { draftKey: 'other', clientRevision: 6 };
+	sourceWrite.resolve();
+	await sourceSaveInProgress;
+	assert.deepEqual(saves.map(record => record.clientRevision), [2, 4]);
+
+	documentEvents.dispatchEvent(new Event('visibilitychange'));
+	assert.deepEqual(writes.map(record => record.clientRevision), [2, 3, 4, 5]);
+	documentEvents.visibilityState = 'hidden';
+	documentEvents.dispatchEvent(new Event('visibilitychange'));
+	assert.deepEqual(writes.map(record => record.clientRevision), [2, 3, 4, 5, 6]);
+
+	refs.activeSessionDraftKeyRef.current = 'first';
+	revision = 7;
+	autosave();
+	cleanup();
+	assert.equal(timers.size, 0);
+	assert.equal(refs.sessionAutosaveTimerRef.current, null);
+	windowEvents.dispatchEvent(new Event('beforeunload'));
+	documentEvents.dispatchEvent(new Event('visibilitychange'));
+	assert.deepEqual(writes.map(record => record.clientRevision), [2, 3, 4, 5, 6, 7]);
+
+	revision = 8;
+	autosave();
+	const cancelled = timers.get(1);
+	cancelSyncCreatorAutosave(refs.sessionAutosaveTimerRef, id => timers.delete(id));
+	revision = 9;
+	autosave();
+	const currentTimer = refs.sessionAutosaveTimerRef.current;
+	await cancelled();
+	assert.equal(refs.sessionAutosaveTimerRef.current, currentTimer);
+	assert.deepEqual(writes.map(record => record.clientRevision), [2, 3, 4, 5, 6, 7]);
+	await timers.get(1)();
+	assert.deepEqual(writes.map(record => record.clientRevision), [2, 3, 4, 5, 6, 7, 9]);
+
+	revision = 10;
+	autosave();
+	const pendingReset = Promise.withResolvers();
+	queuedWrite = pendingReset.promise;
+	const waitForWrite = timers.get(1)();
+	refs.sessionDraftResetRevisions.set('first', 1);
+	pendingReset.resolve();
+	await waitForWrite;
+	assert.deepEqual(cancelledWrites, [10], 'a queued write cannot recreate a discarded draft');
 });
 
-test('revert reloads the published sync and discards the local draft', () => {
-	const start = source.indexOf('const handleRevertToPublished =');
-	assert.ok(start >= 0);
-	const revert = source.slice(start, source.indexOf('const handleSubmit =', start));
-	assert.ok(revert.includes('window.SyncDataService.getSyncData(trackId, revertProvider'));
-	assert.ok(revert.includes('if (!publishedBody) publishedBody = serverBaselineSyncDataRef.current;'));
-	assert.ok(revert.includes("deleteActiveSyncCreatorDraft({ resumeAutosave: true })"));
-	for (const reset of [
-		'setParallelPartMetaDrafts({})',
-		'setManualParallelSplitDrafts({})',
-		'setParentheticalLayoutDrafts({})',
-		'setMergedLineDrafts({})',
-		'setLineMetaDrafts({})',
-		'setLineStyleDrafts({})'
-	]) {
-		assert.ok(revert.includes(reset), `missing ${reset}`);
+test('revert prefers the published sync, falls back to the cached baseline, and discards the draft', async () => {
+	const revert = `
+		globalThis.revert = createSyncCreatorPublicationActions({
+			runPublication, track: { id: 'fixture', isrc: 'GBARL1901205', title: 'Track', artist: 'Artist', album: 'Album',
+				provider: '', getProvider: () => 'lrclib' },
+			canEdit: true, isRecording: () => false, lyrics: { text: 'ABC\\nDEF' },
+			syncData: cached, hasUnsubmittedSync: true, isEditorOpen: () => true,
+			draft: { serverBaselineSyncDataRef, deleteActiveSyncCreatorDraft, syncCreatorDraftStore },
+			layout, editor, transport: { getSyncService: readSyncCreatorSyncService },
+			timing: { getCodec: readSyncCreatorCodec, sanitize: sanitizeSyncCreatorSyncData },
+			dialog: { confirm: window.confirm, setReverting, translate: key => key, toast },
+		}).revert;
+	`;
+	for (const networkAvailable of [true, false]) {
+		const calls = [];
+		const sync = { version: 2, lines: [line(0, [1, 2, 3]), line(3, [4, 5, 6])] };
+		const cached = { version: 2, lines: [line(0, [9, 10, 11]), line(3, [12, 13, 14])] };
+		const context = vm.createContext({
+			console, structuredClone, cached,
+			runPublication: operation => operation(() => true),
+			window: {
+				confirm: message => { calls.push(['confirm', message]); return true; },
+				SyncDataService: { async getSyncData(...args) {
+					calls.push(['published', ...args]);
+					return networkAvailable ? { syncData: sync } : null;
+				} },
+			},
+			serverBaselineSyncDataRef: { current: cached },
+			syncCreatorDraftStore: { cloneValue: structuredClone },
+			deleteActiveSyncCreatorDraft: async options => { calls.push(['deleteDraft', options]); return true; },
+			toast: { success: key => calls.push(['success', key]), error: key => calls.push(['error', key]) },
+		});
+		const record = (...names) => Object.fromEntries(names.map(name => [name, value => calls.push([name, value])]));
+		context.layout = record('setParallelPartMetaDrafts', 'setManualParallelSplitDrafts', 'setParentheticalLayoutDrafts',
+			'setMergedLineDrafts', 'setLineMetaDrafts', 'setLineStyleDrafts', 'setPendingParentheticalLayoutDecision',
+			'setPendingMultiVocalDecision', 'setMultiVocalMode', 'setActiveParallelPartId', 'setGlobalOffset');
+		context.editor = {
+			...record('setCurrentLineIndex', 'setSyncData', 'setMode', 'setHasUnsubmittedSync', 'setHasPublishedSync'),
+			resetCurrentSyncInput: () => calls.push(['resetRecordingInput']),
+		};
+		context.setReverting = value => calls.push(['setIsReverting', value]);
+		vm.runInContext(helpersSource + '\n' + revert, context);
+		await context.revert();
+		const summary = Object.fromEntries(JSON.parse(JSON.stringify(calls)).map(([key, value]) => [key, value]));
+		const expected = networkAvailable ? sync : cached;
+		const normalized = { ...expected, lines: expected.lines.map(row => ({ ...row, granularity: 'character' })) };
+		assert.deepEqual(summary.setSyncData, normalized);
+		assert.deepEqual(context.serverBaselineSyncDataRef.current, normalized);
+		assert.notEqual(calls.find(([key]) => key === 'setSyncData')[1], context.serverBaselineSyncDataRef.current);
+		for (const field of ['ParallelPartMeta', 'ManualParallelSplit', 'ParentheticalLayout', 'MergedLine', 'LineMeta', 'LineStyle']) {
+			assert.deepEqual(summary[`set${field}Drafts`], {});
+		}
+		assert.equal(summary.confirm, 'syncCreator.revertConfirm');
+		assert.equal(summary.setHasUnsubmittedSync, false);
+		assert.equal(summary.setHasPublishedSync, true);
+		assert.equal(summary.setIsReverting, false);
+		assert.equal(summary.success, 'syncCreator.reverted');
+		assert.equal(summary.error, undefined);
+		assert.deepEqual(JSON.parse(JSON.stringify(calls.find(([key]) => key === 'published'))), [
+			'published', 'fixture', 'lrclib', { isrc: 'GBARL1901205', title: 'Track', artist: 'Artist', album: 'Album' },
+		]);
+		assert.deepEqual(summary.deleteDraft, { resumeAutosave: true });
+		const resetIndex = calls.findIndex(([key]) => key === 'resetRecordingInput');
+		assert.ok(calls.findIndex(([key]) => key === 'deleteDraft') < resetIndex);
+		assert.ok(resetIndex < calls.findIndex(([key]) => key === 'setSyncData'));
 	}
-	assert.ok(revert.includes('serverBaselineSyncDataRef.current = syncCreatorDraftStore?.cloneValue?.(restored) || restored;'));
-	assert.ok(revert.includes('setHasUnsubmittedSync(false);'));
-	assert.ok(revert.includes("I18n.t('syncCreator.revertConfirm')"));
-	assert.ok(revert.includes("I18n.t('syncCreator.noPublishedSync')"));
-	assert.ok(revert.includes("I18n.t('syncCreator.historyStopRecording')"));
 });
 
 test('header offers revert next to submit and both lock while reverting', () => {
-	const header = source.slice(source.indexOf('const renderHeader ='), source.indexOf('const renderCharacterPronunciationTargetControl ='));
-	assert.ok(header.includes("(hasUnsubmittedSync || hasPublishedSync) && react.createElement('button', {"));
-	assert.ok(header.includes("className: 'sync-creator-revert'"));
-	assert.ok(header.includes('onClick: handleRevertToPublished'));
-	assert.ok(header.includes('disabled: isSubmitting || isReverting || !lyricsText'));
-	assert.ok(header.includes('disabled: isSubmitting || isReverting || !syncData'));
-	assert.ok(header.includes("I18n.t('syncCreator.revertDesc')"));
-});
-
-test('published-sync presence is tracked wherever the baseline changes', () => {
-	assert.ok(source.includes('const [hasPublishedSync, setHasPublishedSync] = useState(false);'));
-	assert.ok(source.includes('setHasPublishedSync(!!loadedSyncBody && Array.isArray(loadedSyncBody.lines) && loadedSyncBody.lines.length > 0);'));
-	const submit = source.slice(source.indexOf('const handleSubmit ='), source.indexOf('// 싱크 데이터 내보내기'));
-	assert.equal((submit.match(/setHasPublishedSync\(true\)/g) || []).length, 2);
-	const revert = source.slice(source.indexOf('const handleRevertToPublished ='), source.indexOf('const handleSubmit ='));
-	assert.ok(revert.includes('setHasPublishedSync(true);'));
+	const revertAction = () => {};
+	const submitAction = () => {};
+	const options = {
+		handleSubmit: submitAction, handleRevertToPublished: revertAction, lyricsText: 'ABC', syncData: {},
+	};
+	assert.equal(headerButton(renderHeader(options), 'sync-creator-revert'), undefined);
+	const header = renderHeader({ ...options, hasPublishedSync: true, isReverting: true });
+	const revert = headerButton(header, 'sync-creator-revert');
+	const submit = headerButton(header, 'sync-creator-submit');
+	assert.equal(header.children.indexOf(submit), header.children.indexOf(revert) + 1);
+	assert.equal(revert.props.onClick, revertAction);
+	assert.equal(submit.props.onClick, submitAction);
+	assert.equal(revert.props.disabled, true);
+	assert.equal(submit.props.disabled, true);
+	assert.equal(revert.props.title, 'syncCreator.revertDesc');
+	const loading = renderHeader({ ...options, hasPublishedSync: true, isSourceLoading: true });
+	assert.equal(headerButton(loading, 'sync-creator-revert').props.disabled, true);
+	assert.equal(headerButton(loading, 'sync-creator-submit').props.disabled, true);
 });
 
 test('a v6 published baseline equals its expanded editor view and remains dirty after a unit or held-end change',()=>{
   const context=vm.createContext({console,structuredClone,window:{}});
-  vm.runInContext(readFileSync(new URL('../SyncDataCodec.js',import.meta.url),'utf8'),context);
+  vm.runInContext(bundleInitializer(new URL('../src/spicetify/startSyncDataCodec.js', import.meta.url)), context);
   vm.runInContext(helpersSource+';globalThis.compare = areSyncCreatorSyncBodiesEqual;globalThis.expand = prepareSyncCreatorWorkSnapshot;',context);
   const codec=context.window.SyncDataCodec;
   for(const granularity of ['line','word','character']){

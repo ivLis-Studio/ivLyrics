@@ -2,11 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { observeFullscreenAlbumLyricsRegion } from "../src/features/fullscreen/fullscreenLayout.mjs";
 
-const source = readFileSync(new URL("../FullscreenOverlay.js", import.meta.url), "utf8");
-const from = source.indexOf("    const observeFullscreenAlbumLyricsRegion =");
-const to = source.indexOf("    // Main Overlay Component", from);
-assert.ok(from >= 0 && to > from);
+const source = readFileSync(new URL("../src/features/fullscreen/FullscreenOverlay.js", import.meta.url), "utf8");
 
 const createHarness = () => {
   let nextFrame = 0;
@@ -87,9 +85,7 @@ const createHarness = () => {
     getBoundingClientRect() { return this.rect; },
   };
   panel.album = album;
-  const context = vm.createContext({ window: view, CONFIG: config });
-  vm.runInContext(`${source.slice(from, to)}\nglobalThis.observe = observeFullscreenAlbumLyricsRegion;`, context);
-  const stop = context.observe(panel);
+  const stop = observeFullscreenAlbumLyricsRegion(panel, () => config.visual.alignment, view);
   const flush = () => {
     let count = 0;
     while (frames.size) {
@@ -354,6 +350,7 @@ test("the panel callback ref owns attachment, replacement and removal cleanup", 
   const context = vm.createContext({
     useRef: current => ({ current }),
     useCallback: callback => callback,
+    window: {},
     observeFullscreenAlbumLyricsRegion(panel) {
       assert.equal(panel.isConnected, true, "React attaches the panel before measuring its ancestor");
       calls.push(["attach", panel]);

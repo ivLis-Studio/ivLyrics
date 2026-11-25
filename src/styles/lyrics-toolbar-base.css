@@ -1,0 +1,267 @@
+.lyrics-config-button-container {
+  --iv-floating-toolbar-top-gap: calc(env(safe-area-inset-top, 0px) + 176px);
+  --iv-floating-toolbar-bottom-gap: 20px;
+  --iv-floating-toolbar-padding: 10px;
+  --iv-floating-toolbar-padding-block: 50px;
+  --iv-floating-toolbar-menu-offset: 0px;
+  --iv-floating-menu-content-top-offset: 0px;
+  pointer-events: auto;
+  position: fixed;
+  bottom: var(--iv-floating-toolbar-bottom-gap);
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: var(--iv-layer-floating-toolbar);
+  padding: 10px;
+  border-radius: 0;
+  background: rgba(18, 22, 28, 0.9);
+  backdrop-filter: blur(24px) saturate(120%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.16);
+  box-sizing: border-box;
+  max-height: calc(100vh - var(--iv-floating-toolbar-top-gap) - var(--iv-floating-toolbar-bottom-gap));
+  max-height: calc(100dvh - var(--iv-floating-toolbar-top-gap) - var(--iv-floating-toolbar-bottom-gap));
+  overflow: visible;
+
+  /* Auto-hide functionality */
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    box-shadow var(--iv-motion-duration-fast) ease;
+}
+
+.lyrics-config-button-container:hover {
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.3), 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+
+/* Hide controls when mouse is idle */
+.lyrics-lyricsContainer-LyricsContainer.controls-hidden .lyrics-config-button-container {
+  opacity: 0;
+  transform: translateY(var(--iv-motion-distance-md)) scale(0.98);
+  pointer-events: none;
+}
+
+/* Keep controls visible when hovering directly on them */
+.lyrics-lyricsContainer-LyricsContainer.controls-hidden .lyrics-config-button-container:hover,
+.lyrics-lyricsContainer-LyricsContainer.controls-hidden .lyrics-config-button-container:focus-within {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.lyrics-config-button-container>* {
+  pointer-events: auto;
+  flex-shrink: 0;
+}
+
+@-webkit-keyframes spin {
+  0% {
+    -webkit-transform: rotate(0deg);
+  }
+
+  100% {
+    -webkit-transform: rotate(360deg);
+  }
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.lyrics-config-button {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 0;
+  border-radius: 0;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  display: flex;
+  gap: 0;
+  justify-content: center;
+  padding: 0;
+  height: 44px;
+  width: 44px;
+  position: relative;
+  flex-shrink: 0;
+  transition: all var(--iv-motion-duration-fast) var(--iv-motion-ease-standard);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+.lyrics-config-button::before {
+  display: none;
+}
+
+.lyrics-config-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.24), 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.lyrics-config-button:active {
+  transform: translateY(0);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+.lyrics-config-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.lyrics-config-button:disabled:hover {
+  background: rgba(255, 255, 255, 0.06);
+  transform: none;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+.lyrics-config-button svg {
+  transition: transform var(--iv-motion-duration-fast) var(--iv-motion-ease-standard);
+}
+
+.lyrics-config-button:hover svg {
+  transform: none;
+}
+
+/* Loading spin animation for regenerate button */
+.lyrics-config-button.loading-spin svg {
+  animation: spin 1s linear infinite;
+}
+
+/* Accent color highlight on specific buttons */
+.lyrics-config-button[data-active="true"] {
+  background: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.16);
+  border-color: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.4);
+}
+
+.lyrics-config-button[data-active="true"]:hover {
+  background: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.2);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(var(--spice-rgb-accent, 30, 215, 96), 0.12);
+}
+
+/* Separator between tools and mode buttons */
+.lyrics-config-separator {
+  width: 28px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 0;
+  margin: 4px 0;
+  pointer-events: none;
+}
+
+/* Mode switching buttons */
+.lyrics-mode-button {
+  width: 38px !important;
+  height: 38px !important;
+  opacity: 0.6;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.lyrics-mode-button:hover {
+  opacity: 1;
+}
+
+.lyrics-mode-button.active {
+  opacity: 1;
+  background: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.16) !important;
+  border-color: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.5) !important;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(var(--spice-rgb-accent, 30, 215, 96), 0.12);
+}
+
+.lyrics-mode-button.active:hover {
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(var(--spice-rgb-accent, 30, 215, 96), 0.12);
+}
+
+.lyrics-mode-button.active svg {
+  color: var(--spice-accent, #1ed760);
+}
+
+.lyrics-mode-button.mode-locked::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid var(--spice-accent, #1ed760);
+  border-radius: 50% 50% 50% 0;
+  background:
+    radial-gradient(circle at 50% 50%, var(--spice-accent, #1ed760) 0 1px, transparent 1.5px),
+    rgba(var(--spice-rgb-main, 18, 18, 18), 0.92);
+  transform: rotate(-45deg);
+  pointer-events: none;
+}
+
+.lyrics-config-button-container .main-contextMenu-menu {
+  color: var(--spice-text);
+  padding: 12px 12px 6px;
+}
+
+.lyrics-lyricsContainer-UnsyncedLyricsPage .split {
+  display: flex;
+}
+
+.lyrics-lyricsContainer-UnsyncedLyricsPage .split>div {
+  flex: 50%;
+}
+
+.lyrics-lyricsContainer-UnsyncedLyricsPage .split>div>div:not(.lyrics-versionSelector) {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.split .lyrics-lyricsContainer-LyricsLine {
+  padding-left: 50px;
+  padding-right: 50px;
+}
+
+.split .lyrics-versionSelector {
+  margin-right: 50px;
+  margin-left: 50px;
+}
+
+.split .lyrics-versionSelector select {
+  width: 100%;
+}
+
+.main-content-view {
+  height: 100%;
+}
+
+@media (min-width: 1024px) {
+  .split .lyrics-lyricsContainer-LyricsLine {
+    padding-left: 75px;
+    padding-right: 75px;
+  }
+
+  .split .lyrics-versionSelector {
+    margin-right: 75px;
+    margin-left: 75px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .split .lyrics-lyricsContainer-LyricsLine {
+    padding-left: 100px;
+    padding-right: 100px;
+  }
+
+  .split .lyrics-versionSelector {
+    margin-right: 100px;
+    margin-left: 100px;
+  }
+}
+

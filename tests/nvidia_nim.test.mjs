@@ -1,5 +1,5 @@
+import { readAiProviderFixture } from "./fixtures/ai-provider.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 
@@ -23,7 +23,7 @@ function setup(responder) {
     };
     const context = vm.createContext({ window, console, setTimeout, clearTimeout, TextDecoder });
     for (const file of ['Addon_AI_ChatGPT.js', 'Addon_AI_NvidiaNim.js']) {
-        const source = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8').replace('    return ChatGPTAddon;', '    ChatGPTAddon.fetchModelsForTest = getModels; return ChatGPTAddon;');
+        const source = readAiProviderFixture(file).replace('    return ChatGPTAddon;', '    ChatGPTAddon.fetchModelsForTest = getModels; return ChatGPTAddon;');
         vm.runInContext(source, context);
     }
     return { addons, requests };

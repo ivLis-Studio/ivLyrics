@@ -1,10 +1,10 @@
+import { readVideoBackgroundFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import { artworkUtils } from './artwork_harness.mjs';
 
-const source = readFileSync(new URL("../VideoBackground.js", import.meta.url), "utf8");
+const source = readVideoBackgroundFixture();
 const createVideo = (props) => {
   const context = vm.createContext({
     Utils: artworkUtils,
@@ -21,6 +21,7 @@ const createVideo = (props) => {
       useRef: (value) => ({ current: value }),
       useEffect() {},
       useLayoutEffect() {},
+      useMemo: (build) => build(),
       useCallback: (fn) => fn,
     },
   });

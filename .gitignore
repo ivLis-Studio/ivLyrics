@@ -1,6 +1,6 @@
 /.claude
 nul
-MARKETPLACE.md
+/MARKETPLACE.md
 .DS_Store
 addon-manager.ps1
 __pycache__/
@@ -10,3 +10,5 @@ __pycache__/
 # Local browser QA snapshots and screenshots.
 /.playwright-cli/
 /output/playwright/
+/node_modules/
+/dist/

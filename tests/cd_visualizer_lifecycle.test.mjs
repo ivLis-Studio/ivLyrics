@@ -1,11 +1,8 @@
+import { createCdVisualizerApi } from "../src/features/player/CdVisualizer.js";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import test from "node:test";
-import vm from "node:vm";
 
-const api = createRequire(import.meta.url)("../CdVisualizer.js");
-const source = readFileSync(new URL("../CdVisualizer.js", import.meta.url), "utf8");
+const api = createCdVisualizerApi(globalThis);
 const uri = index => `spotify:track:${String(index).padStart(22, "0")}`;
 const raw = {
   track: { duration: 20 }, segments: [
@@ -505,14 +502,14 @@ function createReactHarness(initial = {}, setup = () => {}) {
   h.host.Spicetify.React = react;
   h.host.Spicetify.getAudioData = () => { requests++; return raw; };
   setup(h);
-  vm.runInNewContext(source, { window: h.host, console });
+  const visualizer = createCdVisualizerApi(h.host);
   function render(next = {}) {
     props = { ...props, ...next };
     let passes = 0;
     do {
       assert.ok(++passes < 10, "status updates settle without a React effect/callback loop");
       renderCount++; cursor = 0; dirty = false; effects = [];
-      tree = h.host.ivLyricsCdVisualizer.Visualizer({ ...props, onStatusChange: status => notifications.push(status) });
+      tree = visualizer.Visualizer({ ...props, onStatusChange: status => notifications.push(status) });
       tree.props.ref.current = h.canvas;
       effects.forEach(effect => effect());
     } while (dirty);

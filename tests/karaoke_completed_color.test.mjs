@@ -1,11 +1,11 @@
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
-const styles = readFileSync(new URL("../style.css", import.meta.url), "utf8");
+const styles = readPcStylesheet();
 const baselineStyles = execFileSync("git", ["show", "3353a5d:style.css"], {
 	cwd: repoRoot,
 	encoding: "utf8",

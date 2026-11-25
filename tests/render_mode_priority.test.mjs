@@ -1,28 +1,16 @@
+import { createLyricsModeLockStore } from "../src/lyrics/lyricsRenderModes.mjs";
+import { AUTOMATIC_LYRICS_MODE_PRIORITY, createLyricsPageModes } from "../src/lyrics/lyricsPageModes.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
 
-const source = readFileSync(new URL("../index.js", import.meta.url), "utf8");
-const constantsStart = source.indexOf("const KARAOKE =");
-const constantsEnd = source.indexOf("const VINYL_TYPOGRAPHY_DEFAULT_SCALE", constantsStart);
-const methodsStart = source.indexOf("  isModeAvailable(mode,");
-const methodsEnd = source.indexOf("\n  render() {", methodsStart);
-assert.ok(constantsStart >= 0 && constantsEnd > constantsStart);
-assert.ok(methodsStart >= 0 && methodsEnd > methodsStart);
-
-const createSelector = (state = {}, karaokeEnabled = true) => {
-  const context = vm.createContext({
-    CONFIG: { visual: { "karaoke-mode-enabled": karaokeEnabled } },
+const createSelector = (state = {}, karaokeEnabled = true, rememberModeLock = () => {}) => {
+  const page = { state: { lockedMode: -1, explicitMode: -1, ...state } };
+  const modes = createLyricsPageModes({
+    page,
+    readVisualSettings: () => ({ "karaoke-mode-enabled": karaokeEnabled }),
+    rememberModeLock,
   });
-  vm.runInContext(
-    `${source.slice(constantsStart, constantsEnd)}
-     class ModeSelector { ${source.slice(methodsStart, methodsEnd)} }
-     globalThis.selector = new ModeSelector();`,
-    context
-  );
-  context.selector.state = { lockedMode: -1, explicitMode: -1, ...state };
-  return context.selector;
+  return { page, ...modes };
 };
 
 const lyrics = [{ text: "Test lyric", startTime: 1000, endTime: 2000 }];
@@ -38,8 +26,8 @@ test("defaults word-timed provider lyrics to character rendering without changin
   const selector = createSelector(state);
   assert.equal(selector.getAutomaticMode(), 0);
   assert.equal(selector.getCurrentMode(), 0);
-  assert.equal(selector.state.karaokeGranularity, "word");
-  assert.strictEqual(selector.state.karaoke, lyrics);
+  assert.equal(selector.page.state.karaokeGranularity, "word");
+  assert.strictEqual(selector.page.state.karaoke, lyrics);
   assert.equal(selector.getAutomaticMode({ ...state, karaokeGranularity: "character" }), 0);
 });
 
@@ -54,12 +42,7 @@ test("falls back to line, plain, or unavailable according to actual lyric data a
 });
 
 test("uses word rendering before line or plain when only word rendering is available", () => {
-  const selector = createSelector();
-  const available = new Set([3, 1, 2]);
-  selector.isModeAvailable = (mode) => available.has(mode);
-  assert.equal(selector.getAutomaticMode(), 3);
-  available.add(0);
-  assert.equal(selector.getAutomaticMode(), 0);
+  assert.deepEqual(AUTOMATIC_LYRICS_MODE_PRIORITY, [0, 3, 1, 2]);
 });
 
 test("keeps explicit choices and persistent locks ahead of automatic selection", () => {
@@ -72,30 +55,23 @@ test("keeps explicit choices and persistent locks ahead of automatic selection",
 });
 
 test("choosing another mode while a lock is in effect moves the lock to that mode", () => {
-  const switchStart = source.indexOf("  switchTo(mode) {");
-  const switchEnd = source.indexOf("\n  toggleModeLock(", switchStart);
-  assert.ok(switchStart >= 0 && switchEnd > switchStart);
   const remembered = [];
-  const context = vm.createContext({
-    CONFIG: { visual: { "karaoke-mode-enabled": true } },
-    StorageManager: { setItem: (_key, value) => remembered.push(Number(value)) },
-    ivLyricsDebug: () => {},
+  const { rememberLyricsRenderModeLock } = createLyricsModeLockStore({
+    storage: { setItem: (_key, value) => remembered.push(Number(value)) }, debug: () => {},
   });
-  vm.runInContext(
-    `${source.slice(constantsStart, constantsEnd)}
-     class ModeSelector { ${source.slice(methodsStart, methodsEnd)} ${source.slice(switchStart, switchEnd)} }
-     globalThis.selector = new ModeSelector();`,
-    context
+  const selector = createSelector(
+    { karaoke: lyrics, synced: lyrics, unsynced: lyrics, lockedMode: 0, explicitMode: 0 },
+    true,
+    rememberLyricsRenderModeLock,
   );
-  const selector = context.selector;
-  selector.resolveLyricsForMode = () => lyrics;
-  selector.setState = (update) => {
-    selector.state = { ...selector.state, ...(typeof update === "function" ? update(selector.state) : update) };
+  const { page } = selector;
+  page.resolveLyricsForMode = () => lyrics;
+  page.setState = (update) => {
+    page.state = { ...page.state, ...(typeof update === "function" ? update(page.state) : update) };
   };
 
-  selector.state = { karaoke: lyrics, synced: lyrics, unsynced: lyrics, lockedMode: 0, explicitMode: 0 };
   selector.switchTo(1);
-  assert.equal(selector.state.lockedMode, 1);
+  assert.equal(selector.page.state.lockedMode, 1);
   assert.equal(selector.getCurrentMode(), 1);
   assert.deepEqual(remembered, [1]);
 
@@ -105,9 +81,9 @@ test("choosing another mode while a lock is in effect moves the lock to that mod
 
   // A lock on a mode this track cannot show is left alone; the choice applies to this track only.
   remembered.length = 0;
-  selector.state = { synced: lyrics, unsynced: lyrics, lockedMode: 3, explicitMode: -1 };
+  page.state = { synced: lyrics, unsynced: lyrics, lockedMode: 3, explicitMode: -1 };
   selector.switchTo(2);
-  assert.equal(selector.state.lockedMode, 3);
+  assert.equal(selector.page.state.lockedMode, 3);
   assert.equal(selector.getCurrentMode(), 2);
   assert.deepEqual(remembered, []);
 });

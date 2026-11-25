@@ -1,0 +1,96 @@
+import {
+	SYNC_CREATOR_SOURCE_ADDON_ID, getSyncCreatorLineCharCountsFromText,
+	hasExactSyncCreatorLineShape, isCompleteSyncCreatorLrclibSource,
+} from './lrclibSyncSource.mjs';
+import { sanitizeSyncCreatorLastCharEnds } from './timingValidation.mjs';
+
+export async function exportSyncCreatorFile({ syncData, track, lyrics, timing, saveWork, files, toast, translate }) {
+	if (!syncData?.lines || syncData.lines.length === 0) {
+		toast.error(translate('syncCreator.noSyncData') || 'No sync data to export');
+		return;
+	}
+
+	try {
+		const expanded = timing.attachSource(sanitizeSyncCreatorLastCharEnds(timing.materialize(syncData)));
+		timing.validate(expanded);
+		const encoded = timing.compact(expanded, lyrics.chars, lyrics.language || undefined);
+		saveWork(expanded);
+		const baseName = [track.title, track.artist].map(value => String(value || '').trim()).filter(Boolean).join('-');
+		const fallbackName = track.id ? `sync-${track.id}` : 'ivLyrics-sync';
+		const fileName = `${files.sanitizeFileName(baseName, fallbackName)}.json`;
+		const saveTarget = await files.requestSaveFileTarget(fileName, {
+			description: 'ivLyrics Sync Data',
+			mimeType: 'application/json',
+			extensions: ['.json'],
+		});
+		if (saveTarget.canceled) return;
+
+		const blob = new Blob([JSON.stringify(encoded, null, 2)], { type: 'application/json' });
+		await files.saveBlobAs(blob, fileName, saveTarget);
+		toast.success(translate('syncCreator.exportSuccess') || 'Exported sync data');
+	} catch (error) {
+		console.error('[SyncDataCreator] Export error:', error);
+		toast.error(error?.message || translate('syncCreator.submitError'));
+	}
+}
+
+export function createSyncCreatorImportPicker({ captureDraftOwnership, isEditorOpen }) {
+	let requestId = 0;
+	return function openImportPicker(options) {
+		if (!isEditorOpen()) return;
+		const ownsDraft = captureDraftOwnership();
+		const id = ++requestId;
+		pickSyncCreatorImport({
+			...options,
+			isCurrent: () => id === requestId && isEditorOpen() && ownsDraft(),
+		});
+	};
+}
+
+function pickSyncCreatorImport({ createInput, lyricsText, currentSource, timing, prepareLrclibSource, applyImport, toast, translate, isCurrent }) {
+	const input = createInput();
+	input.type = 'file';
+	input.accept = '.json';
+	input.onchange = async (event) => {
+		const file = event.target.files[0];
+		if (!file || !isCurrent()) return;
+		let committing = false;
+
+		try {
+			const contents = await file.text();
+			if (!isCurrent()) return;
+			const data = JSON.parse(contents);
+			if (!Array.isArray(data.lines)) throw new Error('Invalid sync data format');
+
+			const prepared = await prepareSyncCreatorFileImport(data, {
+				lyricsText, currentSource, timing, prepareLrclibSource, isCurrent,
+			});
+			if (!prepared || !isCurrent()) return;
+			committing = true;
+			applyImport(prepared.data, prepared.target);
+			toast.success(translate('syncCreator.importSuccess') || 'Imported sync data');
+		} catch (error) {
+			if (!committing && !isCurrent()) return;
+			console.error('[SyncDataCreator] Import error:', error);
+			toast.error((translate('syncCreator.importError') || 'Import failed') + ': ' + error.message);
+		}
+	};
+	input.click();
+}
+
+async function prepareSyncCreatorFileImport(data, { lyricsText, currentSource, timing, prepareLrclibSource, isCurrent }) {
+	let target = currentSource;
+	const source = data.source;
+	if (isCompleteSyncCreatorLrclibSource(source)
+		&& !hasExactSyncCreatorLineShape(source.lineCharCounts, getSyncCreatorLineCharCountsFromText(lyricsText))) {
+		// A positional import can reuse the current lyrics when each row has
+		// the same length. Otherwise validate the file before loading its text.
+		timing.validate(timing.sanitize(data));
+		const loaded = await prepareLrclibSource(source, isCurrent);
+		if (!loaded || !isCurrent()) return null;
+		target = { ...loaded, provider: SYNC_CREATOR_SOURCE_ADDON_ID, addonId: SYNC_CREATOR_SOURCE_ADDON_ID };
+	}
+	const sanitized = timing.sanitize(data, target.lyricsChars);
+	timing.validate(sanitized);
+	return { data: sanitized, target };
+}

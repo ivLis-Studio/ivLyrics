@@ -1,3 +1,4 @@
+import { readPcStylesheet } from "../../.github/scripts/pc_stylesheet.mjs";
 // Loopback-only fixture: production pages, presentation mapping, CSS and React.
 // node tests/fixtures/lyrics_supplement_server.mjs /path/to/react18/node_modules [port]
 import { createServer } from 'node:http';
@@ -5,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
+import { bundleFixtureImports, readInstrumentedKaraokeFixture, readTranslationRuntimeFixture, readVinylActiveLyricRendererFixture, readWordSegmenterFixture } from './legacy-page-source.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const modules = process.argv[2];
@@ -77,7 +79,7 @@ const wordApi={
 };
 let phonetic=null,translation=null,culture=false,lyrics=base;
 const app=new ProductionPresentation();app.state={uri:'fixture',currentLyrics:base};
-app.isCulturalAnnotationsEnabled=()=>culture;app._culturalAnnotationResults=new Map();
+app.isCulturalAnnotationsEnabled=()=>culture;app.fixtureAnnotationResults=new Map();
 const root=ReactDOM.createRoot(document.getElementById('root'));
 function render(){
  CONFIG.visual['karaoke-motion-style']=style;
@@ -91,14 +93,17 @@ function publish(){lyrics=app.optimizeTranslations(base,phonetic,translation,'ge
  app.state.currentLyrics=lyrics;render();paint();}
 window.supplementFixture={
  reset(options={}){position=1400;playing=false;epoch=performance.now();phonetic=null;translation=null;culture=false;
-  app._culturalAnnotationResults.clear();style=options.style||'expressive';expanded=!!options.expanded;
+  app.fixtureAnnotationResults.clear();style=options.style||'expressive';expanded=!!options.expanded;
   reveal=options.reveal!==false;revision=0;locale=options.words?'ja':'en';wordTarget='en';
-  wordRequests.length=0;window.ivLyricsWordSupplements=options.words?wordApi:null;
+  wordRequests.length=0;
+  const supplements=options.words?wordApi:null;
+  if(typeof setFixtureWordSupplementService==='function')setFixtureWordSupplementService(supplements);
+  else window.ivLyricsWordSupplements=supplements;
   base=options.words?Array.from({length:36},(_,index)=>({...sourceLine('漢字 歌 '+index,1000+index*5000),karaokeGranularity:'word'})):originalBase;
   lyrics=base;app.state.currentLyrics=base;render();paint();},
  add(kind,count=36){if(kind==='phonetic')phonetic=base.map((_,i)=>i<count?'reading '+i:null);
   if(kind==='translation')translation=base.map((_,i)=>i<count?'meaning '+i:null);
-  if(kind==='culture'){culture=true;app._culturalAnnotationResults.set('fixture',{notesByIndex:new Map([[0,[{marker:1,expression:'Hello',note:'Cultural explanation'}]]])});}
+  if(kind==='culture'){culture=true;app.fixtureAnnotationResults.set('fixture',{notesByIndex:new Map([[0,[{marker:1,expression:'Hello',note:'Cultural explanation'}]]])});}
   publish();},
  step(delta=1000/120){position=progress()+delta;playing=false;epoch=performance.now();
   ReactDOM.flushSync(()=>{for(const callback of AnimationManager.callbacks)callback()});paint();},
@@ -129,24 +134,32 @@ createServer((request,response)=>{
     if(url.pathname==='/favicon.ico'){response.writeHead(204);response.end();return;}
     if(url.pathname==='/'){body=html(url.searchParams.has('baseline'));type='text/html';}
     else if(url.pathname==='/Pages.js'){
-      body=url.searchParams.has('baseline')?execFileSync('git',['show','7cf6ee0^:Pages.js'],{cwd:root,encoding:'utf8'}):readFileSync(resolve(root,'Pages.js'),'utf8');
+      body=url.searchParams.has('baseline')?execFileSync('git',['show','7cf6ee0^:Pages.js'],{cwd:root,encoding:'utf8'}):readInstrumentedKaraokeFixture();
       body=body.replace('const compensatedTimedChars = applyKaraokeWhitespaceCompensation(buildKaraokeTimedChars(line));',
         'window.__supplementPreparations++; const compensatedTimedChars = applyKaraokeWhitespaceCompensation(buildKaraokeTimedChars(line));');
       body+='\nwindow.ProductionSupplement={Compact:SyncedLyricsPage,Expanded:SyncedExpandedLyricsPage,painter:KaraokeLivePainter,paint:paintKaraokeLiveEntry};';
     } else if(url.pathname==='/presentation.js'){
-      const source=readFileSync(resolve(root,'index.js'),'utf8');
-      body=[section(source,'const getTranslationPartText =','const hasInstrumentalMarker ='),
-        section(source,'const isTranslationNoteLine =','// The floating toolbar names lyrics modes'),
-        'class ProductionPresentation {'+section(source,'  applyCulturalAnnotations(','  requestCulturalAnnotations(')
-        +section(source,'  optimizeTranslations(','  getGeminiTranslation(')+'}'].join('\n');
+      const source=readFileSync(resolve(root,'src/spicetify/index.js'),'utf8');
+      body=[
+        bundleFixtureImports('import { createPageTranslationMemoryCache } from "#ivlyrics/lyrics/pageMemoryCache.mjs";\nconst CacheManager = createPageTranslationMemoryCache();', 'fixtureTranslationCache'),
+        readTranslationRuntimeFixture(),
+        bundleFixtureImports('import { applyCulturalAnnotationsToLyrics } from "#ivlyrics/lyrics/lyricCulturalAnnotations.mjs";', 'fixtureCulturalAnnotations'),
+        `class ProductionPresentation {
+          applyCulturalAnnotations(lyrics, uri = this.state.uri) {
+            const result = this.isCulturalAnnotationsEnabled() ? this.fixtureAnnotationResults.get(uri) : null;
+            return applyCulturalAnnotationsToLyrics(lyrics, result?.notesByIndex);
+          }
+          ${section(source,'  optimizeTranslations(','  getGeminiTranslation(')}
+        }`,
+      ].join('\n');
     } else if(url.pathname==='/react.js'||url.pathname==='/react-dom.js'){
       const name=url.pathname==='/react.js'?'react':'react-dom';body=readFileSync(resolve(modules,name,'umd',name+'.development.js'));
-    } else if(url.pathname==='/LyricsWordSegmenter.js')body=readFileSync(resolve(root,'LyricsWordSegmenter.js'));
-    else if(url.pathname==='/VinylActiveLyricRenderer.js')body=readFileSync(resolve(root,'VinylActiveLyricRenderer.js'));
+    } else if(url.pathname==='/LyricsWordSegmenter.js')body=readWordSegmenterFixture();
+    else if(url.pathname==='/VinylActiveLyricRenderer.js')body=readVinylActiveLyricRendererFixture();
     else if(url.pathname==='/style.css'||url.pathname==='/karaoke-before.css'){
       body=(url.pathname==='/karaoke-before.css'
         ?execFileSync('git',['show','44c062547c2448b015610882090503aa98b5f7cb:style.css'],{cwd:root,encoding:'utf8'})
-        :readFileSync(resolve(root,'style.css'),'utf8')).replace(/^@import\s+[^;]+;/gm,'');
+        :readPcStylesheet()).replace(/^@import\s+[^;]+;/gm,'');
       type='text/css';
     }
     else{response.writeHead(404);response.end();return;}

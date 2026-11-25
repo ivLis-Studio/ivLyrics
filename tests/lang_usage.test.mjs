@@ -1,13 +1,14 @@
+import { readLanguageTable } from "./fixtures/language-source.mjs";
+import { sourceNames, sourceUrl } from "./fixtures/source-paths.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
 
 // Complements lang_completeness.test.mjs (same keys + placeholders in every
 // file): catches keys the code asks for that no language file has, and
 // sentences that were copied from English instead of being translated.
 const repo = new URL('../', import.meta.url);
-const langDirectory = new URL('langs/', repo);
+const langDirectory = new URL('src/i18n/langs/', repo);
 
 function flatten(value, prefix = '', result = {}) {
     for (const [key, item] of Object.entries(value)) {
@@ -18,23 +19,23 @@ function flatten(value, prefix = '', result = {}) {
     return result;
 }
 
-function loadLanguage(file) {
-    const context = { window: {} };
-    vm.runInNewContext(readFileSync(new URL(file, langDirectory), 'utf8'), context);
-    return Object.values(context.window)[0];
-}
-
 const languageFiles = readdirSync(langDirectory).filter((name) => /^Lang.*\.js$/.test(name));
-const korean = loadLanguage('LangKo.js');
+const korean = readLanguageTable('LangKo.js');
 const koreanKeys = new Set(Object.keys(flatten(korean)));
 const namespaces = Object.keys(korean);
-const sourceFiles = readdirSync(repo).filter((name) => name.endsWith('.js'));
-const sources = new Map(sourceFiles.map((name) => [name, readFileSync(new URL(name, repo), 'utf8')]));
+const sourceFiles = sourceNames.filter((name) => name.endsWith('.js') && !name.startsWith('langs/'));
+const sources = new Map(sourceFiles.map((name) => [name, readFileSync(sourceUrl(name), 'utf8')]));
+const moduleDirectory = new URL('src/', repo);
+for (const name of readdirSync(moduleDirectory, { recursive: true })) {
+    if (name.endsWith('.mjs')) sources.set(name, readFileSync(new URL(name, moduleDirectory), 'utf8'));
+}
 
 // Helpers that prepend a fixed prefix to the key they receive.
 const PREFIXED_HELPERS = [
     ['Addon_AI_LocalModel.js', /\bt\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.localModel.'],
-    ['Addon_AI_ChatGPT.js', /\baiText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.'],
+    ['providers/ai/localModelEngine.mjs', /\bt\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.localModel.'],
+    ['providers/ai/localModelSettings.mjs', /\bt\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.localModel.'],
+    ['providers/ai/openAiSettings.mjs', /\baiText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.'],
     ['Addon_AI_Pollinations.js', /\baiText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.'],
     ['Addon_AI_Claude.js', /\baiText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.'],
     ['Addon_AI_Gemini.js', /\baiText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.'],
@@ -47,10 +48,12 @@ const PREFIXED_HELPERS = [
     ['Addon_Lyrics_LyricsPlus.js', /\blyricsText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.lyricsProviders.'],
     ['Addon_Lyrics_OpenLyrics.js', /\blyricsText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.lyricsProviders.'],
     ['Addon_Lyrics_Unison.js', /\blyricsText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.lyricsProviders.'],
-    ['LearningMode.js', /\bt\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'learningMode.'],
-    ['Settings.js', /\b(?:get|format)SettingsPresetText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settingsAdvanced.settingsPresets.'],
+    ...['LearningMode.js', ...['createStudyPanel', 'studySession', 'renderStudyQuiz', 'renderStudyReferenceTabs', 'studyComponents', 'studyPlayback']
+        .map((name) => 'features/learning/' + name + '.mjs')]
+        .map((name) => [name, /\bt\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'learningMode.']),
+    ['features/settings/settingsPresetsPanel.mjs', /\b(?:get|format)SettingsPresetText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settingsAdvanced.settingsPresets.'],
     ['Settings.js', /\b(?:get|format)CloudSyncText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settingsAdvanced.cloudSync.'],
-    ['OptionsMenu.js', /\b(?:labelText|range|checkbox|choice|color|text)\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'shareImage.settings.'],
+    ['features/share/renderShareImageControls.mjs', /\b(?:labelText|range|checkbox|choice|color|text)\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'shareImage.settings.'],
 ];
 
 test('every literal translation key used by the app exists in the language files', () => {
@@ -93,11 +96,11 @@ const ENGLISH_ALLOWED = new Set([
 ]);
 
 test('translated languages do not keep English sentences from LangEn.js', () => {
-    const english = flatten(loadLanguage('LangEn.js'));
+    const english = flatten(readLanguageTable('LangEn.js'));
     const copied = [];
     for (const file of languageFiles) {
         if (file === 'LangEn.js' || file === 'LangKo.js') continue;
-        const values = flatten(loadLanguage(file));
+        const values = flatten(readLanguageTable(file));
         for (const [key, value] of Object.entries(values)) {
             if (ENGLISH_ALLOWED.has(key) || typeof value !== 'string' || value !== english[key]) continue;
             const words = value.trim().split(/\s+/).filter((word) => /[A-Za-z]{2,}/.test(word));

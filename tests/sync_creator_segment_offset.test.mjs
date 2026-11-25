@@ -1,36 +1,45 @@
+import { createSyncCreatorSessionLifecycle, createSyncCreatorSessionRefs } from '#ivlyrics/features/sync/syncCreatorSessionLifecycle.mjs';
+import { buildSyncCreatorPreviewLines } from "#ivlyrics/features/sync/syncCreatorPreviewLines.mjs";
+import { createSyncDataRenderer } from "#ivlyrics/lyrics/createSyncDataRenderer.mjs";
+import { readSyncCreatorFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import syncDataCodec from '#ivlyrics/features/sync/SyncDataCodec.mjs';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import vm from 'node:vm';
+import { createSyncCreatorParallelEditing, getSyncCreatorParallelPreviewChars } from '../src/features/sync/parallelTiming.mjs';
+import { createSyncCreatorSnapshotTools } from '../src/features/sync/syncSnapshot.mjs';
+import { createSyncCreatorValidation } from '../src/features/sync/timingValidation.mjs';
 
-const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
-const draftStore = createRequire(import.meta.url)('../SyncCreatorDraftStore.js');
-const plain = value => JSON.parse(JSON.stringify(value?.version === 6 ? createRequire(import.meta.url)('../SyncDataCodec.js').decode(value) : value));
+import { createSyncCreatorLyricDocument } from '#ivlyrics/features/sync/syncCreatorLyricText.mjs';
+
+import { createSyncCreatorDraftStore } from '#ivlyrics/features/sync/createSyncCreatorDraftStore.mjs';
+import { createSyncCreatorImportPicker } from '#ivlyrics/features/sync/syncCreatorFileTransfer.mjs';
+
+const source = readSyncCreatorFixture();
+const draftStore = createSyncCreatorDraftStore({ getCodec: () => syncDataCodec });
+const plain = value => JSON.parse(JSON.stringify(value?.version === 6 ? syncDataCodec.decode(value) : value));
 const slice = (startMarker, endMarker) => {
     const start = source.indexOf(startMarker);
     const end = source.indexOf(endMarker, start + startMarker.length);
     assert.ok(start >= 0 && end > start, `missing production section: ${startMarker}`);
     return source.slice(start, end);
 };
+const layoutSource = slice('\tconst getLineEndAtIndex =', '\tconst currentMergedLineIndexes =');
+const publicationStart = '\tconst { revert: handleRevertToPublished, submit: handleSubmit }';
 const callbacks = [
-    slice('\tconst stripLrclibTimestamp =', '\tconst clearLrclibCandidateState ='),
-    slice('\tconst getSyncCreatorLineTimes =', '\tconst SYNC_CREATOR_SHORTCUTS ='),
-    slice('\tconst countRangeChars =', '\t// 상태 관리'),
-    slice('\tconst getLineEndAtIndex =', '\tconst currentMergedLineIndexes ='),
-    slice('\tconst getAutoMergeSplitPointsForLine =', '\tconst currentAutoMergeSplitPoints ='),
+    slice('\tconst getSyncCreatorLineTimes =', '\t// 상태 관리'),
     slice('\tconst getParallelTemplateForLine =', '\tconst currentParallelTemplate ='),
-    slice('\tconst normalizeCommittedLineChars =', '\tconst handleDragEnd ='),
-    slice('\tconst resetCurrentLineManualSplit =', '\tconst resolveParentheticalLayoutDecision ='),
-    slice('\tconst adjustGlobalOffset =', '\t// Suspend autosave'),
-    slice('\tconst adjustCurrentLineOffset =', '\tconst resetFromStart ='),
-    slice('\tconst materializeSyncCreatorParallelDrafts =', '\tconst handleRevertToPublished ='),
-    slice('\tconst buildSyncCreatorSessionRecord =', '\tconst syncSessionUiFromRecord ='),
-    slice('\tconst lyricsTextLrclibShape =', '\tconst lrclibCandidateVariantsForLyrics ='),
-    slice('\tconst buildScoreSnapshot =', '\tconst scoreCurrentSnapshot ='),
-    slice('\tconst applySyncCreatorSessionRecord =', '\tconst saveSessionCheckpoint ='),
-    slice('\tconst handleSubmit =', '\t// 싱크 데이터 내보내기'),
+    slice('\tconst materializeSyncCreatorParallelDrafts =', '\tuseEffect(() => {\n\t\tconst previous = latestSessionRecordRef.current;\n\t\tsetHasUnsubmittedSync('),
+    slice('\tconst buildSyncCreatorSessionRecord =', '\tconst applySyncCreatorSessionRecord ='),
+    slice('\tconst buildScoreSnapshot =', '\tuseSyncCreatorScoreObservation({'),
+    slice('\tconst applySyncCreatorSessionRecord =', '\tconst { addManualCheckpoint,'),
+    slice('\tconst isSourceLoading =', publicationStart),
+    `const handleSubmit = () => {
+        ${slice(publicationStart, '\t// 싱크 데이터 내보내기')}
+        return handleSubmit();
+    };`,
     slice('\tconst exportSyncData =', '\t// 싱크 데이터 불러오기'),
     slice('\tconst importSyncData =', '\t// 가사 전체 복사'),
 ].join('\n');
@@ -54,8 +63,11 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
     let input;
     let revision = 100;
     const context = vm.createContext({
-        console, structuredClone, Blob, window: { SyncDataCodec: createRequire(import.meta.url)('../SyncDataCodec.js') }, clearTimeout() {}, setTimeout() {},
+        console, structuredClone, Blob, window: {
+            confirm() { throw new Error('fixture unexpectedly required incomplete submission confirmation'); },
+            SyncDataCodec: syncDataCodec }, clearTimeout() {}, setTimeout() {},
         useCallback: fn => fn, useMemo: fn => fn(),
+        lyricDocument: createSyncCreatorLyricDocument(rows.join('\n')),
         syncCreatorDraftStore: draftStore,
         syncData: structuredClone(fixture), lyricsLines: rows, lyricsText: rows.join('\n'),
         lineCharOffsets, lineIndexByStart: new Map(lineCharOffsets.map((offset, index) => [offset, index])),
@@ -73,6 +85,7 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
         currentLineDirection: 'ltr', currentSpeakerTextColor: '#fff', currentSpeakerMutedColor: '#777',
         useCurrentLineTextRun: false, lastPaintedPlaybackIndexRef: { current: -2 },
         charElementsRef: { current: [] }, rtlTextRunRef: { current: null },
+        offsetSelectionRangeRef: { current: null }, offsetSelectionTargetRef: { current: null },
         parallelPreviewElementsRef: { current: new Map() },
         manualParallelSplitDrafts: {}, parentheticalLayoutDrafts: {}, mergedLineDrafts: {},
         parallelPartMetaDrafts: {}, lineMetaDrafts: {}, lineStyleDrafts: {}, multiVocalMode: true,
@@ -80,19 +93,18 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
         trackId: 'fixture', trackUri: 'spotify:track:fixture', trackIsrc: '',
         trackName: 'Fixture', artistName: 'Fixture', albumName: '', trackDurationMs: 120000,
         provider: 'lrclib', addonId: 'lrclib', sessionTrackKey: 'fixture', lyrics: {},
-        trackInfo: {}, onClose: null, ensureScoreTracker: () => null,
-        clearLyricsCachesAfterSyncSubmit() {}, deleteActiveSyncCreatorDraft() {},
-        confirm() { throw new Error('fixture unexpectedly required incomplete submission confirmation'); },
-        loadLrclibSourceForImport() { throw new Error('fixture unexpectedly replaced the lyrics for an import'); },
-        SyncDataService: { submitSyncData: async (_trackId, _provider, data) => {
-            submittedFile = plain(data);
-            return true;
-        } },
+        trackInfo: {}, onClose: null, closeEditor: async () => {}, ensureScoreTracker: () => null, isLoading: false, isLoadingLrclibId: false,
+        hasUnsubmittedSync: false, resetCurrentSyncInput() {},
+        runPublication: (operation, canContinue) => operation(canContinue), isEditorOpen: () => true,
+        clearLyricsCachesAfterSyncSubmit() {}, deleteActiveSyncCreatorDraft() { return true; },
+        serverBaselineSyncDataRef: { current: null },
+        openImportPicker: createSyncCreatorImportPicker({ isEditorOpen: () => true, captureDraftOwnership: () => () => true }),
+        prepareLrclibSourceForImport() { throw new Error('fixture unexpectedly replaced the lyrics for an import'); },
         selectedLrclibCandidateKey: '', selectedLrclibSource: null, activeSessionDraftKey: '',
-        claimSessionForLocalEditing() {}, resetCurrentSyncInput() {}, clearRecordingLock() {},
+        claimSessionForLocalEditing() {}, clearRecordingLock() {}, clearPointerRecording() {},
         getActiveRecordingLockRange: () => null, getCurrentSyncTargetSavedChars: () => [],
         setRecordingProgressIndex() {}, syncSessionUiFromRecord() {}, announceHistoryStatus() {},
-        setProviderValue(value) { context.provider = value; },
+        setProviderValue(value) { context.providerRef.current = context.provider = value; },
         setSelectedLrclibSourceValue(value) { context.selectedLrclibSource = value; },
         nextSessionClientRevision: () => ++revision,
         captureScoreWork() {},
@@ -110,43 +122,125 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
             return input;
         } },
     });
+    context.window.SyncDataService = {
+        submitSyncData: async (_trackId, _provider, data) => {
+            submittedFile = plain(data);
+            return true;
+        },
+    };
+    context.sessionAutosaveTimerRef = { current: null };
+    context.charTimesRef = { current: [] };
+    context.providerRef = { current: context.provider };
     for (const [, name] of callbacks.matchAll(/\b(\w+Ref)\.current/g)) context[name] ??= { current: null };
     Object.assign(context, {
-        scorePendingEventsRef: { current: [] }, scorePendingEffectsRef: { current: new Map() },
+        scoreInputRef: { current: null }, scorePendingEventsRef: { current: [] }, scorePendingEffectsRef: { current: new Map() },
         sessionAutoRecoveryBlockedRef: { current: false }, sessionAutosaveEnabledRef: { current: true },
         sessionClientRevisionRef: { current: 100 }, lyricsScrollRef: { current: { scrollLeft: 50 } },
         sessionRecoveryRequestRef: { current: 0 }, sessionCheckpointRestoreRequestRef: { current: 0 },
         sessionWriteGenerationRef: { current: 0 }, sessionAppliedDraftKeyRef: { current: '' },
     });
-    for (const [, setter] of callbacks.matchAll(/\b(set[A-Z]\w*)\b/g)) {
+    const setters = new Set([
+        ...Array.from(callbacks.matchAll(/\b(set[A-Z]\w*)\b/g), ([, name]) => name),
+        'setIsRestoringCheckpoint', 'setSessionReadyDraftKey', 'setSessionSaveState',
+        'setParentheticalLayoutDrafts', 'setPendingParentheticalLayoutDecision', 'setMergedLineDrafts',
+        'setManualParallelSplitDrafts', 'setMultiVocalMode', 'setActiveParallelPartId', 'setMode', 'setGlobalOffset',
+    ]);
+    for (const setter of setters) {
         if (context[setter]) continue;
         const property = setter.slice(3, 4).toLowerCase() + setter.slice(4);
         context[setter] = update => {
             context[property] = typeof update === 'function' ? update(context[property]) : update;
         };
     }
+    const sessionRefs = createSyncCreatorSessionRefs({ now: () => 0 });
+    for (const [name, initial] of Object.entries(sessionRefs)) {
+        sessionRefs[name] = context[name] ??= initial;
+    }
+    const {
+        beginDraftImport, adoptImportedDraftKey, markDraftDirty,
+    } = createSyncCreatorSessionLifecycle({
+        syncCreatorDraftStore: context.syncCreatorDraftStore, refs: sessionRefs, ui: context,
+        cancelTimer: context.clearTimeout, pendingPlaybackNavigationRef: context.pendingPlaybackNavigationRef,
+    });
+    Object.assign(context, { beginDraftImport, adoptImportedDraftKey, markDraftDirty });
     context.sessionLyricsFingerprint = draftStore.createLyricsFingerprint(context.lyricsText);
     context.activeSessionDraftKey = draftStore.createDraftKey({
         trackKey: 'fixture', provider: 'lrclib', addonId: 'lrclib',
         lyricsFingerprint: context.sessionLyricsFingerprint,
     });
     vm.runInContext(source.slice(0, source.indexOf('const SyncDataCreator =')), context);
-    context.roundSyncTime = vm.runInContext('roundSyncCreatorTime', context);
-    context.lyricsFullTextChars = vm.runInContext('getSyncCreatorFlatLyricsCharsFromLines(lyricsLines)', context);
-    context.attachSelectedLrclibSource = value => value;
+    context.lyricsFullTextChars = context.lyricDocument.lyricsFullTextChars;
+    context.lyricsTextLrclibShape = vm.runInContext("getSyncCreatorLrclibTextShape(lyricsText)", context);
+    context.attachSelectedLrclibSource = value => ({
+        ...value,
+        source: {
+            provider: 'lrclib', lrclibId: '123', preferredLyricsSource: 'plain', duration: 120,
+            ...context.lyricsTextLrclibShape,
+            lineCount: rows.length, textCharCount: rows.reduce((sum, row) => sum + Array.from(row).length, 0),
+        },
+    });
+    vm.runInContext(`globalThis.readLayout = () => {
+        ${layoutSource}
+        return { getLineEndAtIndex, getMergedLineIndexesForStart, findMergedOwnerLineIndex: mergedLayout.findMergedOwnerLineIndex, getAutoMergeSplitPointsForLine };
+    };`, context);
+    let layout = context.readLayout();
+    for (const name of Object.keys(layout)) context[name] = (...args) => layout[name](...args);
     vm.runInContext(`${callbacks}
         globalThis.api = {
             buildManualParallelTemplate, buildParentheticalParallelTemplate, mergeSyncCreatorParallelTemplate,
             getParallelTemplateForLineData, getMergedLineIndexesForStart, findMergedOwnerLineIndex, getAutoMergeSplitPointsForLine,
-            adjustCurrentLineOffset, adjustGlobalOffset, resetCurrentLineManualSplit,
-            toggleManualParallelSplitPoint, unmergeCurrentLine, materializeSyncCreatorParallelDrafts,
-            mergeCurrentLineWithNext, commitCurrentLineSync,
+            materializeSyncCreatorParallelDrafts,
             sanitizeSyncCreatorSyncData, compactSyncCreatorSyncData, assertValidSyncCreatorSyncData,
             getSyncCreatorRejoinedLineChars, inheritSyncCreatorParallelPartChars,
             getSyncCreatorParallelPreviewChars, buildSyncCreatorSessionRecord, applySyncCreatorSessionRecord,
             exportSyncData, importSyncData, handleSubmit, buildScoreSnapshot, repairScoreSnapshot,
         };`, context);
+    vm.runInContext(`globalThis.readLineActions = () => useSyncCreatorLineActions({
+        react: { useCallback, useMemo }, toast: Toast, i18n: I18n, editingVersion: SYNC_CREATOR_SYNC_DATA_VERSION,
+        song: globalThis, line: globalThis, vocal: globalThis, editor: globalThis, recording: globalThis,
+        timing: {
+            inheritSyncCreatorParallelPartChars, sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
+            sanitizeSyncCreatorSpeakerFallback, sanitizeSyncCreatorSpeakerColor, normalizeSyncCreatorKind,
+            normalizeSyncCreatorHiddenRanges, normalizeSyncCreatorStyleRanges, sanitizeSyncCreatorParallel,
+        },
+    });`, context);
+    for (const name of ['mergeCurrentLineWithNext', 'resetCurrentLineManualSplit', 'toggleManualParallelSplitPoint']) {
+        context.api[name] = (...args) => context.readLineActions()[name](...args);
+    }
+    context.api.unmergeCurrentLine = () =>
+        context.api.toggleManualParallelSplitPoint(context.currentAutoMergeSplitPoints[0]);
+    vm.runInContext(`globalThis.readOffsetActions = () => useSyncCreatorOffsetActions({
+        react: { useCallback }, toast: Toast, i18n: I18n, mode, syncData,
+        target: { currentLineStart, currentLineCharCount: currentLineChars.length, currentParallelTemplate, activeParallelPart, activeParallelTargetId },
+        refs: globalThis,
+        timing: { mergeSyncCreatorParallelTemplate, refreshSyncCreatorLineCharsFromParallel, clipSyncCreatorLineToBounds },
+        editor: globalThis,
+    });`, context);
+    for (const name of ['adjustCurrentLineOffset', 'adjustGlobalOffset']) {
+        context.api[name] = (...args) => context.readOffsetActions()[name](...args);
+    }
+    vm.runInContext(`globalThis.readRecordingCommit = () => useSyncCreatorRecordingCommit({
+        react: { useCallback }, toast: Toast, i18n: I18n, editingVersion: SYNC_CREATOR_SYNC_DATA_VERSION,
+        syncData, syncGranularity, lyricsLanguage,
+        line: {
+            currentLineStart, fullLineCharCount: currentFullLineChars.length, currentLineChars, currentLineCharRefs,
+            currentLineMeta, currentLineMetaDraft: lineMetaDrafts[currentLineStart],
+            currentLineStyleRanges, currentLineMergedWithNext,
+        },
+        vocal: globalThis, recordingLock: globalThis, score: globalThis,
+        timing: {
+            collapseSyncCreatorTimesByGranularity, sanitizeSyncCreatorParallel, readSyncCreatorCodec,
+            getSyncCreatorWordRanges, projectSyncCreatorUnitLayout, clipSyncCreatorLineToBounds,
+        },
+        styles: syncCreatorVocalStyles,
+        claimSessionForLocalEditing, setSyncData,
+    });`, context);
+    context.commitCurrentLineSync = (...args) => context.readRecordingCommit()(...args);
+    context.api.commitCurrentLineSync = context.commitCurrentLineSync;
+    const { useSyncCreatorPreviewTiming, createSyncCreatorActiveLinePainter, syncCreatorPreviewPainting } =
+        vm.runInContext("({ useSyncCreatorPreviewTiming, createSyncCreatorActiveLinePainter, syncCreatorPreviewPainting })", context);
     const render = (selected = context.activeParallelPartId) => {
+        layout = context.readLayout();
         context.currentLineStart = lineCharOffsets[context.currentLineIndex];
         context.currentExistingLineData = context.syncData?.lines.find(line => line.start === context.currentLineStart);
         context.currentMergedLineIndexes = context.api.getMergedLineIndexesForStart(context.currentLineIndex);
@@ -175,20 +269,24 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
             : context.currentFullLineChars.map((char, index) => ({ absoluteIndex: context.currentLineStart + index, localIndex: index, char }));
         context.currentNextMergeLineIndex = context.currentMergedLineIndexes.at(-1) + 1;
         context.canMergeCurrentLineWithNext = context.currentNextMergeLineIndex < rows.length;
-        context.syncLinesByStart = new Map(context.syncData?.lines.map(line => [line.start, line]));
-        vm.runInContext(`globalThis.preview = (() => {
-            ${slice('\tconst getPreviewCharsForLine =', '\tconst getPreviewProgressIndex =')}
-            return { getPreviewCharsForLine, getCharSyncTime };
-        })();`, context);
-        context.getPreviewCharsForLine = context.preview.getPreviewCharsForLine;
+        context.preview = useSyncCreatorPreviewTiming({
+            react: context, syncData: context.syncData, lineCharOffsets,
+            activeParallelPart: context.activeParallelPart, getRejoinedLineChars: context.api.getSyncCreatorRejoinedLineChars,
+        });
         context.charElementsRef.current = context.currentLineChars.map((_, index) => ({
             style: {}, dataset: { ivSyncCreatorSynced: context.preview.getCharSyncTime(context.currentLineIndex, index) === null ? '0' : '1' },
         }));
         context.lastPaintedPlaybackIndexRef.current = -2;
-        vm.runInContext(`globalThis.painter = (() => {
-            ${slice('\tconst applyParallelPlaybackProgressVisual =', '\tuseEffect(() => {\n\t\tcharElementsRef.current = [];')}
-            return { applyPlaybackProgressVisual, applyParallelPlaybackProgressVisual };
-        })();`, context);
+        context.paintPreview = createSyncCreatorActiveLinePainter({
+            painting: syncCreatorPreviewPainting,
+            times: context.preview.getPreviewCharsForLine(context.currentLineIndex),
+            line: {
+                charCount: context.currentLineChars.length, direction: context.currentLineDirection,
+                color: context.currentSpeakerTextColor, mutedColor: context.currentSpeakerMutedColor,
+                useTextRun: context.useCurrentLineTextRun,
+            },
+            refs: context,
+        });
         return context.currentParallelData;
     };
     render();
@@ -215,18 +313,23 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
             render();
         },
         paintAt: time => {
-            context.painter.applyPlaybackProgressVisual(-1, time);
+            context.paintPreview(-1, time);
             const played = vm.runInContext('SYNC_CREATOR_PROGRESS_BACKGROUND', context);
             return plain(context.charElementsRef.current.map(element => element.style.background === played));
         },
-        livePreview: () => {
-            context.showLivePreview = true;
-            context.livePreviewSyncBody = context.api.materializeSyncCreatorParallelDrafts(context.syncData, { preview: true });
-            return plain(vm.runInContext(`(() => {
-                ${slice('\tconst livePreviewKaraokeLines =', '\tuseEffect(() => {\n\t\tif (!showLivePreview)')}
-                return livePreviewKaraokeLines;
-            })()`, context));
-        },
+        livePreview: () => plain(buildSyncCreatorPreviewLines({
+            lyricsLines: rows,
+            lineCharOffsets,
+            syncBody: context.api.materializeSyncCreatorParallelDrafts(context.syncData, { preview: true }),
+            getMergedLineIndexesForStart: context.api.getMergedLineIndexesForStart,
+            ...vm.runInContext(`({
+                normalizeSpeaker: normalizeSyncCreatorSpeaker,
+                normalizeKind: normalizeSyncCreatorKind,
+                normalizeStyleRanges: normalizeSyncCreatorStyleRanges,
+                defaultSpeaker: SYNC_CREATOR_DEFAULT_SPEAKER,
+                defaultKind: SYNC_CREATOR_DEFAULT_KIND,
+            })`, context),
+        })),
     };
 }
 
@@ -405,6 +508,16 @@ test('work snapshots preserve old overlapping part marks as ordered runs without
     editor.api.assertValidSyncCreatorSyncData(repaired);
     assert.deepEqual(plain(editor.api.getSyncCreatorRejoinedLineChars(repaired.lines[1])), [11, 11.25, 10.5, 10.75, 12, 12.25]);
     assert.deepEqual(plain(editor.context.syncData), input);
+
+    // Exercise the actual ESM wiring as well as the older callback fixture.
+    const validation = createSyncCreatorValidation({});
+    const parallel = createSyncCreatorParallelEditing(validation);
+    const snapshots = createSyncCreatorSnapshotTools(parallel);
+    const expanded = snapshots.prepareSyncCreatorWorkSnapshot(input);
+    validation.assertValidSyncCreatorSyncData(expanded);
+    const chars = parallel.getSyncCreatorRejoinedLineChars(expanded.lines[1]);
+    const target = { ranges: [{ start: 3, end: 8 }], chars };
+    assert.deepEqual(getSyncCreatorParallelPreviewChars(target), [11, 11.25, 10.5, 10.75, 12, 12.25]);
 });
 
 test('historical repairs retain compact line and word marks without using the current lyric text', () => {
@@ -547,6 +660,55 @@ test('actual draft/checkpoint recovery preserves independent offsets, removed sp
     reopened.split(2); reopened.render('b'); assert.deepEqual(reopened.times(), [10.5, 10.75]);
 });
 
+test('first autosave retains the loaded timing as the undo destination', () => {
+    const editor = createEditor();
+    const baseline = editor.record();
+    editor.shift(100);
+    const edited = editor.record();
+    const saved = draftStore.__test.mergeAutosaveRecord(null, edited, baseline.draft);
+    assert.deepEqual(saved.history.map(entry => entry.kind), ['source', 'working']);
+    assert.deepEqual(saved.history[0].snapshot, baseline.draft);
+    assert.equal(saved.historyCursorId, saved.history[1].id);
+});
+
+test('restoring a checked checkpoint cannot overwrite a newer draft from another window', () => {
+    const editor = createEditor();
+    const baseline = editor.record();
+    editor.shift(100);
+    const first = draftStore.__test.mergeAutosaveRecord(null, editor.record(), baseline.draft);
+    const checkpoint = first.history.at(-1);
+    editor.shift(100);
+    const newer = draftStore.__test.mergeAutosaveRecord(first, editor.record());
+    assert.equal(newer.history.at(-1).id, checkpoint.id, 'a working checkpoint keeps its id while its content changes');
+
+    assert.throws(() => draftStore.__test.mergeRestoredRecord(
+        newer, checkpoint.id, checkpoint.snapshot, newer.clientRevision + 1, first.clientRevision,
+    ), /draft changed/);
+    const current = newer.history.at(-1);
+    assert.deepEqual(draftStore.__test.mergeRestoredRecord(
+        newer, current.id, current.snapshot, newer.clientRevision + 1, newer.clientRevision,
+    ).draft, current.snapshot);
+});
+
+test('autosaving a new editor position after undo keeps the redo state', () => {
+    const editor = createEditor();
+    const baseline = editor.record();
+    editor.shift(100);
+    const edited = editor.record();
+    const saved = draftStore.__test.mergeCheckpointRecord(null, edited, { id: 'edit', baselineSnapshot: baseline.draft });
+    const source = saved.history[0];
+    const undone = draftStore.__test.mergeRestoredRecord(saved, source.id, source.snapshot, 1000);
+    const navigated = draftStore.__test.mergeAutosaveRecord(undone, {
+        ...undone, clientRevision: 1001,
+        draft: { ...undone.draft, editor: { ...undone.draft.editor, currentLineIndex: 1, activeParallelPartId: 'b' } },
+    });
+    assert.equal(navigated.historyCursorId, source.id);
+    assert.deepEqual(navigated.history.map(entry => entry.id), [source.id, 'edit']);
+    assert.equal(navigated.draft.editor.currentLineIndex, 1, 'the position remains recoverable');
+    assert.equal(navigated.draft.editor.activeParallelPartId, 'b');
+    assert.deepEqual(draftStore.__test.mergeRestoredRecord(navigated, 'edit', edited.draft, 1002).draft.syncData, edited.draft.syncData);
+});
+
 test('untimed selected vocals stay disabled rather than shifting a sibling or inventing timing', () => {
     const editor = createEditor();
     editor.split(2);
@@ -623,6 +785,43 @@ test('grouped automatic background ranges shift once each and leave hidden punct
     await editor.import(await editor.export());
     editor.render(target.id);
     assert.deepEqual(editor.times(), after.parts.find(part => part.id === target.id).chars);
+});
+
+test('layout-only edits mark published timing dirty and become clean when undone', async () => {
+    const editor = createEditor({ rows: ['PRE', 'ABCD', 'EF (GH) IJ (KL)'] });
+    const baseline = structuredClone(editor.context.syncData);
+    const hasChanges = () => vm.runInContext('hasSyncCreatorUnsubmittedChanges({ syncData, baseline, materialize: materializeSyncCreatorParallelDrafts, layoutDrafts: [manualParallelSplitDrafts, parentheticalLayoutDrafts, mergedLineDrafts] })', editor.context);
+    editor.context.baseline = baseline;
+    assert.equal(hasChanges(), false, 'an untouched line with parentheses is still clean');
+    editor.split(2);
+    assert.deepEqual(plain(editor.context.syncData), baseline, 'the layout edit has not rewritten raw timings');
+    assert.equal(vm.runInContext('areSyncCreatorSyncBodiesEqual(syncData, baseline)', editor.context), true);
+    assert.equal(hasChanges(), true);
+    const file = await editor.export();
+    assert.deepEqual(file.lines[1].parallel.manualSplitPoints, [2]);
+    assert.deepEqual(file.lines[1].parallel.parts.map(part => part.chars), [[11, 11.25], [11.5, 11.75]]);
+    editor.split(2);
+    assert.equal(hasChanges(), false);
+    editor.context.parentheticalLayoutDrafts[7] = 'grouped';
+    editor.render();
+    assert.equal(hasChanges(), true);
+    delete editor.context.parentheticalLayoutDrafts[7];
+    editor.render();
+    assert.equal(hasChanges(), false);
+});
+
+test('malformed compact timing is rejected without mutating the input snapshot', () => {
+    const editor = createEditor();
+    const invalid = Object.freeze({
+        start: 3, end: 6, granularity: 'word', timing: [[0, 11], [2, 12]],
+        speaker: 'NORMAL', hiddenRanges: [],
+    });
+    const imported = { version: 5, lines: [invalid] };
+    const sanitized = editor.api.sanitizeSyncCreatorSyncData(imported);
+    assert.notEqual(sanitized.lines[0], invalid);
+    assert.deepEqual(plain(sanitized.lines[0].timing), [[0, 11], [2, 12]]);
+    assert.throws(() => editor.api.assertValidSyncCreatorSyncData(sanitized), /Invalid sync data/);
+    assert.deepEqual(invalid.hiddenRanges, []);
 });
 
 test('line and word timing modes keep exact marks through split offsets, removing splits and compact recovery', async () => {
@@ -730,6 +929,41 @@ test('merging another source row does not restore a previously removed split bou
     assert.deepEqual(plain(editor.api.getSyncCreatorRejoinedLineChars(editor.line())), expected);
 });
 
+test('unmerging saved source rows keeps new and removed manual boundaries on the correct rows', async () => {
+    const rows = ['PRE', 'ABCDEF', 'GHIJKL', 'TAIL'];
+    const editor = createEditor({ rows });
+    editor.split(2);
+    editor.render('b'); editor.shift(-500);
+    const first = plain(editor.api.getSyncCreatorRejoinedLineChars(editor.line()));
+    editor.context.currentLineIndex = 2; editor.render();
+    editor.split(3);
+    editor.render('b'); editor.shift(125);
+    const second = plain(editor.api.getSyncCreatorRejoinedLineChars(editor.line()));
+    editor.context.currentLineIndex = 1; editor.render();
+    editor.api.mergeCurrentLineWithNext(); editor.render();
+    await editor.import(await editor.export());
+
+    editor.split(2); // Remove the saved boundary in the owner row.
+    editor.split(9); // Remove the saved boundary in the continuation.
+    editor.split(8); // Move it one character earlier inside the continuation.
+    editor.api.unmergeCurrentLine(); editor.render();
+
+    const verifyRows = target => {
+        target.context.currentLineIndex = 1; target.render();
+        assert.equal(target.context.activeParallelPart, null);
+        assert.deepEqual(target.times(), first);
+        target.context.currentLineIndex = 2; target.render();
+        assert.deepEqual(plain(target.context.currentParallelParts.map(part => part.ranges)), [
+            [{ start: 9, end: 10 }], [{ start: 11, end: 14 }],
+        ]);
+        assert.deepEqual(plain(target.api.getSyncCreatorRejoinedLineChars(target.materialize().lines[2])), second);
+    };
+    verifyRows(editor);
+    const reopened = createEditor({ rows });
+    await reopened.import(await editor.export());
+    verifyRows(reopened);
+});
+
 test('an independent concurrent vocal using the same character range keeps its own recorded times', async () => {
     const editor = createEditor();
     editor.line().parallel = { layout: 'stack', parts: [
@@ -831,15 +1065,8 @@ test('manual joins survive the backend validator, storage normalizer, public GET
 });
 
 test('published merged groups render once with exact edited timing marks in the real lyric decoder', async () => {
-    const { KaraokeWordTiming, SyncDataSourceCompatibility } = createRequire(import.meta.url)('../LyricsService.js');
-    const playbackSource = readFileSync(new URL('../LyricsService.js', import.meta.url), 'utf8');
-    const playback = vm.createContext({ window: { SyncDataCodec: createRequire(import.meta.url)('../SyncDataCodec.js') }, Spicetify: {}, console, KaraokeWordTiming, SyncDataSourceCompatibility });
-    const addonSource = readFileSync(new URL('../Addon_Lyrics_Lrclib.js', import.meta.url), 'utf8');
-    vm.runInContext(addonSource.slice(addonSource.indexOf('    function buildLrclibSyncDataParallelParts('),
-        addonSource.indexOf('    function stripLrcTimestamps(', addonSource.indexOf('    function buildLrclibSyncDataParallelParts('))), playback);
-    vm.runInContext(playbackSource.slice(playbackSource.indexOf('const SyncDataService = (() => {'),
-        playbackSource.indexOf('window.SyncDataService = SyncDataService;'))
-        + '\nglobalThis.apply = SyncDataService.applySyncDataToLyrics;', playback);
+    const codec = syncDataCodec;
+    const playback = createSyncDataRenderer({ getCodec: () => codec });
     const rows = ['PRE', 'ABCDEF', 'TAIL'];
     const editor = createEditor({ rows });
     editor.split(2); editor.split(4);
@@ -848,9 +1075,9 @@ test('published merged groups render once with exact edited timing marks in the 
     for (const expectedText of [['ABCD', 'EF'], ['ABCDEF']]) {
         if (expectedText.length === 1) editor.split(4);
         const published = await editor.submit();
-        const wire = playback.window.SyncDataCodec.encode(published);
-        const played = playback.apply(rows.map(text => ({ text })), { provider: 'lrclib', syncData: wire });
-        assert.deepEqual(plain(played), plain(playback.apply(rows.map(text => ({ text })), { provider: 'lrclib', syncData: published })), 'v6 and legacy playback are identical');
+        const wire = codec.encode(published);
+        const played = playback.applySyncDataToLyrics(rows.map(text => ({ text })), { provider: 'lrclib', syncData: wire });
+        assert.deepEqual(plain(played), plain(playback.applySyncDataToLyrics(rows.map(text => ({ text })), { provider: 'lrclib', syncData: published })), 'v6 and legacy playback are identical');
         const result = plain(played)[1];
         const vocals = result.vocals ? [result.vocals.lead, ...result.vocals.background] : [result];
         assert.deepEqual(vocals.map(part => part.text), expectedText,
@@ -858,7 +1085,7 @@ test('published merged groups render once with exact edited timing marks in the 
         assert.deepEqual(vocals.flatMap(part => part.syllables.map(char => char.startTime)),
             [11000, 11250, 10500, 10750, 12000, 12250], 'render grouping preserves every manual mark');
     }
-    const decode = (sourceRows, data) => plain(playback.apply(sourceRows.map(text => ({ text })), { provider: 'lrclib', syncData: data }))[1];
+    const decode = (sourceRows, data) => plain(playback.applySyncDataToLyrics(sourceRows.map(text => ({ text })), { provider: 'lrclib', syncData: data }))[1];
     const vocalsOf = line => line.vocals ? [line.vocals.lead, ...line.vocals.background] : [line];
     const published = await editor.submit();
     const legacy = structuredClone(published);
@@ -934,6 +1161,7 @@ test('reported full attachment preserves every vocal and merged group after loca
     });
     const data = { version: input.version, lines: input.lines };
     const editor = createEditor({ rows, data });
+    editor.context.trackDurationMs = input.source.duration * 1000;
     const before = plain(data);
     const wire = await editor.export();
     await editor.import(wire);
@@ -955,6 +1183,16 @@ test('reported full attachment preserves every vocal and merged group after loca
         await editor.import(await editor.export());
         assert.equal(editor.context.activeParallelPart, null, `reported row ${index} stays joined when reopened`);
         assert.deepEqual(editor.times(), expected, `reported row ${index} keeps exact edited times`);
+    }
+    const expected = editor.materialize().lines.map(line => plain(editor.api.getSyncCreatorRejoinedLineChars(line)));
+    const source = { ...lrclibSourceFor(editor.context, rows), duration: input.source.duration };
+    editor.context.attachSelectedLrclibSource = value => ({ ...value, source });
+    const submitted = await editor.submit();
+    assert.deepEqual(submitted.lines.map(line => plain(editor.api.getSyncCreatorRejoinedLineChars(line))), expected);
+    if (process.env.SYNC_CREATOR_BACKEND_ROOT) {
+        const backendUrl = pathToFileURL(`${process.env.SYNC_CREATOR_BACKEND_ROOT}/src/routes/sync_data.js`).href;
+        const { normalizeSyncDataForStorage, validateSyncData } = await import(backendUrl);
+        assert.deepEqual(validateSyncData(normalizeSyncDataForStorage(submitted), 'lrclib'), { valid: true });
     }
 });
 
@@ -987,11 +1225,16 @@ test('a file made on other lyrics loads them before its timings are placed', asy
     const editor = createEditor({ rows: SHOWN_ROWS });
     const requested = [];
     const loadedSource = { ...file.source, searchSource: 'id' };
-    editor.context.loadLrclibSourceForImport = async source => {
+    let activated = 0;
+    editor.context.prepareLrclibSourceForImport = async source => {
         requested.push(plain(source));
-        return { lyricsChars: FILE_ROWS.flatMap(row => Array.from(row)), lyricsFingerprint: 'file-text', lrclibSource: loadedSource };
+        return {
+            lyricsChars: FILE_ROWS.flatMap(row => Array.from(row)), lyricsFingerprint: 'file-text', lrclibSource: loadedSource,
+            activate() { activated++; },
+        };
     };
     await importFile(editor, file);
+    assert.equal(activated, 1);
     assert.deepEqual(requested, [plain(file.source)]);
     assert.deepEqual(plain(editor.context.syncData), plain(reference.context.syncData),
         'the timings apply exactly as they do on the lyrics they were made on');
@@ -1015,12 +1258,12 @@ test('a file that fits no available lyrics fails instead of reporting success', 
     const file = { ...(await maker.export()), source: lrclibSourceFor(maker.context, FILE_ROWS) };
     const editor = createEditor({ rows: SHOWN_ROWS });
     const before = plain(editor.context.syncData);
-    editor.context.loadLrclibSourceForImport = async () => { throw new Error('syncCreator.importLyricsMismatch'); };
+    editor.context.prepareLrclibSourceForImport = async () => { throw new Error('syncCreator.importLyricsMismatch'); };
     await assert.rejects(importFile(editor, file), { message: 'syncCreator.importError: syncCreator.importLyricsMismatch' });
     assert.deepEqual(plain(editor.context.syncData), before);
 
     let loads = 0;
-    editor.context.loadLrclibSourceForImport = async () => { loads += 1; return null; };
+    editor.context.prepareLrclibSourceForImport = async () => { loads += 1; return null; };
     await assert.rejects(importFile(editor, { ...file, lines: [{ start: 4, end: 1, chars: [1] }] }), /Invalid sync data/);
     assert.equal(loads, 0, 'an unusable file is refused before the shown lyrics are replaced');
 

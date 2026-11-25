@@ -1,12 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
-
-const source = readFileSync(new URL("../VideoMatch.js", import.meta.url), "utf8");
-const context = vm.createContext({ window: {} });
-vm.runInContext(source, context);
-const VideoMatch = context.window.ivLyricsVideoMatch;
+import { VideoMatch } from "../src/features/video/VideoMatch.js";
 
 const goosebumps = { title: "goosebumps", artists: ["Travis Scott"], durationMs: 243_000, isrc: "USSM11607576" };
 const blindingLights = { title: "Blinding Lights", artists: ["The Weeknd"], durationMs: 200_040, isrc: "USUG11904206" };

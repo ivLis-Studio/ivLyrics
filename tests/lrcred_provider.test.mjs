@@ -1,9 +1,9 @@
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../Addon_Lyrics_LrcRed.js', import.meta.url), 'utf8');
+const source = bundleInitializer(new URL('../src/providers/lyrics/Addon_Lyrics_LrcRed.js', import.meta.url));
 const ISRC_A = 'JPAAA2600001', ISRC_B = 'JPAAA2600002';
 const URI_A = 'spotify:track:AAAAAAAAAAAAAAAAAAAAAA', URI_B = 'spotify:track:BBBBBBBBBBBBBBBBBBBBBB';
 const track = { uri: URI_B, title: 'Requested Song', artist: 'Fixture Artist', durationMs: 200000 };

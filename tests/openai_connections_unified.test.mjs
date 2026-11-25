@@ -1,9 +1,9 @@
+import { readAiProviderFixture } from "./fixtures/ai-provider.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../Addon_AI_ChatGPT.js', import.meta.url), 'utf8');
+const source = readAiProviderFixture("Addon_AI_ChatGPT.js");
 const plain = value => JSON.parse(JSON.stringify(value));
 const connection = (id, overrides = {}) => ({
     id, name: id, baseUrl: `https://${id}.test/v1`, apiKeys: `${id}-key`,
@@ -73,7 +73,7 @@ function harness(values = {}, writeMode = 'normal') {
         }
     };
     vm.runInNewContext(source.replace('    registerAddon();',
-        '    window.hooks = { getFallbackProviders, getProviderConnections, getRequestTargets, callChatGPTAPIRaw };\n    registerAddon();'),
+        '    window.hooks = { ...connections, callChatGPTAPIRaw };\n    registerAddon();'),
     { window, Spicetify: { React: ui.React }, URL, URLSearchParams, TextDecoder, setTimeout, clearTimeout, console });
     return { addon, hooks: window.hooks, window, settings, writes, requests, ui };
 }

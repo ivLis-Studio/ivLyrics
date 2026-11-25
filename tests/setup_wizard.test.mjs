@@ -1,9 +1,11 @@
+import { readSetupWizardFixture } from "./fixtures/legacy-page-source.mjs";
+import { createSettingsStorage } from "#ivlyrics/core/createSettingsStorage.mjs";
+import { createI18n } from "#ivlyrics/i18n/createI18n.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const source = readFileSync(new URL("../SetupWizard.js", import.meta.url), "utf8");
+const source = readSetupWizardFixture();
 
 // Exercise the real wizard's buttons and storage with a small hook renderer.
 // Browser validation covers the actual DOM, layout and keyboard navigation separately.
@@ -11,9 +13,25 @@ function harness({ stored = {}, visual = {} } = {}) {
   const storage = new Map(Object.entries(stored));
   const config = { visual: { language: "ko", alignment: "right", "translate:target-language": "auto",
     "panel-lyrics-enabled": false, ...visual } };
+  let failingKey;
+  const localStorage = {
+    getItem: key => storage.get(key) ?? null,
+    removeItem: key => storage.delete(key),
+    setItem(key, value) {
+      if (key === failingKey) throw new Error("setup setting write failed");
+      storage.set(key, String(value));
+    },
+  };
+  const I18n = createI18n({
+    languages: new Map([["ko", {}], ["en", {}]]),
+    languageNames: { ko: "Korean", en: "English" },
+    readLanguage: () => localStorage.getItem("ivLyrics:visual:language"),
+    writeLanguage: value => localStorage.setItem("ivLyrics:visual:language", value),
+    onLanguageChanged: value => { config.visual.language = value; },
+    debug() {},
+  });
   const hooks = [];
   let cursor = 0;
-  let language = "ko";
   let completed = 0;
   let domTheme = "dark";
   const state = (initial) => {
@@ -22,24 +40,15 @@ function harness({ stored = {}, visual = {} } = {}) {
     return [hooks[index], (next) => { hooks[index] = typeof next === "function" ? next(hooks[index]) : next; }];
   };
   const context = vm.createContext({
-    window: {},
+    window: {}, document: {},
     CONFIG: config,
-    SETTINGS_LYRICS_PREVIEW_TEXT: "sample",
-    I18n: {
-      getCurrentLanguage: () => language,
-      getAvailableLanguages: () => [{ code: "ko", name: "Korean" }, { code: "en", name: "English" }],
-      setLanguage: (value) => { language = value; },
-      t: (key) => key,
-    },
-    StorageManager: {
-      getItem: (key) => storage.get(key) ?? null,
-      setItem: (key, value) => storage.set(key, String(value)),
-      saveConfig: (key, value) => storage.set("ivLyrics:visual:" + key, String(value)),
-    },
-    getSettingsSurfaceTheme: () => storage.get("ivLyrics:settings-ui-theme") === "light" ? "light" : "dark",
+    I18n: { ...I18n, t: key => key },
+    StorageManager: createSettingsStorage({ localStorage }),
+    localStorage, console: { error() {} },
     handleSettingsRadioKeys() {},
     setTimeout() {},
     react: {
+      useState: state,
       memo: (fn) => fn,
       createElement: (type, props, ...children) => ({ type, props: { ...props, children: children.flat(Infinity) } }),
       useEffect() {},
@@ -65,7 +74,10 @@ function harness({ stored = {}, visual = {} } = {}) {
     assert.ok(node, "missing button " + key);
     node.props.onClick();
   };
-  return { render, flatten, click, config, storage, completed: () => completed, domTheme: () => domTheme };
+  return {
+    render, flatten, click, config, storage, completed: () => completed, domTheme: () => domTheme,
+    failWrite(key) { failingKey = key; },
+  };
 }
 
 test("reopening and finishing preserves disabled backgrounds and the persisted overlay setting", () => {
@@ -110,5 +122,47 @@ test("returning to a previous page keeps draft choices and completion writes the
   assert.equal(h.completed(), 1);
   assert.equal(h.storage.get("ivLyrics:visual:video-background"), "true");
   assert.equal(h.storage.get("ivLyrics:visual:gradient-background"), "false");
+});
+
+test("a failed completion leaves the original settings intact and can be retried", () => {
+  const h = harness({ stored: {
+    "ivLyrics:visual:panel-lyrics-enabled": "false",
+    "ivLyrics:overlay-enabled": "false",
+    "ivLyrics:settings-ui-theme": "dark",
+  } });
+  const button = h.flatten(h.render()).find(node => node.props["aria-label"] === "settingsUi.theme.light");
+  button.props.onClick();
+  h.click("setupWizard.quick.playback");
+  for (const toggle of h.flatten(h.render()).filter(node => node.props.role === "switch").slice(0, 2)) {
+    toggle.props.onClick();
+  }
+  const storedBefore = Object.fromEntries(h.storage);
+  const visualBefore = { ...h.config.visual };
+  h.failWrite("ivLyrics:setup-completed");
+  h.click("setupWizard.complete.startNow");
+  assert.equal(h.completed(), 0);
+  assert.deepEqual(Object.fromEntries(h.storage), storedBefore);
+  assert.deepEqual(h.config.visual, visualBefore);
+  assert.ok(h.flatten(h.render()).some(node => node.props.role === "alert"));
+
+  h.failWrite(undefined);
+  h.click("setupWizard.complete.startNow");
+  assert.equal(h.completed(), 1);
+  assert.equal(h.storage.get("ivLyrics:setup-completed"), "true");
+  assert.equal(h.storage.get("ivLyrics:visual:panel-lyrics-enabled"), "true");
+  assert.equal(h.storage.get("ivLyrics:overlay-enabled"), "true");
+  assert.equal(h.storage.get("ivLyrics:settings-ui-theme"), "light");
+});
+
+test("previewing a different interface language only saves it after completion", () => {
+  const key = "ivLyrics:visual:language";
+  const h = harness({ stored: { [key]: "ko" } });
+  const language = h.flatten(h.render()).find(node => node.type === "select" && node.props.value === "ko");
+  language.props.onChange({ target: { value: "en" } });
+  assert.equal(h.config.visual.language, "en");
+  assert.equal(h.storage.get(key), "ko");
+  h.click("setupWizard.quick.playback");
+  h.click("setupWizard.complete.startNow");
+  assert.equal(h.storage.get(key), "en");
 });
 

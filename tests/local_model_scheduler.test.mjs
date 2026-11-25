@@ -96,3 +96,51 @@ test("an unsupported language fails at once without stopping the song being tran
 	h.releaseAll();
 	assert.equal((await a).translation.length, 24);
 });
+
+test("the shared playback clock supersedes a track whose public player item lags behind", async () => {
+	const h = createHarness({ hold: true, playing: "songA" });
+	let uri = "spotify:track:songA";
+	h.window.ivLyricsPlaybackPosition = { getPlayerPlaybackSnapshot: () => ({ uri }) };
+	const old = h.addon.translateLyrics({ trackId: "songA", text: song("A"), lang: "ko", onLine() {} });
+	await h.until(() => h.running.length === 1);
+	uri = "spotify:track:songB";
+	const latest = h.addon.translateLyrics({ trackId: "songB", text: song("B"), lang: "ko", onLine() {} });
+	await assert.rejects(old, isSuperseded);
+	h.releaseAll();
+	await latest;
+	assert.deepEqual(order(h), ["A0", "B0", "B8", "B16"]);
+});
+
+test("the translation budget aborts a running block and lets subsequent work use the same engine", async () => {
+	const h = createHarness({ hold: true });
+	const expired = h.addon.translateLyrics({ trackId: "songA", text: song("A"), lang: "ko" });
+	await h.until(() => h.running.length === 1);
+	const [id, timer] = [...h.timers].find(([, entry]) => entry.ms === 90_000);
+	h.timers.delete(id);
+	h.advance(timer.ms);
+	timer.callback();
+	await assert.rejects(expired, { name: "TimeoutError" });
+	assert.equal(h.calls[0].signal.aborted, true);
+	h.releaseAll();
+	assert.equal((await h.addon.translateLyrics({ trackId: "songB", text: "new", lang: "ko" })).translation[0], "KO:new");
+	assert.deepEqual(order(h), ["A0", "new"]);
+	assert.equal(h.loads.length, 1);
+	assert.deepEqual([...h.timers.values()].map(entry => entry.ms), [10 * 60_000]);
+});
+
+test("a new translation waits for idle retirement to finish before loading a worker", async () => {
+	const release = Promise.withResolvers();
+	const h = createHarness({ exit: () => release.promise });
+	await h.addon.translateLyrics({ text: "before", lang: "ko" });
+	const [id, timer] = [...h.timers].find(([, entry]) => entry.ms === 10 * 60_000);
+	h.timers.delete(id);
+	timer.callback();
+	await h.until(() => h.exits === 1);
+	const next = h.addon.translateLyrics({ text: "after", lang: "ko" });
+	await new Promise(resolve => setImmediate(resolve));
+	assert.equal(h.loads.length, 1);
+	assert.deepEqual(order(h), ["before"]);
+	release.resolve();
+	assert.equal((await next).translation[0], "KO:after");
+	assert.equal(h.loads.length, 2);
+});

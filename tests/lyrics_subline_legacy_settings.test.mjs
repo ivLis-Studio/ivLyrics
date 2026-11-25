@@ -1,38 +1,28 @@
+import { createLyricSubLineRenderer } from "#ivlyrics/lyrics/createLyricSubLineRenderer.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
-
-const source = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
-const start = source.indexOf('const renderLyricSubLine =');
-const end = source.indexOf('const renderLyricMainContent =', start);
-assert.ok(start >= 0 && end > start);
 
 for (const singleLineScroll of [false, true]) {
   test(`legacy highlight preferences preserve ordinary sublines (vinyl scroll: ${singleLineScroll})`, () => {
     const annotations = [{ marker: 1 }];
     const html = 'Translation <sup>1</sup>';
     const onContextMenu = () => {};
-    const context = vm.createContext({
-      CONFIG: { visual: {
-        'inactive-color': '#aaa',
-        'phonetic-semantic-highlight': true,
-        'translation-semantic-highlight': true,
-      } },
-      window: { LyricsAlignment: new Proxy({}, {
-        get() { throw new Error('Removed alignment service must never run'); },
-      }) },
-      MeaningLinkedSubline: 'removed-component',
+    const visual = {
+      'inactive-color': '#aaa',
+      'phonetic-semantic-highlight': true,
+      'translation-semantic-highlight': true,
+    };
+    const render = createLyricSubLineRenderer({
+      getInactiveColor: () => visual['inactive-color'],
       react: { createElement: (type, props, ...children) => ({ type, props, children }) },
-      renderAnnotatedLyricHTML(text, received) {
+      renderHtml(text, received) {
         assert.equal(text, 'Translation');
         assert.equal(received, annotations);
         return html;
       },
     });
-    vm.runInContext(`${source.slice(start, end)}\nglobalThis.render = renderLyricSubLine;`, context);
     for (const kind of ['phonetic', 'translation']) {
-      const tree = context.render(kind, 'Translation', onContextMenu,
+      const tree = render(kind, 'Translation', onContextMenu,
         singleLineScroll, annotations, kind,
         { line: { text: 'Original', startTime: 1000 }, kind, position: 1500 });
       assert.equal(tree.type, 'p');

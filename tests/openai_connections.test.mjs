@@ -1,32 +1,24 @@
+import { openEventResponse, readAiProviderFixture } from "./fixtures/ai-provider.mjs";
+import { isCloudSyncSettingKey } from "#ivlyrics/core/settingsBackupPolicy.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../Addon_AI_ChatGPT.js', import.meta.url), 'utf8');
+const source = readAiProviderFixture("Addon_AI_ChatGPT.js");
 const backup = (id, enabled = true) => ({ id, name: id, baseUrl: `https://${id}.test/v1`, apiKeys: `${id}-key`, model: `${id}-model`, enabled });
 const json = (status, value) => new Response(JSON.stringify(value), { status });
 const success = text => json(200, { choices: [{ message: { content: text }, finish_reason: 'stop' }] });
 
 test('connection credentials stay outside cloud settings', () => {
-    const index = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
-    const endAnchor = index.indexOf('const StorageKeys =') !== -1
-        ? index.indexOf('const StorageKeys =')
-        : index.indexOf('try {', index.indexOf('const CLOUD_SYNC_EXCLUDED_STORAGE_KEYS ='));
-    const helpers = index.slice(index.indexOf('const CLOUD_SYNC_EXCLUDED_STORAGE_KEYS ='), endAnchor);
-    const context = { APP_NAME: 'ivLyrics', TRACK_SYNC_OFFSETS_STORAGE_KEY: 'ivLyrics:track-sync-offsets',
-        CURRENT_STORAGE_PREFIX: 'ivLyrics:', PRIVATE_OR_TRANSIENT_STORAGE_KEYS: new Set(),
-        OBSOLETE_LEGACY_STORAGE_KEYS: new Set(), __storageKeys: [] };
-    vm.runInNewContext(`${helpers}\nglobalThis.allowed = isCloudSyncSettingKey;`, context);
-    assert.equal(context.allowed('ivLyrics:ai:addon:chatgpt:fallback-providers'), false);
-    assert.equal(context.allowed('ivLyrics:ai:addon:chatgpt:api-keys'), false);
-    assert.equal(context.allowed('ivLyrics:ai:addon:chatgpt:model'), true);
+    assert.equal(isCloudSyncSettingKey('ivLyrics:ai:addon:chatgpt:fallback-providers'), false);
+    assert.equal(isCloudSyncSettingKey('ivLyrics:ai:addon:chatgpt:api-keys'), false);
+    assert.equal(isCloudSyncSettingKey('ivLyrics:ai:addon:chatgpt:model'), true);
     // Regression: serialized extra-endpoint arrays carry per-endpoint apiKey
     // values, so the container key itself must be excluded (all factory IDs).
     const fabricated = JSON.stringify([{ id: 'ep-1', label: 'Endpoint 2', baseUrl: 'https://extra.test/v1', apiKey: 'sk-extra-secret', model: 'extra-model' }]);
     assert.ok(fabricated.includes('sk-extra-secret'));
-    assert.equal(context.allowed('ivLyrics:ai:addon:chatgpt:extra-endpoints'), false);
-    assert.equal(context.allowed('ivLyrics:ai:addon:nvidia-nim:extra-endpoints'), false);
+    assert.equal(isCloudSyncSettingKey('ivLyrics:ai:addon:chatgpt:extra-endpoints'), false);
+    assert.equal(isCloudSyncSettingKey('ivLyrics:ai:addon:nvidia-nim:extra-endpoints'), false);
 });
 
 function harness(connections, responder, extra = {}) {
@@ -47,7 +39,7 @@ function harness(connections, responder, extra = {}) {
         },
     };
     vm.runInNewContext(source.replace('    registerAddon();',
-        '    window.hooks = { getProviderConnections, callChatGPTAPIRaw, callChatGPTAPIStream, callResponsesAPIStream };\n    registerAddon();'),
+        '    window.hooks = { getProviderConnections: connections.getProviderConnections, callChatGPTAPIRaw, callChatGPTAPIStream, callResponsesAPIStream };\n    registerAddon();'),
     { window, URL, URLSearchParams, TextDecoder, setTimeout, clearTimeout, console });
     return { addon, requests, settings, hooks: window.hooks };
 }
@@ -110,19 +102,51 @@ test('stream fallback resets failed provisional output before the next connectio
     assert.equal(h.requests[1].body.model, 'second-model');
 });
 
-test('research Responses API uses each connection model and URL', async () => {
+test('a rejected stream cancels the live body and unlocks it before using the next connection', async () => {
+    const trace = [];
+    const encoder = new TextEncoder();
+    const data = (text, finish_reason) => encoder.encode('data: ' + JSON.stringify({
+        choices: [{ delta: { content: text }, finish_reason }],
+    }) + '\n\n');
+    const rejected = new Response(new ReadableStream({
+        start(controller) {
+            controller.enqueue(data('wrong\n', null));
+            controller.enqueue(data('', 'content_filter'));
+        },
+        cancel() {
+            trace.push('cancel');
+            return new Promise(() => {});
+        },
+    }), { headers: { 'Content-Type': 'text/event-stream' } });
+    const h = harness([backup('second')], request => {
+        if (request.url.includes('primary')) return rejected;
+        assert.equal(rejected.body.locked, false);
+        trace.push('next');
+        return success('correct');
+    });
+
+    assert.equal(await h.hooks.callChatGPTAPIStream(
+        'fixture', (_index, line) => trace.push(line), () => trace.push('reset'), 1,
+    ), 'correct');
+    assert.deepEqual(trace, ['wrong', 'cancel', 'reset', 'next']);
+});
+
+test('research Responses API fails over and finishes on response.completed even with an open body', { timeout: 1500 }, async () => {
+    const events = [
+        { type: 'response.output_text.delta', delta: '{"ok":true}' },
+        { type: 'response.completed', response: { status: 'completed' } },
+    ];
+    const { response, cancelled } = openEventResponse(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(''));
     const h = harness([backup('second')], request => {
         if (request.url.includes('primary')) return json(404, { error: { message: 'unsupported' } });
-        const events = [
-            { type: 'response.output_text.delta', delta: '{"ok":true}' },
-            { type: 'response.completed', response: { status: 'completed' } },
-        ];
-        return new Response(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'Content-Type': 'text/event-stream' } });
+        return response;
     });
     const result = await h.hooks.callResponsesAPIStream('fixture', null, null, 1, JSON.parse);
     assert.deepEqual(result, { ok: true });
     assert.equal(h.requests[1].url, 'https://second.test/v1/responses');
     assert.equal(h.requests[1].body.model, 'second-model');
+    await cancelled;
+    assert.equal(response.body.locked, false);
 });
 
 test('concurrent requests keep their own credentials and ordered connection snapshots', async () => {

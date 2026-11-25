@@ -1,31 +1,33 @@
+import { applyCulturalAnnotationsToLyrics } from "../src/lyrics/lyricCulturalAnnotations.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { readTranslationRuntimeFixture } from './fixtures/legacy-page-source.mjs';
+import { createPageTranslationMemoryCache } from '../src/lyrics/pageMemoryCache.mjs';
+import { reuseLyricsPresentation, withoutVocalSupplementField, mergeVocalTranslationFields } from '../src/lyrics/translationPresentation.mjs';
 
-const source = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../src/spicetify/index.js', import.meta.url), 'utf8');
 const section = (from, to) => {
   const start = source.indexOf(from), end = source.indexOf(to, start + from.length);
   assert.ok(start >= 0 && end > start, from);
   return source.slice(start, end);
 };
 const context = vm.createContext({
-  console, CONFIG: { visual: {} },
+  console, CONFIG: { visual: {} }, CacheManager: createPageTranslationMemoryCache(),
   window: { ivLyricsTextComparison: {
     normalize: text => String(text || '').trim(), areEquivalent: (a, b) => a === b,
   } },
   Utils: { isSectionHeader: () => false },
 });
 vm.runInContext([
-  section('const getTranslationPartText =', 'const hasInstrumentalMarker ='),
-  section('const isTranslationNoteLine =', '// The floating toolbar names lyrics modes'),
+  readTranslationRuntimeFixture(),
   `class Container {
-    ${section('  applyCulturalAnnotations(', '  requestCulturalAnnotations(')}
     ${section('  optimizeTranslations(', '  getGeminiTranslation(')}
   }
-  globalThis.api = { Container, reuseLyricsPresentation, withoutVocalSupplementField, mergeVocalTranslationFields };`,
+  globalThis.Container = Container;`,
 ].join('\n'), context);
-const { Container, reuseLyricsPresentation, withoutVocalSupplementField, mergeVocalTranslationFields } = context.api;
+const { Container } = context;
 const line = (text, startTime = 1000) => ({ text, originalText: text, startTime,
   endTime: startTime + 1000, syllables: [{ text, startTime, endTime: startTime + 1000 }] });
 
@@ -72,20 +74,15 @@ test('unchanged vocal fields do not clone the timing-bearing tree', () => {
 });
 
 test('cultural annotations preserve the unmodified array and affect only their own row', () => {
-  const app = new Container();
-  app.state = { uri: 'fixture' };
-  app.isCulturalAnnotationsEnabled = () => true;
-  app._culturalAnnotationResults = new Map();
   const before = [line('first'), line('second')];
-  assert.equal(app.applyCulturalAnnotations(before), before);
+  assert.equal(applyCulturalAnnotationsToLyrics(before, null), before);
   const notes = [{ marker: 1, expression: 'second', note: 'context' }];
-  app._culturalAnnotationResults.set('fixture', { notesByIndex: new Map([[1, notes]]) });
-  const annotated = app.applyCulturalAnnotations(before);
+  const notesByIndex = new Map([[1, notes]]);
+  const annotated = applyCulturalAnnotationsToLyrics(before, notesByIndex);
   assert.equal(annotated[0], before[0]);
   assert.equal(annotated[1].syllables, before[1].syllables);
-  assert.equal(app.applyCulturalAnnotations(annotated), annotated);
-  app._culturalAnnotationResults.clear();
-  assert.equal(app.applyCulturalAnnotations(annotated)[1].culturalNote, undefined);
+  assert.equal(applyCulturalAnnotationsToLyrics(annotated, notesByIndex), annotated);
+  assert.equal(applyCulturalAnnotationsToLyrics(annotated, null)[1].culturalNote, undefined);
 });
 
 test('production optimization shares unchanged stream rows and still clears disabled output', () => {

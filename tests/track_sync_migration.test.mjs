@@ -1,35 +1,27 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
-
-const source = readFileSync(new URL("../index.js", import.meta.url), "utf8");
-
-// Extract the migration IIFE and TrackSyncDB for testing
-const migrationStart = source.indexOf("// Migrate from localStorage to IndexedDB");
-const migrationEnd = source.indexOf("const SettingsPersistence", migrationStart);
-const migrationCode = source.slice(migrationStart, migrationEnd);
-
-const trackSyncDBStart = source.indexOf("const TrackSyncDB = {");
-const trackSyncDBEnd = source.indexOf("// TrackSyncDB", trackSyncDBStart);
-const trackSyncDBCode = source.slice(trackSyncDBStart, trackSyncDBEnd);
-
-// Extract everything from normalizeTrackSyncOffsets through initDB (non-overlapping)
-const normalizeStart = source.indexOf("const normalizeTrackSyncOffsets = (");
-const normalizeEnd = source.indexOf("const TrackSyncDB = {", normalizeStart);
-const normalizeCode = source.slice(normalizeStart, normalizeEnd);
-
-// Extract DB constants (before normalizeTrackSyncOffsets)
-const dbNameStart = source.indexOf('const DB_NAME = "ivLyrics-db"');
-const dbNameEnd = source.indexOf("const normalizeTrackSyncOffsets", dbNameStart);
-const dbConstantsCode = source.slice(dbNameStart, dbNameEnd);
+import { getTrackSyncOffsetStore } from "#ivlyrics/core/trackSyncOffsetRuntime.mjs";
+import {
+  createTrackSyncOffsetStore, migrateTrackSyncOffsets, TRACK_SYNC_IMPORT_RECEIPT_KEY,
+  TRACK_SYNC_OFFSETS_RESTORED_KEY, TRACK_SYNC_OFFSETS_STORAGE_KEY,
+} from "#ivlyrics/core/trackSyncOffsetStore.mjs";
+import { createSettingsStorage } from "#ivlyrics/core/createSettingsStorage.mjs";
 
 // Minimal fake IndexedDB that properly simulates transaction completion
 const createFakeIndexedDB = (initialData = {}) => {
   const data = new Map(Object.entries(initialData));
   let dbInstance = null;
+  let opens = 0;
 
   const createStore = () => ({
+    count: () => {
+      const req = {};
+      queueMicrotask(() => {
+        req.result = data.size;
+        req.onsuccess?.();
+      });
+      return req;
+    },
     clear: () => {
       const req = {};
       queueMicrotask(() => {
@@ -73,6 +65,7 @@ const createFakeIndexedDB = (initialData = {}) => {
   });
 
   const open = () => {
+    opens++;
     const request = {};
     queueMicrotask(() => {
       if (!dbInstance) {
@@ -107,7 +100,7 @@ const createFakeIndexedDB = (initialData = {}) => {
     return request;
   };
 
-  return { open, data };
+  return { open, data, get opens() { return opens; } };
 };
 
 const createHarness = ({ existingOffsets = null, legacyOffsets = null } = {}) => {
@@ -130,62 +123,63 @@ const createHarness = ({ existingOffsets = null, legacyOffsets = null } = {}) =>
   const errors = [];
   const logs = [];
 
-  const window = {
-    console: {
-      warn: (...args) => warnings.push(args),
-      error: (...args) => errors.push(args),
-      log: (...args) => logs.push(args),
-    },
-  };
-
-  const context = {
-    window,
-    localStorage,
-    indexedDB,
-    console: window.console,
-    ivLyricsDebug: (...args) => logs.push(args),
-    queueMicrotask,
-    setTimeout,
-    Promise,
-    Object,
-    JSON,
-    Number,
-    Math,
-    Date,
-    Array,
-    Error,
-    Set,
-    Map,
-  };
-
-  // Build a testable module from the extracted code
-  // normalizeCode already includes initDB (it's between normalizeTrackSyncOffsets and TrackSyncDB)
-  const moduleCode = `
-    ${dbConstantsCode}
-    ${normalizeCode}
-    ${trackSyncDBCode}
-    ${migrationCode}
-  `;
-
-  vm.createContext(context);
-  vm.runInContext(moduleCode, context);
-
+  const logger = { warn: (...args) => warnings.push(args), error: (...args) => errors.push(args) };
+  const debug = (...args) => logs.push(args);
+  const offsetStore = createTrackSyncOffsetStore({ getIndexedDB: () => indexedDB, debug, logger });
   return {
     values,
+    localStorage,
+    offsetStore,
+    indexedDB,
     indexedDBData: indexedDB.data,
     warnings,
     errors,
     logs,
-    window,
+    migration: migrateTrackSyncOffsets({ localStorage, offsetStore, debug, logger }),
   };
 };
 
-const flushAsync = async (ms = 300) => {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-};
+test("the startup and page offset APIs wait for legacy migration before reading or writing", async () => {
+  const key = "ivLyrics:track-sync-offsets";
+  const firstTrack = "spotify:track:first";
+  const otherTrack = "spotify:track:other";
+  const values = new Map([[key, JSON.stringify({ [firstTrack]: 100, [otherTrack]: 250 })]]);
+  const host = {
+    indexedDB: createFakeIndexedDB(),
+    localStorage: { getItem: (key) => values.get(key), removeItem: (key) => values.delete(key) },
+  };
+  const startup = getTrackSyncOffsetStore(host);
+  const page = getTrackSyncOffsetStore(host);
+  const pendingRead = startup.getOffset(otherTrack);
+  const pendingWrite = page.setOffset(firstTrack, 600);
+  assert.equal(startup, page);
+  assert.equal(host.TrackSyncDB, startup);
+  assert.deepEqual(await Promise.all([pendingRead, pendingWrite]), [250, true]);
+  assert.deepEqual(await page.getAllOffsets(), { [firstTrack]: 600, [otherTrack]: 250 });
+  assert.equal(host.indexedDB.opens, 1);
+  assert.equal(values.has(key), false);
+});
+
+test("concurrent reads reuse a single connection and reopen after a failed attempt", async () => {
+  const uri = "spotify:track:offset";
+  const indexedDB = createFakeIndexedDB({ [uri]: -500 });
+  let attempts = 0;
+  const host = { indexedDB: {
+    open() {
+      attempts++;
+      if (attempts > 1) return indexedDB.open();
+      const request = { error: new Error("Database temporarily unavailable") };
+      queueMicrotask(() => request.onerror());
+      return request;
+    },
+  } };
+  const store = getTrackSyncOffsetStore(host, { logger: { warn() {}, error() {} } });
+  assert.deepEqual(await Promise.all([store.getOffset(uri), store.getOffset(uri)]), [0, 0]);
+  assert.equal(attempts, 1);
+  assert.deepEqual(await Promise.all([store.getOffset(uri), store.getOffset(uri)]), [-500, -500]);
+  assert.equal(attempts, 2);
+  assert.equal(indexedDB.opens, 1);
+});
 
 test("migration does not overwrite existing IndexedDB offsets with older localStorage data", async () => {
   const harness = createHarness({
@@ -193,7 +187,7 @@ test("migration does not overwrite existing IndexedDB offsets with older localSt
     legacyOffsets: JSON.stringify({ "spotify:track:abc": 1000 }),
   });
 
-  await flushAsync();
+  await harness.migration;
 
   // The existing IndexedDB offset (5000) should NOT be overwritten by the legacy localStorage value (1000)
   assert.equal(
@@ -209,7 +203,7 @@ test("migration proceeds when IndexedDB has no existing offsets", async () => {
     legacyOffsets: JSON.stringify({ "spotify:track:abc": 1000 }),
   });
 
-  await flushAsync();
+  await harness.migration;
 
   assert.equal(
     harness.indexedDBData.get("spotify:track:abc"),
@@ -221,6 +215,46 @@ test("migration proceeds when IndexedDB has no existing offsets", async () => {
     false,
     "Legacy localStorage key should be removed after successful migration"
   );
+});
+
+test("migration preserves offsets saved before its write transaction gets the store", async () => {
+  const uri = "spotify:track:abc";
+  const legacyOffsets = JSON.stringify({ [uri]: 1000 });
+  const harness = createHarness({ legacyOffsets });
+  queueMicrotask(() => harness.indexedDBData.set(uri, 5000));
+
+  await harness.migration;
+
+  assert.equal(harness.indexedDBData.get(uri), 5000);
+  assert.equal(harness.values.get("ivLyrics:track-sync-offsets"), legacyOffsets);
+});
+
+test("an intentionally empty settings backup stays empty after startup migrates legacy offsets", async () => {
+  const track = "spotify:track:fixture";
+  const h = createHarness({
+    existingOffsets: { [track]: 320 },
+    legacyOffsets: JSON.stringify({ [track]: 190 }),
+  });
+  await h.migration;
+  assert.equal(h.values.has(TRACK_SYNC_OFFSETS_STORAGE_KEY), true);
+  const config = createSettingsStorage({ localStorage: h.localStorage, offsetStore: h.offsetStore });
+  await config.importConfig({ [TRACK_SYNC_OFFSETS_STORAGE_KEY]: "{}" });
+  const startup = getTrackSyncOffsetStore({ indexedDB: h.indexedDB, localStorage: h.localStorage });
+  assert.equal(await startup.getOffset(track), 0);
+  assert.deepEqual(await startup.getAllOffsets(), {});
+  assert.deepEqual(await config.exportConfig(), { [TRACK_SYNC_OFFSETS_STORAGE_KEY]: "{}" });
+  assert.equal(h.indexedDBData.get(TRACK_SYNC_OFFSETS_RESTORED_KEY), true);
+  assert.equal(h.indexedDBData.has(TRACK_SYNC_IMPORT_RECEIPT_KEY), false, "an offset-only backup has no settings journal");
+});
+
+test("an earlier import receipt is enough to keep a restored empty store authoritative", async () => {
+  const h = createHarness({
+    existingOffsets: { [TRACK_SYNC_IMPORT_RECEIPT_KEY]: "earlier-settings-import" },
+    legacyOffsets: '{"spotify:track:old":170}',
+  });
+  await h.migration;
+  assert.deepEqual(await h.offsetStore.getAllOffsets(), {});
+  assert.equal(h.indexedDBData.get(TRACK_SYNC_IMPORT_RECEIPT_KEY), "earlier-settings-import");
 });
 
 test("migration keeps legacy data when IndexedDB import fails", async () => {
@@ -241,48 +275,10 @@ test("migration keeps legacy data when IndexedDB import fails", async () => {
     },
   };
 
-  const warnings = [];
-  const errors = [];
-
-  const window = {
-    console: {
-      warn: (...args) => warnings.push(args),
-      error: (...args) => errors.push(args),
-      log: () => {},
-    },
-  };
-
-  const context = {
-    window,
-    localStorage,
-    indexedDB,
-    console: window.console,
-    ivLyricsDebug: () => {},
-    queueMicrotask,
-    setTimeout,
-    Promise,
-    Object,
-    JSON,
-    Number,
-    Math,
-    Date,
-    Array,
-    Error,
-    Set,
-    Map,
-  };
-
-  const moduleCode = `
-    ${dbConstantsCode}
-    ${normalizeCode}
-    ${trackSyncDBCode}
-    ${migrationCode}
-  `;
-
-  vm.createContext(context);
-  vm.runInContext(moduleCode, context);
-
-  await flushAsync();
+  const logger = { warn() {}, error() {} };
+  const debug = () => {};
+  const offsetStore = createTrackSyncOffsetStore({ getIndexedDB: () => indexedDB, debug, logger });
+  await migrateTrackSyncOffsets({ localStorage, offsetStore, debug, logger });
 
   assert.equal(
     values.has("ivLyrics:track-sync-offsets"),

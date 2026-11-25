@@ -1,13 +1,13 @@
+import { readAiProviderFixture } from "./fixtures/ai-provider.mjs";
 // Shared fakes for the Local AI provider tests. They follow wllama 3.8.1: the
 // cache writes a download's file first and its metadata only after the last
 // byte, getModels() skips files without metadata, and a chat completion stops
 // with an AbortError when its abortSignal fires.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-const addonSource = readFileSync(new URL("../Addon_AI_LocalModel.js", import.meta.url), "utf8");
+const addonSource = readAiProviderFixture("Addon_AI_LocalModel.js");
 
 export const MODEL_BASE = "https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF/resolve/main/";
 export const TIERS = {
@@ -174,7 +174,7 @@ export const button = (tree, prefix) => nodes(tree).find((node) => node.type ===
 export function createHarness({
 	cached = ["high"], partial = {}, settings = {}, gpu = true, load = null, reply = null, inference = null, hold = false,
 	importGate = null, importModule = null, download = instantDownload, playing = null, config = null, uiLanguage = null,
-	completion = null,
+	completion = null, exit = null,
 } = {}) {
 	const store = new Map(Object.entries(settings));
 	const cache = new FakeCache();
@@ -222,7 +222,7 @@ export function createHarness({
 			onData({ choices: [{ delta: { content: (reply || defaultReply)(call.prompt) } }] });
 			onData({ choices: [{ delta: {}, finish_reason: "stop" }] });
 		}
-		async exit() { this.loaded = false; exits++; }
+		async exit() { this.loaded = false; exits++; await exit?.(); }
 	}
 
 	const React = createReact();

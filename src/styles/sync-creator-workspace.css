@@ -1,0 +1,458 @@
+/* Sync Creator Glitter & Hint */
+@keyframes glitter {
+  0% {
+    box-shadow: 0 0 2px rgba(255, 255, 255, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.6), 0 0 5px rgba(255, 255, 255, 0.4) inset;
+  }
+
+  100% {
+    box-shadow: 0 0 2px rgba(255, 255, 255, 0.2);
+  }
+}
+
+.sync-creator-hint {
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--spice-card);
+  color: var(--spice-text);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: bold;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  animation: hint-fade-in-out 4s ease-in-out forwards;
+  z-index: 2;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--iv-sync-accent, #1ed760);
+}
+
+.sync-creator-hint--portal {
+  position: fixed;
+  left: var(--sync-creator-hint-left);
+  top: var(--sync-creator-hint-top);
+  right: auto;
+  max-width: min(280px, calc(100vw - 24px));
+  white-space: normal;
+  transform: translate(-100%, -50%);
+  animation: hint-portal-fade-in-out 4s ease-in-out forwards;
+  z-index: calc(var(--iv-layer-fullscreen) + 8);
+}
+
+.ivlyrics-sync-creator-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--iv-layer-modal);
+}
+
+/* Set after the editor's fade-in, while its opaque shell covers the window:
+   Spotify's UI underneath is neither visible nor worth repainting. */
+body.ivlyrics-sync-creator-covering > #main {
+  visibility: hidden;
+}
+
+/* Effect cards scrolled out of view keep their looping preview paused. */
+.ivlyrics-sync-effect-card[data-iv-preview-paused] .ivlyrics-sync-kind-preview,
+.ivlyrics-sync-effect-card[data-iv-preview-paused] .ivlyrics-sync-kind-preview * {
+  animation-play-state: paused !important;
+}
+
+.ivlyrics-line-counter-overlay {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.ivlyrics-line-counter-overlay:hover {
+  background: rgba(0, 0, 0, 0.8);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* === Sync Creator: restrained settings-style workspace === */
+.ivlyrics-sync-creator-shell {
+  --iv-sync-bg: #0f1215;
+  --iv-sync-rail: #11161b;
+  --iv-sync-divider: rgba(255, 255, 255, 0.08);
+  --iv-sync-accent-rgb: var(--spice-rgb-accent, 30, 215, 96);
+  --iv-sync-accent: rgb(var(--iv-sync-accent-rgb));
+  isolation: isolate;
+  background: var(--iv-sync-bg);
+  animation: ivlyricsSoftFadeIn var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.ivlyrics-sync-creator-shell *,
+.ivlyrics-sync-creator-shell *::before,
+.ivlyrics-sync-creator-shell *::after {
+  box-sizing: border-box;
+}
+
+.ivlyrics-sync-creator-shell button {
+  font-family: inherit;
+  outline: none;
+  transition:
+    background var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    border-color var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    color var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    box-shadow var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    opacity var(--iv-motion-duration-fast) var(--iv-motion-ease-standard);
+}
+
+/* Spotify's native body-drag-top remains behind this full-window editor.
+   Native drag hit testing ignores DOM z-index: explicitly exclude the
+   header and its controls so mouse clicks reach them instead of dragging. */
+.ivlyrics-sync-creator-shell .sync-creator-header,
+.ivlyrics-sync-creator-shell .sync-creator-header button {
+  -webkit-app-region: no-drag;
+}
+
+.ivlyrics-sync-creator-shell button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.ivlyrics-sync-creator-shell button:active:not(:disabled) {
+  filter: brightness(0.94);
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-granularity button:focus:not(:focus-visible) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.ivlyrics-sync-creator-shell button:focus-visible {
+  box-shadow: 0 0 0 3px rgba(var(--iv-sync-accent-rgb, 30, 215, 96), 0.34);
+}
+
+.ivlyrics-sync-creator-shell button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ivlyrics-sync-creator-shell select,
+.ivlyrics-sync-creator-shell textarea {
+  font-family: inherit;
+  outline: none;
+  transition:
+    background var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    border-color var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    box-shadow var(--iv-motion-duration-fast) var(--iv-motion-ease-standard);
+}
+
+.ivlyrics-sync-creator-shell select:hover,
+.ivlyrics-sync-creator-shell textarea:hover {
+  background: rgba(255, 255, 255, 0.085) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+}
+
+.ivlyrics-sync-creator-shell select:focus-visible,
+.ivlyrics-sync-creator-shell textarea:focus {
+  border-color: rgba(var(--iv-sync-accent-rgb, 30, 215, 96), 0.62) !important;
+  box-shadow: 0 0 0 3px rgba(var(--iv-sync-accent-rgb, 30, 215, 96), 0.18);
+}
+
+.ivlyrics-sync-creator-shell select option {
+  background: #1a1c20;
+  color: var(--spice-text);
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-section:last-child {
+  border-bottom-color: transparent !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-stage {
+  background: var(--iv-sync-bg) !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-range-style-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
+  align-items: start;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-range-style-pane {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-range-style-pane-title {
+  margin-bottom: 8px;
+  color: var(--spice-subtext);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-range-effect-picker .sync-creator-effect-strip {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100% !important;
+  max-width: none !important;
+  gap: 6px !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-range-effect-picker .ivlyrics-sync-effect-card {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 46px !important;
+  padding-inline: 8px !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-range-effect-picker .ivlyrics-sync-kind-preview {
+  font-size: 14px !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-range-speaker-palette .sync-creator-speaker-groups {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-range-speaker-palette .sync-creator-speaker-group {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-range-speaker-palette .sync-creator-speaker-group-title {
+  margin: 0 !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-range-speaker-palette .sync-creator-speaker-grid {
+  grid-template-columns: repeat(auto-fit, minmax(66px, 110px)) !important;
+  justify-content: start;
+  gap: 5px !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-range-speaker-palette .sync-creator-speaker-choice {
+  grid-column: auto !important;
+  width: 100% !important;
+  min-height: 32px !important;
+  gap: 6px !important;
+  padding: 0 10px !important;
+  font-size: 10.5px !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-range-speaker-palette .sync-creator-speaker-dot {
+  width: 7px !important;
+  height: 7px !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-header-back:hover:not(:disabled),
+.ivlyrics-sync-creator-shell .sync-creator-source-rail button:hover:not(:disabled),
+.ivlyrics-sync-creator-shell .sync-creator-inspector-rail button:not(.sync-creator-history-row):hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.07) !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-inspector-rail button.sync-creator-history-row:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.055) !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-inspector-rail button.sync-creator-history-row.is-current:hover:not(:disabled) {
+  background-color: rgba(var(--iv-sync-accent-rgb, 30, 215, 96), 0.16) !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-history-resize-handle:hover > span,
+.ivlyrics-sync-creator-shell .sync-creator-history-resize-handle:focus-visible > span {
+  background: rgba(var(--iv-sync-accent-rgb, 30, 215, 96), 0.72) !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-effect-strip button:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.065) !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-effect-strip button[aria-pressed="true"] {
+  background-color: rgba(var(--iv-sync-accent-rgb, 30, 215, 96), 0.16) !important;
+  border-color: rgba(var(--iv-sync-accent-rgb, 30, 215, 96), 0.48) !important;
+}
+
+@container ivlyrics-sync-effects (min-width: 980px) {
+  .ivlyrics-sync-creator-shell .sync-creator-effect-strip {
+    display: grid !important;
+    grid-template-columns: repeat(8, minmax(105px, 1fr));
+    grid-template-rows: repeat(2, 54px);
+    align-items: stretch !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+  }
+
+  .ivlyrics-sync-creator-shell .sync-creator-effect-strip .ivlyrics-sync-effect-card {
+    width: 100%;
+  }
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-header-back {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: var(--spice-subtext) !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-header-back:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: var(--spice-text) !important;
+}
+
+.ivlyrics-sync-creator-shell .sync-creator-submit:hover:not(:disabled) {
+  background-color: rgb(var(--iv-sync-accent-rgb)) !important;
+}
+
+@media (max-width: 1200px) {
+  .ivlyrics-sync-creator-shell .sync-creator-workspace.has-inspector {
+    grid-template-columns: 220px minmax(420px, 1fr) 280px !important;
+  }
+
+  .ivlyrics-sync-creator-shell .sync-creator-source-rail,
+  .ivlyrics-sync-creator-shell .sync-creator-inspector-rail {
+    font-size: 0.95em;
+  }
+}
+
+@media (max-width: 960px) {
+  .ivlyrics-sync-creator-shell .sync-creator-workspace.has-inspector {
+    grid-template-columns: 205px minmax(360px, 1fr) 250px !important;
+  }
+
+  .ivlyrics-sync-creator-shell .sync-creator-header {
+    padding-inline: 12px !important;
+  }
+}
+
+@media (max-height: 720px) {
+  .ivlyrics-sync-creator-shell .sync-creator-history-panel {
+    flex: 0 1 clamp(130px, 28vh, 170px) !important;
+    min-height: 130px !important;
+  }
+}
+
+/* Scrollable surfaces */
+.ivlyrics-sync-creator-shell *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.ivlyrics-sync-creator-shell *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ivlyrics-sync-creator-shell *::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  transition: background 200ms ease;
+}
+
+.ivlyrics-sync-creator-shell *::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+/* Playback progress bar thumb on hover */
+.ivlyrics-sync-creator-shell [data-iv-progress-bar] {
+  position: relative;
+}
+
+.ivlyrics-sync-creator-shell [data-iv-progress-bar]::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: var(--iv-progress, 0%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--iv-sync-accent);
+  box-shadow: 0 2px 10px rgba(var(--iv-sync-accent-rgb), 0.38);
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 180ms var(--iv-motion-ease-emphasis);
+  pointer-events: none;
+}
+
+.ivlyrics-sync-creator-shell [data-iv-progress-bar]:hover::after {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.sync-creator-live-preview-exact p.lyrics-lyricsContainer-LyricsLine-interludeMain {
+  justify-content: center;
+}
+
+.sync-creator-hint::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -6px;
+  transform: translateY(-50%);
+  border-width: 6px 0 6px 6px;
+  border-style: solid;
+  border-color: transparent transparent transparent var(--iv-sync-accent, #1ed760);
+}
+
+@keyframes hint-fade-in-out {
+  0% {
+    opacity: 0;
+    transform: translateY(-50%) translateX(10px);
+  }
+
+  15% {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+
+  85% {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-50%) translateX(10px);
+  }
+}
+
+@keyframes hint-portal-fade-in-out {
+  0% {
+    opacity: 0;
+    transform: translate(calc(-100% + 10px), -50%);
+  }
+
+  15% {
+    opacity: 1;
+    transform: translate(-100%, -50%);
+  }
+
+  85% {
+    opacity: 1;
+    transform: translate(-100%, -50%);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(calc(-100% + 10px), -50%);
+  }
+}
+

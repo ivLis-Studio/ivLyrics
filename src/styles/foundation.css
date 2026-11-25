@@ -1,0 +1,268 @@
+/*!
+ * Bootstrap v3.3.7 (http://getbootstrap.com)
+ * Copyright 2011-2016 Twitter,
+ Inc.
+ * Licensed under MIT (https://github.com/twbs/bootstrap/blob/master/LICENSE)
+ */
+/*!
+ * Generated using the Bootstrap Customizer (http://getbootstrap.com/customize/?id=35378cd201a131f69c68a64bc4438544)
+ * Config saved to config.json and https://gist.github.com/35378cd201a131f69c68a64bc4438544
+ */
+
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css");
+
+:root {
+  --iv-motion-ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --iv-motion-ease-emphasis: cubic-bezier(0.2, 0.9, 0.2, 1);
+  --iv-motion-duration-fast: 260ms;
+  --iv-motion-duration-medium: 420ms;
+  --iv-motion-duration-slow: 640ms;
+  --iv-motion-distance-sm: 10px;
+  --iv-motion-distance-md: 18px;
+  --iv-motion-distance-lg: 28px;
+  --iv-fullscreen-controls-height: 228px;
+  --iv-fullscreen-progress-height: 56px;
+  --iv-layer-marketplace: 300;
+  --iv-layer-floating-toolbar: 900;
+  --iv-layer-floating-toolbar-menu: 901;
+  --iv-layer-update-banner: 1000;
+  --iv-layer-internal-dialog: 1200;
+  --iv-layer-fullscreen: 2147483600;
+  --iv-layer-modal: 2147483647;
+  --iv-layer-toast: 2147483647;
+  --iv-surface-shell: rgba(var(--spice-rgb-card, 32, 32, 32), 0.58);
+  --iv-surface-shell-strong: rgba(var(--spice-rgb-card, 32, 32, 32), 0.78);
+  --iv-surface-fill: rgba(var(--spice-rgb-text, 255, 255, 255), 0.055);
+  --iv-surface-fill-hover: rgba(var(--spice-rgb-text, 255, 255, 255), 0.095);
+  --iv-surface-border: rgba(var(--spice-rgb-text, 255, 255, 255), 0.12);
+  --iv-surface-divider: rgba(var(--spice-rgb-text, 255, 255, 255), 0.085);
+  --iv-surface-shadow: 0 22px 58px rgba(0, 0, 0, 0.34);
+  --iv-surface-blur: blur(22px) saturate(140%);
+  --iv-radius-shell: 24px;
+  --iv-radius-card: 16px;
+  --iv-radius-input: 11px;
+  --iv-radius-pill: 999px;
+}
+
+.ivlyrics-settings-overlay.motion-reduced,
+#ivLyrics-config-container.motion-reduced {
+  --iv-motion-duration-fast: 1ms;
+  --iv-motion-duration-medium: 1ms;
+  --iv-motion-duration-slow: 1ms;
+  --iv-motion-distance-sm: 0px;
+  --iv-motion-distance-md: 0px;
+}
+
+@keyframes ivlyricsSoftRiseIn {
+  from {
+    opacity: 0;
+    transform: translateY(var(--iv-motion-distance-lg)) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes ivlyricsSoftFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ivlyricsPulseDot {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+
+  50% {
+    transform: scale(1.45);
+    opacity: 1;
+  }
+}
+
+/* Shared motion layer across settings, community UI, and marketplace */
+#ivLyrics-config-container button,
+#ivLyrics-config-container .btn,
+.lyrics-tooltip-wrapper button,
+.community-video-selector button,
+.community-video-overlay button,
+.ivlyrics-marketplace-root button,
+.ivlyrics-marketplace-root .ivlyrics-marketplace-btn,
+.ivlyrics-marketplace-root .ivlyrics-marketplace-confirm-btn {
+  transition:
+    transform var(--iv-motion-duration-fast) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    background var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    border-color var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    color var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    box-shadow var(--iv-motion-duration-fast) var(--iv-motion-ease-standard);
+}
+
+#ivLyrics-config-container button:hover:not(:disabled),
+#ivLyrics-config-container .btn:hover:not(:disabled),
+.lyrics-tooltip-wrapper button:hover:not(:disabled),
+.community-video-selector button:hover:not(:disabled),
+.community-video-overlay button:hover:not(:disabled),
+.ivlyrics-marketplace-root button:hover:not(:disabled),
+.ivlyrics-marketplace-root .ivlyrics-marketplace-btn:hover:not(:disabled),
+.ivlyrics-marketplace-root .ivlyrics-marketplace-confirm-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+#ivLyrics-config-container button:active:not(:disabled),
+#ivLyrics-config-container .btn:active:not(:disabled),
+.lyrics-tooltip-wrapper button:active:not(:disabled),
+.community-video-selector button:active:not(:disabled),
+.community-video-overlay button:active:not(:disabled),
+.ivlyrics-marketplace-root button:active:not(:disabled),
+.ivlyrics-marketplace-root .ivlyrics-marketplace-btn:active:not(:disabled),
+.ivlyrics-marketplace-root .ivlyrics-marketplace-confirm-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+}
+
+#ivLyrics-config-container input,
+#ivLyrics-config-container select,
+#ivLyrics-config-container textarea,
+.community-video-submit-form input,
+.ivlyrics-marketplace-search-input,
+.ivlyrics-marketplace-disclaimer-checkbox input[type="checkbox"] {
+  transition:
+    transform var(--iv-motion-duration-fast) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    background var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    border-color var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    box-shadow var(--iv-motion-duration-fast) var(--iv-motion-ease-standard);
+}
+
+#ivLyrics-config-container input:focus,
+#ivLyrics-config-container select:focus,
+#ivLyrics-config-container textarea:focus,
+.community-video-submit-form input:focus,
+.ivlyrics-marketplace-search-input:focus {
+  transform: translateY(-1px);
+}
+
+#ivLyrics-config-container .setting-row,
+.lyrics-tooltip-wrapper .setting-row,
+.community-video-item,
+.community-video-submit-form,
+.community-video-embed,
+.ivlyrics-marketplace-card,
+.ivlyrics-marketplace-sidebar-dev,
+.ivlyrics-marketplace-sidebar-minicard,
+.ivlyrics-marketplace-notice,
+.ivlyrics-marketplace-confirm-modal {
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    background var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    border-color var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    box-shadow var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+#ivLyrics-config-container .setting-row:hover,
+.lyrics-tooltip-wrapper .setting-row:hover,
+.community-video-item:hover,
+.ivlyrics-marketplace-sidebar-dev:hover,
+.ivlyrics-marketplace-sidebar-minicard:hover {
+  transform: translateY(-2px);
+}
+
+.ivlyrics-settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--iv-layer-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.46);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  opacity: 1;
+  isolation: isolate;
+  contain: paint;
+  transition: none;
+}
+
+.ivlyrics-settings-overlay.is-open {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.46);
+}
+
+.ivlyrics-settings-overlay.is-closing {
+  opacity: 0;
+  transition: opacity 140ms linear;
+}
+
+.ivlyrics-settings-modal-shell {
+  background: rgba(var(--spice-rgb-card, 32, 32, 32), 0.98);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-radius: var(--iv-radius-shell);
+  max-width: 96vw;
+  max-height: 88vh;
+  width: min(96vw, 1180px);
+  overflow: hidden;
+  box-shadow: var(--iv-surface-shadow);
+  border: 1px solid var(--iv-surface-border);
+  opacity: 0;
+  transform: translateY(var(--iv-motion-distance-md)) scale(0.985);
+  transition:
+    opacity 180ms var(--iv-motion-ease-standard),
+    transform 220ms var(--iv-motion-ease-standard);
+}
+
+.ivlyrics-settings-overlay.is-open .ivlyrics-settings-modal-shell {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+/* The lyrics page remains mounted below the modal. Freeze its decorative GPU
+   layers while settings are open so they cannot be recomposited over the
+   dialog and do not consume cycles behind an opaque surface. */
+html.ivlyrics-settings-open #ivLyrics-gradient-background,
+html.ivlyrics-settings-open #ivLyrics-gradient-background *,
+html.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer *,
+body.ivlyrics-settings-open #ivLyrics-gradient-background,
+body.ivlyrics-settings-open #ivLyrics-gradient-background *,
+body.ivlyrics-settings-open .lyrics-lyricsContainer-LyricsContainer * {
+  animation-play-state: paused !important;
+}
+
+/* Keep Spotify visible below the dimmed settings scrim. The overlay owns all
+   pointer interaction, while the animation-pause rules above keep decorative
+   lyric layers from spending GPU time behind the dialog. */
+
+/* 좁은 화면: 오버레이/모달 반응형 */
+@media (max-width: 800px) {
+  .ivlyrics-settings-overlay {
+    padding: 16px;
+  }
+
+  .ivlyrics-settings-modal-shell {
+    max-height: 92vh;
+  }
+}
+
+@media (max-width: 650px) {
+  .ivlyrics-settings-overlay {
+    padding: 8px;
+  }
+
+  .ivlyrics-settings-modal-shell {
+    max-width: 100vw;
+    max-height: 96vh;
+    width: 100vw;
+    border-radius: 18px;
+    border: 1px solid var(--iv-surface-border);
+  }
+}
+

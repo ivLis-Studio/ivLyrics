@@ -1,22 +1,14 @@
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
+import { renderSyncCreatorHeader } from '#ivlyrics/features/sync/syncCreatorHeader.mjs';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
+import { getSyncCreatorStyles } from '#ivlyrics/features/sync/syncCreatorStyles.mjs';
+import { useSyncCreatorLineInput } from '#ivlyrics/features/sync/syncCreatorLineInput.mjs';
+import { resolveSyncCreatorLyricsLanguage } from '#ivlyrics/features/sync/syncCreatorLyricText.mjs';
+import { createSyncCreatorGranularityTools } from '#ivlyrics/features/sync/timingGranularity.mjs';
 
-const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
-const css = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
-const start = source.indexOf('\tconst renderGranularitySelector =');
-const end = source.indexOf('\n\tconst renderHeader =', start);
-assert.ok(start >= 0 && end > start, 'production granularity selector must exist');
-const styleStart = source.indexOf('\t\tgranularityControl: {');
-const styleEnd = source.indexOf('\t\twordInputSeparator: {', styleStart);
-assert.ok(styleStart >= 0 && styleEnd > styleStart, 'production granularity styles must exist');
-const styles = vm.runInNewContext(`({${source.slice(styleStart, styleEnd)}})`, {
-	TOSS_BORDER: 'rgba(255,255,255,0.08)',
-	TOSS_BLUE_SOFT: 'rgba(30,215,96,0.13)',
-	TOSS_BLUE_BORDER: 'rgba(30,215,96,0.36)',
-	TOSS_BLUE: 'rgb(30,215,96)',
-});
+const css = readPcStylesheet();
+const styles = getSyncCreatorStyles({});
 
 const rule = selector => {
 	const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -27,17 +19,11 @@ const rule = selector => {
 
 test('granularity controls retain native focus and exclusive pressed state when switching modes', () => {
 	let selected = 'character';
-	const context = vm.createContext({
-		react: { createElement: (type, props, ...children) => ({ type, props, children: children.flat() }) },
-		I18n: { t: () => '' },
-		s: styles,
+	const react = { createElement: (type, props, ...children) => ({ type, props, children: children.flat() }) };
+	const render = () => renderSyncCreatorHeader({
+		react, i18n: { t: () => '' }, styles, syncGranularity: selected,
 		handleSyncGranularityChange: value => { selected = value; },
-	});
-	vm.runInContext(`${source.slice(start, end)}\nglobalThis.renderSelector = renderGranularitySelector;`, context);
-	const render = () => {
-		context.syncGranularity = selected;
-		return context.renderSelector();
-	};
+	}).children.find(child => child?.props.className === 'sync-creator-granularity');
 	for (const mode of ['line', 'character', 'word', 'character']) {
 		const selector = render();
 		assert.equal(selector.props.className, 'sync-creator-granularity');
@@ -85,4 +71,51 @@ test('every header control excludes the native Spotify window drag region', () =
 	const declarations = rule('.ivlyrics-sync-creator-shell .sync-creator-header button');
 	assert.match(declarations, /-webkit-app-region:\s*no-drag\s*;/);
 	assert.match(css, /\.ivlyrics-sync-creator-shell \.sync-creator-header,\s*\.ivlyrics-sync-creator-shell \.sync-creator-header button\s*\{/);
+});
+
+test('word boundaries stay in lyric character indexes across UTF-16 and mixed writing directions', () => {
+	const text = '🎸abcd ب';
+	const { getSyncCreatorGranularityRanges } = createSyncCreatorGranularityTools(() => ({
+		segmentRanges: () => [{ start: 2 }, { start: 7 }],
+	}));
+	const react = { useMemo: compute => compute(), useCallback: callback => callback };
+	const input = {
+		react, currentLineChars: Array.from(text), lyricsLines: [text], getLyricsService: () => null,
+		utils: { getDetectedLanguage: () => ' ar ' }, getSyncCreatorGranularityRanges,
+	};
+	for (const syncGranularity of ['word', 'line', 'character']) {
+		const line = useSyncCreatorLineInput({ ...input, syncGranularity });
+		assert.equal(line.lyricsLanguage, 'ar');
+		assert.equal(line.currentLineDirection, 'ltr');
+		assert.equal(line.useCurrentLineTextRun, true);
+		assert.deepEqual(line.currentLineCodeUnitOffsets, [0, 2, 3, 4, 5, 6, 7, 8]);
+		if (syncGranularity === 'word') {
+			assert.deepEqual(line.currentGranularityRanges, [{ start: 0, end: 5 }, { start: 6, end: 6 }]);
+			assert.deepEqual([...line.currentWordBoundaryStartIndexes], [6]);
+		} else {
+			assert.equal(line.currentWordBoundaryStartIndexes.size, 0);
+		}
+		for (const index of [-1, 0, 0.5, 1, 2, 3, 4, 5, 5.5, 6, 7, NaN]) {
+			const expected = line.currentGranularityRanges.find(range => index >= range.start && index <= range.end) || null;
+			assert.equal(line.getGranularityRangeForIndex(index), expected);
+			assert.equal(line.getGranularityEndIndex(index), expected?.end ?? index);
+		}
+	}
+});
+
+test('editor locale honors the active choice, then lyric detectors and kana evidence', () => {
+	const makeInput = (current, lyricLanguage, legacyLanguage) => ({
+		lyricsLines: ['text'], trackName: '歌', artistName: 'ｶﾅ',
+		utils: { getDetectedLanguage: () => current, detectLanguage: () => legacyLanguage },
+		getLyricsService: () => ({ detectLanguage: rows => {
+			assert.deepEqual(rows, [{ text: 'text' }]);
+			return lyricLanguage;
+		} }),
+	});
+	assert.equal(resolveSyncCreatorLyricsLanguage(makeInput(' ko ', 'zh', 'en')), 'ko');
+	assert.equal(resolveSyncCreatorLyricsLanguage(makeInput('auto', 'zh', 'en')), 'zh');
+	assert.equal(resolveSyncCreatorLyricsLanguage(makeInput('auto', '', 'en')), 'en');
+	assert.equal(resolveSyncCreatorLyricsLanguage(makeInput('auto', '', null)), 'ja');
+	assert.equal(resolveSyncCreatorLyricsLanguage({ ...makeInput('', '', ''), artistName: '' }), null);
+	assert.equal(resolveSyncCreatorLyricsLanguage({ lyricsLines: [] }), null);
 });

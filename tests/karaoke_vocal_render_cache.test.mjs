@@ -1,3 +1,4 @@
+import { readKaraokePageHarnessSource, karaokePageModules } from "./fixtures/karaoke-page-modules.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -5,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import vm from "node:vm";
 
-const currentSource = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
+const currentSource = readKaraokePageHarnessSource();
 const baselineSource = execFileSync("git", [
 	"show", "31ff869ec832c29c713abcc4333faee8cdbf8524:Pages.js",
 ], { cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8" });
@@ -49,6 +50,7 @@ const createRenderer = (source = currentSource) => {
 		} },
 	};
 	const context = vm.createContext({
+		...karaokePageModules,
 		CONFIG, window, console,
 		getCopyableText: (value) => Array.isArray(value) ? value.join("") : String(value ?? ""),
 		toFiniteTime: (value) => Number.isFinite(Number(value)) ? Number(value) : null,
@@ -85,7 +87,7 @@ const createRenderer = (source = currentSource) => {
 	vm.runInContext([
 		slice(source, "const getTimedSyllablesFromLine", "const getLastSyllableEndTime"),
 		slice(source, "const getKaraokeLineBounds", "const KARAOKE_FILL_STEPS"),
-		slice(source, "const KaraokeLine = react.memo", "const SyncedLyricsPage = react.memo"),
+		slice(source, "const KaraokeLine = react.memo", source.includes("createLyricsTrackRevealHook(") ? "const useLyricsTrackReveal =" : "const SyncedLyricsPage = react.memo"),
 		"globalThis.renderVocalLine = KaraokeLine;",
 	].join("\n"), context);
 	return {

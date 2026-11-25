@@ -1,5 +1,6 @@
 param(
-    [string]$Uri = "ivlyrics-updater://update"
+    [string]$Uri = "ivlyrics-updater://update",
+    [string]$ProfileDirectory = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -112,6 +113,25 @@ function Get-UpdaterAction {
 function Start-IvLyricsUpdate {
     Write-UpdaterLog "Starting ivLyrics update."
 
+    $previousProfile = $env:SPICETIFY_CONFIG
+    $previousState = $env:SPICETIFY_STATE
+    $previousXdgState = $env:XDG_STATE_HOME
+    $profileConfig = $null
+    $registeredState = $null
+    if (-not [string]::IsNullOrWhiteSpace($ProfileDirectory)) {
+        $profileConfig = Join-Path $ProfileDirectory "config-xpui.ini"
+        if (-not (Test-Path -LiteralPath $profileConfig -PathType Leaf)) {
+            throw "The registered Spicetify config is missing: $profileConfig"
+        }
+        $profileStatePath = Join-Path $UpdaterRoot "spicetify-profile.json"
+        if (Test-Path -LiteralPath $profileStatePath -PathType Leaf) {
+            $registeredState = Get-Content -LiteralPath $profileStatePath -Raw | ConvertFrom-Json
+            if (-not ([string]$registeredState.ProfileDirectory).Equals($ProfileDirectory, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "The registered Spicetify state belongs to a different profile. Install ivLyrics again to repair the updater."
+            }
+        }
+    }
+
     # Keep the bootstrap installer under the canonical LocalAppData path rather
     # than TEMP, which can be a stale/nonexistent DOS 8.3 profile path.
     $tempRoot = Join-Path $UpdaterRoot ("Temp\" + [Guid]::NewGuid().ToString("N"))
@@ -123,6 +143,13 @@ function Start-IvLyricsUpdate {
         Save-IvLyricsInstaller -DestinationPath $installerPath
 
         Write-UpdaterLog "Running installer."
+        if ($profileConfig) {
+            $env:SPICETIFY_CONFIG = $ProfileDirectory
+        }
+        if ($null -ne $registeredState) {
+            $env:SPICETIFY_STATE = $registeredState.SpicetifyState
+            $env:XDG_STATE_HOME = $registeredState.XdgStateHome
+        }
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installerPath
         if ($LASTEXITCODE -ne 0) {
             throw "Installer exited with code $LASTEXITCODE."
@@ -131,6 +158,9 @@ function Start-IvLyricsUpdate {
         Write-UpdaterLog "ivLyrics update completed."
     }
     finally {
+        $env:SPICETIFY_CONFIG = $previousProfile
+        $env:SPICETIFY_STATE = $previousState
+        $env:XDG_STATE_HOME = $previousXdgState
         if (Test-Path -LiteralPath $tempRoot -ErrorAction SilentlyContinue) {
             Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
         }

@@ -16,7 +16,9 @@ async page => {
     assert(await clear.isDisabled(), 'clear range is disabled without a selection');
     const times = await page.evaluate(() => JSON.stringify(window.selectionFixtureState.syncData.lines[0].chars));
     const drag = async (start,end) => {
-      const a=await page.locator(`#lyric-row [data-char-index="${start}"]`).boundingBox();
+      const startCell=page.locator(`#lyric-row [data-char-index="${start}"]`);
+      await startCell.scrollIntoViewIfNeeded();
+      const a=await startCell.boundingBox();
       const b=await page.locator(`#lyric-row [data-char-index="${end}"]`).boundingBox();
       assert(a&&b, 'source character cells are rendered');
       await page.mouse.move(a.x+a.width/2,a.y+a.height/2);
@@ -53,7 +55,7 @@ async page => {
     const hex = panel.locator('input[type="text"]');
     await hex.fill('#12ab34');
     await hex.press('Tab');
-    await panel.locator('select').selectOption('FEMALE 1');
+    await panel.locator('select:not(:has(option[value=""]))').selectOption('FEMALE 1');
     const custom = await page.evaluate(()=>window.selectionFixtureState.syncData.lines[0].styleRanges);
     assert(custom.length===2&&custom.every(range=>range.speaker==='CUSTOM'&&range['speaker-color']==='#12ab34'&&range['speaker-fallback']==='FEMALE 1'),'custom color and fallback compose on the exact selected vocal refs');
     assert(await page.evaluate(()=>window.selectionFixtureState.wholeTargetWrites.length===0),'selected multi-vocal controls never edit the whole part');

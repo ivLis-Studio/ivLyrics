@@ -1,0 +1,627 @@
+   colour. Their markup is unchanged where tests pin it, so some inline styles
+   are overridden here.
+   -------------------------------------------------------------------------- */
+.ivl-tb-dialog,
+.ivlyrics-cache-edit-overlay[data-ui-theme] {
+  --ivl-tb-font: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", "Noto Sans KR", system-ui, sans-serif;
+  --ivl-tb-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ivl-tb-r-xs: 4px;
+  --ivl-tb-r-sm: 6px;
+  --ivl-tb-r-md: 8px;
+  --ivl-tb-r-lg: 10px;
+  --ivl-tb-r-xl: 12px;
+  /* The shared popup and video-selector tokens, mapped onto the panels'. */
+  --iv-popup-bg: var(--ivl-tb-bg);
+  --iv-popup-bg-strong: var(--ivl-tb-bg);
+  --iv-popup-fill: var(--ivl-tb-surface-2);
+  --iv-popup-fill-hover: var(--ivl-tb-surface-3);
+  --iv-popup-border: var(--ivl-tb-line-2);
+  --iv-popup-divider: var(--ivl-tb-line);
+  --iv-surface-fill: var(--ivl-tb-surface);
+  --iv-surface-fill-hover: var(--ivl-tb-surface-3);
+  --iv-surface-border: var(--ivl-tb-line-2);
+  --iv-surface-divider: var(--ivl-tb-line);
+  --iv-surface-shell-strong: var(--ivl-tb-bg);
+  --iv-radius-shell: var(--ivl-tb-r-xl);
+  --iv-radius-card: var(--ivl-tb-r-lg);
+  --iv-radius-input: var(--ivl-tb-r-sm);
+  --iv-radius-pill: var(--ivl-tb-r-sm);
+  --spice-rgb-accent: 37, 99, 235;
+  --spice-accent: #2563eb;
+  font-family: var(--ivl-tb-font);
+}
+
+.ivlyrics-fluent-overlay.ivl-tb-dialog-overlay,
+.ivlyrics-fluent-overlay.ivl-tb-dialog-overlay[data-ui-theme="light"] {
+  background: rgba(0, 0, 0, 0.56);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.ivlyrics-fluent-overlay.ivl-tb-dialog-overlay[data-ui-theme="light"] {
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.ivlyrics-fluent-overlay .ivlyrics-fluent-shell.ivl-tb-dialog {
+  border: 1px solid var(--ivl-tb-line-2) !important;
+  border-radius: var(--ivl-tb-r-xl) !important;
+  background: var(--ivl-tb-bg) !important;
+  box-shadow: var(--ivl-tb-shadow-3) !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: var(--ivl-tb-text);
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .ivlyrics-fluent-header,
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal-header.ivlyrics-fluent-header {
+  flex-shrink: 0;
+  align-items: flex-start;
+  min-height: 0;
+  padding: 16px 12px 13px 20px !important;
+  border-bottom: 1px solid var(--ivl-tb-line) !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .ivlyrics-fluent-title {
+  color: var(--ivl-tb-text);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.25px;
+  line-height: 1.35;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .ivlyrics-fluent-subtitle {
+  margin-top: 3px;
+  color: var(--ivl-tb-text-3);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .ivlyrics-fluent-close {
+  width: 30px;
+  height: 30px;
+  border: 0 !important;
+  border-radius: var(--ivl-tb-r-sm) !important;
+  background: transparent;
+  color: var(--ivl-tb-text-3);
+  transform: none;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .ivlyrics-fluent-close:hover {
+  background: var(--ivl-tb-surface-3);
+  color: var(--ivl-tb-text);
+  transform: none;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .ivlyrics-fluent-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .ivlyrics-fluent-footer,
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal-footer.ivlyrics-fluent-footer {
+  padding: 12px 16px 12px 20px !important;
+  border-top: 1px solid var(--ivl-tb-line) !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .ivlyrics-fluent-btn,
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal-footer .ivlyrics-fluent-btn,
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-copyright-actions .ivlyrics-fluent-btn {
+  min-height: 32px;
+  padding: 0 12px !important;
+  border: 1px solid var(--ivl-tb-line-2) !important;
+  border-radius: var(--ivl-tb-r-sm) !important;
+  background: var(--ivl-tb-surface-2) !important;
+  color: var(--ivl-tb-text) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  transform: none !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .ivlyrics-fluent-btn:hover:not(:disabled) {
+  border-color: var(--ivl-tb-line-3) !important;
+  background: var(--ivl-tb-surface-3) !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .ivlyrics-fluent-btn.primary,
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal-footer .ivlyrics-fluent-btn.primary,
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-copyright-confirm {
+  border-color: transparent !important;
+  background: var(--ivl-tb-ink) !important;
+  color: var(--ivl-tb-ink-text) !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .ivlyrics-fluent-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] button:focus-visible,
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] input:focus-visible {
+  outline: none;
+  box-shadow: var(--ivl-tb-focus) !important;
+}
+
+/* 가사 이미지 공유 */
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal {
+  background: transparent !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal-selection-pane,
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal-config-pane {
+  border-right: 1px solid var(--ivl-tb-line) !important;
+  background: transparent !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal-selection-label,
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-preview-label {
+  border-bottom-color: var(--ivl-tb-line) !important;
+  color: var(--ivl-tb-text-3) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal-lyric-line {
+  border: 1px solid var(--ivl-tb-line-2) !important;
+  border-radius: var(--ivl-tb-r-md) !important;
+  background: var(--ivl-tb-surface-2) !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal-lyric-line:hover {
+  background: var(--ivl-tb-surface-3) !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal-lyric-line[data-selected="true"] {
+  border-color: var(--ivl-tb-accent-line) !important;
+  background: var(--ivl-tb-accent-soft) !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal-lyric-line > div:first-child {
+  color: var(--ivl-tb-text) !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal-lyric-line > div + div {
+  color: var(--ivl-tb-text-3) !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal .share-image-modal-config-pane button.share-image-chip,
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal .share-image-modal-config-pane button.share-image-segment-btn {
+  border: 1px solid var(--ivl-tb-line-2) !important;
+  border-radius: var(--ivl-tb-r-sm) !important;
+  background: var(--ivl-tb-surface-2) !important;
+  color: var(--ivl-tb-text-2) !important;
+  box-shadow: none !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal .share-image-modal-config-pane button.share-image-chip {
+  padding: 6px 10px !important;
+  font-size: 12.5px !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal .share-image-modal-config-pane button.share-image-segment-btn {
+  font-size: 11.5px !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal .share-image-modal-config-pane button.share-image-chip[data-active="true"],
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal .share-image-modal-config-pane button.share-image-segment-btn[data-active="true"] {
+  border-color: var(--ivl-tb-accent-line) !important;
+  background: var(--ivl-tb-accent-soft) !important;
+  color: var(--ivl-tb-accent-text) !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-advanced-panel {
+  border: 1px solid var(--ivl-tb-line) !important;
+  border-radius: var(--ivl-tb-r-lg) !important;
+  background: var(--ivl-tb-surface) !important;
+  box-shadow: none !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-advanced-panel label {
+  color: var(--ivl-tb-text-2) !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-panel-section {
+  border-bottom-color: var(--ivl-tb-line) !important;
+  color: var(--ivl-tb-text-3) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal input[type="range"],
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal input[type="checkbox"] {
+  accent-color: var(--ivl-tb-accent) !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal input[type="text"],
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-modal input[type="color"] {
+  border: 1px solid var(--ivl-tb-line-2) !important;
+  border-radius: var(--ivl-tb-r-sm) !important;
+  background: var(--ivl-tb-surface-2) !important;
+  color: var(--ivl-tb-text) !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-preview-panel {
+  border: 1px solid var(--ivl-tb-line);
+  border-radius: var(--ivl-tb-r-lg) !important;
+  background: var(--ivl-tb-surface) !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-placeholder {
+  color: var(--ivl-tb-text-3) !important;
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-copyright-shell {
+  border: 1px solid var(--ivl-tb-line-2) !important;
+  border-radius: var(--ivl-tb-r-xl) !important;
+  background: var(--ivl-tb-bg) !important;
+  box-shadow: var(--ivl-tb-shadow-3) !important;
+  color: var(--ivl-tb-text);
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .share-image-copyright-points {
+  border-radius: var(--ivl-tb-r-md) !important;
+  background: var(--ivl-tb-surface) !important;
+  color: var(--ivl-tb-text-2) !important;
+}
+
+/* LRCLIB 가사 검색 */
+.ivl-tb-lrclib-shell {
+  width: min(560px, calc(100vw - 48px)) !important;
+}
+
+.ivl-tb-lrclib {
+  display: grid;
+  gap: 12px;
+}
+
+.ivl-tb-lrclib-search {
+  display: flex;
+  gap: 8px;
+}
+
+.ivl-tb-lrclib-input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--ivl-tb-line-2);
+  border-radius: var(--ivl-tb-r-md);
+  background: var(--ivl-tb-surface-2);
+  color: var(--ivl-tb-text);
+  font: inherit;
+  font-size: 13.5px;
+  outline: none;
+}
+
+.ivl-tb-lrclib-input:focus {
+  border-color: var(--ivl-tb-accent-line);
+  box-shadow: 0 0 0 3px var(--ivl-tb-accent-soft) !important;
+  background: var(--ivl-tb-surface);
+}
+
+.ivl-tb-lrclib-status {
+  margin: 0;
+  padding: 0 4px;
+  color: var(--ivl-tb-text-3);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.ivl-tb-lrclib-results {
+  border: 1px solid var(--ivl-tb-line);
+  border-radius: var(--ivl-tb-r-lg);
+  background: var(--ivl-tb-surface);
+}
+
+.ivl-tb-lrclib-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 16px;
+  min-height: 54px;
+  padding: 10px 12px;
+}
+
+.ivl-tb-lrclib-result + .ivl-tb-lrclib-result {
+  border-top: 1px solid var(--ivl-tb-line);
+}
+
+.ivl-tb-lrclib-main {
+  min-width: 0;
+}
+
+.ivl-tb-lrclib-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ivl-tb-text);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.ivl-tb-lrclib-meta,
+.ivl-tb-lrclib-preview {
+  margin-top: 2px;
+  color: var(--ivl-tb-text-3);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* 영상 선택: the selector's own light rules leave the rank badge and the
+   form placeholders light-on-dark, so these follow the panel tokens. */
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .community-video-rank {
+  border-color: var(--ivl-tb-line-2);
+  background: var(--ivl-tb-surface-2);
+  color: var(--ivl-tb-text-2);
+}
+
+.ivlyrics-fluent-shell.ivl-tb-dialog[data-ui-theme] .community-video-submit-form input::placeholder {
+  color: var(--ivl-tb-text-4);
+}
+
+/* 저장된 발음 / 번역 가사 수정 */
+.ivlyrics-cache-edit-overlay[data-ui-theme] {
+  background: var(--ivl-tb-scrim);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-modal {
+  width: min(880px, calc(100vw - 48px));
+  border: 1px solid var(--ivl-tb-line-2);
+  border-radius: var(--ivl-tb-r-xl);
+  background: var(--ivl-tb-bg);
+  box-shadow: var(--ivl-tb-shadow-3);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: var(--ivl-tb-text);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-header,
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-footer {
+  padding: 16px 12px 13px 20px;
+  background: transparent;
+  border-color: var(--ivl-tb-line);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-footer {
+  gap: 8px;
+  padding: 12px 16px 12px 20px;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-header {
+  align-items: flex-start;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-title {
+  color: var(--ivl-tb-text);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.25px;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-subtitle,
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-meta {
+  margin-top: 3px;
+  color: var(--ivl-tb-text-3);
+  font-size: 12.5px;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-close {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--ivl-tb-r-sm);
+  background: transparent;
+  color: var(--ivl-tb-text-3);
+  font-size: 18px;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-close:hover:not(:disabled) {
+  background: var(--ivl-tb-surface-3);
+  color: var(--ivl-tb-text);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-body {
+  gap: 12px;
+  padding: 16px 20px 20px;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-status-item {
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ivl-tb-text-2);
+  font-size: 12.5px;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-badge {
+  padding: 2px 7px;
+  border: 0;
+  border-radius: var(--ivl-tb-r-xs);
+  background: var(--ivl-tb-surface-3);
+  color: var(--ivl-tb-text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-status .ivlyrics-cache-edit-badge {
+  background: var(--ivl-tb-ok-soft);
+  color: var(--ivl-tb-ok);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-list {
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--ivl-tb-line);
+  border-radius: var(--ivl-tb-r-lg);
+  background: var(--ivl-tb-surface);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-item {
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-item + .ivlyrics-cache-edit-item {
+  border-top: 1px solid var(--ivl-tb-line);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-item-index {
+  justify-content: flex-end;
+  padding-top: 6px;
+  color: var(--ivl-tb-text-3);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-field {
+  gap: 4px;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-field-header {
+  min-height: 24px;
+  color: var(--ivl-tb-text-3);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-shift-button {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--ivl-tb-r-sm);
+  background: transparent;
+  color: var(--ivl-tb-text-3);
+  font-size: 13px;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-shift-button:hover:not(:disabled) {
+  background: var(--ivl-tb-surface-3);
+  color: var(--ivl-tb-text);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-original-line,
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-line-input {
+  min-height: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--ivl-tb-line-2);
+  border-radius: var(--ivl-tb-r-sm);
+  background: var(--ivl-tb-surface-2);
+  color: var(--ivl-tb-text);
+  font: 13px/1.5 var(--ivl-tb-font);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-original-line {
+  border-color: transparent;
+  background: transparent;
+  padding-left: 0;
+  font-size: 13.5px;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-line-input:focus {
+  border-color: var(--ivl-tb-accent-line);
+  box-shadow: 0 0 0 3px var(--ivl-tb-accent-soft);
+  background: var(--ivl-tb-surface);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-button {
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--ivl-tb-line-2);
+  border-radius: var(--ivl-tb-r-sm);
+  background: var(--ivl-tb-surface-2);
+  color: var(--ivl-tb-text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-button:hover:not(:disabled) {
+  border-color: var(--ivl-tb-line-3);
+  background: var(--ivl-tb-surface-3);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-button.primary {
+  border-color: transparent;
+  background: var(--ivl-tb-ink);
+  color: var(--ivl-tb-ink-text);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-close:focus-visible,
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-button:focus-visible,
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-shift-button:focus-visible {
+  outline: none;
+  box-shadow: var(--ivl-tb-focus);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-error {
+  color: var(--ivl-tb-danger);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-loading {
+  color: var(--ivl-tb-text-3);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-units {
+  padding: 8px;
+  border: 1px solid var(--ivl-tb-line-2);
+  border-radius: var(--ivl-tb-r-sm);
+  background: var(--ivl-tb-surface-2);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-unit-source {
+  color: var(--ivl-tb-text-3);
+  font-family: var(--ivl-tb-font);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-unit-input {
+  height: 28px;
+  border: 1px solid var(--ivl-tb-line-2);
+  border-radius: var(--ivl-tb-r-xs);
+  background: var(--ivl-tb-surface);
+  color: var(--ivl-tb-text);
+  font: 13px/1.2 var(--ivl-tb-font);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-unit-input:focus {
+  border-color: var(--ivl-tb-accent-line);
+  box-shadow: 0 0 0 3px var(--ivl-tb-accent-soft);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-unit-preview {
+  color: var(--ivl-tb-text-2);
+  font-family: var(--ivl-tb-font);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-unit-preview-label {
+  color: var(--ivl-tb-text-3);
+  font-weight: 500;
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-text-button {
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--ivl-tb-r-sm);
+  background: transparent;
+  color: var(--ivl-tb-text-3);
+  font: 500 11.5px var(--ivl-tb-font);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-text-button:hover:not(:disabled) {
+  background: var(--ivl-tb-surface-3);
+  color: var(--ivl-tb-text);
+}
+
+.ivlyrics-cache-edit-overlay[data-ui-theme] .ivlyrics-cache-edit-text-button:focus-visible {
+  outline: none;
+  box-shadow: var(--ivl-tb-focus);
+}
+
+

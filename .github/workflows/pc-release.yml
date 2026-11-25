@@ -4,123 +4,210 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version without v (for example 5.5.1)"
+        description: "Release version without v (for example 7.2.0)"
         required: true
         type: string
       prerelease:
-        description: "Mark release as prerelease"
-        required: true
+        description: "Publish as a prerelease"
         type: boolean
         default: false
       notify_discord:
-        description: "Send release notes to Discord"
-        required: true
+        description: "Send release notes to Discord after publishing"
         type: boolean
         default: false
       dry_run:
-        description: "Validate and generate AI notes without publishing"
-        required: true
+        description: "Build, test and upload Actions artifacts only"
         type: boolean
-        default: false
+        default: true
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: pc-release
+  group: ${{ inputs.dry_run && 'pc-release-preview' || 'pc-release' }}
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Prepare and publish release
+  build:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 25
+    outputs:
+      tag: ${{ steps.source.outputs.tag }}
+      sha: ${{ steps.source.outputs.sha }}
+      artifact_id: ${{ steps.artifact.outputs.artifact-id }}
+      package_sha256: ${{ steps.archive.outputs.sha256 }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Verify release branch
-        shell: bash
-        env:
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: |
-          set -euo pipefail
-          if [[ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]]; then
-            echo "Run releases from $DEFAULT_BRANCH, not $GITHUB_REF_NAME." >&2
-            exit 1
-          fi
-          if [[ -n "$(git status --porcelain)" ]]; then
-            echo "Checkout is not clean before release preparation." >&2
-            git status --short
-            exit 1
-          fi
-
-      - name: Prepare release version
-        id: version
+      - name: Select release source
+        id: source
         env:
           RELEASE_VERSION: ${{ inputs.version }}
-        run: python3 .github/scripts/set_release_version.py prepare "$RELEASE_VERSION"
-
-      - name: Validate release files
+          DRY_RUN: ${{ inputs.dry_run }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         shell: bash
+        run: bash .github/scripts/pc_release.sh select-source
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build and test the install archive
+        id: archive
         env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-          VERSION_CHANGED: ${{ steps.version.outputs.changed }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          npm run package -- --version "$VERSION"
+          package_checksum="$(sha256sum dist/ivLyrics.zip)"
+          IVLYRICS_TEST_PACKAGE_VERSION="$VERSION" npm test
+          test "$package_checksum" = "$(sha256sum dist/ivLyrics.zip)"
+          printf 'sha256=%s\n' "${package_checksum%% *}" >> "$GITHUB_OUTPUT"
+
+      - name: Preview release notes
+        if: ${{ inputs.dry_run }}
+        id: notes
+        continue-on-error: true
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ steps.source.outputs.tag }}
+          RELEASE_SHA: ${{ steps.source.outputs.sha }}
+          RELEASE_NOTES_USE_RELEASE_HISTORY: "true"
+          PRERELEASE: ${{ inputs.prerelease }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES_DIR: ${{ runner.temp }}/release-metadata
+          AI_BASE_URL: ${{ secrets.AI_BASE_URL }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}
+          AI_TIMEOUT_SECONDS: "300"
+          RELEASE_NOTES_REQUIRE_AI: "false"
+        run: python3 .github/scripts/generate_release_notes.py
+
+      - name: Upload tested release artifact
+        id: artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ivLyrics-${{ steps.source.outputs.tag }}-attempt-${{ github.run_attempt }}
+          path: |
+            dist/ivLyrics.zip
+            dist/ivLyrics.zip.sha256
+            ${{ steps.notes.outputs.notes_path }}
+            ${{ steps.notes.outputs.metadata_path }}
+          if-no-files-found: error
+          retention-days: ${{ inputs.dry_run && 14 || 30 }}
+
+  windows-validation:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: release-artifact
+
+      - name: Test the Windows installer with the release ZIP
+        env:
+          IVLYRICS_TEST_PACKAGE_VERSION: ${{ inputs.version }}
+          RELEASE_PACKAGE_SHA256: ${{ needs.build.outputs.package_sha256 }}
+        run: |
+          $archives = @(Get-ChildItem -LiteralPath release-artifact -Filter ivLyrics.zip -Recurse -File)
+          if ($archives.Count -ne 1 -or (Get-FileHash -LiteralPath $archives[0].FullName).Hash -ine $env:RELEASE_PACKAGE_SHA256) {
+            throw 'The downloaded archive does not match the tested ZIP.'
+          }
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Copy-Item -LiteralPath $archives[0].FullName -Destination dist/ivLyrics.zip
+          node --test tests/windows_installer_upgrade.test.mjs
+
+  macos-validation:
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: release-artifact
+
+      - name: Test the macOS installer with the release ZIP
+        shell: /bin/bash {0}
+        env:
+          IVLYRICS_TEST_PACKAGE_VERSION: ${{ inputs.version }}
+          RELEASE_PACKAGE_SHA256: ${{ needs.build.outputs.package_sha256 }}
         run: |
           set -euo pipefail
-          python3 .github/scripts/set_release_version.py check "$RELEASE_VERSION"
-          node --check Utils.js
-          node --check NoticeSystem.js
-          node --test tests/*.test.mjs
-          python3 -m json.tool manifest.json >/dev/null
-          git diff --check
-
-          actual="$(git diff --name-only)"
-          if [[ "$VERSION_CHANGED" == "true" ]]; then
-            expected=$'NoticeSystem.js\nUtils.js\nversion.txt'
-            if [[ "$actual" != "$expected" ]]; then
-              echo "Unexpected release file changes:" >&2
-              printf '%s\n' "$actual" >&2
-              exit 1
-            fi
-          elif [[ -n "$actual" ]]; then
-            echo "Existing-version recovery must not modify files." >&2
-            printf '%s\n' "$actual" >&2
+          archive="$(find release-artifact -type f -name ivLyrics.zip)"
+          if [[ -z "$archive" || "$archive" == *$'\n'* ]]; then
+            echo 'Expected one release ZIP.' >&2
             exit 1
           fi
+          checksum="$(shasum -a 256 "$archive")"
+          test "${checksum%% *}" = "$RELEASE_PACKAGE_SHA256"
+          mkdir -p dist
+          cp "$archive" dist/ivLyrics.zip
+          PATH="/usr/bin:/bin:$PATH" node --test tests/unix_installer_upgrade.test.mjs
 
-      - name: Inspect release tag
-        id: tag
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
-          VERSION_CHANGED: ${{ steps.version.outputs.changed }}
-        run: |
-          set -euo pipefail
-          if tag_sha="$(git rev-parse --verify "${RELEASE_TAG}^{commit}" 2>/dev/null)"; then
-            if [[ "$VERSION_CHANGED" == "true" ]]; then
-              echo "Tag $RELEASE_TAG already exists for a new version." >&2
-              exit 1
-            fi
-            head_sha="$(git rev-parse HEAD)"
-            if [[ "$tag_sha" != "$head_sha" ]]; then
-              echo "Tag $RELEASE_TAG does not point to the current main commit." >&2
-              exit 1
-            fi
-            tag_exists=true
-          else
-            tag_exists=false
-          fi
-          echo "exists=$tag_exists" >> "$GITHUB_OUTPUT"
+  publish:
+    needs: [build, windows-validation, macos-validation]
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ needs.build.outputs.tag }}
+      RELEASE_SHA: ${{ needs.build.outputs.sha }}
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_PACKAGE_SHA256: ${{ needs.build.outputs.package_sha256 }}
+      PRERELEASE: ${{ inputs.prerelease }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+          fetch-depth: 0
 
-      - name: Generate AI release notes
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: release-artifact
+
+      - name: Prepare release notes
         id: notes
         env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
-          RELEASE_NOTES_DIR: ${{ runner.temp }}/release-metadata
+          RELEASE_NOTES_REUSE_PUBLISHED: "true"
+          RELEASE_NOTES_USE_RELEASE_HISTORY: "true"
+          RELEASE_NOTES_DIR: release-artifact/notes
           AI_BASE_URL: ${{ secrets.AI_BASE_URL }}
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           AI_MODEL: ${{ secrets.AI_MODEL }}
@@ -128,103 +215,22 @@ jobs:
           RELEASE_NOTES_REQUIRE_AI: "true"
         run: python3 .github/scripts/generate_release_notes.py
 
-      - name: Upload release preview
-        uses: actions/upload-artifact@v7
-        with:
-          name: ivLyrics-${{ steps.version.outputs.tag }}-release-preview
-          path: |
-            ${{ steps.notes.outputs.notes_path }}
-            ${{ steps.notes.outputs.metadata_path }}
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Commit and push release tag
-        if: ${{ inputs.dry_run == false }}
-        shell: bash
+      - name: Publish tested archive
+        id: publish
         env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
-          VERSION_CHANGED: ${{ steps.version.outputs.changed }}
-          TAG_EXISTS: ${{ steps.tag.outputs.exists }}
-        run: |
-          set -euo pipefail
-          if [[ "$VERSION_CHANGED" == "true" ]]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add NoticeSystem.js Utils.js version.txt
-            git commit \
-              -m "$RELEASE_VERSION RELEASE" \
-              -m "PC 버전 표기 세 곳을 $RELEASE_VERSION으로 동기화했습니다."
-          fi
-
-          if [[ "$TAG_EXISTS" != "true" ]]; then
-            git tag "$RELEASE_TAG"
-            if [[ "$VERSION_CHANGED" == "true" ]]; then
-              git push --atomic origin HEAD:main "refs/tags/$RELEASE_TAG"
-            else
-              git push origin "refs/tags/$RELEASE_TAG"
-            fi
-          fi
-
-      - name: Create or update GitHub Release
-        if: ${{ inputs.dry_run == false }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
           RELEASE_TITLE: ${{ steps.notes.outputs.release_title }}
-          RELEASE_NOTES: ${{ steps.notes.outputs.notes_path }}
-          PRERELEASE: ${{ inputs.prerelease }}
         shell: bash
-        run: |
-          set -euo pipefail
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            if [[ "$PRERELEASE" == "true" ]]; then
-              gh release edit "$RELEASE_TAG" \
-                --title "$RELEASE_TITLE" \
-                --notes-file "$RELEASE_NOTES" \
-                --prerelease
-            else
-              gh release edit "$RELEASE_TAG" \
-                --title "$RELEASE_TITLE" \
-                --notes-file "$RELEASE_NOTES" \
-                --prerelease=false
-            fi
-          elif [[ "$PRERELEASE" == "true" ]]; then
-            gh release create "$RELEASE_TAG" \
-              --title "$RELEASE_TITLE" \
-              --notes-file "$RELEASE_NOTES" \
-              --prerelease
-          else
-            gh release create "$RELEASE_TAG" \
-              --title "$RELEASE_TITLE" \
-              --notes-file "$RELEASE_NOTES"
-          fi
+        run: bash .github/scripts/pc_release.sh publish
 
-      - name: Build and upload verified installer archive
-        if: ${{ inputs.dry_run == false }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+      - name: Advance the stable update marker
+        if: ${{ !inputs.prerelease }}
         shell: bash
-        run: |
-          set -euo pipefail
-          archive="$RUNNER_TEMP/ivLyrics.zip"
-          checksum="$RUNNER_TEMP/ivLyrics.zip.sha256"
-          # .gitattributes excludes build-only source/reference folders.
-          # Runtime bundles and the README license notices remain in the ZIP.
-          git archive --format=zip --prefix=ivLyrics/ --output="$archive" HEAD
-          (
-            cd "$RUNNER_TEMP"
-            sha256sum ivLyrics.zip > ivLyrics.zip.sha256
-          )
-          gh release upload "$RELEASE_TAG" "$archive" "$checksum" --clobber
+        run: bash .github/scripts/pc_release.sh advance-update-marker
 
       - name: Send PC release notes to Discord
-        if: ${{ inputs.dry_run == false && inputs.notify_discord }}
+        if: ${{ inputs.notify_discord && steps.publish.outputs.published == 'true' }}
         env:
           RELEASE_WEBHOOK_URL: ${{ secrets.RELEASE_NOTES_WEBHOOK_URL }}
           RELEASE_PLATFORM: pc
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
-          RELEASE_TITLE: ${{ steps.notes.outputs.release_title }}
           RELEASE_NOTES_PATH: ${{ steps.notes.outputs.notes_path }}
         run: node .github/scripts/send_release_webhook.mjs

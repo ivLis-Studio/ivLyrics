@@ -1,12 +1,15 @@
+import { readAiProviderFixture } from "./fixtures/ai-provider.mjs";
+import { getOrderedAddonCapabilities } from "#ivlyrics/features/settings/settingsProviderCapabilities.mjs";
+import { isEndpointCapabilityEnabled, toggleEndpointCapability } from "#ivlyrics/providers/ai/openAiConnections.mjs";
+import { getFirstLanguageAIProviderHintKey, getFirstLanguageAIProviderHintState } from "../src/app/modal/firstLanguageProviderHints.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const managerSource = readFileSync(new URL("../AIAddonManager.js", import.meta.url), "utf8");
-const chatgptSource = readFileSync(new URL("../Addon_AI_ChatGPT.js", import.meta.url), "utf8");
-const settingsSource = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
-const optionsSource = readFileSync(new URL("../OptionsMenu.js", import.meta.url), "utf8");
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
+const managerSource = bundleInitializer(new URL("../src/providers/ai/AIAddonManager.js", import.meta.url));
+const chatgptSource = readAiProviderFixture("Addon_AI_ChatGPT.js");
 const PREFIX = "ivLyrics:ai:";
 
 const section = (source, start, end) => {
@@ -22,6 +25,7 @@ const loadManager = async ({ stored = {}, i18n = null } = {}) => {
 	const window = { ...(i18n ? { I18n: { t: i18n } } : {}) };
 	vm.runInNewContext(managerSource, {
 		window,
+		AbortController,
 		Spicetify: { LocalStorage: { get: (key) => storage.get(key) ?? null, set: (key, value) => storage.set(key, value) } },
 		console: { log() {}, warn() {}, error() {} },
 		setTimeout, clearTimeout,
@@ -159,9 +163,9 @@ const chatgptHarness = (settingsValues) => {
 		},
 	};
 	vm.runInNewContext(chatgptSource.replace("    registerAddon();",
-		"    window.hooks = { getRequestTargets, toggleEndpointCapability, isEndpointCapabilityEnabled };\n    registerAddon();"),
+		"    window.hooks = { getRequestTargets };\n    registerAddon();"),
 	{ window, URL, URLSearchParams, TextDecoder, setTimeout, clearTimeout, console });
-	return { addon, hooks: window.hooks, requests, settings };
+	return { addon, hooks: { ...window.hooks, toggleEndpointCapability, isEndpointCapabilityEnabled }, requests, settings };
 };
 
 const connection = (id, capabilities) => ({
@@ -197,36 +201,26 @@ test("toggling an endpoint's translation pins the pronunciation it inherited", (
 });
 
 test("provider cards list pronunciation before translation and omit it for translation-only services", () => {
-	const context = {};
-	vm.runInNewContext(`${section(settingsSource, "const AI_ADDON_CAPABILITY_ORDER =", "const AddonSettingsCard =")}
-		globalThis.order = getOrderedAddonCapabilities;`, context);
-	assert.deepEqual(Array.from(context.order({
+	assert.deepEqual(Array.from(getOrderedAddonCapabilities({
 		translate: true, pronunciation: true, metadata: true, tmi: true, researchWebSearch: true,
 		lyricsStudy: true, characterPronunciation: true, culturalAnnotations: true, wordSupplements: true, customFeature: true,
 	})), [
 		"pronunciation", "translate", "metadata", "tmi", "researchWebSearch",
 		"lyricsStudy", "characterPronunciation", "culturalAnnotations", "wordSupplements", "customFeature",
 	]);
-	assert.deepEqual(Array.from(context.order({
+	assert.deepEqual(Array.from(getOrderedAddonCapabilities({
 		translate: true, pronunciation: false, metadata: true, tmi: false, wordSupplements: true,
 	})), ["translate", "metadata", "wordSupplements"]);
-	assert.match(settingsSource, /settings\.aiProviders\.supports\.pronunciation/);
+	assert.match(readFileSync(new URL("../src/features/settings/settingsProviderCapabilities.mjs", import.meta.url), "utf8"), /settings\.aiProviders\.supports\.pronunciation/);
 });
 
 test("the first-language hint checks translation and pronunciation separately", () => {
 	const hintFor = (providers) => {
-		const context = {
-			window: {
-				AIAddonManager: {
-					getEnabledProviders: () => providers,
-					getEnabledProvidersFor: (capability) => providers.filter((provider) => provider.on.includes(capability)),
-				},
-			},
-		};
-		vm.runInNewContext(`${section(optionsSource, "const FIRST_LANGUAGE_KEYLESS_PROVIDER_IDS =", "function openFirstLanguagePrompt(")}
-			const state = getFirstLanguageAIProviderHintState();
-			globalThis.keys = [getFirstLanguageAIProviderHintKey(state, false), getFirstLanguageAIProviderHintKey(state, true)];`, context);
-		return Array.from(context.keys);
+		const state = getFirstLanguageAIProviderHintState({
+			getEnabledProviders: () => providers,
+			getEnabledProvidersFor: capability => providers.filter(provider => provider.on.includes(capability)),
+		});
+		return [getFirstLanguageAIProviderHintKey(state, false), getFirstLanguageAIProviderHintKey(state, true)];
 	};
 	const bing = { id: "bing-translate", supports: { translate: true, pronunciation: false }, on: ["translate"] };
 	const google = { id: "google-translate", supports: { translate: true, pronunciation: false }, on: ["translate"] };

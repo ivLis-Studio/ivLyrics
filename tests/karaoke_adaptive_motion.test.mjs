@@ -1,12 +1,13 @@
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
+import { readKaraokePageHarnessSource, karaokePageModules } from "./fixtures/karaoke-page-modules.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import vm from "node:vm";
 
-const currentSource = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
-const currentStyles = readFileSync(new URL("../style.css", import.meta.url), "utf8");
+const currentSource = readKaraokePageHarnessSource();
+const currentStyles = readPcStylesheet();
 const baselineSource = execFileSync("git", [
 	"show", "e90ee9c774102d209c6ef17667ac2b42820bbb21:Pages.js",
 ], { cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8" });
@@ -67,6 +68,10 @@ const createHarness = (source = currentSource, options = {}) => {
 		},
 	};
 	const context = vm.createContext({
+		...karaokePageModules,
+		getSyncedLinePlaybackState: (lineWindow, position) => karaokePageModules.getSyncedLinePlaybackState(
+			lineWindow, position, CONFIG.visual["karaoke-bounce"] === true,
+		),
 		CONFIG, window, console, Math: measuredMath,
 		Utils: { applyFuriganaIfEnabled: text => text },
 		getCopyableText: value => Array.isArray(value) ? value.join("") : String(value ?? ""),
@@ -101,9 +106,9 @@ const createHarness = (source = currentSource, options = {}) => {
 	const reducedEnd = source.indexOf("\nconst ", reducedStart + 1);
 	vm.runInContext([
 		source.slice(reducedStart, reducedEnd),
-		slice(source, "const getTimedSyllablesFromLine", "const getInterludeInfo"),
-		slice(source, "const KARAOKE_PRE_SPACE_MIN_DURATION_MS", "const getSyncedAnimationIndex"),
-		slice(source, "const getKaraokeLineBounds", "const SyncedLyricsPage = react.memo"),
+		slice(source, "const getTimedSyllablesFromLine", source.includes("const { getInterludeInfo") ? "const { getInterludeInfo" : "const getInterludeInfo"),
+		slice(source, "const KARAOKE_PRE_SPACE_MIN_DURATION_MS", source.includes("const shouldHideSyncedLine") ? "const shouldHideSyncedLine" : "const getSyncedAnimationIndex"),
+		slice(source, "const getKaraokeLineBounds", source.includes("createLyricsTrackRevealHook(") ? "const useLyricsTrackReveal =" : "const SyncedLyricsPage = react.memo"),
 		"globalThis.motionHarness = {",
 		" buildKaraokeTimedChars, applyKaraokeWhitespaceCompensation, getKaraokeCharFill,",
 		" getKaraokeSegmentFill, getKaraokeInstantWordFill, buildKaraokeTextRunSegments,",

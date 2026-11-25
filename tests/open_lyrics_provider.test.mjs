@@ -1,16 +1,19 @@
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../Addon_Lyrics_OpenLyrics.js', import.meta.url), 'utf8');
+const sourceUrl = new URL('../src/providers/lyrics/Addon_Lyrics_OpenLyrics.js', import.meta.url);
+const source = readFileSync(sourceUrl, 'utf8');
+const bundledSource = bundleInitializer(sourceUrl);
 const fixtures = JSON.parse(readFileSync(new URL('./fixtures/open-lyrics.json', import.meta.url)));
 const encoded = ['aHR0cHM6Ly9hcGkubGlyaXFvLWFsZmFycml6aS5teS5pZC92MS9seXJpY3M=', 'aHR0cHM6Ly9hcGkubHJjbXV4LmRldi9nZXQ='];
 const endpoints = encoded.map(value => Buffer.from(value, 'base64').toString());
 const track = { uri: 'spotify:track:0123456789012345678901', isrc: 'USAT21703595', title: 'Fixture Song', artist: 'Fixture Artist', durationMs: 10000 };
 function load(fetch = async () => Response.json(null, { status: 404 })) {
     const window = { LyricsAddonManager: { register() {} } };
-    vm.runInNewContext(source, { window, fetch, URL, AbortController, setTimeout, clearTimeout, atob, console: { warn() {} } });
+    vm.runInNewContext(bundledSource, { window, fetch, URL, AbortController, setTimeout, clearTimeout, atob, console: { warn() {} } });
     return { addon: window.OpenLyricsAddon, debug: window.__ivLyricsOpenLyricsDebug };
 }
 
@@ -29,17 +32,20 @@ for (const fixture of fixtures) test(`Open Lyrics parses ${fixture.name}`, () =>
 });
 
 function raceHarness() {
-    const requests = [], pending = new Map();
+    const requests = [], pending = new Map(), aborted = [];
     let ready;
     const started = new Promise(resolve => { ready = resolve; });
     const fetch = (url, options) => new Promise((resolve, reject) => {
         const value = String(url); requests.push(value);
-        options.signal?.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true });
+        options.signal?.addEventListener('abort', () => {
+            aborted.push(value);
+            reject(new DOMException('Cancelled', 'AbortError'));
+        }, { once: true });
         const service = endpoints.findIndex(endpoint => value.startsWith(endpoint + '?'));
         if (service >= 0) pending.set(service, value => resolve(Response.json(value)));
         if (pending.size === 2) ready();
     });
-    return { ...load(fetch), requests, pending, started };
+    return { ...load(fetch), requests, pending, started, aborted };
 }
 const lineBody = text => ({ meta: { level: 'line' }, lines: [{ text, start: 1000, end: 3000 }] });
 
@@ -80,6 +86,18 @@ test('cancelling a race resolves even while transports are pending', async () =>
     await h.started;
     controller.abort();
     assert.equal(await result, null);
+});
+
+test('invalidating Open Lyrics aborts its transports and prevents an already cancelled retry', async () => {
+    const h = raceHarness(), controller = new AbortController();
+    const result = h.addon.getLyrics(track, { signal: controller.signal });
+    await h.started;
+    controller.abort();
+    assert.equal((await result).error, 'Lyrics request superseded');
+    assert.deepEqual(h.aborted.sort(), [...h.requests].sort());
+    const requestCount = h.requests.length;
+    assert.equal((await h.addon.getLyrics(track, { signal: controller.signal })).error, 'Lyrics request superseded');
+    assert.equal(h.requests.length, requestCount);
 });
 
 test('an upstream primary is preserved and empty primary can fall back to other tracks', () => {

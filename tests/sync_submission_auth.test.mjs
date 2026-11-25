@@ -1,19 +1,14 @@
+import SyncDataCodec from '#ivlyrics/features/sync/SyncDataCodec.mjs';
+import { createDiscordAccountSession } from "#ivlyrics/features/account/discordAccountSession.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
-import { createRequire } from 'node:module';
-const SyncDataCodec = createRequire(import.meta.url)('../SyncDataCodec.js');
+import { createSyncDataSubmission } from '#ivlyrics/lyrics/createSyncDataSubmission.mjs';
+import { sendSyncCreatorSubmission } from '#ivlyrics/features/sync/syncCreatorSubmissionTransport.mjs';
 
-const utilsSource = readFileSync(new URL('../Utils.js', import.meta.url), 'utf8');
-const serviceSource = readFileSync(new URL('../LyricsService.js', import.meta.url), 'utf8');
-const editorSource = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
-const method = utilsSource.slice(utilsSource.indexOf('  async requireDiscordAuth('), utilsSource.indexOf('  promptDiscordLoginRequired('));
-const declarations = utilsSource.slice(utilsSource.indexOf('const discordAuthOperations'), utilsSource.indexOf('const Utils ='));
-function fixture() {
+function fixture(toast = {}) {
   let token = 'session-a', user = 'user-a', base = 'api-a', now = 0, calls = 0, afterFetch;
   const profile = { authenticated: true, linked: true, account: { id: 'a' } };
-  const utils = vm.runInNewContext(`${declarations}\n({${method}})`, { Date: { now: () => now }, Toast: {}, I18n: { t: () => 'login required' } });
+  const utils = createDiscordAccountSession({ translate: () => 'login required', toast, now: () => now });
   Object.assign(utils, {
     getAuthToken: () => token, getUserHash: () => user, getAccountApiBase: () => base,
     clearAuthToken: () => { token = ''; },
@@ -23,6 +18,19 @@ function fixture() {
     change: (values) => { token = values.token ?? token; user = values.user ?? user; base = values.base ?? base; now = values.now ?? now; },
     after: callback => { afterFetch = callback; } };
 }
+
+test('the checking toast is dismissed on successful and rejected verification', async () => {
+  const events = [];
+  const f = fixture({
+    progress: (...args) => events.push(args),
+    dismissProgress: () => events.push(['dismiss']),
+  });
+
+  await f.utils.requireDiscordAuth('', { checkingMessage: 'Checking' });
+  f.change({ token: '' });
+  await assert.rejects(f.utils.requireDiscordAuth('', { checkingMessage: 'Checking' }), /login required/);
+  assert.deepEqual(events, [['Checking', 0], ['dismiss'], ['Checking', 0], ['dismiss']]);
+});
 
 test('one submission verifies once; unrelated operations and direct callers verify again', async () => {
   const f = fixture(), operation = {};
@@ -68,25 +76,70 @@ test('failed verification is retried and cannot clear a newer session', async ()
   assert.equal(f.calls, 2);
 });
 test('shipping submit service consumes operation separately from the posted metadata', async () => {
-  const f = fixture(), operation = {};
-  await f.utils.requireDiscordAuth('', { operation });
-  const start = serviceSource.indexOf('        async function submitSyncData(');
-  const end = serviceSource.indexOf('        /**', start);
+  const f = fixture();
   let posted;
-  const context = { window: { SyncDataCodec }, Utils: f.utils, I18n: { t: () => 'login required' },
+  const submit = createSyncDataSubmission({
+    getCodec: () => SyncDataCodec,
+    getAuthUtils: () => assert.fail('the route and startup must share the same verification context'),
+    translate: () => 'login required',
     resolveSyncDataIdentity: async () => ({ isrc: 'USABC1234567', trackId: 'track' }),
-    getUserHash: () => 'user-a', getSyncDataTrackMetadata: () => ({}), getCurrentSpotifyProfile: async () => null,
-    API_BASE: 'https://api.example', SYNC_DATA_REQUEST_VERSION: '20260701', Spicetify: { Config: { version: 'test' } },
-    fetch: async (url, init) => { posted = JSON.parse(init.body); return new Response('{"success":true}'); },
-    rememberOpenDbSyncDataEntry() {}, clearCache() {}, normalizeIsrc: value => value,
-    normalizeSyncDataIsrc: value => value, normalizeTrackIsrc: value => value, Date, console,
+    getUserHash: () => 'user-a',
+    getSyncDataTrackMetadata: () => ({}),
+    getCurrentSpotifyProfile: async () => null,
+    apiBase: 'https://api.example',
+    requestVersion: '20260701',
+    getClientVersion: () => 'test',
+    request: async (_url, init) => {
+      posted = JSON.parse(init.body);
+      return new Response('{"error":"captured"}', { status: 400 });
+    },
+    rememberOpenDbSyncDataEntry: () => assert.fail('Rejected submission must not update OpenDB'),
+    clearCache: () => assert.fail('Rejected submission must not clear the cache'),
+  });
+  const saveWork = async () => {
+    assert.equal(f.calls, 1, 'verify before storing the work snapshot');
+    return { workToken: 'work-a' };
   };
-  // The transport reply is deliberately rejected after capture: no cache/update side effects are required here.
-  context.fetch = async (url, init) => { posted = JSON.parse(init.body); return new Response('{"error":"captured"}', { status: 400 }); };
-  const submit = vm.runInNewContext(`${serviceSource.slice(start, end)}\nsubmitSyncData`, context);
-  await assert.rejects(submit('track', 'provider', { lines: [] }, { isrc: 'USABC1234567' }, { authOperation: operation }), /captured/);
+  await assert.rejects(sendSyncCreatorSubmission({
+    syncData: { lines: [] }, trackId: 'track', provider: 'provider', isrc: 'USABC1234567',
+    account: f.utils,
+    saveWork, getSyncService: () => ({ submitSyncData: submit }),
+    requireAuth: operation => f.utils.requireDiscordAuth('', { operation }),
+  }), /captured/);
   assert.equal(f.calls, 1);
   assert.equal('authOperation' in posted, false);
   assert.equal(JSON.stringify(posted).includes('session-a'), false);
-  assert.ok(editorSource.includes('submitMetadata, { authOperation })'));
+});
+
+test('an account change while saving score work cannot submit with the new account', async () => {
+  const f = fixture();
+  await assert.rejects(sendSyncCreatorSubmission({
+    syncData: { lines: [] }, trackId: 'track', provider: 'provider', isrc: 'USABC1234567',
+    account: f.utils, translate: () => 'login required',
+    requireAuth: operation => f.utils.requireDiscordAuth('', { operation }),
+    async saveWork() {
+      f.change({ user: 'user-b', token: 'session-b' });
+      return { workSessionId: 'old-account-work' };
+    },
+    getSyncService: () => assert.fail('the old work must not be submitted'),
+  }), /login required/);
+  assert.equal(f.token, 'session-b');
+});
+
+test('a caller without the editor cannot change accounts while the Spotify profile is loading', async () => {
+  const f = fixture();
+  const submit = createSyncDataSubmission({
+    getCodec: () => SyncDataCodec,
+    getAuthUtils: () => f.utils,
+    translate: () => 'login required',
+    resolveSyncDataIdentity: async () => ({ isrc: 'USABC1234567', trackId: 'track' }),
+    getSyncDataTrackMetadata: () => ({}),
+    getCurrentSpotifyProfile: async () => {
+      f.change({ user: 'user-b', token: 'session-b' });
+      return null;
+    },
+    request: () => assert.fail('account change must stop the submission'),
+  });
+  await assert.rejects(submit('track', 'provider', { lines: [] }), /login required/);
+  assert.equal(f.calls, 0);
 });

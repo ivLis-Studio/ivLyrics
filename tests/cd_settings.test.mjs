@@ -1,9 +1,12 @@
+import { readLanguageTable } from "./fixtures/language-source.mjs";
+import { readSettingsFixture } from "./fixtures/legacy-page-source.mjs";
+import { SETTINGS_DEFAULT_VALUES, SETTINGS_FALLBACK_DEFAULT_VALUES } from "../src/features/settings/settingsDefaults.mjs";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const source = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
+const source = readSettingsFixture();
 const defaults = {
   "fullscreen-cd-disc-size": 100,
   "fullscreen-cd-rotation-enabled": true,
@@ -51,6 +54,7 @@ function harness(overrides = {}, initial = {}) {
   };
   const saves = [], events = [], errors = [];
   const context = vm.createContext({
+    SETTINGS_DEFAULT_VALUES, SETTINGS_FALLBACK_DEFAULT_VALUES,
     react, ...react, CONFIG: { visual: {} }, APP_NAME: "ivLyrics",
     I18n: { t: (key) => key, getAvailableLanguages: () => [] },
     StorageManager: {
@@ -71,9 +75,10 @@ function harness(overrides = {}, initial = {}) {
     console: { warn: (...args) => errors.push(args), error: (...args) => errors.push(args) },
   });
   vm.runInContext(source.slice(0, rootReturn) + `
-    return { sidebarTabs, renderTabContent, buildSettingsRegistry, resetChangedEntries,
-      renderChangedView, searchableSettings, navigateToDestination, pickSearchResult,
-      pendingTabScrollRef, activeTab, fullscreenView, fullscreenViews, selectFullscreenView };
+    return { sidebarTabs, renderTabContent, buildSettingsRegistry, resetChangedEntries: changedSettings.resetChangedEntries,
+      renderChangedView: changedSettings.renderChangedView, searchableSettings: search.searchableSettings,
+      navigateToDestination, pickSearchResult: search.pickSearchResult,
+      pendingNavigationRef: navigation.pendingNavigationRef, activeTab, fullscreenView, fullscreenViews: menus.fullscreenViews, selectFullscreenView: navigation.selectFullscreenView };
   ` + source.slice(rootReturn, end) + `
     globalThis.fixture = { ConfigModal, OptionList, SettingsSection, SettingsLayerMatrix,
       ConfigSlider, ConfigSliderRange, ConfigSelection, ConfigColorPicker, SettingsChoiceCards,
@@ -140,7 +145,7 @@ test("CD is a distinct view before LP, with hidden sections still searchable", (
     assert.ok(entries[0].i18nKeys.includes("vinyl.cd.mode"), key);
     h.api.pickSearchResult(entries[0]); h.render();
     assert.equal(h.api.activeTab, "fullscreen");
-    assert.equal(h.api.pendingTabScrollRef.current, key);
+    assert.equal(h.api.pendingNavigationRef.current?.settingKey, key);
     assert.equal(h.api.fullscreenView, "cd", "conditional targets reveal the CD view even without a DOM anchor");
   }
   sections = elements(h.api.renderTabContent("fullscreen")).filter((node) => node.type === h.SettingsSection && node.props.view === "cd");
@@ -318,7 +323,7 @@ test("hidden custom values remain in Changed settings with correct jump and rese
   assert.equal(color.when, undefined, "the changed editor does not inherit conditional visibility");
   color.jump.onClick(); h.render();
   assert.equal(h.api.activeTab, "fullscreen");
-  assert.equal(h.api.pendingTabScrollRef.current, color.key);
+  assert.equal(h.api.pendingNavigationRef.current?.settingKey, color.key);
   assert.equal(h.api.fullscreenView, "cd");
   h.api.resetChangedEntries(Array.from(h.api.buildSettingsRegistry()).filter((entry) => keys.includes(entry.key)));
   for (const key of keys) assert.equal(h.visual[key], defaults[key], key);
@@ -364,19 +369,14 @@ test("CD preview has a real centre hole, follows shape, density and colour, and 
   assert.ok(!elements(off).some((node) => node.type === "g"));
 });
 
-const localeDirectory = new URL("../langs/", import.meta.url);
+const localeDirectory = new URL("../src/i18n/langs/", import.meta.url);
 const locales = readdirSync(localeDirectory).filter((name) => /^Lang.*\.js$/.test(name));
-function readLocale(file) {
-  const context = { window: {} };
-  vm.runInNewContext(readFileSync(new URL(file, localeDirectory), "utf8"), context, { filename: file });
-  return plain(Object.values(context.window)[0]);
-}
-const english = readLocale("LangEn.js");
+const english = readLanguageTable("LangEn.js");
 const flatten = (value, prefix = "") => Object.entries(value).flatMap(([key, text]) =>
   typeof text === "string" ? [[`${prefix}${key}`, text]] : flatten(text, `${prefix}${key}.`));
 test("CD strings cover all 22 supported languages", () => assert.equal(locales.length, 22));
 for (const file of locales) test(`${file}: every CD key is translated and compact presentation is renamed`, () => {
-  const locale = readLocale(file), actual = flatten(locale.vinyl.cd), expected = flatten(english.vinyl.cd);
+  const locale = readLanguageTable(file), actual = flatten(locale.vinyl.cd), expected = flatten(english.vinyl.cd);
   assert.equal(actual.length, 43);
   assert.deepEqual(actual.map(([key]) => key).sort(), expected.map(([key]) => key).sort());
   for (const [key, text] of actual) {

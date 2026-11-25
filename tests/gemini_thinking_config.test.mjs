@@ -1,15 +1,10 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
+import { getGeminiGenerationConfig } from '../src/providers/ai/geminiModelCatalog.mjs';
 
-const source = readFileSync(new URL('../Addon_AI_Gemini.js', import.meta.url), 'utf8');
 function config(model, enabled = false, budget = 1024) {
     const settings = { 'adv-thinking-enabled': enabled, 'adv-thinking-budget': budget };
-    const context = { DEFAULT_MAX_OUTPUT_TOKENS: 32768, getSelectedModel: () => model,
-        getSetting: (key, fallback) => settings[key] ?? fallback };
-    const method = source.slice(source.indexOf('    function getGenerationConfig()'), source.indexOf('    async function getResearchGenerationConfig()'));
-    return JSON.parse(JSON.stringify(vm.runInNewContext(`${method}\ngetGenerationConfig()`, context)));
+    return getGeminiGenerationConfig((key, fallback) => settings[key] ?? fallback, () => model);
 }
 
 test('Gemini 3 requests use supported levels instead of a zero token budget', () => {

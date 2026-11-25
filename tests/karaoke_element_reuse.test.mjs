@@ -1,10 +1,12 @@
+import { createKaraokeHarnessFactory, expandHistoricalCulturalGlyphFragments, readKaraokePageHarnessSource } from "./fixtures/karaoke-page-modules.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { KaraokeWordTiming } from '../src/lyrics/karaokeWordTiming.mjs';
 
-const currentSource = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
+const currentSource = readKaraokePageHarnessSource();
 const previousSource = execFileSync('git', ['show', '3353a5d:Pages.js'], {
   cwd: new URL('..', import.meta.url), encoding: 'utf8',
 });
@@ -27,13 +29,13 @@ harnessSource = harnessSource.replace(elementFactory, `createElement: (tag, prop
   if (String(props?.key || '').startsWith('karaoke-char-')) counts.glyphElements++;
   return { tag, props: props || {}, children };
 }`);
-const { createHarness, makeLine } = new Function('assert', 'execFileSync', 'readFileSync', 'vm',
-  harnessSource + '\nreturn { createHarness, makeLine };')(assert, execFileSync, readFileSync, vm);
+const { createHarness, makeLine } = createKaraokeHarnessFactory('assert', 'execFileSync', 'readFileSync', 'vm', 'KaraokeWordTiming',
+  harnessSource + '\nreturn { createHarness, makeLine };')(assert, execFileSync, readFileSync, vm, KaraokeWordTiming);
 // CJK now has intentional layout-only whitespace parents. Compare every
 // existing paint node while the whitespace regression checks those parents.
 const exactTree = value => JSON.parse(JSON.stringify(value, (key, entry) =>
-  Array.isArray(entry) ? entry.flat(Infinity).flatMap(child =>
-    child?.props?.className === 'lyrics-karaoke-wrap-group' ? child.children.flat(Infinity) : [child]) : entry));
+  Array.isArray(entry) ? expandHistoricalCulturalGlyphFragments(entry.flat(Infinity).flatMap(child =>
+    child?.props?.className === 'lyrics-karaoke-wrap-group' ? child.children.flat(Infinity) : [child])) : entry));
 const countMotion = source => source.replace(
   'const getKaraokeBounceValues = (position, isActive, startTime, endTime, attenuation = 1, motionProfile = null) => {',
   'const getKaraokeBounceValues = (position, isActive, startTime, endTime, attenuation = 1, motionProfile = null) => { counts.bounceCalls++;'

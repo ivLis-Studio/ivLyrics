@@ -1,10 +1,20 @@
+import { readVideoBackgroundFixture } from "./fixtures/legacy-page-source.mjs";
+import { createToolbarSyncFixture } from "./fixtures/toolbar-sync-modules.mjs";
+import {
+  publishVideoBackground, updateVideoBackgroundReadiness, clearVideoBackground,
+} from "../src/features/video/activeVideoBackground.mjs";
+import { createSelectedVideoStore } from "../src/features/video/selectedVideoStore.mjs";
+import { createPageVideoSelection } from "../src/features/video/pageVideoSelection.mjs";
+import { watchVideoBackgroundTrackOffset } from "../src/features/video/videoBackgroundTrackOffset.mjs";
+import { createVideoBackgroundSync } from "../src/features/video/videoBackgroundTiming.mjs";
+import { readVideoTrackPlayback, watchVideoBackgroundPlayback } from "../src/features/video/videoBackgroundPlayback.mjs";
+import { createVideoDriftState } from "../src/features/video/videoDriftCorrection.mjs";
+import { createYouTubeBackgroundTimeline } from "../src/features/video/youTubeBackgroundTimeline.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const read = name => readFileSync(new URL('../' + name, import.meta.url), 'utf8');
-const options = read('OptionsMenu.js'), video = read('VideoBackground.js'), utils = read('Utils.js');
+const video = readVideoBackgroundFixture();
 const slice = (source, start, end) => {
   const from = source.indexOf(start), to = source.indexOf(end, from + start.length);
   assert.ok(from >= 0 && to > from, start); return source.slice(from, to);
@@ -41,15 +51,36 @@ function harness({ helper = false } = {}) {
     Spicetify: { Player: { getProgress: () => 20000 } }, CONFIG: { visual: {} },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     trackUri: TRACK, videoInfo: sourceInfo(), useHelper: helper, isPlayerReady: true, isPlaying: false,
+    isPlaybackSourceCurrent: () => true,
     firstLyricTimeRef: { current: 10000 }, trackOffsetMsRef: { current: 0 },
     videoRef: { current: localVideo }, playerRef: { current: player },
     youtubeHoldStateRef: { current: { isHolding: false, primePending: false } },
     videoDriftStateRef: { current: null },
   });
-  vm.runInContext(slice(options, 'const COMMUNITY_VIDEO_SYNC_MAX_SECONDS', '\nconst TrackSyncAdjustPill') +
-    '\nglobalThis.api = { useCurrentVideoSync, queueCommunityVideoSyncWrite };', context);
-  vm.runInContext(video.slice(0, video.indexOf('const disableYouTubeCaptions')), context);
-  vm.runInContext(slice(video, '    // Offset taps update the timeline', '    const reportVideoBackgroundStatus'), context);
+  context.api = createToolbarSyncFixture(context);
+  const driftState = createVideoDriftState();
+  const { syncYouTubePlayerTimeline } = createYouTubeBackgroundTimeline({ isYouTubeAdPlaying: () => false });
+  const { computeVideoSyncState } = createVideoBackgroundSync({
+    readActiveVideo: () => window.ivLyricsActiveCommunityVideoInfo,
+    readVisualSettings: () => ({}), readGlobalSyncOffset: () => 0,
+  });
+  watchVideoBackgroundPlayback({
+    host: window,
+    source: { trackUri: TRACK, videoId: 'video-a', useHelper: helper, isVisible: false, isCurrent: () => true },
+    readPlayer: () => helper ? localVideo : player,
+    readFrame() {
+      const playback = readVideoTrackPlayback(context.Spicetify.Player, TRACK);
+      if (!playback) return null;
+      return {
+        isPlaying: playback.isPlaying,
+        syncState: computeVideoSyncState({
+          spotifyProgressMs: playback.position, firstLyricTime: 10000, trackOffsetMs: 0,
+          videoInfo: context.videoInfo, trackUri: TRACK,
+        }),
+      };
+    },
+    timing: { getVideoDriftState: () => driftState, holdState: context.youtubeHoldStateRef.current, syncYouTubePlayerTimeline },
+  });
   const controls = context.api.useCurrentVideoSync(TRACK);
   return { context, window, controls, seeks, writes, localVideo, playerListeners,
     remoteCalls: () => remoteCalls };
@@ -80,24 +111,56 @@ test('stale track/video events cannot seek the active player', () => {
   assert.deepEqual(h.seeks, []);
 });
 
-test('a source from the previous track cannot be exposed under the incoming track URI', () => {
-  const body = slice(video, '    const [videoSource, setVideoSource]', '    const [isPlayerReady,');
-  const stored = { trackUri: 'previous-track', info: sourceInfo() };
-  const context = vm.createContext({ trackUri: TRACK, useState: () => [stored, () => {}], useCallback: callback => callback });
+test('an offset event cannot use the next Spotify track position against the outgoing video', () => {
+  const h = harness();
+  h.context.Spicetify.Player.data = { item: { uri: "spotify:track:next" } };
+  h.context.Spicetify.Player.getProgress = () => 32000;
+  h.window.dispatchEvent({
+    type: 'ivLyrics:community-video-start-changed', detail: { trackUri: TRACK, youtubeVideoId: 'video-a' },
+  });
+  assert.deepEqual(h.seeks, []);
+});
+
+test('a source from the previous selection cannot be exposed after a track or video change', () => {
+  const body = slice(video, '    const [videoSource, setVideoSource]', '    const diagnostics');
+  const stored = { lookup: { trackUri: TRACK }, info: sourceInfo() };
+  const context = vm.createContext({ lookup: { trackUri: "other-track" }, isLookupCurrent: () => true,
+    useState: () => [stored, () => {}], useCallback: callback => callback });
   assert.equal(vm.runInContext(`(() => { ${body}; return videoInfo; })()`, context), null);
-  context.trackUri = 'previous-track';
+  context.lookup = { trackUri: TRACK };
+  assert.equal(vm.runInContext(`(() => { ${body}; return videoInfo; })()`, context), null);
+  context.lookup = stored.lookup;
   assert.equal(vm.runInContext(`(() => { ${body}; return videoInfo; })()`, context), stored.info);
 });
 
+test("a delayed stored offset cannot undo a live adjustment or update a closed video", async () => {
+  const host = new EventTarget();
+  const stored = deferred();
+  const seen = [];
+  const stop = watchVideoBackgroundTrackOffset({
+    host, trackUri: TRACK, readOffset: () => stored.promise, publish: offset => seen.push(offset),
+  });
+  const change = (trackUri, offset) => host.dispatchEvent(new CustomEvent("ivLyrics:offset-changed", {
+    detail: { trackUri, offset },
+  }));
+  change("other", 300);
+  change(TRACK, "120");
+  stored.resolve(30);
+  await flush();
+  assert.deepEqual(seen, [120]);
+  stop();
+  change(TRACK, 40);
+  assert.deepEqual(seen, [120]);
+});
+
 test('source changes notify the controls, and an old unmount cannot clear a newer owner', () => {
-  const h = harness(), cleanups = [];
-  h.context.activeVideoOwnerRef = { current: {} };
-  h.context.useEffect = callback => { const cleanup = callback(); if (cleanup) cleanups.push(cleanup); };
-  const publication = slice(video,
-    '    useEffect(() => {\n        window.ivLyricsActiveCommunityVideoOwner', '    // Offset taps update the timeline');
-  const notifications = [];
-  h.window.addEventListener('ivLyrics:communityVideoChanged', event => notifications.push(event.detail.trackUri));
-  vm.runInContext(publication, h.context);
+  const h = harness(), notifications = [];
+  const source = {
+    host: h.window, owner: {}, trackUri: TRACK, videoInfo: h.context.videoInfo,
+    isPlayerReady: true, notifyChange: uri => notifications.push(uri),
+  };
+  publishVideoBackground(source);
+  updateVideoBackgroundReadiness({ ...source, readDuration: () => 300 });
   assert.equal(h.window.ivLyricsActiveCommunityVideoInfo.youtubeVideoId, 'video-a');
   assert.ok(notifications.length > 0);
   assert.ok(notifications.every(uri => uri === TRACK));
@@ -106,19 +169,19 @@ test('source changes notify the controls, and an old unmount cannot clear a newe
   const nextOwner = {};
   h.window.ivLyricsActiveCommunityVideoOwner = nextOwner;
   h.window.ivLyricsActiveCommunityVideoInfo = { trackUri: 'next-track', youtubeVideoId: 'video-b' };
-  cleanups[0]();
+  clearVideoBackground(source);
   assert.equal(h.window.ivLyricsActiveCommunityVideoInfo.youtubeVideoId, 'video-b');
 });
 
 test('player readiness and duration updates preserve an optimistically adjusted anchor', () => {
   const h = harness();
-  h.context.activeVideoOwnerRef = { current: {} };
-  h.window.ivLyricsActiveCommunityVideoOwner = h.context.activeVideoOwnerRef.current;
+  const owner = {};
+  h.window.ivLyricsActiveCommunityVideoOwner = owner;
   h.window.ivLyricsActiveCommunityVideoInfo = { ...sourceInfo(), trackUri: TRACK, captionStartTime: 5.01, playerReady: false };
-  const readiness = slice(video,
-    '    useEffect(() => {\n        const current = window.ivLyricsActiveCommunityVideoInfo;',
-    '    useEffect(() => {\n        return () => {');
-  vm.runInContext(readiness, h.context);
+  updateVideoBackgroundReadiness({
+    host: h.window, owner, trackUri: TRACK, videoInfo: h.context.videoInfo,
+    isPlayerReady: true, readDuration: () => 300, notifyChange() {},
+  });
   assert.equal(h.window.ivLyricsActiveCommunityVideoInfo.captionStartTime, 5.01);
   assert.equal(h.window.ivLyricsActiveCommunityVideoInfo.playerReady, true);
   assert.equal(h.window.ivLyricsActiveCommunityVideoInfo.videoDurationSeconds, 300);
@@ -139,16 +202,23 @@ test('rapid steps are serialized and coalesced to the latest local anchor', asyn
 });
 
 function atomicStore(existing) {
-  const request = {}, puts = [];
+  const request = {}, puts = [], deletes = [];
   let transaction, closed = 0;
   const db = { transaction(_name, mode) {
     assert.equal(mode, 'readwrite');
-    transaction = { objectStore: () => ({ get: () => request, put: value => puts.push(value) }) };
+    transaction = { objectStore: () => ({ get: () => request, put: value => puts.push(value), delete: uri => deletes.push(uri) }) };
     return transaction;
   }, close() { closed++; } };
-  const api = vm.runInNewContext('({' + slice(utils, '  async updateSelectedVideoSyncOffset(', '  /**\n   * 오래된 선택 영상 정리') + '})');
-  api._openSelectedVideoDB = async () => db;
-  return { api, puts, request, closed: () => closed,
+  const api = createSelectedVideoStore({
+    getIndexedDb: () => ({
+      open() {
+        const opening = { result: db };
+        queueMicrotask(() => opening.onsuccess());
+        return opening;
+      },
+    }),
+  });
+  return { api, puts, deletes, request, closed: () => closed,
     commit() { request.result = existing; request.onsuccess(); transaction.oncomplete(); },
     abort() { transaction.onabort(); },
   };
@@ -175,4 +245,86 @@ test('aborted local writes reject instead of reporting a successful save', async
   const pending = h.api.updateSelectedVideoSyncOffset(TRACK, { ...sourceInfo(), captionStartTime: 1 });
   await flush(); h.abort();
   await assert.rejects(pending, /transaction failed/); assert.equal(h.closed(), 1);
+});
+
+test("a hidden-video replacement compares the record and current request inside the transaction", async () => {
+  const previous = { ...sourceInfo(), communityEntryId: 'entry-a', savedAt: 10 };
+  for (const [existing, current] of [[{ ...previous, captionStartTime: 9 }, true], [previous, false], [null, true]]) {
+    const h = atomicStore(existing);
+    const pending = h.api.replaceHiddenSelectedVideo(TRACK, previous, null, () => current);
+    await flush(); h.commit();
+    assert.equal(await pending, false);
+    assert.deepEqual(h.deletes, []);
+  }
+  const h = atomicStore(previous);
+  const pending = h.api.replaceHiddenSelectedVideo(TRACK, previous, null, () => true);
+  await flush(); h.commit();
+  assert.equal(await pending, true);
+  assert.deepEqual(h.deletes, [TRACK]);
+});
+
+test("an old video dialog and a delayed hidden-video lookup cannot undo a newer selection", async () => {
+  const previous = { ...sourceInfo(), communityEntryId: 'entry-a', savedAt: 10 };
+  const manual = { ...sourceInfo(), youtubeVideoId: 'manual' };
+  const selected = [], saved = [];
+  const lookup = deferred();
+  let lookupSignal;
+  const page = createPageVideoSelection({
+    readTrackUri: () => TRACK,
+    isTrackCurrent: uri => uri === TRACK,
+    readVisualSettings: () => ({}),
+    resolveHiddenCommunityVideo(_uri, _saved, _skipCache, { signal }) {
+      lookupSignal = signal;
+      return lookup.promise;
+    },
+    setVideoInfo: value => selected.push(value),
+    debug() {},
+    logError(_message, error) { throw error; },
+    store: {
+      getSelectedVideo: async () => previous,
+      saveSelectedVideo: async (uri, value) => saved.push([uri, value]),
+      replaceHiddenSelectedVideo() { assert.fail('stale replacement reached the store'); },
+    },
+  });
+  const loading = page.loadSavedVideoForTrack(TRACK);
+  await flush();
+  await page.selectCommunityVideoForCurrentTrack(manual, 'other track');
+  assert.equal(lookupSignal.aborted, false);
+  await page.selectCommunityVideoForCurrentTrack(manual, TRACK);
+  assert.equal(lookupSignal.aborted, true);
+  lookup.resolve({ hidden: true, replacement: { youtubeVideoId: 'replacement' } });
+  await loading;
+  assert.deepEqual(saved, [[TRACK, manual]]);
+  assert.deepEqual(selected, [manual]);
+});
+
+test("failed selection writes do not apply a background or acknowledge a deletion", async () => {
+  const visible = [];
+  let saved = false;
+  const page = createPageVideoSelection({
+    store: { saveSelectedVideo: async () => saved, removeSelectedVideo: async () => saved },
+    readTrackUri: () => TRACK, isTrackCurrent: uri => uri === TRACK,
+    setVideoInfo: value => visible.push(value),
+  });
+  const next = { youtubeVideoId: "new" };
+  assert.equal(await page.selectCommunityVideoForCurrentTrack(next), false);
+  assert.equal(await page.selectCommunityVideoForCurrentTrack(null), false);
+  assert.deepEqual(visible, []);
+  saved = true;
+  assert.equal(await page.selectCommunityVideoForCurrentTrack(next), true);
+  assert.deepEqual(visible, [next]);
+});
+
+test("a selection started before a track transition cannot apply after returning to the same track", async () => {
+  const staged = deferred(), visible = [];
+  const page = createPageVideoSelection({
+    store: { saveSelectedVideo: () => staged.promise },
+    readTrackUri: () => TRACK, isTrackCurrent: uri => uri === TRACK,
+    setVideoInfo: value => visible.push(value),
+  });
+  const applying = page.selectCommunityVideoForCurrentTrack({ youtubeVideoId: "old-request" });
+  page.cancelSavedVideoLookup();
+  staged.resolve(true);
+  assert.equal(await applying, null);
+  assert.deepEqual(visible, []);
 });

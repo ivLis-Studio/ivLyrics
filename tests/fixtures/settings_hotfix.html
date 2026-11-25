@@ -95,10 +95,12 @@
       getPersisted: key => fixtureStore.get(key) ?? null,
       setPersisted(key, value) { this.setItem(key, value); },
       saveConfig(key, value) { this.setItem(`ivLyrics:visual:${key}`, value); },
+      saveConfigs(values) { for (const [key, value] of Object.entries(values)) this.saveConfig(key, value); },
       exportConfig: () => Object.fromEntries(fixtureStore),
       exportCloudConfig: () => ({}),
       importConfig: () => { fixtureRecord("importConfig"); return true; },
       importCloudConfig: () => { fixtureRecord("importCloudConfig"); return true; },
+      clearConfig: () => { fixtureStore.clear(); },
     };
     window.StorageManager = StorageManager;
     const fixtureTrack = {
@@ -149,15 +151,15 @@
       fixtureState.toasts.push({ type, message: String(message), hasAction: !!options?.action });
     }]));
     const lyricContainerUpdate = () => fixtureRecord("lyricContainerUpdate");
-    const reloadLyrics = (...args) => fixtureRecord("reloadLyrics", { args });
+    window.lyricContainer = { refreshLyricsView: lyricContainerUpdate };
+    window.reloadLyrics = (...args) => fixtureRecord("reloadLyrics", { args });
     const LyricsCache = {
       getStats: async () => ({ count: 3, totalEntries: 3, totalSize: 4096, lyrics: 2, translations: 1,
         byType: { lyrics: 2, translation: 1 }, oldestEntry: "2026-10-15T00:00:00.000Z" }),
       clearAll: fixtureAsync, clearTrack: fixtureAsync,
     };
     const VideoHelperService = { checkHealth: async () => ({ available: false, connected: false }), openDownloadPage: fixtureNoop };
-    const DBExportManager = { exportAllDBs: fixtureAsync, importAllDBs: fixtureAsync };
-    Object.assign(window, { Utils, Toast, LyricsCache, VideoHelperService, DBExportManager });
+    Object.assign(window, { Utils, Toast, LyricsCache, VideoHelperService });
     window.OverlaySender = { enabled: false, trimMetadata: false, isConnected: false, port: 15000,
       setSettingsOpen: fixtureNoop, getDownloadUrl: () => "/offline-overlay" };
     window.lyricsHelperSender = { enabled: false, connected: false, isConnected: false };
@@ -219,13 +221,11 @@
       if (event.detail?.type === "config") fixtureState.configEvents.push({ ...event.detail });
     });
   </script>
-  <!-- LANGUAGE_SCRIPTS -->
   <script src="/I18n.js"></script>
   <script src="/fixture-config.js"></script>
   <script src="/fixture-preview-helpers.js"></script>
   <script src="/SettingsStyles.js"></script>
   <script src="/Addon_AI_DeepL.js"></script>
-  <script src="/LrclibLocalDatabaseRuntime.js"></script>
   <script src="/LrclibLocalDatabase.js"></script>
   <script src="/Addon_Lyrics_Lrclib.js"></script>
   <script src="/Settings.js"></script>
@@ -233,7 +233,7 @@
 <body>
   <div id="fixture"><p id="fixture-status">Loading the production Settings window…</p></div>
   <script>
-    Object.assign(CONFIG.visual, SETTINGS_FALLBACK_DEFAULT_VALUES, { language: fixtureLanguage });
+    Object.assign(CONFIG.visual, FIXTURE_SETTINGS_FALLBACK_DEFAULT_VALUES, { language: fixtureLanguage });
     const fixtureSeed = fixtureParams.get("seed") !== "defaults" && fixtureParams.get("changed") !== "0";
     if (fixtureSeed) Object.assign(CONFIG.visual, {
       "original-font-family": "Georgia", "original-font-size": 52, "translation-font-size": 24,
@@ -302,9 +302,9 @@
       },
     };
     const fixtureLineCount = Math.max(0, Math.min(10, Number(fixtureParams.get("syncCount") ?? 10) || 0));
-    window.CACHE = { [fixtureTrack.uri]: { provider: "lrclib", synced: Array.from({ length: fixtureLineCount }, (_, index) => ({
+    pageLyricsMemoryCache[fixtureTrack.uri] = { provider: "lrclib", synced: Array.from({ length: fixtureLineCount }, (_, index) => ({
       text: `Offline lyric ${index + 1}`, startTime: index * 3000, endTime: (index + 1) * 3000,
-    })), unsynced: [{ text: "Offline lyric" }] } };
+    })), unsynced: [{ text: "Offline lyric" }] };
 
     const fixtureRect = element => {
       if (!element) return null;
@@ -349,11 +349,15 @@
     };
     try {
       fixtureOpen(fixtureParams.get("tab") || "general", fixtureParams.get("setting"));
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        fixtureState.ready = !!document.getElementById("ivLyrics-config-container");
-        document.getElementById("fixture-status").hidden = fixtureState.ready;
-        document.documentElement.dataset.fixtureReady = String(fixtureState.ready);
-      }));
+      const overlay = document.getElementById("ivLyrics-settings-overlay");
+      const observeOpen = new MutationObserver(() => {
+        if (!overlay.classList.contains("is-open")) return;
+        fixtureState.ready = true;
+        document.getElementById("fixture-status").hidden = true;
+        document.documentElement.dataset.fixtureReady = "true";
+        observeOpen.disconnect();
+      });
+      observeOpen.observe(overlay, { attributes: true, attributeFilter: ["class"] });
     } catch (error) {
       fixtureState.errors.push({ message: error.stack });
       document.getElementById("fixture-status").textContent = error.stack;

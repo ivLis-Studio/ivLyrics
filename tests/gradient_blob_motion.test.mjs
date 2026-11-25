@@ -1,8 +1,8 @@
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const css = readFileSync(new URL("../style.css", import.meta.url), "utf8");
+const css = readPcStylesheet();
 
 // The colour-gradient blobs also stay mounted under a playing video background. Animating top/left
 // there re-ran layout and repainted the heavily blurred layers on every frame; translate() keeps the

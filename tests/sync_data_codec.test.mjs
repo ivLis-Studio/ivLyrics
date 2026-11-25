@@ -1,7 +1,6 @@
+import codec from '#ivlyrics/features/sync/SyncDataCodec.mjs';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
 import test from 'node:test';
-const codec = createRequire(import.meta.url)('../SyncDataCodec.js');
 const document = lines => ({ version: 5, trackDurationMs: 120000, lines });
 const line = (granularity, timing) => ({ start: 0, end: 10, granularity, ...timing });
 const normalized = value => JSON.parse(JSON.stringify(value));

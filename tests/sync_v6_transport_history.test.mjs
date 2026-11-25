@@ -1,10 +1,9 @@
+import codec from '#ivlyrics/features/sync/SyncDataCodec.mjs';
+import { createSyncCreatorScoreTracker as create } from '#ivlyrics/features/sync/syncCreatorScoreTracker.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
-const codec = require('../SyncDataCodec.js');
-const { create } = require('../SyncCreatorScoreTracker.js');
-const store = require('../SyncCreatorDraftStore.js');
+import { createSyncCreatorDraftStore } from '#ivlyrics/features/sync/createSyncCreatorDraftStore.mjs';
+const store = createSyncCreatorDraftStore({ getCodec: () => codec });
 const copy = value => JSON.parse(JSON.stringify(value));
 const snapshot = (count = 100) => codec.encode({ version: 5, lines: Array.from({length:count}, (_,i) => ({start:i*10,end:i*10+9,granularity:'line',timing:i})) });
 function server() {

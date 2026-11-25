@@ -1,23 +1,25 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import { webcrypto } from "node:crypto";
+import { createLyricsLanguageModel } from "../src/lyrics/lyricsLanguageModel.mjs";
+import { createLyricsLanguageDetector } from "../src/lyrics/lyricsLanguageDetector.mjs";
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
 
-const source = readFileSync(new URL("../LyricsService.js", import.meta.url), "utf8");
-const block = (start) => {
-    const index = source.indexOf(start);
-    assert.ok(index >= 0, `missing: ${start}`);
-    let depth = 0;
-    for (let cursor = source.indexOf("{", index); cursor < source.length; cursor++) {
-        if (source[cursor] === "{") depth++;
-        else if (source[cursor] === "}" && --depth === 0) return source.slice(index, cursor + 1);
-    }
-    throw new Error(`unbalanced: ${start}`);
-};
-const modelAndRules = source.slice(source.indexOf("    const LanguageModel = (() => {"), source.indexOf("    const Utils = {"));
-assert.ok(modelAndRules.includes("const LanguageRefiner"), "LanguageModel and LanguageRefiner sit right before Utils");
-
+test("the bundled lyrics service retries initialization while Spotify is loading", () => {
+    const window = {};
+    const scheduled = [];
+    vm.runInNewContext(bundleInitializer(new URL("../src/lyrics/LyricsService.js", import.meta.url)), {
+        window,
+        setTimeout(callback, delay) { scheduled.push({ callback, delay }); return scheduled.length + 1; },
+    });
+    assert.equal(scheduled.length, 1);
+    assert.equal(scheduled[0].delay, 300);
+    scheduled[0].callback();
+    assert.equal(scheduled.length, 2);
+    assert.equal(scheduled[1].delay, 300);
+    assert.equal(typeof window.ivLyricsTrackIdentity.extractTrackId, "function");
+});
 // A stand-in for tinyld: answers fixed rankings, honoring the `only` filter.
 const stubModel = (rankingFor) => ({
     detectAll: (text, { only } = {}) => rankingFor(text).filter((entry) => !only || only.includes(entry.lang)),
@@ -30,9 +32,7 @@ function load({ fetchImpl, importImpl, integrity, timeoutMs, timers = {} } = {})
     const window = {
         dispatchEvent: (event) => events.push(event.type),
     };
-    const context = vm.createContext({
-        window,
-        Spicetify: { LocalStorage: { get: () => null } },
+    const runtime = {
         fetch: fetchImpl,
         crypto: fetchImpl ? webcrypto : undefined,
         btoa,
@@ -46,26 +46,23 @@ function load({ fetchImpl, importImpl, integrity, timeoutMs, timers = {} } = {})
         },
         Blob,
         AbortController,
-        CustomEvent: class { constructor(type) { this.type = type; } },
-        console: { warn: () => { } },
         setTimeout,
         clearTimeout,
         ...timers,
-        // Inject the import boundary in this harness, never through a mutable
-        // window callback shipped to Spotify.
-        __testImport: importImpl || (async () => { throw new Error("no import in tests"); }),
+    };
+    const LanguageModel = createLyricsLanguageModel({
+        onReady: () => window.dispatchEvent({ type: "ivLyrics:language-model-ready" }),
+        getRuntime: () => runtime,
+        importModule: importImpl || (async () => { throw new Error("no import in tests"); }),
+        warn: () => { },
+        integrity,
+        fetchTimeoutMs: timeoutMs,
     });
-    let code = modelAndRules.replace(/import\(url\)/g, "__testImport(url)");
-    if (integrity) code = code.replace(/const INTEGRITY = "[^"]+";/, `const INTEGRITY = "${integrity}";`);
-    if (timeoutMs) code = code.replace(/const FETCH_TIMEOUT_MS = \d+;/, `const FETCH_TIMEOUT_MS = ${timeoutMs};`);
-    vm.runInContext(`${block("    const getLyricsTextCacheHash = (text) => {")};
-${code}
-globalThis.Utils = { _langDetectCache: new Map(), _maxLangCacheSize: 500,
-${block("        _cacheLanguageResult(cacheKey, result) {")},
-${block("        detectLanguage(lyrics) {")},
-${block("        detectLanguageByRules(lyrics) {")} };
-globalThis.LanguageModel = LanguageModel;`, context);
-    return { Utils: context.Utils, LanguageModel: context.LanguageModel, events, revoked, blobs, context };
+    const Utils = createLyricsLanguageDetector({
+        languageModel: LanguageModel,
+        readSetting: () => null,
+    });
+    return { Utils, LanguageModel, events, revoked, blobs, window };
 }
 
 // Detect with the model "loaded" (or with the rules only).
@@ -422,7 +419,7 @@ test("the model only runs after its SHA-384 matches the pinned file", async () =
     assert.deepEqual(imports, [], "nothing unverified is imported");
 
     const verified = load({ fetchImpl, integrity, importImpl: async (url) => { imports.push(url); return module; } });
-    verified.context.window.__ivLyricsLanguageModelImport = () => { throw new Error("untrusted window hook must not run"); };
+    verified.window.__ivLyricsLanguageModelImport = () => { throw new Error("untrusted window hook must not run"); };
     assert.equal(await verified.LanguageModel.load(), module);
     assert.deepEqual(imports, ["blob:language-model-0"]);
     assert.deepEqual(verified.events, ["ivLyrics:language-model-ready"]);

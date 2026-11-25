@@ -1,0 +1,782 @@
+/* ========================================
+   Fullscreen Vinyl Mode
+   ======================================== */
+
+/* The regular fullscreen album and LP sleeve are one visual object during the
+   mode switch. Chromium's View Transition API owns the geometry interpolation;
+   the existing overlay animation remains the fallback on older Spotify builds. */
+html.is-lp-view-transition .ivlyrics-fullscreen-shared-album {
+  view-transition-name: ivlyrics-fullscreen-album;
+}
+
+html.is-lp-view-transition::view-transition {
+  pointer-events: none;
+}
+
+html.is-lp-view-enter::view-transition-group(ivlyrics-fullscreen-album) {
+  z-index: 2147483000;
+  animation-duration: 620ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html.is-lp-view-exit::view-transition-group(ivlyrics-fullscreen-album) {
+  z-index: 2147483000;
+  animation-duration: 520ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html.is-lp-view-switch::view-transition-group(ivlyrics-fullscreen-album) {
+  z-index: 2147483000;
+  animation-duration: 560ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html.is-lp-view-transition::view-transition-image-pair(ivlyrics-fullscreen-album) {
+  isolation: isolate;
+  overflow: clip;
+}
+
+html.is-lp-view-transition::view-transition-old(ivlyrics-fullscreen-album),
+html.is-lp-view-transition::view-transition-new(ivlyrics-fullscreen-album) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  mix-blend-mode: normal;
+  animation-duration: inherit;
+  animation-timing-function: ease;
+  animation-fill-mode: both;
+}
+
+html.is-lp-view-transition::view-transition-old(ivlyrics-fullscreen-album) {
+  animation-name: fullscreen-vinyl-shared-root-out;
+}
+
+html.is-lp-view-transition::view-transition-new(ivlyrics-fullscreen-album) {
+  animation-name: fullscreen-vinyl-shared-root-in;
+}
+
+html.is-lp-view-transition::view-transition-old(root) {
+  animation: fullscreen-vinyl-shared-root-out 260ms ease-out both;
+}
+
+html.is-lp-view-enter::view-transition-new(root) {
+  animation: fullscreen-vinyl-shared-root-in 520ms 70ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+html.is-lp-view-exit::view-transition-new(root) {
+  animation: fullscreen-vinyl-shared-root-in 400ms 40ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+html.is-lp-view-switch::view-transition-new(root) {
+  animation: fullscreen-vinyl-shared-root-in 480ms 40ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes fullscreen-vinyl-shared-root-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes fullscreen-vinyl-shared-root-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.fullscreen-vinyl-overlay {
+  position: fixed;
+  z-index: 900;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: clamp(20px, 4svh, 48px);
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  isolation: isolate;
+  animation: fullscreen-vinyl-overlay-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.fullscreen-vinyl-overlay.has-lyric-slot {
+  padding-bottom: clamp(120px, 17svh, 168px);
+}
+
+.fullscreen-vinyl-overlay::before {
+  display: none;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-vinyl {
+  backdrop-filter: blur(var(--iv-vinyl-background-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--iv-vinyl-background-blur, 0px));
+}
+
+/* Keep the configured video/gradient/album background intact in LP mode while
+   removing the regular lyrics and floating controls behind the focused view.
+   These match the overlay's siblings directly: a :has() on the container made
+   it an ancestor that Spotify's aria-hidden/role :has() rules restyle on
+   every lyric row change. */
+.lyrics-lyricsContainer-LyricsContainer > .fullscreen-vinyl-overlay ~ :is(.lyrics-lyricsContainer-SyncedLyricsPage, .lyrics-lyricsContainer-UnsyncedLyricsPage, .lyrics-credit-footer, .lyrics-track-sync-pill, .lyrics-quick-sync-stack, .lyrics-config-button-container),
+.lyrics-lyricsContainer-LyricsContainer > :is(.lyrics-lyricsContainer-SyncedLyricsPage, .lyrics-lyricsContainer-UnsyncedLyricsPage, .lyrics-credit-footer, .lyrics-track-sync-pill, .lyrics-quick-sync-stack, .lyrics-config-button-container):has(~ .fullscreen-vinyl-overlay) {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.lyrics-lyricsContainer-LyricsContainer > .fullscreen-vinyl-overlay ~ .lyrics-generation-status-stack,
+.lyrics-lyricsContainer-LyricsContainer > .lyrics-generation-status-stack:has(~ .fullscreen-vinyl-overlay) {
+  top: max(20px, env(safe-area-inset-top));
+  left: max(20px, env(safe-area-inset-left));
+  z-index: 1200;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.fullscreen-vinyl-overlay.is-closing {
+  pointer-events: none;
+  animation: fullscreen-vinyl-overlay-out 420ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.fullscreen-vinyl-overlay.is-open>.ivlyrics-vinyl-player {
+  animation: fullscreen-vinyl-player-in 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.fullscreen-vinyl-overlay.is-closing>.ivlyrics-vinyl-player {
+  animation: fullscreen-vinyl-player-out 420ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.fullscreen-presentation-dock {
+  position: fixed;
+  z-index: 2147482000;
+  top: 0;
+  left: 50%;
+  width: min(420px, calc(100vw - 96px));
+  height: max(154px, calc(env(safe-area-inset-top) + 126px));
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.fullscreen-presentation-dock.is-hidden {
+  display: none;
+}
+
+.fullscreen-presentation-hotspot {
+  position: absolute;
+  top: max(68px, calc(env(safe-area-inset-top) + 36px));
+  left: 50%;
+  width: min(440px, 100%);
+  height: 66px;
+  pointer-events: auto;
+  transform: translateX(-50%);
+}
+
+.fullscreen-presentation-switcher {
+  position: absolute;
+  z-index: 1;
+  top: max(78px, calc(env(safe-area-inset-top) + 46px));
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  background: rgba(14, 14, 18, 0.68);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  transform: translate(-50%, -10px) scale(0.98);
+  transition:
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 180ms linear;
+}
+
+.fullscreen-presentation-hotspot:hover + .fullscreen-presentation-switcher,
+.fullscreen-presentation-switcher:hover,
+.fullscreen-presentation-dock:focus-within .fullscreen-presentation-switcher {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.fullscreen-presentation-option {
+  display: inline-flex;
+  min-width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 11px;
+  outline: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.66);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.fullscreen-presentation-option:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.fullscreen-presentation-option:active {
+  transform: scale(0.95);
+}
+
+.fullscreen-presentation-option.active {
+  background: color-mix(
+    in srgb,
+    var(--spice-button-active, #1ed760) 24%,
+    rgba(255, 255, 255, 0.1)
+  );
+  color: #fff;
+}
+
+.fullscreen-presentation-option:focus-visible {
+  outline: 2px solid color-mix(
+    in srgb,
+    var(--spice-button-active, #1ed760) 74%,
+    white
+  );
+  outline-offset: 2px;
+}
+
+.fullscreen-presentation-option svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
+
+.fullscreen-presentation-option > span {
+  max-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    max-width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 140ms ease;
+}
+
+.fullscreen-presentation-option:is(.active, :hover, :focus-visible) > span {
+  max-width: 150px;
+  opacity: 1;
+}
+
+/* Motion lyrics: "direct again", set apart from the presentations. */
+.fullscreen-presentation-divider {
+  flex: none;
+  width: 1px;
+  height: 22px;
+  margin: 0 3px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.fullscreen-presentation-redirect svg {
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.fullscreen-presentation-redirect:active svg {
+  transform: rotate(-150deg);
+}
+
+.fullscreen-stage-controls-dock {
+  position: fixed;
+  z-index: 2147481900;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  width: min(460px, 58vw);
+  height: min(190px, 28vh);
+  box-sizing: border-box;
+  align-items: flex-end;
+  padding:
+    0
+    0
+    max(22px, env(safe-area-inset-bottom))
+    max(22px, env(safe-area-inset-left));
+  outline: none;
+  pointer-events: none;
+}
+
+.fullscreen-stage-controls-dock::before {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 84px;
+  content: "";
+  pointer-events: auto;
+}
+
+.fullscreen-stage-controls-surface {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: min(390px, calc(100vw - 44px));
+  box-sizing: border-box;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  background: rgba(13, 13, 17, 0.72);
+  box-shadow:
+    0 18px 48px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  backdrop-filter: blur(20px) saturate(1.25);
+  -webkit-backdrop-filter: blur(20px) saturate(1.25);
+  transform: translateY(12px) scale(0.98);
+  transform-origin: bottom left;
+  transition:
+    opacity 180ms ease,
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 180ms linear;
+}
+
+.fullscreen-stage-controls-dock:hover .fullscreen-stage-controls-surface,
+.fullscreen-stage-controls-dock:focus-visible .fullscreen-stage-controls-surface,
+.fullscreen-stage-controls-dock:has(:focus-visible) .fullscreen-stage-controls-surface {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.fullscreen-stage-controls-progress {
+  display: grid;
+  grid-template-columns: 42px minmax(120px, 1fr) 42px;
+  align-items: center;
+  gap: 10px;
+}
+
+.fullscreen-stage-controls-time {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.fullscreen-stage-controls-range {
+  width: 100%;
+  min-width: 0;
+  height: 4px;
+  margin: 0;
+  accent-color: var(--spice-text, #fff);
+  cursor: pointer;
+}
+
+.fullscreen-stage-controls-range:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.fullscreen-stage-controls-range:focus-visible {
+  outline: 2px solid color-mix(
+    in srgb,
+    var(--spice-button-active, #1ed760) 76%,
+    white
+  );
+  outline-offset: 4px;
+}
+
+.fullscreen-stage-controls-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.fullscreen-stage-control-button {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.fullscreen-stage-control-button:hover {
+  background: rgba(255, 255, 255, 0.11);
+  color: #fff;
+  transform: scale(1.05);
+}
+
+.fullscreen-stage-control-button:active {
+  transform: scale(0.94);
+}
+
+.fullscreen-stage-control-button:focus-visible {
+  outline: 2px solid color-mix(
+    in srgb,
+    var(--spice-button-active, #1ed760) 76%,
+    white
+  );
+  outline-offset: 3px;
+}
+
+.fullscreen-stage-control-button.is-primary {
+  width: 48px;
+  height: 48px;
+  background: #fff;
+  color: #111;
+}
+
+.fullscreen-stage-control-button.is-primary:hover {
+  background: rgba(255, 255, 255, 0.92);
+  color: #000;
+}
+
+.fullscreen-stage-control-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.fullscreen-stage-control-button.is-primary svg {
+  width: 21px;
+  height: 21px;
+}
+
+@media (max-width: 620px) {
+  .fullscreen-stage-controls-dock {
+    width: min(100vw, 420px);
+    height: 170px;
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+    padding-left: max(16px, env(safe-area-inset-left));
+  }
+
+  .fullscreen-stage-controls-surface {
+    width: 100%;
+    padding: 12px 14px;
+  }
+}
+
+@keyframes fullscreen-vinyl-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fullscreen-vinyl-overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes fullscreen-vinyl-player-in {
+  from {
+    opacity: 0;
+    transform: translateY(2.5%) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fullscreen-vinyl-player-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(1.5%) scale(0.94);
+  }
+}
+
+.fullscreen-vinyl-lyric-stage {
+  position: absolute;
+  z-index: 3;
+  bottom: clamp(22px, 4svh, 42px);
+  left: 50%;
+  width: 90%;
+  min-height: clamp(94px, 13svh, 146px);
+  margin: 0;
+  overflow: visible;
+  transform: translateX(-50%);
+  color: var(--spice-text, #fff);
+  text-align: center;
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent);
+  pointer-events: none;
+  contain: layout style;
+}
+
+.fullscreen-vinyl-active-lyric {
+  position: absolute;
+  z-index: 1;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  transform: translateY(0);
+  transform-origin: center bottom;
+  font-family: var(--iv-vinyl-original-font-family, 'Pretendard Variable'), Pretendard, sans-serif;
+  font-size: var(--iv-vinyl-original-font-size, 31px);
+  font-weight: var(--iv-vinyl-original-font-weight, 600);
+  letter-spacing: var(--iv-vinyl-original-letter-spacing, 0);
+  line-height: 1.25;
+  opacity: var(--iv-vinyl-original-opacity, 0.95);
+  will-change: opacity, transform;
+}
+
+.fullscreen-vinyl-active-lyric.is-current {
+  animation: fullscreen-vinyl-lyric-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.fullscreen-vinyl-active-lyric.is-outgoing {
+  z-index: 2;
+  animation: fullscreen-vinyl-lyric-out 420ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.fullscreen-vinyl-active-lyric > .ivlyrics-active-lyric-renderer {
+  width: 100%;
+}
+
+.fullscreen-vinyl-overlay:not(.is-presentation-video) .fullscreen-vinyl-active-lyric {
+  max-height: 40svh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+  scrollbar-width: thin;
+}
+
+.fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine {
+  width: 100%;
+  margin: 0 !important;
+  padding: 8px 0;
+  overflow: hidden;
+  color: var(--lyrics-color-active, var(--spice-text, #fff));
+  filter: none !important;
+  font-family: var(--iv-vinyl-original-font-family, 'Pretendard Variable'), Pretendard, sans-serif;
+  font-size: var(--iv-vinyl-original-font-size, 31px);
+  font-weight: var(--iv-vinyl-original-font-weight, 600);
+  letter-spacing: var(--iv-vinyl-original-letter-spacing, 0px);
+  line-height: 1.25;
+  text-align: center !important;
+  opacity: 1 !important;
+  transform: none !important;
+  transform-origin: center;
+}
+
+.fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine > p,
+.fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-phonetic,
+.fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-translation {
+  width: 100%;
+  margin-inline: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  transform: none !important;
+}
+
+.fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine > p:first-child {
+  font-family: var(--iv-vinyl-original-font-family, 'Pretendard Variable'), Pretendard, sans-serif !important;
+  font-size: var(--iv-vinyl-original-font-size, 31px) !important;
+  font-weight: var(--iv-vinyl-original-font-weight, 600) !important;
+  letter-spacing: var(--iv-vinyl-original-letter-spacing, 0px) !important;
+  opacity: var(--iv-vinyl-original-opacity, 0.95) !important;
+}
+
+/* The LP/presentation surface overrides paragraph opacity above. Its
+   instrumental exit must win that override, not vanish when the row remounts. */
+.fullscreen-vinyl-active-lyric .ivlyrics-active-lyric-renderer
+  > .lyrics-interlude-departing > p.lyrics-lyricsContainer-LyricsLine-interludeMain:first-child {
+  opacity: 0 !important;
+  transition: opacity var(--lyrics-interlude-fade-duration, 220ms) ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fullscreen-vinyl-active-lyric .ivlyrics-active-lyric-renderer
+    > .lyrics-interlude-departing > p.lyrics-lyricsContainer-LyricsLine-interludeMain:first-child {
+    transition: none;
+  }
+}
+
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-viewport {
+  --iv-vinyl-lyric-edge-fade: clamp(14px, 1.8vw, 22px);
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow: visible !important;
+  text-align: center !important;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-content {
+  display: inline-block;
+  box-sizing: content-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+  transform: translate3d(0, 0, 0);
+}
+
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-content > .lyrics-karaoke-line,
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-content > .lyrics-karaoke-stack {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-viewport:is(.is-vinyl-lyric-measuring, .is-vinyl-lyric-overflowing),
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-viewport:is(.is-vinyl-lyric-measuring, .is-vinyl-lyric-overflowing) > .ivlyrics-vinyl-lyric-scroll-content,
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-viewport:is(.is-vinyl-lyric-measuring, .is-vinyl-lyric-overflowing) > .ivlyrics-vinyl-lyric-scroll-content > :is(.lyrics-karaoke-line, .lyrics-karaoke-stack) {
+  white-space: nowrap;
+}
+
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-viewport:is(.is-vinyl-lyric-measuring, .is-vinyl-lyric-overflowing) > .ivlyrics-vinyl-lyric-scroll-content,
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-viewport:is(.is-vinyl-lyric-measuring, .is-vinyl-lyric-overflowing) > .ivlyrics-vinyl-lyric-scroll-content > :is(.lyrics-karaoke-line, .lyrics-karaoke-stack) {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+}
+
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-viewport.is-vinyl-lyric-overflowing {
+  clip-path: inset(-0.8em 0 -0.8em 0);
+  text-align: start !important;
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    #000 var(--iv-vinyl-lyric-edge-fade),
+    #000 calc(100% - var(--iv-vinyl-lyric-edge-fade)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    #000 var(--iv-vinyl-lyric-edge-fade),
+    #000 calc(100% - var(--iv-vinyl-lyric-edge-fade)),
+    transparent 100%
+  );
+}
+
+.fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-viewport.is-vinyl-lyric-overflowing > .ivlyrics-vinyl-lyric-scroll-content {
+  min-width: 0;
+  padding-inline: var(--iv-vinyl-lyric-edge-fade);
+  text-align: start;
+  will-change: transform;
+}
+
+.fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-interludeMain {
+  justify-content: center;
+}
+
+.fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-phonetic {
+  margin-top: var(--iv-vinyl-phonetic-spacing, -1px);
+  font-family: var(--iv-vinyl-phonetic-font-family, 'Pretendard Variable'), Pretendard, sans-serif !important;
+  font-size: var(--iv-vinyl-phonetic-font-size, 11px) !important;
+  font-weight: var(--iv-vinyl-phonetic-font-weight, 100) !important;
+  letter-spacing: var(--iv-vinyl-phonetic-letter-spacing, 0px) !important;
+  opacity: var(--iv-vinyl-phonetic-opacity, 0.7) !important;
+  line-height: 1.3;
+}
+
+.fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-translation {
+  margin-top: var(--iv-vinyl-translation-spacing, 0);
+  font-family: var(--iv-vinyl-translation-font-family, 'Pretendard Variable'), Pretendard, sans-serif !important;
+  font-size: var(--iv-vinyl-translation-font-size, 15px) !important;
+  font-weight: var(--iv-vinyl-translation-font-weight, 300) !important;
+  letter-spacing: var(--iv-vinyl-translation-letter-spacing, 0px) !important;
+  opacity: var(--iv-vinyl-translation-opacity, 0.85) !important;
+  line-height: 1.35;
+}
+
+.fullscreen-vinyl-overlay.has-cultural-annotation .fullscreen-vinyl-lyric-stage {
+  min-height: clamp(126px, 17svh, 188px);
+}
+
+.fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine > .lyrics-lyricsContainer-LyricsLine-culturalNote {
+  width: min(92%, 900px);
+  max-width: min(92%, 900px);
+  margin: 7px auto 0;
+  overflow: visible;
+  color: var(--lyrics-color-active, var(--spice-text, #fff));
+  font-family: var(--iv-vinyl-cultural-note-font-family, 'Pretendard Variable'), Pretendard, sans-serif !important;
+  font-size: var(--iv-vinyl-cultural-note-font-size, 12px) !important;
+  font-weight: var(--iv-vinyl-cultural-note-font-weight, 300) !important;
+  line-height: 1.4;
+  text-align: center !important;
+  text-overflow: clip;
+  white-space: normal;
+  opacity: var(--iv-vinyl-cultural-note-opacity, 0.6) !important;
+  transform: none;
+}
+
+.fullscreen-vinyl-active-lyric .lyrics-cultural-marker {
+  font-size: 0.42em;
+  opacity: 0.76;
+}
+
+.fullscreen-vinyl-active-lyric .lyrics-karaoke-line,
+.fullscreen-vinyl-active-lyric .lyrics-karaoke-stack,
+.fullscreen-vinyl-active-lyric .lyrics-karaoke-part {
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fullscreen-vinyl-active-lyric .ivlyrics-vinyl-lyric-scroll-content {
+    transform: translate3d(0, 0, 0) !important;
+  }
+}
+
+@keyframes fullscreen-vinyl-lyric-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fullscreen-vinyl-lyric-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+}
+

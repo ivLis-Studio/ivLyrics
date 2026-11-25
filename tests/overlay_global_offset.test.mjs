@@ -1,9 +1,14 @@
+import { getTrackSyncOffsetStore } from "#ivlyrics/core/trackSyncOffsetRuntime.mjs";
+import { getMountedLyricsPage } from "#ivlyrics/spicetify/lyricsPageEffects.mjs";
+import { getRuntimeService } from "#ivlyrics/spicetify/runtimeServices.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { createOverlayOffsetResolver } from '../src/features/overlay/overlayOffsets.mjs';
+import { createLyricsServicePreferences } from '../src/lyrics/lyricsServicePreferences.mjs';
 
-const source = readFileSync(new URL('../LyricsService.js', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../src/lyrics/LyricsService.js', import.meta.url), 'utf8');
 const uri = 'spotify:track:offset-fixture';
 const section = (text, startMarker, endMarker) => {
     const start = text.indexOf(startMarker);
@@ -11,22 +16,11 @@ const section = (text, startMarker, endMarker) => {
     assert.ok(start >= 0 && end > start, `missing source section: ${startMarker}`);
     return text.slice(start, end);
 };
-const method = section(
+const offsetResolver = section(
     source,
-    '        async getSyncOffset(uri) {',
-    '\n        // 현재 재생 중인 곡과 다른(이전) 곡의 가사 전송인지 확인'
-).trim().replace(/,\s*$/, '');
-const storageReader = section(
-    source,
-    '    function getStorageItem(key) {',
-    '\n    function shouldHideOverlayForIvLyricsFullscreen()'
+    '    const getOverlaySyncOffset =',
+    '    const { OverlaySender, lyricsHelperSender }',
 );
-const trackOverrideReader = section(
-    source,
-    '    const trackOverrideDatabases = new Map();',
-    '    const sendLyricsToConsumers = ({'
-);
-
 const createHarness = ({
     persisted = {},
     legacy = {},
@@ -89,7 +83,7 @@ const createHarness = ({
         },
     };
 
-    const window = {};
+    const window = { indexedDB, localStorage };
     if (page) {
         window.CONFIG = { visual: { ...page } };
     }
@@ -111,17 +105,24 @@ const createHarness = ({
         };
     }
 
+    const { getStorageItem } = createLyricsServicePreferences({
+        getSettingsStorage: () => getRuntimeService("StorageManager", window),
+        getStoragePersistence: () => getRuntimeService("ivLyricsStoragePersistence", window),
+        readSpotifySetting: (key) => get(legacyValues, key),
+        readLocalSetting: (key) => localStorage.getItem(key),
+    });
     const context = vm.createContext({
+        getMountedLyricsPage, getRuntimeService, getTrackSyncOffsetStore,
+        getStorageItem,
         window,
+        createOverlayOffsetResolver,
         localStorage,
-        indexedDB,
         Spicetify: { LocalStorage: { get: (key) => get(legacyValues, key) } },
         console: { warn() {}, error() {} },
     });
     vm.runInContext([
-        trackOverrideReader,
-        storageReader,
-        `globalThis.sender = { _offsetCache: {}, ${method} };`,
+        offsetResolver,
+        'globalThis.sender = { _offsetCache: {}, getSyncOffset: getOverlaySyncOffset };',
     ].join('\n'), context);
 
     return {
@@ -240,4 +241,51 @@ test('a live zero delay applies only to the mounted page track', async () => {
         database: { [uri]: 0 },
     });
     assert.equal(await unmountedPage.sender.getSyncOffset(uri), -12);
+});
+
+test('concurrent sends share a disk read and follow an offset edited while that read was pending', async () => {
+    const disk = Promise.withResolvers();
+    let reads = 0;
+    const visual = { delay: 25, 'global-sync-offset': 10 };
+    const sender = {
+        _offsetCache: {},
+        getSyncOffset: createOverlayOffsetResolver({
+            readSettingSources: [], getVisualSettings: () => visual,
+            getMountedLyricsPage: () => ({ currentTrackUri: uri }),
+            getPageGlobalOffset: () => undefined,
+            readTrackOffset: () => { reads++; return disk.promise; },
+        }),
+    };
+    const retired = sender._offsetCache;
+    const oldSends = [sender.getSyncOffset(uri), sender.getSyncOffset(uri)];
+    await Promise.resolve();
+    assert.equal(reads, 1);
+
+    sender._offsetCache = { [uri]: 60 };
+    visual.delay = 5;
+    visual['global-sync-offset'] = 15;
+    assert.equal(await sender.getSyncOffset(uri), -80);
+    disk.resolve(180);
+    assert.deepEqual(await Promise.all(oldSends), [-80, -80]);
+    assert.deepEqual(retired, {});
+    assert.equal(sender._offsetCache[uri], 60);
+    assert.equal(reads, 1);
+});
+
+test('an invalidated track offset can read the replacement without reusing a retired promise', async () => {
+    const old = Promise.withResolvers();
+    const reads = [old.promise, Promise.resolve(5)];
+    const send = createOverlayOffsetResolver({
+        readSettingSources: [], getVisualSettings: () => ({}),
+        getMountedLyricsPage: () => null, getPageGlobalOffset: () => undefined,
+        readTrackOffset: () => reads.shift(),
+    });
+    const sender = { _offsetCache: {}, getSyncOffset: send };
+    const pending = sender.getSyncOffset(uri);
+    await Promise.resolve();
+    sender._offsetCache = {};
+    assert.equal(await sender.getSyncOffset(uri), -5);
+    old.resolve(200);
+    assert.equal(await pending, -5);
+    assert.equal(sender._offsetCache[uri], 5);
 });

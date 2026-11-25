@@ -1,13 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
-
-const source = readFileSync(new URL("../SyncDataCreator.js", import.meta.url), "utf8");
-const start = source.indexOf("const SYNC_CREATOR_PREVIEW_STATE_INTERVAL_MS");
-const end = source.indexOf("const countSyncCreatorRangeChars", start);
-assert.ok(start >= 0 && end > start);
-const clockSource = source.slice(start, end);
+import { createSyncCreatorPlaybackViews } from "#ivlyrics/features/sync/syncCreatorPlayback.mjs";
 
 const createClock = ({ playing = true, progress = 0, reducedMotion = false, now = 0 } = {}) => {
 	const player = { progress, playing };
@@ -18,19 +11,19 @@ const createClock = ({ playing = true, progress = 0, reducedMotion = false, now 
 	const cancelled = [];
 	let stateValue;
 	let hasState = false;
-	let effect = null;
 	let effectDeps = null;
 	let cleanup = null;
 	const rendered = [];
-	const context = vm.createContext({
-		window: { matchMedia: (query) => ({ matches: reducedMotion && query === "(prefers-reduced-motion: reduce)" }) },
-		performance: { now: () => clock.now },
-		Spicetify: { Player: { getProgress: () => player.progress, isPlaying: () => player.playing } },
-		requestAnimationFrame: (callback) => { assert.equal(frame, null); frame = { id: nextId++, callback }; return frame.id; },
-		cancelAnimationFrame: (id) => { cancelled.push(["frame", id]); if (frame?.id === id) frame = null; },
-		setTimeout: (callback, delay) => { assert.equal(timer, null); timer = { id: nextId++, callback, delay }; return timer.id; },
-		clearTimeout: (id) => { cancelled.push(["timer", id]); if (timer?.id === id) timer = null; },
-		react: {
+	const api = createSyncCreatorPlaybackViews({
+		getPlayer: () => ({ getProgress: () => player.progress, isPlaying: () => player.playing }),
+		now: () => clock.now,
+		hasAnimationFrame: () => true,
+		prefersReducedMotion: () => reducedMotion,
+		requestFrame: (callback) => { assert.equal(frame, null); frame = { id: nextId++, callback }; return frame.id; },
+		cancelFrame: (id) => { cancelled.push(["frame", id]); if (frame?.id === id) frame = null; },
+		scheduleTimer: (callback, delay) => { assert.equal(timer, null); timer = { id: nextId++, callback, delay }; return timer.id; },
+		cancelTimer: (id) => { cancelled.push(["timer", id]); if (timer?.id === id) timer = null; },
+		getReact: () => ({
 			useState: (init) => {
 				if (!hasState) { hasState = true; stateValue = typeof init === "function" ? init() : init; }
 				return [stateValue, (next) => { stateValue = typeof next === "function" ? next(stateValue) : next; }];
@@ -39,14 +32,10 @@ const createClock = ({ playing = true, progress = 0, reducedMotion = false, now 
 				if (effectDeps && deps.length === effectDeps.length && deps.every((value, index) => Object.is(value, effectDeps[index]))) return;
 				cleanup?.();
 				effectDeps = deps;
-				effect = fn;
 				cleanup = fn() || null;
 			},
-		},
+		}),
 	});
-	vm.runInContext(`${clockSource}
-globalThis.api = { SyncCreatorLivePreviewClock, syncCreatorPreviewLiveClock, syncCreatorPreviewUsesLiveClock };`, context);
-	const { api } = context;
 	const render = (fallbackPosition) => api.SyncCreatorLivePreviewClock({
 		fallbackPosition,
 		render: (position) => { rendered.push(position); return position; },

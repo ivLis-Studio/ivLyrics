@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import hashlib
 import json
 import os
 import re
@@ -38,12 +39,33 @@ def version_key(tag):
     return parts
 
 
-def previous_tag(current_tag):
+def read_published_tags():
+    repository = os.environ.get("GITHUB_REPOSITORY") or REPOSITORY
+    include_prereleases = os.environ.get("PRERELEASE", "").lower() == "true"
+    published = ".draft == false"
+    if not include_prereleases:
+        published += " and .prerelease == false"
+    result = subprocess.run(
+        ["gh", "api", "--paginate", f"repos/{repository}/releases?per_page=100",
+         "--jq", f".[] | select({published}) | .tag_name"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "Could not read public release history.")
+    return set(result.stdout.splitlines())
+
+
+def previous_tag(current_tag, current_ref):
     current_key = version_key(current_tag)
+    published = None
+    if os.environ.get("RELEASE_NOTES_USE_RELEASE_HISTORY", "").lower() == "true":
+        published = read_published_tags()
     tags = [
         tag
-        for tag in run_git(["tag", "--list", "v*"]).splitlines()
-        if tag and tag != current_tag and version_key(tag) < current_key
+        for tag in run_git(["tag", "--merged", current_ref, "--list", "v*"]).splitlines()
+        if tag and tag != current_tag and (published is None or tag in published) and version_key(tag) < current_key
     ]
     return sorted(tags, key=version_key)[-1] if tags else ""
 
@@ -580,6 +602,29 @@ def write_github_outputs(values):
             output.write(f"{key}={value}\n")
 
 
+def existing_release_notes(tag):
+    # Keep the environment key used by workflows retrying older tagged builds.
+    if os.environ.get("RELEASE_NOTES_REUSE_PUBLISHED", "").lower() != "true":
+        return None
+    result = subprocess.run(
+        ["gh", "release", "view", tag, "--json", "isDraft,name,body"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        error = result.stderr.strip()
+        if error == "release not found":
+            return None
+        raise RuntimeError(error or f"Could not check for existing release notes for {tag}.")
+    release = json.loads(result.stdout)
+    title = " ".join((release.get("name") or tag).splitlines())
+    notes = release.get("body") or ""
+    if release.get("isDraft") and not notes.strip():
+        return None
+    return title, notes if notes.strip() else f"# {title}"
+
+
 def main():
     version = os.environ.get("RELEASE_VERSION", "").strip()
     tag = os.environ.get("RELEASE_TAG", "").strip() or f"v{version}"
@@ -588,42 +633,51 @@ def main():
     if tag != f"v{version}":
         raise RuntimeError(f"Release tag {tag} does not match version {version}")
 
-    previous = previous_tag(tag)
-    current_ref = resolve_ref(tag)
-    stat_text = git_diff_stat(previous, current_ref)
-    commits = release_commits(previous, current_ref)
-    content = ai_release_content(version, tag, previous, commits, stat_text)
-    require_ai = os.environ.get("RELEASE_NOTES_REQUIRE_AI", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
-    if not content and require_ai:
-        raise RuntimeError(
-            "AI release-note generation did not return complete bilingual notes; "
-            "the release was stopped instead of publishing fallback statistics."
-        )
-    content = content or fallback_content(version, commits)
-    title = normalize_title(content.get("title"))
-    release_title = f"{version} - {title}"
-    notes = render_notes(version, tag, previous, content)
+    current_ref = os.environ.get("RELEASE_SHA", "").strip() or resolve_ref(tag)
+    commit = run_git(["rev-parse", "--verify", f"{current_ref}^{{commit}}"])
+    existing = existing_release_notes(tag)
+    history = {}
+    if existing:
+        release_title, notes = existing
+    else:
+        previous = previous_tag(tag, commit)
+        commits = release_commits(previous, current_ref)
+        history = {
+            "previousTag": previous,
+            "compareUrl": compare_url(tag, previous),
+            "commitCount": len(commits),
+            "coveredCommits": [commit["hash"] for commit in commits],
+        }
+        stat_text = git_diff_stat(previous, current_ref)
+        content = ai_release_content(version, tag, previous, commits, stat_text)
+        require_ai = os.environ.get("RELEASE_NOTES_REQUIRE_AI", "").strip().lower() in {
+            "1", "true", "yes",
+        }
+        if not content and require_ai:
+            raise RuntimeError(
+                "AI release-note generation did not return complete bilingual notes; "
+                "the release was stopped instead of publishing fallback statistics."
+            )
+        content = content or fallback_content(version, commits)
+        title = normalize_title(content.get("title"))
+        release_title = f"{version} - {title}"
+        notes = render_notes(version, tag, previous, content)
 
     out_dir = Path(os.environ.get("RELEASE_NOTES_DIR", "release-metadata"))
     out_dir.mkdir(parents=True, exist_ok=True)
     notes_path = out_dir / "release-notes.md"
     metadata_path = out_dir / f"ivLyrics-{tag}-release.json"
-    notes_path.write_text(notes.strip() + "\n", encoding="utf-8")
+    notes_bytes = (notes.rstrip("\n") + "\n").encode("utf-8")
+    notes_path.write_bytes(notes_bytes)
     metadata_path.write_text(
         json.dumps(
             {
                 "version": version,
                 "tag": tag,
-                "commit": run_git(["rev-parse", "HEAD"]),
-                "previousTag": previous,
-                "compareUrl": compare_url(tag, previous),
+                "commit": commit,
                 "releaseTitle": release_title,
-                "commitCount": len(commits),
-                "coveredCommits": [commit["hash"] for commit in commits],
+                "releaseNotesSha256": hashlib.sha256(notes_bytes).hexdigest(),
+                **history,
             },
             ensure_ascii=False,
             indent=2,
@@ -638,7 +692,10 @@ def main():
             "metadata_path": metadata_path.resolve(),
         }
     )
-    print(f"previous_tag={previous}")
+    if existing:
+        print(f"Reused saved release notes for {tag}.")
+    else:
+        print(f"previous_tag={history['previousTag']}")
     print(f"release_title={release_title}")
     print(f"notes={notes_path}")
     print(f"metadata={metadata_path}")

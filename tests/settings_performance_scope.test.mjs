@@ -1,10 +1,14 @@
+import { createSettingsPerformanceControls } from "#ivlyrics/features/settings/settingsPerformanceControls.mjs";
+import { readSettingsSource } from "./fixtures/legacy-page-source.mjs";
+import { SETTINGS_BACKGROUND_PRESETS } from "#ivlyrics/features/settings/settingsBackgroundPresets.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { createPlaybackSettingsTabs } from "../src/features/settings/settingsPlaybackTabs.mjs";
+import { createAppConfig } from "../src/spicetify/createAppConfig.mjs";
+import { resolveGlobalBackgroundMode as resolveSettingsBackgroundMode } from "../src/lyrics/backgroundModes.mjs";
 
-const source = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
-const indexSource = readFileSync(new URL("../index.js", import.meta.url), "utf8");
+const source = readSettingsSource();
 const section = (start, end) => {
   const from = source.indexOf(start);
   const to = source.indexOf(end, from + start.length);
@@ -24,34 +28,28 @@ function harness(visual = {}) {
   const changes = [];
   const destinations = [];
   const handlePerformanceSettingChange = (...args) => changes.push(args);
-  const context = vm.createContext({
-    CONFIG, activeTab: "performance", handlePerformanceSettingChange,
-    react: { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) },
-    SettingsSection: "SettingsSection", OptionList: "OptionList",
-    ConfigSlider: "ConfigSlider", ConfigSliderRange: "ConfigSliderRange",
-    ConfigButton: "ConfigButton",
-    navigateToDestination: (...args) => destinations.push(args),
-    I18n: { t: (key) => key },
-    getSettingsText: (_key, fallback) => fallback,
-    useSettingsConfigRevision() {},
+  const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) };
+  const controls = { ConfigSlider: "ConfigSlider", ConfigSliderRange: "ConfigSliderRange", ConfigButton: "ConfigButton" };
+  const { getPerformanceSettingsSections, SettingsLoadMeter } = createSettingsPerformanceControls({
+    react, translate: key => key, getSettingsText: (_key, fallback) => fallback,
+    readVisualSettings: () => CONFIG.visual, useSettingsConfigRevision() {},
     getSettingsPreviewFlag: (key, fallback) => CONFIG.visual[key] ?? fallback,
     getSettingsPreviewNumber: (key, fallback) => Number(CONFIG.visual[key] ?? fallback),
+    controls,
   });
-  vm.runInContext([
-    section("const getPerformanceSettingsSections =", "const SettingsLoadMeter ="),
-    section("const SettingsLoadMeter =", "const SettingsDock ="),
-    section("  const renderPerformanceTab = () =>", "  const renderLyricsTab ="),
-    "globalThis.render = renderPerformanceTab; globalThis.LoadMeter = SettingsLoadMeter;",
-  ].join("\n"), context);
-  const tree = context.render();
+  const tree = createPlaybackSettingsTabs({
+    react, activeTab: "performance", t: key => key, getPerformanceSettingsSections, handlePerformanceSettingChange,
+    navigateToDestination: (...args) => destinations.push(args),
+    controls: { ...controls, SettingsSection: "SettingsSection", OptionList: "OptionList", SettingsLoadMeter },
+  }).renderPerformanceTab();
   const nodes = elements(tree);
-  const meter = nodes.find((node) => node.type === context.LoadMeter);
+  const meter = nodes.find((node) => node.type === SettingsLoadMeter);
   assert.ok(meter, "the Performance tab still renders its load meter");
   const lists = nodes.filter((node) => node.type === "OptionList");
   return {
     CONFIG, changes, destinations, handlePerformanceSettingChange, tree, meter, lists,
     items: lists.flatMap((node) => Array.from(node.props.items)),
-    summary: () => elements(context.LoadMeter(meter.props))
+    summary: () => elements(SettingsLoadMeter(meter.props))
       .find((node) => node.type === "small").props.children.join(""),
   };
 }
@@ -97,22 +95,24 @@ test("Performance summary reaches 7/7 and ignores the persisted Blur Gradient fl
 
 test("Blur Gradient remains a background preset with its stored flag and false default", () => {
   const backgroundCode = [
-    section("const SETTINGS_BACKGROUND_PRESETS =", "const FULLSCREEN_PRESENTATION_PRESETS ="),
-    section("const getCurrentSettingsBackgroundMode =", "window.ivLyricsBackgroundPresets ="),
+    section("const getCurrentSettingsBackgroundMode =", "publishSettingsBackgroundCompatibility("),
     "({ presets: SETTINGS_BACKGROUND_PRESETS, mode: getCurrentSettingsBackgroundMode() });",
   ].join("\n");
-  const storedFlag = /"blur-gradient-background":\s*(StorageManager\.get\([\s\S]*?\)),/.exec(indexSource)?.[1];
-  assert.ok(storedFlag, "CONFIG still loads the persisted Blur Gradient setting");
   for (const stored of [undefined, false, true]) {
-    const flag = vm.runInNewContext(storedFlag, {
-      StorageManager: { get(key, fallback) {
-        assert.equal(key, "ivLyrics:visual:blur-gradient-background");
-        assert.equal(fallback, false);
-        return stored ?? fallback;
-      } },
+    const CONFIG = createAppConfig({
+      storage: {
+        get: (key, fallback) => key === "ivLyrics:visual:blur-gradient-background" ? stored ?? fallback : fallback,
+        getItem: () => null,
+        getPersisted: () => null,
+        setItem() {},
+      },
     });
+    const flag = CONFIG.visual["blur-gradient-background"];
     assert.equal(flag, stored ?? false);
-    const background = vm.runInNewContext(backgroundCode, { CONFIG: { visual: { "blur-gradient-background": flag } } });
+    const background = vm.runInNewContext(backgroundCode, {
+      CONFIG: { visual: { "blur-gradient-background": flag } },
+      resolveSettingsBackgroundMode, SETTINGS_BACKGROUND_PRESETS,
+    });
     assert.equal(background.presets.find((preset) => preset.id === "blur-gradient-background")?.fallbackLabel, "Blur Gradient");
     assert.equal(background.mode, flag ? "blur-gradient-background" : "none");
   }

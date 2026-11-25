@@ -1,9 +1,7 @@
+import { createFixtureWordSupplementService } from "./fixtures/word-supplement-service.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
 
-const source = readFileSync(new URL("../WordLevelSupplements.js", import.meta.url), "utf8");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const DEBOUNCE = 350;
@@ -37,12 +35,7 @@ const loadSupplements = ({ playerUri = "spotify:track:TRACKAAA" } = {}) => {
 			return new Promise((resolve, reject) => { glossResponders.push({ resolve, reject }); });
 		},
 	};
-	const context = vm.createContext({
-		window,
-		console: { log: () => {}, warn: () => {}, error: () => {} },
-		setTimeout, clearTimeout,
-	});
-	vm.runInContext(source, context);
+	createFixtureWordSupplementService(window);
 	return { window, api: window.ivLyricsWordSupplements, readCalls, writeCalls, glossCalls, glossResponders };
 };
 

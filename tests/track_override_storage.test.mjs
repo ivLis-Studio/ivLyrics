@@ -1,3 +1,5 @@
+import { createTrackOverrideStores, REQUIRE_TRACK_OVERRIDE_COMMIT } from "#ivlyrics/core/trackOverrideStore.mjs";
+import { normalizeIvLyricsTrackBackgroundOverride } from "#ivlyrics/lyrics/backgroundModes.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -6,7 +8,7 @@ import test from "node:test";
 import vm from "node:vm";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
-const source = readFileSync(new URL("../index.js", import.meta.url), "utf8");
+const source = readFileSync(new URL("../src/spicetify/index.js", import.meta.url), "utf8");
 const baseline = execFileSync("git", ["show", "98e6a4167c72f80b422ec77461852d9da12f97e9:index.js"], {
   cwd: repoRoot, encoding: "utf8",
 });
@@ -25,7 +27,7 @@ const databases = [
 
 // Explicit event queues exercise request success/error separately from transaction
 // completion, and allow concurrent opens to complete in either order.
-const load = (text, { fault = "", seeded = [] } = {}) => {
+const load = (text, { fault = "", seeded = [] } = {}, useModules = false) => {
   const trace = [];
   const tasks = [];
   const stores = new Map();
@@ -58,7 +60,9 @@ const load = (text, { fault = "", seeded = [] } = {}) => {
           transaction(storeNames, mode) {
             trace.push(["transaction", name, connection, [...storeNames], mode]);
             if (fail("transaction")) throw error("transaction");
+            const values = mode === "readwrite" ? new Map(state.values) : state.values;
             const transaction = {
+              abort() { transaction.onabort?.(); },
               objectStore(storeName) {
                 trace.push(["store", storeName]);
                 assert.equal(storeName, state.name);
@@ -70,15 +74,22 @@ const load = (text, { fault = "", seeded = [] } = {}) => {
                   schedule(operation, () => {
                     if (fail(operation)) {
                       request.error = error(operation);
-                      request.onerror();
+                      request.onerror?.();
+                      transaction.onerror?.({ target: request });
                     } else {
                       request.result = result();
-                      request.onsuccess();
+                      request.onsuccess?.();
                     }
                     if (operation === "put" || operation === "delete") {
                       schedule("complete", () => {
                         trace.push(["complete"]);
-                        transaction.oncomplete?.();
+                        if (request.error || fail("commit")) {
+                          transaction.error = request.error ?? error("commit");
+                          transaction.onabort?.();
+                        } else {
+                          state.values = values;
+                          transaction.oncomplete?.();
+                        }
                       });
                     }
                   });
@@ -86,8 +97,8 @@ const load = (text, { fault = "", seeded = [] } = {}) => {
                 };
                 return {
                   get: (key) => run("get", [key], () => state.values.get(key)),
-                  put: (value, key) => run("put", [value, key], () => { state.values.set(key, value); return key; }),
-                  delete: (key) => run("delete", [key], () => state.values.delete(key)),
+                  put: (value, key) => run("put", [value, key], () => { values.set(key, value); return key; }),
+                  delete: (key) => run("delete", [key], () => values.delete(key)),
                   getAllKeys: () => run("getAllKeys", [], () => [...state.values.keys()].sort()),
                   getAll: () => run("getAll", [], () => [...state.values.keys()].sort().map((key) => state.values.get(key))),
                 };
@@ -103,18 +114,21 @@ const load = (text, { fault = "", seeded = [] } = {}) => {
       return request;
     },
   };
-  const context = vm.createContext({
-    indexedDB, window: {},
-    ivLyricsDebug: (...args) => trace.push(["debug", ...args]),
-    console: { error: (message, value) => trace.push(["error", message, value?.message]) },
-  });
-  const start = text.includes("const createTrackOverrideDB =")
-    ? "// Track overrides share storage mechanics" : "// IndexedDB for track language overrides";
-  vm.runInContext(
-    slice(text, "const IVLYRICS_BACKGROUND_MODE_IDS =", "const IVLYRICS_BACKGROUND_FLAG_IDS")
-      + slice(text, "function normalizeIvLyricsTrackBackgroundOverride", "function getIvLyricsTrackBackgroundMode")
-      + slice(text, start, "// Migrate from localStorage to IndexedDB"), context,
-  );
+  const debug = (...args) => trace.push(["debug", ...args]);
+  const logger = { error: (message, value) => trace.push(["error", message, value?.message]) };
+  const context = vm.createContext({ indexedDB, window: {}, ivLyricsDebug: debug, console: logger });
+  if (useModules) {
+    Object.assign(context.window, createTrackOverrideStores({
+      getIndexedDB: () => indexedDB, debug, logger, normalizeBackground: normalizeIvLyricsTrackBackgroundOverride,
+    }));
+  } else {
+    vm.runInContext(
+      slice(text, "const IVLYRICS_BACKGROUND_MODE_IDS =", "const IVLYRICS_BACKGROUND_FLAG_IDS")
+        + slice(text, "function normalizeIvLyricsTrackBackgroundOverride", "function getIvLyricsTrackBackgroundMode"),
+      context,
+    );
+    vm.runInContext(slice(text, "// IndexedDB for track language overrides", "// Migrate from localStorage to IndexedDB"), context);
+  }
   const microtasks = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
   return {
     api: context.window, trace, tasks,
@@ -151,11 +165,12 @@ const load = (text, { fault = "", seeded = [] } = {}) => {
 
 const compare = async (options, exercise) => {
   const old = load(baseline, options);
-  const current = load(source, options);
+  const current = load(source, options, true);
   const before = await exercise(old);
   const after = await exercise(current);
   assert.deepEqual(after, before);
-  assert.deepEqual(current.trace, old.trace, "database calls, event ordering and diagnostics must match");
+  const calls = trace => trace.filter(([type]) => type !== "complete");
+  assert.deepEqual(calls(current.trace), calls(old.trace), "database calls, result order and diagnostics must match");
   return after;
 };
 
@@ -190,17 +205,39 @@ for (const [apiName, dbName, storeName, get, set, clear, sample] of databases) {
     }
   });
 
-  test(`${apiName}: writes settle on request success before transaction completion`, async () => {
-    await compare({}, async (h) => {
-      const outcome = h.observe(h.api[apiName][set]("track", sample));
-      await h.step(); // open
-      await h.step(); // put success
-      assert.equal(outcome.status, "fulfilled");
-      assert.equal(h.tasks[0].kind, "complete");
-      await h.step();
-      return outcome;
-    });
+  test(`${apiName}: a UI write reports an open failure and can retry the same operation`, async () => {
+    const put = load(source, { fault: "open" }, true);
+    assert.equal((await put.settle(put.api[apiName][set]("track", sample, REQUIRE_TRACK_OVERRIDE_COMMIT))).status, "rejected");
+    assert.equal((await put.settle(put.api[apiName][set]("track", sample, REQUIRE_TRACK_OVERRIDE_COMMIT))).status, "fulfilled");
+    assert.notEqual((await put.settle(put.api[apiName][get]("track"))).value, null);
+
+    const remove = load(source, { fault: "open", seeded: [["track", sample]] }, true);
+    assert.equal((await remove.settle(remove.api[apiName][clear]("track", REQUIRE_TRACK_OVERRIDE_COMMIT))).status, "rejected");
+    assert.notEqual((await remove.settle(remove.api[apiName][get]("track"))).value, null);
+    assert.equal((await remove.settle(remove.api[apiName][clear]("track", REQUIRE_TRACK_OVERRIDE_COMMIT))).status, "fulfilled");
+    assert.equal((await remove.settle(remove.api[apiName][get]("track"))).value, null);
   });
+
+  for (const method of [set, clear]) {
+    test(`${apiName}: ${method} waits for commit, and an aborted transaction leaves the previous value`, async () => {
+      for (const fault of ["", "commit"]) {
+        const h = load(source, { fault, seeded: [["track", sample]] }, true);
+        const api = h.api[apiName];
+        const replacement = apiName === "TrackBackgroundDB" ? "video-background" : sample + "-new";
+        const previous = (await h.settle(api[get]("track"))).value;
+        const outcome = h.observe(api[method]("track", replacement));
+        await h.step(); // request success
+        assert.equal(outcome.status, "pending");
+        assert.equal(h.tasks[0].kind, "complete");
+        await h.step();
+        assert.equal(outcome.status, fault ? "rejected" : "fulfilled");
+        const live = await h.settle(api[get]("track"));
+        if (fault) assert.deepEqual(live.value, previous);
+        else if (method === clear) assert.equal(live.value, null);
+        else assert.notDeepEqual(live.value, previous);
+      }
+    });
+  }
 
   test(`${apiName}: concurrent opens, reverse completion, cached connection and retry retain ordering`, async () => {
     await compare({}, async (h) => {

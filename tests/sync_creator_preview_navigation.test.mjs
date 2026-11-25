@@ -1,12 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { useSyncCreatorNavigation } from "#ivlyrics/features/sync/syncCreatorNavigation.mjs";
 import test from 'node:test';
-import vm from 'node:vm';
-
-const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
-const start = source.indexOf('\t// Preview follows playback on its own.');
-const end = source.indexOf('\tconst handleSeek =', start);
-assert.ok(start >= 0 && end > start, 'missing preview navigation section');
 
 // Run the shipping manual-navigation callbacks and the production arrow-key
 // listener. Only React hosting, playback state and scroll nodes are replaced.
@@ -20,7 +14,8 @@ const createEditor = ({
 	activeParallelTargetId = '',
 } = {}) => {
 	let keydown = null;
-	const context = vm.createContext({
+	const seeks = [];
+	const context = {
 		console,
 		useCallback: callback => callback,
 		useEffect: callback => { callback(); },
@@ -42,8 +37,8 @@ const createEditor = ({
 		claimSessionForLocalEditing() {},
 		resetCurrentSyncInput() {},
 		selectParallelPart(partId) { context.activeParallelTargetId = partId; },
-		Spicetify: { Player: { seek() {} } },
-	});
+		Spicetify: { Player: { seek: position => seeks.push(position) } },
+	};
 	context.setMode = value => {
 		context.mode = typeof value === 'function' ? value(context.mode) : value;
 	};
@@ -51,11 +46,11 @@ const createEditor = ({
 		context.currentLineIndex = typeof value === 'function' ? value(context.currentLineIndex) : value;
 	};
 	context.setActiveParallelPartId = value => { context.activeParallelTargetId = value; };
-	vm.runInContext(`globalThis.api = (() => {
-		${source.slice(start, end)}
-		return { goToPrevLine, goToNextLine, goToFirstLine, goToPreviousSyncTarget, goToNextSyncTarget,
-			leavePreviewForLineNavigation };
-	})();`, context);
+	const api = useSyncCreatorNavigation({
+		react: { useCallback: context.useCallback, useEffect: context.useEffect },
+		host: context.window, getPlayer: () => context.Spicetify.Player,
+		editor: context, refs: context, actions: context,
+	});
 	const press = (key) => {
 		const called = { preventDefault: 0, stopPropagation: 0 };
 		keydown({
@@ -66,7 +61,7 @@ const createEditor = ({
 		});
 		return called;
 	};
-	return { context, api: context.api, press };
+	return { context, api, press, seeks };
 };
 
 test('line navigation buttons leave preview and change the edited line', () => {
@@ -132,4 +127,29 @@ test('navigation outside preview keeps the current mode', () => {
 		editor.press('ArrowDown');
 		assert.equal(editor.context.mode, mode);
 	}
+});
+
+test('seek controls accept the zero pixel boundary and ignore unavailable geometry or playback', () => {
+	const editor = createEditor();
+	const { Player: player } = editor.context.Spicetify;
+	player.getProgress = () => 9000;
+	player.getDuration = () => 10000;
+	player.data = { item: { duration: { milliseconds: 10000 } } };
+	const currentTarget = { getBoundingClientRect: () => ({ left: 0, width: 200 }) };
+	editor.api.handleSeek({ currentTarget, clientX: 0 });
+	editor.api.handleSeek({ currentTarget, changedTouches: [{ clientX: 100 }] });
+	editor.api.handleSeek({ currentTarget, clientX: 300 });
+	editor.api.handleSeekOffset(3000);
+	player.getProgress = () => 500;
+	editor.api.handleSeekOffset(-3000);
+	assert.deepEqual(editor.seeks, [0, 5000, 10000, 10000, 0]);
+
+	editor.api.handleSeek({ currentTarget });
+	editor.api.handleSeek({ currentTarget: { getBoundingClientRect: () => ({ left: 0, width: 0 }) }, clientX: 100 });
+	player.getProgress = () => undefined;
+	editor.api.handleSeekOffset(10);
+	player.getDuration = () => NaN;
+	player.data = null;
+	editor.api.handleSeek({ currentTarget, clientX: 100 });
+	assert.equal(editor.seeks.length, 5);
 });

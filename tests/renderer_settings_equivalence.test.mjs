@@ -1,3 +1,4 @@
+import { readKaraokePageHarnessSource, karaokePageModules } from "./fixtures/karaoke-page-modules.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -6,7 +7,7 @@ import test from "node:test";
 import vm from "node:vm";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
-const currentSource = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
+const currentSource = readKaraokePageHarnessSource();
 const baselineRevision = "6bb234835b0f5762876bbe521ddf665c8f952dfa";
 // While an instrumental or trailing interlude owns the layout, already sung
 // rows and the trailing anchor lyric now take the padding classes and leave the accessibility tree. The
@@ -165,6 +166,7 @@ const createEngine = (source) => {
 	};
 	const track = { duration: { milliseconds: 18000 } };
 	const context = vm.createContext({
+		...karaokePageModules,
 		console, CONFIG, Utils, window, react,
 		...react,
 		Spicetify: { Player: { data: { item: track } } },
@@ -178,13 +180,15 @@ const createEngine = (source) => {
 		`${helperCounterMarker}\nglobalThis.fillBoundsCalls += 1;`);
 	context.fillBoundsCalls = 0;
 	vm.runInContext([
-		slice(source, "const emptyLine", "function renderLyricsUnavailable"),
-		slice(source, "const buildLyricDisplayState", "const getFiniteLyricsStyleNumber"),
-		slice(instrumentedSource, "const getCurrentTrackDurationMs", "const createBreakIconChildren"),
-		slice(source, "const getLyricsAnchorRatio", "const KARAOKE_FILL_CORRECTION_DEFAULT_POINTS"),
+		slice(source, "const emptyLine", source === currentSource ? "const getTrackPositionFPS" : "function renderLyricsUnavailable"),
+		source === currentSource ? "" : slice(source, "const buildLyricDisplayState", "const getFiniteLyricsStyleNumber"),
+		slice(instrumentedSource, "const getCurrentTrackDurationMs",
+			source === currentSource ? "const InterludeIndicator =" : "const createBreakIconChildren"),
+		slice(source, source === currentSource ? "const prefersReducedLyricsMotion" : "const getLyricsAnchorRatio", "const KARAOKE_FILL_CORRECTION_DEFAULT_POINTS"),
 		slice(source, "const getKaraokeLineBounds", "const KARAOKE_FILL_STEPS"),
-		slice(source, "const buildPreparedSyncedLyrics", "const LyricsLineBlock"),
-		slice(source, "const renderLyricsItems", "// Global animation manager"),
+		slice(source, "const buildPreparedSyncedLyrics", source === currentSource ? "const lyricLineActions" : "const LyricsLineBlock"),
+		slice(source, source === currentSource ? "const { renderLyricsItems" : "const renderLyricsItems",
+			source.includes("// Global animation manager") ? "// Global animation manager" : "const getKaraokeLineBounds"),
 		"globalThis.engineApi = { useSyncedLyricsEngine, renderLyricsItems };",
 	].join("\n"), context);
 	const containerRef = { current: null };
@@ -829,4 +833,43 @@ test("manual browsing retains row keys, text, spacing and layout anchor while pl
   engine.setScrolling(false);
   assert.deepEqual(engine.render(lyrics, 8500, { isKara }), createEngine(currentSource).render(lyrics, 8500, { isKara }));
  }
+});
+
+test("advancing the live rows keeps pinned lyrics and interlude elements stable", () => {
+  const react = { createElement: (tag, props) => ({ tag, props }) };
+  const { renderLyricsItems, prepareLiveSyncedRenderItems, advanceLiveSyncedRenderItems } =
+    karaokePageModules.createSyncedLyricRows({ react, IdlingIndicator: "indicator", LyricsLineBlock: "lyric" });
+  const liveClock = {};
+  const cache = {};
+  const baseItems = [
+    { key: "singing", karaokeActive: true, karaokePosition: 1000, activeGlobalCharIndex: 5 },
+    { key: "complete", karaokeActive: true, karaokePosition: 3000, activeGlobalCharIndex: 5 },
+    { key: "break", type: "indicator" },
+  ];
+  const frame = prepareLiveSyncedRenderItems(baseItems, 1000);
+  const render = (items, position, settingsRevision = 0) =>
+    renderLyricsItems({ items, position, settingsRevision, isKara: true, liveClock, cache });
+  const initial = render(baseItems, 1000);
+  assert.equal(initial[0].props.liveClock, liveClock);
+  assert.equal(initial[1].props.liveClock, undefined);
+
+  const nextItems = advanceLiveSyncedRenderItems(frame, 1004, 5);
+  const next = render(nextItems, 1004);
+  assert.notEqual(next[0], initial[0]);
+  assert.equal(next[0].props.position, 1004);
+  assert.equal(next[1], initial[1]);
+  assert.equal(next[2], initial[2]);
+  assert.equal(render(nextItems, 1004), next);
+
+  advanceLiveSyncedRenderItems(frame, 1010, 5);
+  const latestItems = advanceLiveSyncedRenderItems(frame, 1014, 5);
+  const latest = render(latestItems, 1014);
+  assert.equal(latest[0].props.position, 1014);
+  assert.equal(latest[1], next[1]);
+  assert.equal(latest[2], next[2]);
+
+  const revised = render(latestItems, 1014, 1);
+  assert.notEqual(revised[0], latest[0]);
+  assert.notEqual(revised[1], latest[1]);
+  assert.notEqual(revised[2], latest[2]);
 });

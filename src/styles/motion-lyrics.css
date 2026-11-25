@@ -1,0 +1,1083 @@
+/* Motion lyrics (MotionLyrics.js): boards of lyric lines placed in a 3D world
+   that the camera element flies through. Every frame writes transforms,
+   opacity and a few custom properties; nothing inside the viewport may
+   flatten the 3D context (no opacity, filter or overflow on the camera,
+   board or line elements: their opacity is passed down as --lg / --ls).
+   Each word's face (font family, weight, style, tracking) is set inline from
+   MotionLyricsType.mjs, by the script it is written in. */
+.ivlyrics-motion-stage {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+  color: #fff;
+}
+
+.ivlyrics-motion-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 75% 65% at 50% 50%, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.6)),
+    rgba(0, 0, 0, 0.38);
+  /* Lightened by the engine in interludes, the intro and the outro. */
+  will-change: opacity;
+}
+
+.ivlyrics-motion-stage[data-mood="dark"] .ivlyrics-motion-scrim,
+.ivlyrics-motion-stage[data-mood="intense"] .ivlyrics-motion-scrim {
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 50%, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.7)),
+    rgba(0, 0, 0, 0.46);
+}
+
+/* Slow songs get a softer, filmic vignette. */
+.ivlyrics-motion-stage[data-tempo="slow"] .ivlyrics-motion-scrim {
+  background:
+    radial-gradient(ellipse 80% 70% at 50% 50%, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.66)),
+    rgba(0, 0, 0, 0.34);
+}
+
+/* A wash of the board's accent colour over the video; it changes per board. */
+.ivlyrics-motion-wash {
+  position: absolute;
+  inset: 0;
+  background: var(--iv-motion-accent, #ff5ca0);
+  opacity: 0.1;
+  mix-blend-mode: soft-light;
+  transition: background-color 700ms ease;
+}
+
+.ivlyrics-motion-wash.is-alt {
+  background: var(--iv-motion-accent-2, #5cd6ff);
+}
+
+/* A flat colour field over the video (posters): it opens from a band and cuts from colour to colour. */
+.ivlyrics-motion-flood {
+  position: absolute;
+  inset: 0;
+  background: var(--iv-motion-deep, #d01a5b);
+  opacity: 0.97;
+  visibility: hidden;
+  transform: scaleY(0);
+}
+
+.ivlyrics-motion-flood.is-deep2 {
+  background: var(--iv-motion-deep-2, #1a6fd0);
+}
+
+.ivlyrics-motion-flood.is-ink {
+  background: #0b0b10;
+}
+
+.ivlyrics-motion-viewport {
+  position: absolute;
+  inset: 0;
+  perspective: var(--iv-motion-perspective, 1100px);
+  perspective-origin: 50% 50%;
+}
+
+.ivlyrics-motion-camera,
+.ivlyrics-motion-board,
+.ivlyrics-motion-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+
+.ivlyrics-motion-camera {
+  top: 50%;
+  left: 50%;
+}
+
+.ivlyrics-motion-word {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-synthesis: none;
+  line-height: 1;
+  white-space: pre;
+  transform-origin: 0 0;
+  backface-visibility: hidden;
+}
+
+/* Waiting (and sung, dimmer) lines show as outlines. */
+.ivlyrics-motion-ghost {
+  display: block;
+  color: transparent;
+  -webkit-text-stroke: max(1px, 0.024em) rgba(255, 255, 255, 0.92);
+  opacity: var(--lg, 0.3);
+}
+
+/* Outlines drawn round the letters' shape by an SVG filter (MotionLyrics.js,
+   createOutlines; desktop): the text is filled and the filter hollows it, so
+   contours that overlap inside a letter draw no lines. A waiting line's
+   outline is drawn once into a layer of its own; only its opacity changes. */
+.ivlyrics-motion-ghost.is-shaped {
+  color: rgba(255, 255, 255, 0.92);
+  -webkit-text-stroke: 0;
+  will-change: opacity;
+  backface-visibility: hidden;
+}
+
+.ivlyrics-motion-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+/* Other voices (background vocals, a duet partner) are smaller: they wait as a faint fill. */
+.ivlyrics-motion-word.is-voice .ivlyrics-motion-ghost {
+  color: rgba(255, 255, 255, 0.85);
+  -webkit-text-stroke: 0;
+  opacity: calc(var(--lg, 0.3) * 0.5);
+}
+
+/* Solid type: each word flies, slams, blurs or assembles in as it is sung. */
+.ivlyrics-motion-solid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  color: #fff;
+  opacity: calc(var(--ls, 1) * var(--e, 0));
+  transform-origin: 50% 62%;
+  /* A soft halo round the glyphs (no box), stronger over a bright picture (--lum, set by the engine where it can read the picture). */
+  --halo: calc(0.1 + var(--lum, 0.3) * 0.55);
+  text-shadow:
+    0 0.04em 0.22em rgba(0, 0, 0, 0.32),
+    0 0 0.55em rgb(0 0 0 / var(--halo));
+}
+
+.ivlyrics-motion-word[dir="rtl"] .ivlyrics-motion-solid {
+  right: 0;
+  left: auto;
+}
+
+/* Upright type (pillars): letters stand one under another. */
+.ivlyrics-motion-word.is-upright {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+}
+
+/* On a colour ground (a card, a colour field) type stays white and accents turn to ink. */
+.ivlyrics-motion-line.on-color {
+  --iv-motion-accent: #0d0d12;
+  --iv-motion-accent-2: #f6f2ea;
+}
+
+.ivlyrics-motion-char {
+  display: inline-block;
+  opacity: 0;
+  transform-origin: 50% 70%;
+}
+
+.ivlyrics-motion-word.is-active .ivlyrics-motion-solid {
+  text-shadow:
+    0 0 0.32em color-mix(in srgb, var(--iv-motion-accent, #fff) 62%, transparent),
+    0 0.04em 0.22em rgba(0, 0, 0, 0.32),
+    0 0 0.55em rgb(0 0 0 / var(--halo));
+}
+
+/* Lite quality (the engine turns it on when frames keep coming late): one small shadow instead of
+   halos and glows, and no drop-shadow filters, so moving type is cheap to draw. */
+.ivlyrics-motion-stage.is-lite .ivlyrics-motion-solid,
+.ivlyrics-motion-stage.is-lite .ivlyrics-motion-word.is-active .ivlyrics-motion-solid {
+  text-shadow: 0 0.04em 0.16em rgba(0, 0, 0, 0.5);
+}
+
+.ivlyrics-motion-stage.is-lite .ivlyrics-motion-word,
+.ivlyrics-motion-stage.is-lite .ivlyrics-motion-solid {
+  filter: none !important;
+}
+
+.ivlyrics-motion-word.is-background .ivlyrics-motion-solid {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+/* A duet partner sings in the second accent colour. */
+.ivlyrics-motion-word.is-duet .ivlyrics-motion-solid {
+  color: var(--iv-motion-accent-2, #5cd6ff);
+}
+
+.accent-color .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
+.accent-underline .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
+.accent-spark .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
+.accent-stamp .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid,
+.accent-giant .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+  color: var(--iv-motion-accent, #ff5ca0);
+}
+
+/* A word in handwriting against the heavy type, in the accent colour, a little askew. */
+.accent-script .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+  color: var(--iv-motion-accent, #ff5ca0);
+  rotate: -4deg;
+}
+
+/* The outline turns with the solid type about the same point, so it stays under it. */
+.accent-script .ivlyrics-motion-word.is-emph .ivlyrics-motion-ghost,
+.accent-sticker .ivlyrics-motion-word.is-emph .ivlyrics-motion-ghost {
+  rotate: -4deg;
+  transform-origin: 50% 62%;
+}
+
+.accent-sticker .ivlyrics-motion-word.is-emph .ivlyrics-motion-ghost {
+  rotate: -3deg;
+}
+
+.accent-outline .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+  color: transparent;
+  -webkit-text-stroke: max(1.5px, 0.045em) var(--iv-motion-accent, #ff5ca0);
+  text-shadow: none;
+}
+
+/* Neon: white letters in a glow of the accent colour (the engine throbs them with the beat). */
+.accent-glow .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+  color: #fff;
+  text-shadow:
+    0 0 0.05em #fff,
+    0 0 0.2em var(--iv-motion-accent, #ff5ca0),
+    0 0 0.5em var(--iv-motion-accent, #ff5ca0);
+}
+
+/* Letters filled with a gradient of the two accent colours (top to bottom, so letters set one by one match).
+   A word animated letter by letter paints the gradient on its letters only: painted on the word as well,
+   it would show every letter where it rests, under the one in motion and before it is sung.
+   The gradient is painted through the letters only inside the element's box: padding (taken back by a
+   negative margin, so nothing moves) leaves room for a comma's tail or a slanted letter's overhang. The
+   stops sit where they were on the unpadded 1em box (14% and 86%). */
+.accent-gradient .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid:not(.has-letters),
+.accent-gradient .ivlyrics-motion-word.is-emph .ivlyrics-motion-char {
+  margin: -0.3em -0.2em;
+  padding: 0.3em 0.2em;
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--iv-motion-accent-2, #5cd6ff) 80%, #fff) 0.44em, var(--iv-motion-accent, #ff5ca0) 1.16em);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+}
+
+.accent-gradient .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid.has-letters {
+  text-shadow: none;
+}
+
+/* Solid block letters: the accent colour stacked behind white faces. */
+.accent-extrude .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+  color: #fff;
+  text-shadow:
+    0.014em 0.014em 0 var(--iv-motion-accent, #ff5ca0),
+    0.028em 0.028em 0 var(--iv-motion-accent, #ff5ca0),
+    0.042em 0.042em 0 var(--iv-motion-accent, #ff5ca0),
+    0.056em 0.056em 0 var(--iv-motion-accent, #ff5ca0),
+    0.07em 0.07em 0 var(--iv-motion-accent, #ff5ca0),
+    0.084em 0.084em 0 var(--iv-motion-accent, #ff5ca0),
+    0.12em 0.14em 0.18em rgba(0, 0, 0, 0.42);
+}
+
+/* A sticker: coloured letters with a thick white edge, a little askew. */
+.accent-sticker .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+  color: var(--iv-motion-accent, #ff5ca0);
+  rotate: -3deg;
+  text-shadow:
+    0.055em 0 0 #fff, 0.048em 0.028em 0 #fff, 0.028em 0.048em 0 #fff,
+    0 0.055em 0 #fff, -0.028em 0.048em 0 #fff, -0.048em 0.028em 0 #fff,
+    -0.055em 0 0 #fff, -0.048em -0.028em 0 #fff, -0.028em -0.048em 0 #fff,
+    0 -0.055em 0 #fff, 0.028em -0.048em 0 #fff, 0.048em -0.028em 0 #fff,
+    0.04em 0.1em 0.14em rgba(0, 0, 0, 0.45);
+}
+
+/* The mark an accent draws with an emphasised word: an underline, a marker stroke, a stamp's frame or brackets. */
+.ivlyrics-motion-box {
+  position: absolute;
+  inset: 0.02em -0.12em 0.02em;
+  background: var(--iv-motion-accent, #ff5ca0);
+  opacity: var(--ls, 1);
+  transform: scaleX(var(--b, 0));
+  transform-origin: 0 50%;
+}
+
+.ivlyrics-motion-word[dir="rtl"] .ivlyrics-motion-box {
+  transform-origin: 100% 50%;
+}
+
+.ivlyrics-motion-box.is-underline {
+  inset: auto -0.06em -0.06em;
+  height: max(3px, 0.075em);
+}
+
+.ivlyrics-motion-box.is-mark {
+  inset: 42% -0.1em 4%;
+  opacity: calc(var(--ls, 1) * 0.82);
+  rotate: -1.6deg;
+}
+
+/* A rubber stamp: an outlined frame that slams down around the word, square with it and clear of its letters. */
+.ivlyrics-motion-box.is-stamp,
+.ivlyrics-motion-word[dir="rtl"] .ivlyrics-motion-box.is-stamp {
+  inset: -0.1em -0.22em -0.08em;
+  border: max(2px, 0.065em) solid var(--iv-motion-accent, #ff5ca0);
+  border-radius: 0.12em;
+  background: none;
+  opacity: calc(var(--ls, 1) * var(--b, 0));
+  transform: scale(calc(1.6 - 0.6 * var(--b, 0)));
+  transform-origin: 50% 50%;
+}
+
+/* A pen loop drawn round the word as it is sung (hidden until it starts: its round cap would show as a dot). */
+.ivlyrics-motion-loop {
+  position: absolute;
+  overflow: visible;
+  opacity: calc(var(--ls, 1) * min(1, var(--b, 0) * 60));
+}
+
+.ivlyrics-motion-loop path {
+  fill: none;
+  stroke: var(--iv-motion-accent, #ff5ca0);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--b, 0));
+}
+
+/* Brackets: a rule either side of the word closing in on it. */
+.ivlyrics-motion-box.is-bracket,
+.ivlyrics-motion-word[dir="rtl"] .ivlyrics-motion-box.is-bracket {
+  inset: -0.04em -0.24em -0.02em;
+  border: solid var(--iv-motion-accent, #ff5ca0);
+  border-width: 0 max(2px, 0.06em);
+  background: none;
+  opacity: calc(var(--ls, 1) * var(--b, 0));
+  transform: scaleX(calc(1.6 - 0.6 * var(--b, 0)));
+  transform-origin: 50% 50%;
+}
+
+/* Outlined copies stepping out from behind the word. */
+.ivlyrics-motion-trail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  color: transparent;
+  -webkit-text-stroke: max(1px, 0.028em) var(--iv-motion-accent, #ff5ca0);
+  opacity: calc(var(--ls, 1) * var(--b, 0) * (1.1 - var(--k, 1) * 0.26));
+  transform: translate(calc(var(--b, 0) * var(--k, 1) * 0.085em), calc(var(--b, 0) * var(--k, 1) * 0.11em));
+}
+
+/* Spectrum: the copies are filled, in the accent colours and white, fanned out behind the word. */
+.accent-spectrum .ivlyrics-motion-trail {
+  -webkit-text-stroke: 0;
+  color: var(--iv-motion-accent, #ff5ca0);
+  opacity: calc(var(--ls, 1) * var(--b, 0));
+  transform: translate(calc(var(--b, 0) * var(--k, 1) * -0.06em), calc(var(--b, 0) * var(--k, 1) * 0.075em));
+}
+
+.accent-spectrum .ivlyrics-motion-trail:nth-child(1) {
+  color: var(--iv-motion-accent-2, #5cd6ff);
+}
+
+.accent-spectrum .ivlyrics-motion-trail:nth-child(2) {
+  color: color-mix(in srgb, var(--iv-motion-accent, #ff5ca0) 50%, var(--iv-motion-accent-2, #5cd6ff));
+}
+
+.accent-spectrum .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+  color: #fff;
+  text-shadow: none;
+}
+
+/* Neon: a hollow tube of the accent colour glowing round its letters (the engine throbs it with the beat). */
+.accent-neon .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid {
+  color: transparent;
+  -webkit-text-stroke: max(1.5px, 0.05em) color-mix(in srgb, var(--iv-motion-accent, #ff5ca0) 45%, #fff);
+  text-shadow:
+    0 0 0.08em var(--iv-motion-accent, #ff5ca0),
+    0 0 0.28em var(--iv-motion-accent, #ff5ca0),
+    0 0 0.7em color-mix(in srgb, var(--iv-motion-accent, #ff5ca0) 70%, transparent);
+}
+
+/* Chrome: polished metal letters with a light sweeping across them (painted through the letters like the gradient). */
+@keyframes ivlyrics-motion-sheen {
+  from { background-position: 0 0, 180% 0; }
+  to { background-position: 0 0, -80% 0; }
+}
+
+.accent-chrome .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid:not(.has-letters),
+.accent-chrome .ivlyrics-motion-word.is-emph .ivlyrics-motion-char {
+  margin: -0.3em -0.2em;
+  padding: 0.3em 0.2em;
+  background-image:
+    linear-gradient(180deg, #ffffff 0.42em, #c9ced6 0.72em, #5d636d 0.86em, #eef1f5 0.92em, #9aa1ab 1.2em),
+    linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.95) 50%, transparent 60%);
+  background-size: 100% 100%, 260% 100%;
+  background-repeat: no-repeat;
+  background-blend-mode: screen;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 0.05em 0.12em rgba(0, 0, 0, 0.45));
+  animation: ivlyrics-motion-sheen 2.6s linear infinite;
+}
+
+.accent-chrome .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid.has-letters {
+  text-shadow: none;
+}
+
+/* A seal's outer ring is dashed. */
+.ivlyrics-motion-plate.is-ring.is-dash {
+  border-style: dashed;
+  border-width: max(2px, 0.28vh);
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+/* A seal's ring: a heavy band in the accent colour round the line. */
+.ivlyrics-motion-plate.is-ring.is-seal {
+  border: max(4px, 0.7vh) solid var(--iv-motion-accent, #ff5ca0);
+  box-shadow: 0 0 1.4vh color-mix(in srgb, var(--iv-motion-accent, #ff5ca0) 45%, transparent), inset 0 0 1.4vh color-mix(in srgb, var(--iv-motion-accent, #ff5ca0) 35%, transparent);
+}
+
+/* A slot's band and an arch's ring: flat shapes the type sits on or round. */
+.ivlyrics-motion-plate {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  backface-visibility: hidden;
+}
+
+.ivlyrics-motion-plate.is-ink {
+  background: rgba(11, 11, 16, 0.92);
+}
+
+.ivlyrics-motion-plate.is-band {
+  background: rgba(9, 9, 14, 0.88);
+}
+
+.ivlyrics-motion-plate.is-ring {
+  border: max(1.5px, 0.14vh) solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  background: none;
+}
+
+/* Outlined copies of a line tiling a word wall. */
+.ivlyrics-motion-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-synthesis: none;
+  line-height: 1;
+  white-space: pre;
+  color: transparent;
+  -webkit-text-stroke: max(1px, 0.02em) rgba(255, 255, 255, 0.9);
+  opacity: var(--fl, 0);
+  transform-origin: 0 0;
+  backface-visibility: hidden;
+}
+
+.ivlyrics-motion-fill.is-shaped,
+.ivlyrics-motion-echo.is-shaped {
+  color: rgba(255, 255, 255, 0.9);
+  -webkit-text-stroke: 0;
+}
+
+.ivlyrics-motion-spark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.9em;
+  height: 1.9em;
+  color: var(--iv-motion-accent, #ff5ca0);
+  visibility: hidden;
+}
+
+.ivlyrics-motion-spark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* A thin rule drawn under the line as it is sung. */
+.ivlyrics-motion-rule {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: max(1.5px, 0.12vh);
+  background: rgba(255, 255, 255, 0.78);
+  opacity: var(--ls, 1);
+  scale: var(--r, 0) 1;
+}
+
+.type-serif .ivlyrics-motion-rule,
+.has-serif .ivlyrics-motion-rule {
+  background: color-mix(in srgb, var(--iv-motion-accent, #fff) 70%, #fff);
+}
+
+/* A line a composition draws as it is sung: a strip's track, a split's divider. */
+.ivlyrics-motion-stroke {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: max(2px, 0.18vh);
+  margin-top: calc(max(2px, 0.18vh) / -2);
+  background: rgba(255, 255, 255, 0.92);
+  opacity: 0;
+  transform-origin: 0 50%;
+}
+
+.ivlyrics-motion-motif {
+  position: absolute;
+  top: 0;
+  left: 0;
+  color: #fff;
+  visibility: hidden;
+  backface-visibility: hidden;
+}
+
+.ivlyrics-motion-motif.is-accent {
+  color: var(--iv-motion-accent, #ff5ca0);
+}
+
+.ivlyrics-motion-motif svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.ivlyrics-motion-echo {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-synthesis: none;
+  line-height: 1;
+  white-space: pre;
+  color: transparent;
+  -webkit-text-stroke: max(1.5px, 0.012em) rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  transform-origin: 0 0;
+}
+
+/* A colour panel that sweeps across the screen on panel cuts. */
+.ivlyrics-motion-panel {
+  position: absolute;
+  top: -20%;
+  left: -40%;
+  width: 180%;
+  height: 140%;
+  background: var(--iv-motion-accent, #ff5ca0);
+  visibility: hidden;
+  will-change: transform;
+}
+
+.ivlyrics-motion-panel.is-alt {
+  background: var(--iv-motion-accent-2, #5cd6ff);
+}
+
+/* Cinematic letterbox bars for the big moments. */
+.ivlyrics-motion-bars {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+}
+
+.ivlyrics-motion-bar {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 11.5%;
+  background: #050507;
+  transform: scaleY(0);
+}
+
+.ivlyrics-motion-bar.is-top {
+  top: 0;
+  transform-origin: 50% 0;
+}
+
+.ivlyrics-motion-bar.is-bottom {
+  bottom: 0;
+  transform-origin: 50% 100%;
+}
+
+.ivlyrics-motion-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+}
+
+/* Small print in the corners, like the credits of an edit. */
+.ivlyrics-motion-hud {
+  position: absolute;
+  inset: clamp(18px, 3.2svh, 34px) clamp(20px, 3vw, 44px);
+  color: rgba(255, 255, 255, 0.62);
+  font-family: var(--iv-motion-ui);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+}
+
+.ivlyrics-motion-hud > div {
+  position: absolute;
+  display: flex;
+  /* Title and artist on one baseline, whatever script (and fallback face) each is in. */
+  align-items: baseline;
+  gap: 0.9em;
+  max-width: 42%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ivlyrics-motion-hud-title {
+  top: 0;
+  left: 0;
+  transition: translate 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* The app's generation pills (index.js) run along the top left over the title: while they
+   are up, the title steps down below them (the shot counter on the right stays). */
+.lyrics-lyricsContainer-LyricsContainer:has(> .lyrics-generation-status-stack) .ivlyrics-motion-hud-title {
+  translate: 0 calc(max(20px, env(safe-area-inset-top)) + 44px - clamp(18px, 3.2svh, 34px));
+}
+
+.ivlyrics-motion-hud-strong {
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 700;
+}
+
+.ivlyrics-motion-hud-shot {
+  top: 0;
+  right: 0;
+}
+
+.ivlyrics-motion-hud-ai {
+  padding: 0 0.45em;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 3px;
+  color: #fff;
+  letter-spacing: 0.08em;
+}
+
+.ivlyrics-motion-hud-time {
+  bottom: 0;
+  left: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The AI direction's notice sits top left, under the title, like the app's other AI tasks.
+   (The desktop app lists it with those tasks instead: MotionLyrics.js, onStatus.) */
+.ivlyrics-motion-status {
+  position: absolute;
+  top: calc(clamp(18px, 3.2svh, 34px) + 26px);
+  left: clamp(20px, 3vw, 44px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(560px, calc(100% - 40px));
+  padding: 7px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(14, 14, 18, 0.62);
+  color: rgba(255, 255, 255, 0.88);
+  font-family: var(--iv-motion-ui);
+  font-size: 12.5px;
+  line-height: 1.35;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  animation: ivlyrics-motion-status-in 260ms ease both;
+}
+
+.ivlyrics-motion-status-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--iv-motion-accent, #ff5ca0);
+  animation: ivlyrics-motion-status-pulse 1.1s ease-in-out infinite;
+}
+
+.ivlyrics-motion-status.is-failed .ivlyrics-motion-status-dot {
+  background: #ff6b5c;
+  animation: none;
+}
+
+@keyframes ivlyrics-motion-status-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ivlyrics-motion-status-pulse {
+  50% { opacity: 0.35; transform: scale(0.75); }
+}
+
+.ivlyrics-motion-subtitle {
+  position: absolute;
+  bottom: clamp(36px, 7svh, 72px);
+  left: 50%;
+  max-width: min(80vw, 980px);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: var(--iv-video-stage-translation-font-family, "Pretendard Variable"), "Pretendard Variable", Pretendard, sans-serif;
+  font-size: clamp(16px, 1.6vw, 24px);
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: center;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.65);
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity 260ms ease;
+}
+
+.ivlyrics-motion-subtitle.has-text {
+  opacity: 1;
+}
+
+.ivlyrics-motion-subtitle.has-text.is-resting {
+  opacity: 0;
+}
+
+.ivlyrics-motion-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Interludes (MotionLyrics.js, paintInterludes): while no lyrics are on screen
+   (the intro, instrumental breaks, the outro) a scene of its own plays over the
+   video. Lines and outlines only: nothing opaque stands in front of the video. */
+.ivlyrics-motion-interludes {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.ivlyrics-motion-scene {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  color: #fff;
+}
+
+.ivlyrics-motion-scene.is-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.ivlyrics-motion-scene-title {
+  max-width: 88%;
+  line-height: 0.98;
+  text-align: center;
+  text-wrap: balance;
+  text-shadow: 0 0.04em 0.3em rgba(0, 0, 0, 0.35);
+  will-change: transform;
+}
+
+.ivlyrics-motion-scene-word {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.ivlyrics-motion-scene-letter {
+  display: inline-block;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.ivlyrics-motion-scene-rule {
+  width: min(46%, 520px);
+  height: 2px;
+  margin-top: clamp(14px, 2.4svh, 26px);
+  background: linear-gradient(90deg, transparent, var(--iv-motion-accent, #fff), transparent);
+  transform: scaleX(0);
+}
+
+.ivlyrics-motion-scene-artist {
+  margin-top: clamp(10px, 1.8svh, 20px);
+  color: rgba(255, 255, 255, 0.86);
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  opacity: 0;
+}
+
+.ivlyrics-motion-scene-ring,
+.ivlyrics-motion-scene-halo,
+.ivlyrics-motion-scene-core,
+.ivlyrics-motion-scene-motif,
+.ivlyrics-motion-scene-frame,
+.ivlyrics-motion-scene-sun,
+.ivlyrics-motion-scene-marquee,
+.ivlyrics-motion-scene-stripes {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  will-change: transform, opacity;
+}
+
+.ivlyrics-motion-scene-ring {
+  border: 2px solid var(--iv-motion-accent, #fff);
+  border-radius: 50%;
+  box-shadow: 0 0 18px color-mix(in srgb, var(--iv-motion-accent, #fff) 55%, transparent), inset 0 0 12px color-mix(in srgb, var(--iv-motion-accent, #fff) 30%, transparent);
+  opacity: 0;
+}
+
+.ivlyrics-motion-scene-halo {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.ivlyrics-motion-scene-halo svg,
+.ivlyrics-motion-scene-motif svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.ivlyrics-motion-scene-core {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 24px var(--iv-motion-accent, #fff);
+}
+
+.ivlyrics-motion-scene-eq {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 50%;
+  height: 44%;
+  display: flex;
+  align-items: center;
+  gap: 0.5%;
+  transform: translateY(-50%);
+}
+
+.ivlyrics-motion-scene-bar {
+  flex: 1 1 0;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(to top, var(--iv-motion-accent-2, #fff), var(--iv-motion-accent, #fff) 50%, var(--iv-motion-accent-2, #fff));
+  opacity: 0.72;
+  transform: scaleY(0.02);
+  will-change: transform;
+}
+
+.ivlyrics-motion-scene-axis {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.ivlyrics-motion-scene-marquee {
+  width: 170%;
+  display: flex;
+  flex-direction: column;
+}
+
+.ivlyrics-motion-scene-row {
+  line-height: 1.02;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+.ivlyrics-motion-scene-row.is-outline {
+  color: transparent;
+  -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.75);
+}
+
+.ivlyrics-motion-scene-row.is-fill {
+  color: color-mix(in srgb, var(--iv-motion-accent, #fff) 55%, transparent);
+}
+
+.ivlyrics-motion-scene-motif {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.ivlyrics-motion-scene-motif.is-alt {
+  color: var(--iv-motion-accent, #fff);
+}
+
+.ivlyrics-motion-scene-stripes {
+  height: 260%;
+}
+
+.ivlyrics-motion-scene-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  will-change: transform, opacity;
+}
+
+.ivlyrics-motion-scene-band.is-a {
+  background: color-mix(in srgb, var(--iv-motion-accent, #fff) 30%, transparent);
+}
+
+.ivlyrics-motion-scene-band.is-b {
+  background: color-mix(in srgb, var(--iv-motion-accent-2, #fff) 24%, transparent);
+}
+
+.ivlyrics-motion-scene-band.is-w {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ivlyrics-motion-scene-frame {
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  opacity: 0;
+}
+
+.ivlyrics-motion-scene-sun {
+  top: 52%;
+  border-radius: 50%;
+  background: linear-gradient(to bottom, var(--iv-motion-accent, #fff), var(--iv-motion-accent-2, #fff));
+  opacity: 0;
+  transform-origin: 50% 100%;
+  -webkit-mask-image: repeating-linear-gradient(to bottom, #000 0 9%, transparent 9% 12%);
+  mask-image: repeating-linear-gradient(to bottom, #000 0 9%, transparent 9% 12%);
+}
+
+.ivlyrics-motion-scene-floor {
+  position: absolute;
+  left: -60%;
+  top: 52%;
+  width: 220%;
+  height: 80%;
+  overflow: hidden;
+  transform: perspective(520px) rotateX(74deg);
+  transform-origin: 50% 0;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 22%);
+  mask-image: linear-gradient(to bottom, transparent, #000 22%);
+}
+
+.ivlyrics-motion-scene-lines {
+  position: absolute;
+  inset: -90px 0 0;
+  background-image:
+    linear-gradient(var(--iv-motion-accent, #fff) 4px, transparent 4px),
+    linear-gradient(90deg, color-mix(in srgb, var(--iv-motion-accent, #fff) 85%, transparent) 3px, transparent 3px);
+  background-size: 90px 90px;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--iv-motion-accent, #fff) 60%, transparent));
+  will-change: transform, opacity;
+}
+
+.ivlyrics-motion-scene-horizon {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 52%;
+  height: 2px;
+  background: var(--iv-motion-accent, #fff);
+  box-shadow: 0 0 22px 4px color-mix(in srgb, var(--iv-motion-accent, #fff) 60%, transparent);
+}
+
+.ivlyrics-motion-scene-count {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  display: grid;
+  font-family: var(--iv-motion-ui, sans-serif);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+}
+
+.ivlyrics-motion-scene-digits {
+  grid-area: 1 / 1;
+  text-align: center;
+  will-change: transform, opacity;
+}
+
+.ivlyrics-motion-scene-digits.is-outline {
+  color: transparent;
+  -webkit-text-stroke: 2px rgba(255, 255, 255, 0.85);
+}
+
+.ivlyrics-motion-scene-digits.is-fill {
+  color: var(--iv-motion-accent, #fff);
+}
+
+.ivlyrics-motion-scene-rail,
+.ivlyrics-motion-scene-track {
+  position: absolute;
+  left: 50%;
+  bottom: 24%;
+  width: 56%;
+  height: 2px;
+  transform: translateX(-50%);
+}
+
+.ivlyrics-motion-scene-rail {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.ivlyrics-motion-scene-track {
+  background: rgba(255, 255, 255, 0.9);
+  transform-origin: 0 50%;
+}
+
+.ivlyrics-motion-scene-wave {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  overflow: visible;
+  filter: drop-shadow(0 0 8px currentColor);
+  will-change: transform;
+}
+
+.ivlyrics-motion-scene-wave.is-0 {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.ivlyrics-motion-scene-wave.is-1 {
+  color: var(--iv-motion-accent, #fff);
+  opacity: 0.8;
+}
+
+.ivlyrics-motion-scene-wave.is-2 {
+  color: var(--iv-motion-accent-2, #fff);
+  opacity: 0.55;
+}
+
+/* The cue dots count the lyrics in: one goes out on each beat. */
+.ivlyrics-motion-cue {
+  position: absolute;
+  left: 50%;
+  top: 74%;
+  display: flex;
+  gap: 14px;
+  opacity: 0;
+  transform: translateX(-50%);
+}
+
+.ivlyrics-motion-cue-dot {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.ivlyrics-motion-cue-dot.is-lit {
+  border-color: var(--iv-motion-accent, #fff);
+  background: var(--iv-motion-accent, #fff);
+  box-shadow: 0 0 14px var(--iv-motion-accent, #fff);
+}
+

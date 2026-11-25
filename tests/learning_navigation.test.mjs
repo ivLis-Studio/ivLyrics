@@ -1,13 +1,9 @@
+import { createStudyNavigation } from "#ivlyrics/features/learning/studyNavigation.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
-
-const source = readFileSync(new URL("../LearningMode.js", import.meta.url), "utf8");
-const code = source.slice(source.indexOf("    let learningReturnFocus ="), source.indexOf("    let audioContext ="));
 
 function harness() {
-  const frames = [], state = { open: false }, calls = [];
+  const frames = [], state = { open: false, listeners: new Set() }, calls = [];
   const document = { activeElement: null, querySelector: () => state.open ? panel : null };
   const trigger = { isConnected: true, focus() { document.activeElement = trigger; calls.push("trigger.focus"); } };
   const panel = {
@@ -15,11 +11,12 @@ function harness() {
     focus() { document.activeElement = panel; calls.push("panel.focus"); },
   };
   document.activeElement = trigger;
-  const api = vm.runInNewContext(code + "\n({ open, close, toggle });", {
+  const api = createStudyNavigation({
     state, document, requestAnimationFrame: fn => frames.push(fn),
     enablePlaybackGuard: () => calls.push("guard.enable"),
-    disablePlaybackGuard: () => calls.push("guard.disable"), notify: () => calls.push("notify"),
+    disablePlaybackGuard: () => calls.push("guard.disable"),
   });
+  api.subscribe(() => calls.push("notify"));
   return { api, state, calls, document, trigger, panel, flush() { while (frames.length) frames.shift()(); } };
 }
 

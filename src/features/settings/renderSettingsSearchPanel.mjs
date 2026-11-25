@@ -1,0 +1,133 @@
+import { SETTINGS_SEARCH_RESULT_LIMIT } from "./settingsSearchRanking.mjs";
+
+// 텍스트 하이라이트 헬퍼 함수
+function highlightText(react, text, query) {
+  if (!query.trim() || !text) return text;
+
+  const tokens = [...new Set(
+    query
+      .normalize("NFKC")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+  )].sort((a, b) => b.length - a.length);
+  if (tokens.length === 0) return text;
+
+  const escapedTokens = tokens.map((token) =>
+    token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  );
+  const tokenPattern = new RegExp(`(${escapedTokens.join("|")})`, "giu");
+  const normalizedTokens = new Set(tokens.map((token) => token.toLocaleLowerCase()));
+
+  return react.createElement(
+    react.Fragment,
+    null,
+    ...String(text).split(tokenPattern).map((part, index) =>
+      normalizedTokens.has(part.normalize("NFKC").toLocaleLowerCase())
+        ? react.createElement("mark", { key: index, className: "search-highlight" }, part)
+        : part
+    )
+  );
+}
+
+export function renderSettingsSearchPanel(react, {
+  searchQuery, searchPanelOpen, searchResults, searchActiveIndex,
+  translate, pickSearchResult, setSearchActiveIndex, SettingsUiIcon, SettingsOutlineIcon,
+}) {
+  if (!searchQuery.trim() || !searchPanelOpen) {
+    return null;
+  }
+
+  const results = searchResults.slice(0, SETTINGS_SEARCH_RESULT_LIMIT);
+  const activeIndex = Math.min(searchActiveIndex, Math.max(0, results.length - 1));
+  const meta = react.createElement(
+    "div",
+    { className: "settings-search-meta" },
+    react.createElement(
+      "span",
+      { className: "search-results-count" },
+      translate("search.resultCount").replace("{count}", searchResults.length)
+    ),
+    react.createElement("span", { "aria-hidden": "true" }, "↑↓ · Enter · Esc")
+  );
+
+  if (results.length === 0) {
+    return react.createElement(
+      "div",
+      { className: "settings-search-panel", role: "listbox", "aria-label": translate("search.placeholder") },
+      meta,
+      react.createElement(
+        "div",
+        { className: "search-no-results" },
+        react.createElement(SettingsUiIcon, { name: "search", size: 20, className: "search-no-results-icon" }),
+        react.createElement("h3", { className: "search-no-results-title" }, translate("search.noResults")),
+        react.createElement("p", { className: "search-no-results-desc" }, translate("search.noResultsDesc"))
+      )
+    );
+  }
+
+  // 번역명이 같아도 섞이지 않도록 실제 탭 ID 기준으로 그룹화한다.
+  const groups = [];
+  const groupByKey = new Map();
+  results.forEach((result, index) => {
+    const groupKey = result.sectionKey || result.section;
+    if (!groupByKey.has(groupKey)) {
+      const group = { key: groupKey, section: result.section, items: [] };
+      groupByKey.set(groupKey, group);
+      groups.push(group);
+    }
+    groupByKey.get(groupKey).items.push({ result, index });
+  });
+
+  return react.createElement(
+    "div",
+    {
+      className: "settings-search-panel",
+      role: "listbox",
+      "aria-label": translate("search.placeholder"),
+    },
+    meta,
+    react.createElement(
+      "div",
+      { className: "settings-search-list" },
+      ...groups.map((group) =>
+        react.createElement(
+          "div",
+          { key: group.key, className: "search-result-group", role: "group", "aria-label": group.section },
+          react.createElement("div", { className: "settings-search-group-label" }, group.section),
+          ...group.items.map(({ result, index }) => {
+            const context = result.sectionLabel || result.desc || "";
+            return react.createElement(
+              "button",
+              {
+                key: result.resultKey,
+                type: "button",
+                role: "option",
+                "aria-selected": index === activeIndex,
+                className: `settings-search-result search-result-item${index === activeIndex ? " is-active" : ""}`,
+                onMouseDown: (event) => event.preventDefault(),
+                onMouseMove: () => {
+                  if (index !== activeIndex) setSearchActiveIndex(index);
+                },
+                onClick: () => pickSearchResult(result),
+              },
+              react.createElement(
+                "span",
+                { className: "settings-search-result-icon", "aria-hidden": "true" },
+                react.createElement(SettingsOutlineIcon, { name: result.sectionKey, size: 15 })
+              ),
+              react.createElement(
+                "span",
+                { className: "settings-search-result-main" },
+                react.createElement("b", null, highlightText(react, result.name, searchQuery)),
+                context
+                  ? react.createElement("small", null, highlightText(react, context, searchQuery))
+                  : null
+              )
+            );
+          })
+        )
+      )
+    )
+  );
+}

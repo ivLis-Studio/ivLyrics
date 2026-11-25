@@ -1,10 +1,11 @@
+import { readAiProviderFixture } from "./fixtures/ai-provider.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const managerSource = readFileSync(new URL("../AIAddonManager.js", import.meta.url), "utf8");
-const addonSource = readFileSync(new URL("../Addon_AI_ChatGPT.js", import.meta.url), "utf8");
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
+const managerSource = bundleInitializer(new URL("../src/providers/ai/AIAddonManager.js", import.meta.url));
+const addonSource = readAiProviderFixture("Addon_AI_ChatGPT.js");
 
 const PREFIX = "ivLyrics:ai:";
 
@@ -51,7 +52,7 @@ const loadHarness = (seed = {}) => {
 	vm.runInContext(managerSource, context);
 	vm.runInContext(addonSource.replace(
 		"    registerAddon();",
-		"    window.hooks = { getRequestTargets, getPrimaryCapabilities };\n    registerAddon();"
+		"    window.hooks = { getRequestTargets, getPrimaryCapabilities: connections.getPrimaryCapabilities };\n    registerAddon();"
 	), context);
 	return { window, storage, fetchCalls };
 };

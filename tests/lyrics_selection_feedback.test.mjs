@@ -1,79 +1,35 @@
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
+import { createLyricLineInteractionHarness as harness } from "./fixtures/lyric-line-interaction.mjs";
+import { createLyricLineActions } from "#ivlyrics/lyrics/createLyricLineActions.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
+import { getKaraokeVocalAnchorCenterWithinLine } from "../src/lyrics/lyricsScrollGeometry.mjs";
 
-const source = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
-const css = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
-const section = (start, end) => {
-  const from = source.indexOf(start), to = source.indexOf(end, from);
-  assert.ok(from >= 0 && to > from, `missing ${start}`);
-  return source.slice(from, to);
-};
-const clone = value => JSON.parse(JSON.stringify(value));
-
-const harness = () => {
-  const events = [], animations = [], hooks = [];
-  const preference = { matches: false };
-  const CONFIG = { visual: { 'reduce-motion': false, 'karaoke-line-transition': true } };
-  let hookIndex = 0, supportsScale = true;
-  const useMemo = (build, dependencies) => {
-    const index = hookIndex++, previous = hooks[index];
-    if (previous && dependencies.length === previous.dependencies.length
-      && dependencies.every((dependency, i) => Object.is(dependency, previous.dependencies[i]))) return previous.value;
-    const value = build(); hooks[index] = { value, dependencies }; return value;
-  };
-  const createElement = (type, props, ...children) => ({ type, props: props || {}, children });
-  const noFrameWork = () => { throw new Error('Selection feedback must not read layout or schedule frame work'); };
-  const content = {
-    isConnected: true,
-    animate(frames, timing) {
-      events.push('animate');
-      const listeners = [];
-      const animation = {
-        target: this, frames: clone(frames), timing: clone(timing), playState: 'running',
-        addEventListener(type, callback, options) { assert.equal(type, 'finish'); assert.equal(options.once, true); listeners.push(callback); },
-        finish() { this.playState = 'finished'; listeners.splice(0).forEach(callback => callback()); },
-      };
-      animations.push(animation); return animation;
+const css = readPcStylesheet();
+test('context menu copy normalizes the text and reports clipboard failures', async () => {
+  const events = [];
+  let clipboardFailure = false;
+  const { createCopyHandler } = createLyricLineActions({
+    copy: async text => {
+      events.push(['copy', text]);
+      if (clipboardFailure) throw new Error('Clipboard unavailable');
     },
-    getBoundingClientRect: noFrameWork,
-  };
-  const row = { firstElementChild: content, animate: noFrameWork, getBoundingClientRect: noFrameWork };
-  const context = vm.createContext({
-    CONFIG,
-    window: { matchMedia: () => preference, Utils: { clearSafePlayerProgressCorrection: () => events.push('clear') } },
-    CSS: { supports: (property, value) => supportsScale && property === 'scale' && value === '1' },
-    Spicetify: { Player: { seek: time => events.push(['seek', time]) } },
-    useMemo, useCallback: (callback, dependencies) => useMemo(() => callback, dependencies),
-    useState: noFrameWork, requestAnimationFrame: noFrameWork, setTimeout: noFrameWork, getComputedStyle: noFrameWork,
-    react: { memo: component => component, createElement },
-    Utils: { formatLyricLineToCopy: text => text },
-    normalizeDisplayedCulturalAnnotations: () => [],
-    getRubySourceText: text => text,
-    hasKaraokeVocalRows: line => !!line?.vocals,
-    getInterludeInfo: () => ({ isInterlude: false }),
-    createCopyHandler: () => () => events.push('copy'),
-    renderAnnotatedLyricHTML: text => text,
-    renderLyricMainContent: props => props.mainText,
-    renderLyricSubLine: (className, text) => text ? createElement('p', { className }, text) : null,
-    InterludeIndicator: 'InterludeIndicator',
+    notifySuccess: key => events.push(['success', key]),
+    notifyError: key => events.push(['error', key]),
   });
-  vm.runInContext([
-    section('const prefersReducedLyricsMotion', 'const animateSyncedLyricsScroll'),
-    section('const lyricsLineSelectionAnimations', 'const renderLyricsItems'),
-    'globalThis.renderBlock = LyricsLineBlock;',
-  ].join('\n'), context);
-  return {
-    events, animations, content, row, CONFIG, preference, context,
-    setSupportsScale: value => { supportsScale = value; },
-    event: extra => ({ currentTarget: row, preventDefault: () => events.push('prevent'), stopPropagation: noFrameWork, ...extra }),
-    render: (props = {}) => {
-      hookIndex = 0;
-      return context.renderBlock({ className: 'lyrics-lyricsContainer-LyricsLine', mainText: 'A lyric', seekTime: 1250, ...props });
-    },
-  };
-};
+  const event = { preventDefault: () => events.push('prevent') };
+  createCopyHandler(['  Original ', { props: { children: 'lyric  ' } }], 'copied', 'failed')(event);
+  await new Promise(setImmediate);
+  assert.deepEqual(events.splice(0), ['prevent', ['copy', '  Original lyric  '], ['success', 'copied']]);
+
+  createCopyHandler('', 'copied', 'failed')(event);
+  assert.deepEqual(events.splice(0), ['prevent', ['error', 'failed']]);
+
+  clipboardFailure = true;
+  createCopyHandler('Original lyric', 'copied', 'failed')(event);
+  await new Promise(setImmediate);
+  assert.deepEqual(events, ['prevent', ['copy', 'Original lyric'], ['error', 'failed']]);
+});
 
 test('click keeps immediate seek and propagation while scaling only the existing main paragraph', () => {
   const h = harness(), lineRef = {}, style = { '--position-index': 2 };
@@ -172,11 +128,8 @@ test('wrapped and direct four/eight vocal selections preserve every measured anc
     };
     h.row.querySelector = () => stack;
     h.row.getBoundingClientRect = () => ({ top: 20, height: totalHeight });
-    h.context.KARAOKE_VOCAL_STACK_CENTER_THRESHOLD = 4;
-    vm.runInContext(section('const getKaraokeVocalAnchorCenterWithinLine', 'const getActiveLineAnchorCenter')
-      + '\nglobalThis.anchorCenter = getKaraokeVocalAnchorCenterWithinLine;', h.context);
     const positions = [0, 0.5, 1.7, count - 1];
-    const before = positions.map(position => { anchorPosition = position; return h.context.anchorCenter(h.row); });
+    const before = positions.map(position => { anchorPosition = position; return getKaraokeVocalAnchorCenterWithinLine(h.row); });
     h.render({ isKara: true, line: { text: 'Vocals', vocals: {} } }).props.onClick(h.event());
     assert.equal(h.animations.length, count, `${count} ${wrapped ? 'wrapped' : 'direct'} vocals must not fall back to scaling the paragraph`);
     h.animations.forEach((animation, index) => {
@@ -187,7 +140,7 @@ test('wrapped and direct four/eight vocal selections preserve every measured anc
     });
     positions.forEach((position, index) => {
       anchorPosition = position;
-      assert.equal(h.context.anchorCenter(h.row), before[index], 'an in-flight press must not shift the active vocal anchor');
+      assert.equal(getKaraokeVocalAnchorCenterWithinLine(h.row), before[index], 'an in-flight press must not shift the active vocal anchor');
     });
   }
 });

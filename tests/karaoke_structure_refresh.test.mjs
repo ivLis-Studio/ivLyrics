@@ -1,29 +1,19 @@
+import { createLyricMainContentRenderer } from "#ivlyrics/lyrics/lyricsLineComponents.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
+import { hasKaraokeVocalRows } from "../src/lyrics/karaokeLinePresentation.mjs";
 
-const source = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
-const section = (start, end) => {
-  const from = source.indexOf(start), to = source.indexOf(end, from + start.length);
-  assert.ok(from >= 0 && to > from, start);
-  return source.slice(from, to);
-};
-const context = vm.createContext({
-  KaraokeLine: 'KaraokeLine',
-  Map,
-  safeRenderText: value => value,
+const renderMain = createLyricMainContentRenderer({
   react: { createElement: (type, props) => ({ type, props }) },
+  getKaraokeLine: () => 'KaraokeLine',
+  hasKaraokeVocalRows,
 });
-vm.runInContext(section('const hasKaraokeVocalRows =', 'const splitLineByParallelShape =')
-  + section('const renderLyricMainContent =', 'const normalizeUnsyncedLyrics =')
-  + '\nglobalThis.render = renderLyricMainContent;', context);
 const single = { text: 'Same source', startTime: 1000, endTime: 5000,
   syllables: [{ text: 'Same source', startTime: 1000, endTime: 5000 }] };
 const parallel = { ...single, vocals: { lead: single, background: [
   { text: 'Echo', syllables: [{ text: 'Echo', startTime: 1200, endTime: 4000 }] },
 ] } };
-const render = (line, props = {}) => context.render({
+const render = (line, props = {}) => renderMain({
   isKara: true, line, position: 1500, isActive: true, ...props,
 });
 

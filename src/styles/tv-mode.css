@@ -1,0 +1,409 @@
+/* =============================================
+   TV Mode - Fullscreen Layout
+   ============================================= */
+
+/* TV Mode TMI Overlay */
+.fullscreen-tv-tmi-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  animation: tvTmiOverlayIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes tvTmiOverlayIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+
+  to {
+    opacity: 1;
+    backdrop-filter: blur(20px);
+  }
+}
+
+.fullscreen-tv-tmi-overlay .tmi-fullview,
+.fullscreen-tv-tmi-overlay .tmi-loading-view {
+  max-width: 90vw;
+  max-height: 90vh;
+}
+
+/* TV Mode Album Wrapper */
+.fullscreen-tv-album-wrapper {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s ease;
+}
+
+.fullscreen-tv-album-wrapper:hover {
+  transform: scale(1.02);
+}
+
+/* Keep both TV overlay rails anchored to the same viewport/page edges. */
+.fullscreen-tv-song-info,
+.fullscreen-tv-controls-wrapper {
+  --fullscreen-tv-edge-offset: 48px;
+}
+
+/* TV Mode Song Info - Bottom Left */
+.fullscreen-tv-song-info {
+  --fullscreen-tv-info-gap: 20px;
+  position: fixed;
+  bottom: var(--fullscreen-tv-edge-offset);
+  left: var(--fullscreen-tv-edge-offset);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: var(--fullscreen-tv-info-gap);
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+  pointer-events: auto;
+}
+
+.fullscreen-tv-song-info.hidden {
+  opacity: 0;
+  transform: translateY(var(--iv-motion-distance-md));
+  pointer-events: none;
+}
+
+/* TV Mode Album Art */
+.fullscreen-tv-album {
+  flex-shrink: 0;
+  object-fit: cover;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5),
+    0 4px 16px rgba(0, 0, 0, 0.3);
+  transition: transform 0.3s ease;
+}
+
+/* TV Mode Track Info */
+.fullscreen-tv-track-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: var(--fullscreen-tv-album-size, 140px);
+  width: max-content;
+  min-width: 0;
+  max-width: min(50vw, calc(100vw - var(--fullscreen-tv-album-size, 140px) - 2 * var(--fullscreen-tv-edge-offset) - var(--fullscreen-tv-info-gap)));
+}
+
+.fullscreen-tv-metadata-stack {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: calc(4px * var(--fullscreen-tv-metadata-scale, 1));
+  min-width: 0;
+  max-width: 100%;
+}
+
+.fullscreen-tv-title-container,
+.fullscreen-tv-artist-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.fullscreen-tv-title-container {
+  gap: calc(2px * var(--fullscreen-tv-metadata-scale, 1));
+  /* Soft halo for the TV titles. A filter on the container (which has no
+     overflow clipping) paints the same halo text-shadow would, without being
+     cut into a rectangle by the titles' overflow:hidden clamp box. */
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.6))
+    drop-shadow(0 4px 16px rgba(0, 0, 0, 0.4));
+}
+
+.fullscreen-tv-artist-container {
+  gap: calc(1px * var(--fullscreen-tv-metadata-scale, 1));
+}
+
+/* TV Mode Title */
+.fullscreen-tv-title {
+  font-weight: 700;
+  color: var(--spice-text, #fff);
+  /* Outline only: the soft halo lives on .fullscreen-tv-title-container as a
+     filter, so this element's overflow:hidden (required for
+     -webkit-line-clamp) has no halo to cut into a box. */
+  text-shadow: var(--fullscreen-title-outline-shadow, 0 0 0 transparent);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-family: "Pretendard Variable", Pretendard, -apple-system,
+    BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI",
+    "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-tv-title-secondary {
+  max-width: 100%;
+  color: rgba(255, 255, 255, 0.78);
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  -webkit-line-clamp: 1;
+}
+
+/* TV Mode Artist */
+.fullscreen-tv-artist {
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: var(--fullscreen-artist-outline-shadow, 0 0 0 transparent);
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+  line-height: 1.3;
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: "Pretendard Variable", Pretendard, -apple-system,
+    BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI",
+    "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-tv-artist-secondary {
+  max-width: 100%;
+  color: rgba(255, 255, 255, 0.66);
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Single-line ellipsis keeps working with overflow:clip (verified), so let
+   the shadow halo paint past the box instead of being cut into a rectangle.
+   overflow:hidden above remains the fallback for engines without clip. */
+@supports (overflow: clip) {
+  .fullscreen-tv-artist-secondary {
+    overflow: clip;
+    overflow-clip-margin: 16px;
+  }
+}
+
+/* TV Mode Album Name */
+.fullscreen-tv-album-name {
+  font-size: calc(14px * var(--fullscreen-tv-metadata-scale, 1));
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.6);
+  text-shadow: var(--fullscreen-artist-outline-shadow, 0 0 0 transparent);
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.4));
+  display: block;
+  max-width: 100%;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: "Pretendard Variable", Pretendard, -apple-system,
+    BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI",
+    "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+}
+
+/* TV Mode - Hide left panel when active */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.tv-mode-active .lyrics-fullscreen-left-panel {
+  display: none !important;
+}
+
+/* TV Mode - Lyrics take full width */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.tv-mode-active {
+  grid-template-columns: 1fr !important;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.tv-mode-active .lyrics-lyricsContainer-SyncedLyricsPage,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.tv-mode-active .lyrics-lyricsContainer-UnsyncedLyricsPage {
+  grid-column: 1 !important;
+  /* Keep the full-width TV lyrics centered with symmetric side padding. */
+  padding-inline: 40px;
+  padding-bottom: 200px;
+}
+
+/* TV Mode - Responsive adjustments */
+@media (max-width: 1200px) {
+  .fullscreen-tv-song-info,
+  .fullscreen-tv-controls-wrapper {
+    --fullscreen-tv-edge-offset: 36px;
+  }
+
+  .fullscreen-tv-song-info {
+    --fullscreen-tv-info-gap: 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .fullscreen-tv-song-info,
+  .fullscreen-tv-controls-wrapper {
+    --fullscreen-tv-edge-offset: 24px;
+  }
+
+  .fullscreen-tv-song-info {
+    --fullscreen-tv-info-gap: 12px;
+  }
+
+  .fullscreen-tv-track-info {
+    max-width: min(60vw, calc(100vw - var(--fullscreen-tv-album-size, 140px) - 2 * var(--fullscreen-tv-edge-offset) - var(--fullscreen-tv-info-gap)));
+  }
+}
+
+/* TV Mode - Portrait orientation override */
+@media (orientation: portrait) {
+
+  /* TV Mode: Keep single column layout, lyrics take full height */
+  .lyrics-lyricsContainer-LyricsContainer.fullscreen-active.tv-mode-active {
+    grid-template-columns: 100% !important;
+    grid-template-rows: 1fr !important;
+    gap: 0 !important;
+  }
+
+  /* TV Mode: Lyrics container takes full space */
+  .lyrics-lyricsContainer-LyricsContainer.fullscreen-active.tv-mode-active .lyrics-lyricsContainer-SyncedLyricsPage,
+  .lyrics-lyricsContainer-LyricsContainer.fullscreen-active.tv-mode-active .lyrics-lyricsContainer-UnsyncedLyricsPage {
+    grid-row: 1 !important;
+    grid-column: 1 !important;
+    height: 100% !important;
+    padding-bottom: 220px;
+  }
+
+  /* TV Mode: Song info at bottom-left in portrait */
+  .lyrics-lyricsContainer-LyricsContainer.fullscreen-active.tv-mode-active .fullscreen-tv-song-info {
+    --fullscreen-tv-edge-offset: 24px;
+  }
+}
+
+/* TV Mode Controls */
+/* TV Mode Controls Wrapper (right side) */
+.fullscreen-tv-controls-wrapper {
+  position: fixed;
+  right: max(var(--fullscreen-tv-edge-offset), 70px);
+  bottom: var(--fullscreen-tv-edge-offset);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: auto;
+}
+
+/* TV Mode Controls */
+.fullscreen-tv-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fullscreen-tv-control-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition:
+    color var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    background var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-fast) var(--iv-motion-ease-emphasis),
+    box-shadow var(--iv-motion-duration-fast) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-tv-control-btn:hover {
+  color: white;
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+}
+
+.fullscreen-tv-control-btn:active {
+  transform: translateY(0) scale(0.94);
+}
+
+.fullscreen-tv-control-btn.play-pause {
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 4px;
+}
+
+.fullscreen-tv-control-btn.play-pause:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* TV Mode Progress bar */
+.fullscreen-tv-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 200px;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-tv-time {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  min-width: 36px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fullscreen-tv-time.total {
+  text-align: right;
+}
+
+.fullscreen-tv-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    height var(--iv-motion-duration-fast) var(--iv-motion-ease-emphasis),
+    background var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-tv-progress-bar:hover {
+  height: 6px;
+}
+
+.fullscreen-tv-progress-fill {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 2px;
+  transition: width var(--iv-motion-duration-medium) var(--iv-motion-ease-emphasis);
+}
+
+.fullscreen-tv-controls-wrapper {
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-medium) var(--iv-motion-ease-emphasis);
+}
+
+.fullscreen-tv-controls-wrapper.hidden {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+}
+
+.fullscreen-tv-controls-wrapper.hidden .fullscreen-tv-controls,
+.fullscreen-tv-controls-wrapper.hidden .fullscreen-tv-progress {
+  opacity: 0;
+}
+

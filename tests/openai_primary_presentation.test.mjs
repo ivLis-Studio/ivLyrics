@@ -1,22 +1,24 @@
+import { readAiProviderFixture } from "./fixtures/ai-provider.mjs";
+import { readLanguageTable } from "./fixtures/language-source.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../Addon_AI_ChatGPT.js', import.meta.url), 'utf8');
+const source = readAiProviderFixture("Addon_AI_ChatGPT.js");
 const plain = value => JSON.parse(JSON.stringify(value));
 const backup = {
     id: 'backup', name: 'Backup', baseUrl: 'https://backup.test/v1',
     apiKeys: 'backup-key', model: 'backup-model', enabled: true, capabilities: { metadata: false }
 };
 
-function harness(values = {}, responder, translate = key => key) {
+function harness(values = {}, responder, translate = key => key, { runEffects = false } = {}) {
     const settings = new Map(Object.entries({
         'api-keys': 'primary-key', 'base-url': 'https://primary.test/v1',
         model: 'primary-model', 'custom-model': '', 'primary-capabilities': {},
         'fallback-providers': [plain(backup)], 'extra-endpoints': [], ...values
     }));
-    const writes = [], requests = [], states = new WeakMap();
+    const writes = [], requests = [], states = new WeakMap(), effects = [];
     let current, cursor, addon;
     const React = {
         createElement: (type, props, ...children) => ({
@@ -29,8 +31,17 @@ function harness(values = {}, responder, translate = key => key) {
             return [state[index], value => { state[index] = typeof value === 'function' ? value(state[index]) : value; }];
         },
         useCallback: callback => callback,
-        // Real model-discovery effects are exercised by the browser fixture.
-        useEffect() {}
+        useEffect(effect, deps) {
+            if (!runEffects) return;
+            const index = cursor++;
+            const state = current;
+            const previous = state[index];
+            if (previous && deps?.every((value, i) => Object.is(value, previous.deps[i]))) return;
+            effects.push(() => {
+                previous?.dispose?.();
+                state[index] = { deps, dispose: effect() };
+            });
+        }
     };
     const window = {
         I18n: { t: translate },
@@ -41,7 +52,7 @@ function harness(values = {}, responder, translate = key => key) {
             getProviderRequestAttempts: () => 1
         },
         async ivLyricsFetch(url, options) {
-            const request = { url, authorization: options.headers.Authorization, body: JSON.parse(options.body) };
+            const request = { url, authorization: options.headers.Authorization, body: options.body ? JSON.parse(options.body) : null };
             requests.push(request);
             return responder ? responder(request) : Response.json({ choices: [{ message: { content: 'OK' }, finish_reason: 'stop' }] });
         }
@@ -54,7 +65,7 @@ function harness(values = {}, responder, translate = key => key) {
         cursor = 0;
         return Component(props);
     };
-    return { settings, writes, requests, render };
+    return { settings, writes, requests, render, commit: () => effects.splice(0).forEach(run => run()) };
 }
 
 function nodes(node, predicate) {
@@ -118,6 +129,36 @@ test('primary key formats and legacy api-key fallback display without rewriting 
     const h = harness({ 'api-keys': '', 'api-key': 'legacy-key' });
     assert.equal(field(h.render(), 'apiKeys').props.value, 'legacy-key');
     assert.deepEqual(h.writes, []);
+});
+
+test('clearing a legacy key removes it from the field and the provider requests', async () => {
+    const h = harness({ 'api-keys': '', 'api-key': 'legacy-key', 'fallback-providers': [] });
+    const root = h.render();
+    assert.equal(field(root, 'apiKeys').props.value, 'legacy-key');
+    change(root, 'apiKeys', '');
+    assert.equal(field(h.render(), 'apiKeys').props.value, '');
+    assert.equal(testButton(h.render()).props.disabled, true);
+    assert.deepEqual(h.writes, [{ key: 'api-keys', value: '' }, { key: 'api-key', value: '' }]);
+    assert.deepEqual(h.requests, []);
+});
+
+test('a model response from the previous primary URL cannot replace the active connection list', async () => {
+    const pending = new Map();
+    const flush = () => new Promise(resolve => setImmediate(resolve));
+    const h = harness({}, ({ url }) => new Promise(resolve => pending.set(url, resolve)), undefined, { runEffects: true });
+    h.render(); h.commit();
+    change(h.render(), 'baseUrl', 'https://next.test/v1');
+    h.render(); h.commit();
+    assert.equal(field(h.render(), 'models').props.disabled, true);
+
+    pending.get('https://next.test/v1/models')(Response.json({ data: [{ id: 'new-model' }] }));
+    await flush();
+    const availableModels = () => field(h.render(), 'models').children.map(option => option.props.value).filter(Boolean);
+    assert.deepEqual(availableModels(), ['new-model']);
+    pending.get('https://primary.test/v1/models')(Response.json({ data: [{ id: 'old-model' }] }));
+    await flush();
+    assert.deepEqual(availableModels(), ['new-model']);
+    assert.equal(field(h.render(), 'models').props.disabled, false);
 });
 
 test('primary edits keep the original setting keys and custom-model selection semantics', () => {
@@ -206,13 +247,11 @@ test('primary heading and controls use existing I18n keys', () => {
 });
 
 test('primary heading and test labels resolve from the existing locale files', () => {
-    const directory = new URL('../langs/', import.meta.url);
+    const directory = new URL('../src/i18n/langs/', import.meta.url);
     const files = readdirSync(directory).filter(name => /^Lang.*\.js$/.test(name));
     assert.ok(files.length >= 22);
     for (const file of files) {
-        const context = { window: {} };
-        vm.runInNewContext(readFileSync(new URL(file, directory), 'utf8'), context);
-        const messages = Object.values(context.window)[0];
+        const messages = readLanguageTable(file);
         const h = harness({}, undefined, key => key.split('.').reduce((value, part) => value?.[part], messages));
         const card = primary(h.render());
         assert.ok(messages.misc.default, `${file}: missing existing Default label`);

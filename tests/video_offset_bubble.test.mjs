@@ -1,3 +1,10 @@
+import { createToolbarSyncFixture } from "./fixtures/toolbar-sync-modules.mjs";
+import { formatToolbarOffsetStep as format } from "../src/app/toolbar/createToolbarControls.mjs";
+import { readLanguageTable } from "./fixtures/language-source.mjs";
+import { sourceUrl } from "./fixtures/source-paths.mjs";
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
+import { renderLyricsPageQuickSync } from "../src/lyrics/lyricsPageQuickSyncView.mjs";
+import { startPageMenus } from "../src/spicetify/composePageMenus.js";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
@@ -8,10 +15,10 @@ import vm from "node:vm";
 // canonical absolute-anchor helpers. Evaluate the actual components with hooks
 // and check production wiring, panel gating, locales and keyboard-focus CSS.
 const read = (name) =>
-  readFileSync(new URL("../" + name, import.meta.url), "utf8").replace(/\r\n/g, "\n");
-const optionsSource = read("OptionsMenu.js");
+  readFileSync(sourceUrl(name), "utf8").replace(/\r\n/g, "\n");
+const controlsSource = readFileSync(new URL("../src/app/toolbar/sync/createSyncAdjustmentControls.mjs", import.meta.url), "utf8");
 const indexSource = read("index.js");
-const styleSource = read("style.css");
+const styleSource = readPcStylesheet();
 
 const section = (text, startMarker, endMarker) => {
   const start = text.indexOf(startMarker);
@@ -97,12 +104,7 @@ const loadBubble = () => {
     IvLyricsToolbarIcon: () => null,
     ToolbarRangeField: () => null,
   });
-  const pillSource = section(optionsSource, "const COMMUNITY_VIDEO_SYNC_MAX_SECONDS", "\nconst TrackSyncAdjustPill");
-  const fluentSource = section(optionsSource, "const SyncAdjustButtonFluent", "\n// Community Video Selector");
-  vm.runInContext(
-    `${pillSource}\n${fluentSource}\nglobalThis.__videoBubble = { CurrentVideoSyncPill, CurrentVideoSyncPanelControl, SyncAdjustButtonFluent, normalizeCommunityVideoSyncSeconds, clampCommunityVideoSyncSeconds, formatCommunityVideoSyncSeconds, readActiveCommunityVideoInfo };`,
-    context
-  );
+  context.__videoBubble = createToolbarSyncFixture(context);
   bubbleContext = { context, win, dispatched };
   return bubbleContext;
 };
@@ -228,48 +230,55 @@ test("community video sync helpers normalize, clamp and format", () => {
   assert.equal(formatCommunityVideoSyncSeconds(1.234), "1.234s");
 });
 
-test("index.js renders one unified pill with independent lyric/video eligibility", () => {
-  const compute = section(indexSource, "const computeTrackSyncAdjustPill = () => {", "const renderFullscreenOverlayChild");
-  for (const token of [
-    "canAdjustVideoSync",
-    "shouldUseVideoBackground",
-    "lyricsAdjustable: canAdjustTrackSync",
-    "videoTrackUri: canAdjustVideoSync",
-    "quickSyncStack",
-    "lyrics-quick-sync-stack",
-  ]) {
-    assert.ok(compute.includes(token), `computeTrackSyncAdjustPill missing: ${token}`);
-  }
-  assert.equal(compute.includes("react.createElement(CurrentVideoSyncPill"), false, "no duplicate floating video pill");
-  const render = (overrides = {}) => vm.runInNewContext(
-    `(function () { ${compute}\nreturn { trackSyncAdjustPill, quickSyncStack }; }).call({ state })`,
-    {
-      mode: "synced", SYNCED: "synced", isKaraokeRenderMode: () => false,
-      state: { uri: TRACK_URI, synced: [{ startTime: 1000 }], karaoke: [], showMarketplace: false },
-      suppressStaleLyricsPage: false, shouldHideFullscreenLyrics: false, isSyncCreatorActive: false,
-      shouldUseVideoBackground: true, renderTrackUri: TRACK_URI,
-      CONFIG: { visual: {} }, TrackSyncAdjustPill: "UnifiedSyncPill",
-      react: { createElement }, ...overrides,
-    }
-  );
+test("the lyrics page renders one unified pill with independent lyric/video eligibility", () => {
+  const render = (overrides = {}) => renderLyricsPageQuickSync({
+    hasTrackSyncLyrics: true,
+    state: { uri: TRACK_URI, showMarketplace: false },
+    suppressStaleLyricsPage: false, shouldHideFullscreenLyrics: false, isSyncCreatorActive: false,
+    shouldUseVideoBackground: true, renderTrackUri: TRACK_URI, visual: {},
+    TrackSyncAdjustPill: "UnifiedSyncPill", react: { createElement }, ...overrides,
+  });
   const both = render();
-  assert.equal(both.trackSyncAdjustPill.type, "UnifiedSyncPill");
-  assert.equal(both.trackSyncAdjustPill.props.lyricsAdjustable, true);
-  assert.equal(both.trackSyncAdjustPill.props.videoTrackUri, TRACK_URI);
-  assert.deepEqual(both.quickSyncStack.children, [both.trackSyncAdjustPill]);
-  const noLyrics = { uri: TRACK_URI, synced: [], karaoke: [], showMarketplace: false };
-  assert.equal(render({ state: noLyrics }).trackSyncAdjustPill.props.lyricsAdjustable, false);
-  assert.equal(render({ shouldUseVideoBackground: false }).trackSyncAdjustPill.props.videoTrackUri, null);
+  const pill = result => result.quickSyncStack.children[0];
+  assert.equal(both.quickSyncStack.props.className, "lyrics-quick-sync-stack");
+  assert.equal(both.quickSyncStack.children.length, 1);
+  assert.equal(pill(both).type, "UnifiedSyncPill");
+  assert.equal(pill(both).props.lyricsAdjustable, true);
+  assert.equal(pill(both).props.videoTrackUri, TRACK_URI);
+  assert.equal(pill(render({ hasTrackSyncLyrics: false })).props.lyricsAdjustable, false);
+  assert.equal(pill(render({ shouldUseVideoBackground: false })).props.videoTrackUri, null);
   for (const overrides of [
-    { state: noLyrics, shouldUseVideoBackground: false },
-    { CONFIG: { visual: { "quick-sync-controls-enabled": false } } },
-    { state: noLyrics, renderTrackUri: "spotify:track:stale" },
+    { hasTrackSyncLyrics: false, shouldUseVideoBackground: false },
+    { visual: { "quick-sync-controls-enabled": false } },
+    { hasTrackSyncLyrics: false, renderTrackUri: "spotify:track:stale" },
     { isSyncCreatorActive: true },
   ]) assert.equal(render(overrides).quickSyncStack, null);
-  assert.ok(
-    indexSource.includes("quickSyncStack ?? trackSyncAdjustPill"),
-    "render call site must prefer the stack while keeping the lyrics pill"
-  );
+  const viewSource = readFileSync(new URL("../src/lyrics/lyricsPageView.mjs", import.meta.url), "utf8");
+  assert.match(viewSource, /const timedLyrics = isKaraokeRenderMode\(mode\) \|\| mode === SYNCED\s*\? resolveModeSpecificLyrics\(page\.state, mode\)/);
+  assert.match(viewSource, /generationStatusStack,\s*quickSyncStack,/);
+});
+
+test("the page menu composition supplies its real quick sync component", (t) => {
+  const document = {};
+  const localStorage = { getItem: () => null };
+  for (const [name, value] of Object.entries({ document, localStorage })) {
+    const original = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { configurable: true, value });
+    t.after(() => {
+      if (original) Object.defineProperty(globalThis, name, original);
+      else delete globalThis[name];
+    });
+  }
+  const menus = startPageMenus({
+    host: { document, localStorage, __ivLyricsLearningModeModule: { initialized: true } },
+    document, react: { memo: component => component },
+    spicetify: {}, appName: "ivLyrics", i18n: { t: key => key },
+    config: { visual: {} }, storage: {}, utils: {}, toast: {},
+  });
+  assert.equal(typeof menus.TrackSyncAdjustPill, "function");
+  const pageSource = readFileSync(new URL("../src/spicetify/index.js", import.meta.url), "utf8");
+  assert.match(pageSource, /MarketplacePage, TrackSyncAdjustPill,\s*} = startPageMenus\(/);
+  assert.match(pageSource, /return renderLyricsPage\(this, \{[\s\S]*?\n\s+TrackSyncAdjustPill,/);
 });
 
 test("sync-adjust panel shows the Current-video section only with an active video", () => {
@@ -310,14 +319,11 @@ test("sync-adjust panel shows the Current-video section only with an active vide
 });
 
 test("all locales provide the quick-sync video strings", () => {
-  const files = readdirSync(new URL("../langs/", import.meta.url)).filter((name) => /^Lang.*\.js$/.test(name));
+  const files = readdirSync(new URL("../src/i18n/langs/", import.meta.url)).filter((name) => /^Lang.*\.js$/.test(name));
   assert.equal(files.length, 22, `expected 22 locale files, saw ${files.length}`);
   for (const file of files) {
-    const source = read("langs/" + file);
-    const context = { window: {} };
-    vm.runInNewContext(source, context);
-    const bundle = Object.values(context.window)[0];
-    const strings = bundle?.syncAdjust;
+    const bundle = readLanguageTable(file);
+    const strings = bundle.syncAdjust;
     for (const key of ["noVideo", "quickLyricsLabel", "quickVideoLabel", "videoTitle", "videoInfo"]) {
       assert.ok(
         typeof strings?.[key] === "string" && strings[key].trim(),
@@ -347,9 +353,9 @@ test("unified mode and share buttons reuse visible keyboard-focus styles", () =>
 
 test("video panel control follows the global sync structure", () => {
   const panelSource = section(
-    optionsSource,
+    controlsSource,
     "const CurrentVideoSyncPanelControl",
-    "\nconst TrackSyncAdjustPill"
+    "\n  const TrackSyncAdjustPill"
   );
   for (const token of [
     "ivl-tb-offset",
@@ -403,14 +409,6 @@ test("offset step labels never bleed past their button edges", () => {
 });
 
 test("second-scale steps render as seconds", () => {
-  const start = optionsSource.indexOf("const formatToolbarOffsetStep =");
-  assert.ok(start >= 0, "missing formatToolbarOffsetStep");
-  const end = optionsSource.indexOf("\n};", start);
-  assert.ok(end > start, "missing formatToolbarOffsetStep end");
-  const format = vm.runInNewContext(
-    `${optionsSource.slice(start, end + 3)}\nformatToolbarOffsetStep;`,
-    {}
-  );
   assert.equal(format(1000), "+1s");
   assert.equal(format(-1000), "−1s");
   assert.equal(format(100), "+100ms");

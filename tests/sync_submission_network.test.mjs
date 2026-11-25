@@ -1,19 +1,10 @@
+import SyncDataCodec from '#ivlyrics/features/sync/SyncDataCodec.mjs';
+import { createSyncCreatorScoreTracker as create } from '#ivlyrics/features/sync/syncCreatorScoreTracker.mjs';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
+import { createSyncDataSubmission } from '#ivlyrics/lyrics/createSyncDataSubmission.mjs';
+import { getSyncCreatorSubmitErrorMessage, requestSyncCreatorWork } from '#ivlyrics/features/sync/syncCreatorSubmissionTransport.mjs';
 
-const require = createRequire(import.meta.url);
-const SyncDataCodec = vm.runInNewContext(readFileSync(new URL('../SyncDataCodec.js', import.meta.url), 'utf8') + ';SyncDataCodec');
-const { create } = require('../SyncCreatorScoreTracker.js');
-const creator = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
-const service = readFileSync(new URL('../LyricsService.js', import.meta.url), 'utf8');
-const slice = (source, start, end) => {
-  const from = source.indexOf(start), to = source.indexOf(end, from);
-  assert.ok(from >= 0 && to > from, start);
-  return source.slice(from, to);
-};
 const messages = {
   'syncCreator.submitError': 'Could not submit',
   'syncCreator.submitNetworkError': 'Connection failed; edits remain',
@@ -21,31 +12,36 @@ const messages = {
   'syncCreator.submitServerError': 'Server returned HTTP {status}; edits remain',
 };
 const I18n = { t: (key, values = {}) => String(messages[key] || key).replace('{status}', values.status) };
-const messageFor = vm.runInNewContext(slice(creator, 'const getSyncCreatorSubmitErrorMessage =', 'const SYNC_CREATOR_RTL_STRONG_CHAR_REGEX')
-  + '\ngetSyncCreatorSubmitErrorMessage', { I18n });
-const workMethod = slice(creator, '\t\t\t\trequest: async payload => {', '\n\t\t\t});').trim().slice('request: '.length);
+const messageFor = error => getSyncCreatorSubmitErrorMessage(error, I18n.t);
+
 function workHarness(fetchImpl) {
   const deadlines = [], cleared = [];
-  const request = vm.runInNewContext(`(${workMethod})`, {
-    AbortController, I18n, Utils: { getApiHeaders: headers => headers },
-    setTimeout: (callback, delay) => { const timer = { callback, delay }; deadlines.push(timer); return timer; },
-    clearTimeout: timer => cleared.push(timer),
+  const request = payload => requestSyncCreatorWork(payload, {
+    getHeaders: headers => headers,
+    translate: I18n.t,
+    schedule: (callback, delay) => { const timer = { callback, delay }; deadlines.push(timer); return timer; },
+    cancel: timer => cleared.push(timer),
     fetch: (url, options) => fetchImpl(url, options, deadlines.at(-1)),
   });
   return { request, deadlines, cleared };
 }
 function submissionHarness(fetchImpl) {
   const calls = [], cacheWrites = [];
-  const submit = vm.runInNewContext(slice(service, '        async function submitSyncData(', '        /**')
-    + '\nsubmitSyncData', {
-    window: { SyncDataCodec }, I18n, Utils: { getAuthToken: () => 'session', requireDiscordAuth: async () => {} },
+  const submit = createSyncDataSubmission({
+    getCodec: () => SyncDataCodec,
+    translate: I18n.t,
+    getAuthUtils: () => ({ getAuthToken: () => 'session', requireDiscordAuth: async () => {} }),
     resolveSyncDataIdentity: async () => ({ isrc: 'USABC1234567', trackId: 'track' }),
-    getUserHash: () => 'user', getSyncDataTrackMetadata: () => ({}), getCurrentSpotifyProfile: async () => null,
-    API_BASE: 'https://lyrics.api.ivl.is', SYNC_DATA_REQUEST_VERSION: '20260701',
-    Spicetify: { Config: { version: 'test' } },
-    fetch: (...args) => { calls.push(args); return fetchImpl(...args); },
-    normalizeSyncDataIsrc: value => value,
-    rememberOpenDbSyncDataEntry: (...args) => cacheWrites.push(args), clearCache: (...args) => cacheWrites.push(args),
+    getUserHash: () => 'user',
+    getSyncDataTrackMetadata: () => ({}),
+    getCurrentSpotifyProfile: async () => null,
+    apiBase: 'https://lyrics.api.ivl.is',
+    requestVersion: '20260701',
+    getClientVersion: () => 'test',
+    request: (...args) => { calls.push(args); return fetchImpl(...args); },
+    rememberResolvedTrackIsrc: (...args) => cacheWrites.push(args),
+    rememberOpenDbSyncDataEntry: (...args) => cacheWrites.push(args),
+    clearCache: (...args) => cacheWrites.push(args),
   });
   return { submit: () => submit('track', 'lrclib', { source: { provider: 'lrclib', lrclibId: '123' }, lines: [] }), calls, cacheWrites };
 }

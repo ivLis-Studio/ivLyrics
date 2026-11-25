@@ -27,12 +27,33 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: npm
+
+      - run: npm ci
 
       - name: Check script syntax
         run: |
-          for f in *.js langs/*.js mobile/motion/*.js .github/scripts/*.mjs; do
-            node --check "$f"
-          done
+          find src .github/scripts -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n 1 node --check
 
-      - name: Run tests
-        run: node --test tests/*.test.mjs
+      - name: Build and test the install archive
+        run: |
+          npm run package
+          IVLYRICS_TEST_PACKAGE_VERSION="$(cat version.txt)" npm test
+
+  windows-installer:
+    name: Windows installer and archive
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Test the Windows installer with the packaged archive
+        run: |
+          npm run package
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:IVLYRICS_TEST_PACKAGE_VERSION = (Get-Content -Raw version.txt).Trim()
+          node --test tests/windows_installer_upgrade.test.mjs tests/release_archive_contents.test.mjs

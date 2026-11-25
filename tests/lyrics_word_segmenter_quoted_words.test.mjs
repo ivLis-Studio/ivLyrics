@@ -1,18 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
-
-const segmenterSource = readFileSync(new URL("../LyricsWordSegmenter.js", import.meta.url), "utf8");
-
-const loadSegmenter = () => {
-	const module = { exports: {} };
-	const context = vm.createContext({ module, console: { log: () => {}, warn: () => {}, error: () => {} } });
-	vm.runInContext(segmenterSource, context);
-	return module.exports;
-};
-
-const segmenter = loadSegmenter();
+import { lyricsWordSegmenter as segmenter } from "../src/lyrics/LyricsWordSegmenter.js";
 
 // Ports of the two consumers that turn tokens into per-word annotations:
 // assignKaraokeWordIndexes (Pages.js) and the word-run split inside

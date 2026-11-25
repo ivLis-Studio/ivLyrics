@@ -1,10 +1,11 @@
+import { readAiProviderFixture } from "./fixtures/ai-provider.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const addonSource = readFileSync(new URL("../Addon_AI_LocalModel.js", import.meta.url), "utf8");
-const managerSource = readFileSync(new URL("../AIAddonManager.js", import.meta.url), "utf8");
+const addonSource = readAiProviderFixture("Addon_AI_LocalModel.js");
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
+const managerSource = bundleInitializer(new URL("../src/providers/ai/AIAddonManager.js", import.meta.url));
 const MODEL_BASE = "https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF/resolve/main/";
 const LIGHT_URL = MODEL_BASE + "Hy-MT2-1.8B-Q4_K_M.gguf";
 const MEDIUM_URL = MODEL_BASE + "Hy-MT2-1.8B-Q6_K.gguf";

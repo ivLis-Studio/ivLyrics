@@ -1,16 +1,18 @@
+import { createKaraokeHarnessFactory } from "./fixtures/karaoke-page-modules.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { KaraokeWordTiming } from '../src/lyrics/karaokeWordTiming.mjs';
 
 const harnessUrl = new URL('./karaoke_static_render_cache.test.mjs', import.meta.url);
 const fixture = readFileSync(harnessUrl, 'utf8');
 const from = fixture.indexOf('const currentSource ='), to = fixture.indexOf("test('vocal presence");
 assert.ok(from >= 0 && to > from);
-const { createHarness, makeLine } = new Function('assert', 'execFileSync', 'readFileSync', 'vm',
+const { createHarness, makeLine } = createKaraokeHarnessFactory('assert', 'execFileSync', 'readFileSync', 'vm', 'KaraokeWordTiming',
   fixture.slice(from, to).replaceAll('import.meta.url', JSON.stringify(harnessUrl.href))
-  + '\nreturn { createHarness, makeLine };')(assert, execFileSync, readFileSync, vm);
+  + '\nreturn { createHarness, makeLine };')(assert, execFileSync, readFileSync, vm, KaraokeWordTiming);
 const nodes = (tree, className, result = []) => {
   if (Array.isArray(tree)) tree.forEach(node => nodes(node, className, result));
   else if (tree && typeof tree === 'object') {

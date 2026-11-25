@@ -1,0 +1,21 @@
+{
+  "name": "ivlyrics-spicetify",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#ivlyrics/*": "./src/*"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node .github/scripts/build_pc.mjs",
+    "package": "node .github/scripts/build_pc.mjs --zip",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "fflate": "0.8.3",
+    "wa-sqlite": "1.0.0"
+  }
+}

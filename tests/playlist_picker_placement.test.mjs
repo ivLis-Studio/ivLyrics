@@ -1,17 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
-
-const source = readFileSync(new URL('../PlaylistPicker.js', import.meta.url), 'utf8');
-const start = source.indexOf('const PLAYLIST_POPOVER_GAP');
-const end = source.indexOf('const PlaylistPicker = (() => {');
-const context = vm.createContext({});
-vm.runInContext(
-	`${source.slice(start, end)}\nglobalThis.resolvePlaylistPopoverPlacement = resolvePlaylistPopoverPlacement;`,
-	context
-);
-const resolvePlaylistPopoverPlacement = context.resolvePlaylistPopoverPlacement;
+import { resolvePlaylistPopoverPlacement } from '../src/features/player/PlaylistPicker.js';
 
 const anchor = (overrides = {}) => ({
 	top: 400,

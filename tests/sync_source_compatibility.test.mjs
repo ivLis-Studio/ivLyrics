@@ -1,28 +1,14 @@
+import { getSyncDataLineCharCounts } from "#ivlyrics/providers/lyrics/lrclibSourceMatching.mjs";
+import {
+    normalizeSyncBodyForSource as normalize,
+    getSyncCreatorLyricsFingerprintFromText as fingerprint,
+} from "#ivlyrics/features/sync/lrclibSyncSource.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { createSyncDataRenderer } from "#ivlyrics/lyrics/createSyncDataRenderer.mjs";
 import test from 'node:test';
-import vm from 'node:vm';
 
-const require = createRequire(import.meta.url);
-const { KaraokeWordTiming, SyncDataSourceCompatibility } = require('../LyricsService.js');
-const readSource = name => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
-const section = (source, startMarker, endMarker) => {
-    const start = source.indexOf(startMarker);
-    const end = source.indexOf(endMarker, start + startMarker.length);
-    assert.ok(start >= 0 && end > start, `missing production section: ${startMarker}`);
-    return source.slice(start, end);
-};
-const editor = vm.createContext({ window: {}, Spicetify: {}, console });
-vm.runInContext(`${section(readSource('SyncDataCreator.js'), 'const SYNC_CREATOR_', 'const SyncDataCreator =')}
-    globalThis.normalize = normalizeLoadedSyncCreatorBodyForLyrics;
-    globalThis.fingerprint = getSyncCreatorLyricsFingerprintFromText;`, editor);
-const renderer = vm.createContext({ window: {}, Spicetify: {}, console, KaraokeWordTiming, SyncDataSourceCompatibility });
-vm.runInContext(`${section(readSource('LyricsService.js'), 'const SyncDataService = (() => {', 'window.SyncDataService = SyncDataService;')}
-    globalThis.apply = SyncDataService.applySyncDataToLyrics;`, renderer);
-const addon = vm.createContext({});
-vm.runInContext(`${section(readSource('Addon_Lyrics_Lrclib.js'), 'function getSyncDataLineCharCounts(', 'function hasExactLineCharCountMatch(')}
-    globalThis.counts = getSyncDataLineCharCounts;`, addon);
+const editor = { normalize, fingerprint };
+const renderer = createSyncDataRenderer();
 const plain = value => JSON.parse(JSON.stringify(value));
 const sourceRows = ['ABCDEFG', 'HIJKLMNOP', 'QRSTUVWXYZ'];
 const makeSync = (rows = sourceRows) => {
@@ -34,7 +20,7 @@ const makeSync = (rows = sourceRows) => {
         return line;
     }) };
 };
-const apply = (rows, body, options) => renderer.apply(rows.map(text => ({ text })), { provider: 'lrclib', syncData: body }, options);
+const apply = (rows, body, options) => renderer.applySyncDataToLyrics(rows.map(text => ({ text })), { provider: 'lrclib', syncData: body }, options);
 const withSource = (body, rows = sourceRows) => ({ ...body, source: {
     provider: 'lrclib', lrclibId: '123', lineCharCounts: rows.map(text => Array.from(text).length),
     lyricsFingerprint: editor.fingerprint(rows.join('\n'))
@@ -94,25 +80,25 @@ test('source-backed merged ranges retain the existing verified source behavior',
 });
 
 test('playback rejects legacy LRCLIB mismatches when the provider is supplied through result options', () => {
-    const result = renderer.apply([{ text: 'AB' }], { syncData: makeSync() }, { result: { provider: 'lrclib' } });
+    const result = renderer.applySyncDataToLyrics([{ text: 'AB' }], { syncData: makeSync() }, { result: { provider: 'lrclib' } });
     assert.equal(result, null);
 });
 
 test('LRCLIB candidate matching prefers canonical source rows over merged display ranges', () => {
     const body = withSource(makeSync());
     body.lines = [{ start: 0, end: 25, timing: { start: 1 } }];
-    assert.deepEqual(plain(addon.counts({ syncData: body })), [7, 9, 10]);
+    assert.deepEqual(getSyncDataLineCharCounts({ syncData: body }), [7, 9, 10]);
 });
 
 test('LRCLIB matching can infer full legacy rows from compact ranges without character arrays', () => {
     const body = makeSync();
     body.lines = body.lines.map(({ start, end }) => ({ start, end, timing: { start: 1 } }));
-    assert.deepEqual(plain(addon.counts({ syncData: body })), [7, 9, 10]);
+    assert.deepEqual(getSyncDataLineCharCounts({ syncData: body }), [7, 9, 10]);
 });
 
 test('partial legacy ranges do not masquerade as complete source row counts', () => {
     const body = makeSync();
     body.lines = [body.lines[1], body.lines[2]];
-    assert.equal(addon.counts({ syncData: body }), null);
-    assert.equal(addon.counts({ syncData: { lines: [{ start: 0, end: -1 }] } }), null);
+    assert.equal(getSyncDataLineCharCounts({ syncData: body }), null);
+    assert.equal(getSyncDataLineCharCounts({ syncData: { lines: [{ start: 0, end: -1 }] } }), null);
 });

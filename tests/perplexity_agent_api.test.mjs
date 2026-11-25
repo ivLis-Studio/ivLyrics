@@ -1,10 +1,10 @@
+import { openEventResponse, readAiProviderFixture } from "./fixtures/ai-provider.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
 // Perplexity retired Sonar Chat Completions on 2026-09-27; the addon speaks the Agent API.
-const source = readFileSync(new URL('../Addon_AI_Perplexity.js', import.meta.url), 'utf8');
+const source = readAiProviderFixture("Addon_AI_Perplexity.js");
 const AGENT_URL = 'https://api.perplexity.ai/v1/agent';
 const MODELS_URL = 'https://api.perplexity.ai/v1/models';
 
@@ -159,6 +159,19 @@ test('streamed translations read typed events and need a terminal event', async 
     const buffered = harness({}, () => json(completed('First\nSecond')));
     const bufferedResult = await buffered.addon.translateLyrics({ text: 'a\nb', lang: 'ko', translationPrompt: 'p', onLine() {} });
     assert.deepEqual([...bufferedResult.translation], ['First', 'Second']);
+});
+
+test('Perplexity completes when response.completed arrives on a body that stays open', { timeout: 1500 }, async () => {
+    const events = [
+        { type: 'response.output_text.delta', delta: 'First\nSecond' },
+        { type: 'response.completed', response: completed('First\nSecond') },
+    ];
+    const { response, cancelled } = openEventResponse(events.map(event => 'data: ' + JSON.stringify(event) + '\n\n').join(''));
+    const h = harness({}, () => response);
+    const result = await h.addon.translateLyrics({ text: 'a\nb', lang: 'ko', translationPrompt: 'p', onLine() {} });
+    assert.deepEqual([...result.translation], ['First', 'Second']);
+    await cancelled;
+    assert.equal(response.body.locked, false);
 });
 
 test('research offers web search only when asked and drops citation markers', async () => {

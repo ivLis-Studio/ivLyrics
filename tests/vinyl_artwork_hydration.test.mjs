@@ -1,22 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
-
-// Run the production mode with the existing LP hook/timer harness. Image
-// requests deliberately never finish, as on a slow or disconnected network.
-const harnessUrl = new URL("./vinyl_player_controls.test.mjs", import.meta.url);
-const harnessSource = readFileSync(harnessUrl, "utf8");
-const harnessBody = harnessSource.slice(harnessSource.indexOf("const source ="), harnessSource.indexOf("test("))
-  .replaceAll("import.meta.url", JSON.stringify(harnessUrl.href));
-const { createHarness, first, second } = new Function("assert", "readFileSync", "vm", `${harnessBody}
-  return { createHarness, first, second };`)(assert, readFileSync, {
-  ...vm,
-  createContext(globals) {
-    globals.window.Image = class { complete = false; };
-    return vm.createContext(globals);
-  },
-});
+import { createHarness, first, second } from "./fixtures/vinyl-controls-harness.mjs";
 
 const phases = [
   [0, "record-clearing"], [179, "record-clearing"],

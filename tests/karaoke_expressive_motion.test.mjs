@@ -1,8 +1,11 @@
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
+import { createKaraokeHarnessFactory } from "./fixtures/karaoke-page-modules.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { KaraokeWordTiming } from '../src/lyrics/karaokeWordTiming.mjs';
 
 // Reuse the established source-extracted karaoke renderer harness.
 const harnessUrl = new URL('./karaoke_static_render_cache.test.mjs', import.meta.url);
@@ -16,11 +19,11 @@ const harnessSource = fixtureSource.slice(fixtureStart, fixtureEnd)
   .replaceAll('import.meta.url', JSON.stringify(harnessUrl.href))
   .replace(exportLine, "'globalThis.api = { KaraokeLine, hasKaraokeVocalRows, getKaraokeVocalRows, syncKaraokeLiveEntry, paintKaraokeLiveEntry, classifyKaraokeExpressiveUnits };',");
 assert.ok(harnessSource.includes('paintKaraokeLiveEntry'));
-const { createHarness, makeLine } = new Function('assert', 'execFileSync', 'readFileSync', 'vm',
-  `${harnessSource}\nreturn { createHarness, makeLine };`)(assert, execFileSync, readFileSync, vm);
+const { createHarness, makeLine } = createKaraokeHarnessFactory('assert', 'execFileSync', 'readFileSync', 'vm', 'KaraokeWordTiming',
+  `${harnessSource}\nreturn { createHarness, makeLine };`)(assert, execFileSync, readFileSync, vm, KaraokeWordTiming);
 
-const pagesSource = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
-const css = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
+const motionSource = readFileSync(new URL('../src/lyrics/karaokeMotion.mjs', import.meta.url), 'utf8');
+const css = readPcStylesheet();
 
 const nodes = (tree, result = []) => {
   if (Array.isArray(tree)) tree.forEach(child => nodes(child, result));
@@ -45,10 +48,10 @@ const expressiveHarness = (visual = {}, locale = 'en') => {
 
 test('expressive springs are exact closed-form steps that overshoot slightly and settle inside the release window', () => {
   const context = vm.createContext({ Math });
-  const start = pagesSource.indexOf('const KARAOKE_EXPRESSIVE_MOTION_STYLE');
-  const end = pagesSource.indexOf('const getKaraokeExpressiveNow');
+  const start = motionSource.indexOf('const KARAOKE_EXPRESSIVE_MOTION_STYLE');
+  const end = motionSource.indexOf('const getKaraokeExpressiveNow');
   assert.ok(start >= 0 && end > start);
-  vm.runInContext(`${pagesSource.slice(start, end).replace(/^const isKaraokeExpressiveMotionEnabled[\s\S]*?\n\);\n/m, '')}
+  vm.runInContext(`${motionSource.slice(start, end)}
     globalThis.api = { stepKaraokeExpressiveSpring, sampleKaraokeExpressiveCurve, KARAOKE_EXPRESSIVE_SPRINGS,
       KARAOKE_EXPRESSIVE_CURVES, KARAOKE_EXPRESSIVE_SETTLE_MS };`, context);
   const { api } = context;

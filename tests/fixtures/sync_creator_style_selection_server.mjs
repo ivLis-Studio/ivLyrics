@@ -1,9 +1,13 @@
+import { readClassicLanguageFixture } from "./language-source.mjs";
+import { readSyncCreatorFixture, readSyncCreatorVocalEditorSource } from "./legacy-page-source.mjs";
 // Offline production-source selection, partial-style controls and character renderer.
 // node tests/fixtures/sync_creator_style_selection_server.mjs /path/to/react18/node_modules [port]
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
+import { sourceUrl } from './source-paths.mjs';
+import { readPcStylesheet } from '../../.github/scripts/pc_stylesheet.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const modules = process.argv[2];
@@ -14,7 +18,7 @@ const section = (source, start, end) => {
   return source.slice(from, to);
 };
 function fixture() {
-  const source = readFileSync(resolve(root, 'SyncDataCreator.js'), 'utf8');
+  const source = readSyncCreatorFixture();
   const part = (start, end) => section(source, start, end);
   return `${source.slice(0, source.indexOf('const SyncDataCreator ='))}
 const react=React;const {useState,useRef,useEffect,useMemo,useCallback}=React;
@@ -36,7 +40,8 @@ function SelectionFixture(){
   const currentLineMeta={speaker:'NORMAL',kind:'vocal',...syncData.lines[0]};
   const currentLineStyleRanges=lineStyleDrafts[currentLineStart]||syncData.lines[0].styleRanges||[];
   const charElementsRef=useRef([]),scorePendingEffectsRef=useRef(new Map());
-  const rightLockDragStartRef=useRef(-1),isRightLockDraggingRef=useRef(false),rightOffsetDragStartRef=useRef(-1),isRightOffsetDraggingRef=useRef(false),suppressNextLockContextMenuRef=useRef(false);
+  const pointerGestureRef=useRef(null),suppressNextLockContextMenuRef=useRef(false);
+  const clearPointerRecording=()=>{pointerGestureRef.current=null;};
   const isCurrentSyncTargetMetaComplete=true,syncGranularity='character',currentSpeakerTextColor='#f2f4f7',currentSpeakerMutedColor='#999';
   const getGranularityRangeForIndex=useCallback(index=>({start:index,end:index}),[]);
   const getCharIndexFromPoint=useCallback(x=>{
@@ -45,31 +50,39 @@ function SelectionFixture(){
   },[currentLineChars.length]);
   const showMissingMetaToast=noop,clearRecordingLock=noop,getCurrentSyncTargetSavedChars=()=>syncData.lines[0].chars,getActiveRecordingLockRange=()=>null,setRecordingLockRangeValue=noop,setRecordingLockIndexValue=noop,buildLockedCharTimes=()=>[],setRecordingProgressIndex=noop,handleDragStart=noop,applyRecordingLockRange=noop,claimSessionForLocalEditing=noop;
   ${part('\tconst [offsetSelectionRange, setOffsetSelectionRange]', '\tconst applyRecordingLockRange =')}
-  ${part('\tconst handleContainerMouseDown =', '\n\tuseEffect(() => {\n\t\tif (!isDragging)')}
-  ${part('\tuseEffect(() => {\n\t\tconst handleRightMove =', '\t// 현재 줄 싱크 삭제')}
-  ${part('\tconst updateCurrentLineStyleRanges =', '\tconst applySongVocalSpeaker =')}
-  ${part('\t// Clear offset selection whenever', '\tuseEffect(() => {\n\t\tif (!syncLinesByStart')}
+  const pointerTarget=useMemo(()=>({mode,activeParallelTargetId,currentLineText}),[mode,activeParallelTargetId,currentLineText]);
+  const handleContainerMouseDown=useSyncCreatorPointerSelection({
+    react,document,target:pointerTarget,gestureRef:pointerGestureRef,suppressContextMenuRef:suppressNextLockContextMenuRef,
+    context:{mode,hasLine:true,isEditorOpen:()=>true,isCurrentSyncTargetMetaComplete,showMissingMetaToast,getCharIndexFromPoint,
+      handleDragStart,handleDragMove:noop,handleDragEnd:noop,handleDragCancel:noop,applyRecordingLockRange,applyOffsetSelectionRange},
+  });
+  const { applySyncCreatorStyleRangePatch } = syncCreatorVocalStyles;
+  ${section(readSyncCreatorVocalEditorSource(), '\tconst updateCurrentLineStyleRanges =', '\tconst applySongVocalSpeaker =')}
+  useSyncCreatorSelectionReset({react,target:pointerTarget,clearLyricTextSelection,clearOffsetSelection});
   const usePrimaryCharacterPronunciation=false,hasCurrentLineFurigana=false,hasCurrentLineCharacterPronunciation=false,currentLineRenderedPronunciationUnits=[];
-  ${part('\tconst TOSS_BLUE =', '\tconst currentLineData =')}
+  ${part("\tconst {\n\t\t'furigana-font-size': furiganaFontSize,", "\tconst currentLineData =")}
   const textEffectsDisabled=true;
-  ${part('\tconst getSpeakerTone =', '\tconst renderBulkSpeakerControl =')}
-  const renderBulkSpeakerControl=()=>null;
+  const requestSongVocalSpeaker=noop;
   const updateCurrentLineMeta=(field,value)=>{wholeTargetWrites.current.push(['line',field,value]);setSyncData(previous=>({...previous,lines:previous.lines.map(line=>({...line,[field]:value}))}));};
   const updateParallelPartMeta=(id,field,value)=>{wholeTargetWrites.current.push(['part',id,field,value]);};
-  ${part('\tconst updateCurrentTextEffect =', '\tconst renderGranularitySelector =')}
-  const currentRecordingCharIndex=-1,isRecordingLockArmed=false,recordingLockRange=null,recordingLockIndex=-1,currentLockedPlaybackIndex=null,currentLinePreviewIndex=-1,useFixedPrimaryCharacterCells=false;
+  ${part('\tconst updateCurrentTextEffect =', '\tconst syncGranularityRecordingHint =')}
+  const currentRecordingCharIndex=-1,isRecordingLockArmed=false,recordingLockRange=null,recordingLockIndex=-1,currentLockedPlaybackIndex=null,currentLinePreviewIndex=-1,currentLinePlayedMarks=null,useFixedPrimaryCharacterCells=false;
   const currentLineFuriganaMap=new Map(),currentLineCharacterPronunciationMap=new Map();
   const isCharSynced=()=>true,getCharSyncTime=(_,index)=>syncData.lines[0].chars[currentLineCharRefs[index].localIndex],formatSeconds=value=>value.toFixed(1)+'s';
-  ${part('\tconst renderCharacterSpan =', '\tconst renderPronunciationUnit =')}
+  const currentLineDirection='ltr',useCurrentLineTextRun=false,rtlTextRunStyle={},rtlTextRunRef=useRef(null);
+  const currentGranularityRanges=[],currentWordBoundaryStartIndexes=new Set();
+  const currentLineRenderedPronunciationUnitByStart=new Map(),currentLineRenderedPronunciationCoveredIndexes=new Set();
+  ${part('\tconst renderCurrentLineCharacters =', '\tconst renderParallelPartLine =')}
+  const lyricsText=lyricsLines[0],isCurrentLineSynced=true,currentParallelParts=[],hasCurrentParallelParts=false,currentTextEffectKind=currentLineMeta.kind;
+  const isLoading=false,error=null,multiVocalMode=Boolean(activeParallelPart),showLivePreview=false,syncGranularityRecordingHint='';
+  const previousNavigableLineIndex=-1,nextNavigableLineIndex=-1,goToPrevLine=noop,goToNextLine=noop,lyricsScrollRef=useRef(null);
+  const getSyncCreatorFuriganaReact=text=>text,renderManualSplitEditor=noop,renderLivePreviewOverlay=noop,renderParallelPartLine=noop;
+  ${part('\tconst renderStagePanel =', '\tconst { getCurrentLastCharEndInfo, setCurrentLastCharEnd }')}
   window.selectionFixtureState={mode,target:activeParallelTargetId,range:offsetSelectionRange,syncData,lineStyleDrafts,wholeTargetWrites:wholeTargetWrites.current};
   return react.createElement('main',null,
     react.createElement('p',null,'Offline production-source fixture — no Spotify session or API calls'),
     react.createElement('nav',null,...['full','part'].map(value=>react.createElement('button',{key:value,'data-fixture-target':value,onClick:()=>setTarget(value)},value)),react.createElement('button',{'data-fixture-mode':true,onClick:()=>setMode(value=>value==='record'?'idle':'record')},mode)),
-    react.createElement('div',{id:'lyric-row',style:{...s.lyricsBox,...s.stageLyricsBox,overflowX:'auto'},onMouseDown:handleContainerMouseDown},react.createElement('div',{style:s.lyricsLine},currentLineChars.map((char,index)=>renderCharacterSpan(char,index)))),
-    react.createElement('div',{id:'effect-strip'},renderTextEffectPicker(
-      shouldUseSyncCreatorSelectionEffect({mode,activeParallelPart,offsetSelectionRange})
-        ?resolveSyncCreatorSelectionEffectKind({styleRanges:currentLineStyleRanges,charRefs:currentLineCharRefs,range:offsetSelectionRange}):currentLineMeta.kind,
-      updateCurrentTextEffect,{compact:true,allowEmpty:shouldUseSyncCreatorSelectionEffect({mode,activeParallelPart,offsetSelectionRange})})),
+    react.createElement('div',{id:'lyric-row'},renderStagePanel()),
     react.createElement('div',{id:'inspector'},renderLineInspector()));
 }
 ReactDOM.createRoot(document.getElementById('root')).render(react.createElement(SelectionFixture));`;
@@ -79,14 +92,15 @@ const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content
 <script src="/react.js"></script><script src="/react-dom.js"></script><script src="/langs/LangEn.js"></script><script src="/langs/LangKo.js"></script><div id="root"></div><script src="/fixture.js"></script>`;
 const files = new Map([
   ['/react.js',resolve(modules,'react/umd/react.development.js')],['/react-dom.js',resolve(modules,'react-dom/umd/react-dom.development.js')],
-  ...['style.css','langs/LangEn.js','langs/LangKo.js'].map(path=>['/'+path,resolve(root,path)]),
+  ...['langs/LangEn.js','langs/LangKo.js'].map(path=>['/'+path,sourceUrl(path)]),
 ]);
 const server=createServer((request,response)=>{
   const path=new URL(request.url,'http://127.0.0.1').pathname;
   try{
     if(path==='/favicon.ico'){response.writeHead(204);response.end();return;}
-    if(path!=='/'&&path!=='/fixture.js'&&!files.has(path)){response.writeHead(404);response.end();return;}
-    let body=path==='/'?html:path==='/fixture.js'?fixture():readFileSync(files.get(path));
+    if(path!=='/'&&path!=='/fixture.js'&&path!=='/style.css'&&!files.has(path)){response.writeHead(404);response.end();return;}
+    let body=path==='/'?html:path==='/fixture.js'?fixture():path==='/style.css'?readPcStylesheet():readFileSync(files.get(path));
+    if(path.startsWith('/langs/'))body=readClassicLanguageFixture(path.slice('/langs/'.length));
     if(path==='/style.css')body=body.toString().replace(/@import\s+url\(["']?https?:\/\/[^)]+\)\s*;/g,'');
     response.writeHead(200,{'Content-Type':path==='/'?'text/html; charset=utf-8':path.endsWith('.css')?'text/css':'application/javascript; charset=utf-8','Cache-Control':'no-store'});response.end(body);
   }catch(error){response.writeHead(500);response.end(error.stack);}

@@ -1,19 +1,13 @@
+import { bundleFixtureImports } from "./fixtures/legacy-page-source.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
-
-const indexSource = readFileSync(new URL("../index.js", import.meta.url), "utf8");
-const cacheStart = indexSource.indexOf("const CacheManager = {");
-const cacheEnd = indexSource.indexOf("\n// window에 등록", cacheStart);
-assert.ok(cacheStart >= 0 && cacheEnd > cacheStart);
+import { createPageTranslationMemoryCache } from "../src/lyrics/pageMemoryCache.mjs";
 
 test("memory cache keeps lyric references, expiry and LRU without traversing lyric data", () => {
   let now = 0;
   let serializationReads = 0;
-  const context = vm.createContext({ Date: { now: () => now } });
-  vm.runInContext(`${indexSource.slice(cacheStart, cacheEnd)}\nglobalThis.cache = CacheManager;`, context);
-  const cache = context.cache;
+  const cache = createPageTranslationMemoryCache({ now: () => now });
   cache._ttl = 100;
   cache._maxSize = 4;
   const lyrics = [{ text: "original", syllables: [{ text: "word", startTime: 1 }] }];
@@ -42,11 +36,11 @@ test("memory cache keeps lyric references, expiry and LRU without traversing lyr
   assert.equal(cache.get("track:lyrics"), null);
 });
 
-const serviceSource = readFileSync(new URL("../LyricsService.js", import.meta.url), "utf8");
-const senderStart = serviceSource.indexOf("const OverlaySender = {");
-const workerStart = serviceSource.indexOf("        startProgressSync() {", senderStart);
-const workerEnd = serviceSource.indexOf("        setupOffsetListener() {", workerStart);
-assert.ok(senderStart >= 0 && workerStart > senderStart && workerEnd > workerStart);
+const progressFixture = bundleFixtureImports(
+  'import { createOverlayProgress } from "#ivlyrics/features/overlay/overlayProgress.mjs";'
+    + 'globalThis.sender = { enabled: true, isConnected: true, ...createOverlayProgress({ getSpicetify: () => ({}) }) };',
+  "fixtureOverlayProgress",
+);
 
 const createSender = ({ failWorker = false } = {}) => {
   const urls = new Set();
@@ -73,10 +67,7 @@ const createSender = ({ failWorker = false } = {}) => {
       terminate() { this.terminated = true; }
     },
   });
-  vm.runInContext(`
-    const cleanupWorker = (worker) => { worker.postMessage('stop'); worker.terminate(); };
-    globalThis.sender = { enabled: true, isConnected: true, ${serviceSource.slice(workerStart, workerEnd)} };
-  `, context);
+  vm.runInContext(progressFixture, context);
   return { sender: context.sender, urls, workers };
 };
 

@@ -1,9 +1,8 @@
+import { createKaraokeWordSupplementHook } from "#ivlyrics/lyrics/karaokeWordSupplementHook.mjs";
+import { createFixtureWordSupplementService } from "./fixtures/word-supplement-service.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
 
-const source = readFileSync(new URL("../WordLevelSupplements.js", import.meta.url), "utf8");
 const units = [{ wordKey: 0, surface: "生" }];
 const shape = value => JSON.parse(JSON.stringify(value));
 const deferred = () => {
@@ -48,14 +47,11 @@ function load({ read, pronunciation, gloss, convert } = {}) {
       },
     },
   };
-  const sandbox = vm.createContext({
-    window, console,
-    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } },
-    setTimeout: fn => { timers.set(++timerId, fn); return timerId; },
-    clearTimeout: id => timers.delete(id),
+  createFixtureWordSupplementService(window, {
+    getDetectedLanguage: () => "ja",
+    schedule: fn => { timers.set(++timerId, fn); return timerId; },
+    cancelTimer: id => timers.delete(id),
   });
-  vm.runInContext('const Utils = { getDetectedLanguage: () => "ja" };', sandbox);
-  vm.runInContext(source, sandbox);
   const flush = async () => {
     await drain();
     const queued = [...timers.values()];
@@ -66,7 +62,7 @@ function load({ read, pronunciation, gloss, convert } = {}) {
   return { api: window.ivLyricsWordSupplements, window, requests, writes, reads, events, flush };
 }
 
-test("word language detection reads the shared lexical Utils global", () => {
+test("word language detection reads the detected language supplied by the host", () => {
   const { api } = load();
   assert.equal(api.getSourceLanguage(), "ja");
   assert.equal(api.resolveSourceLanguage("生"), "ja");
@@ -173,9 +169,6 @@ test("glosses with identical first 120 context characters remain distinct", asyn
 });
 
 test("mounted word stacks use changed reading and gloss settings on the next revision", () => {
-  const pages = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
-  const hook = pages.slice(pages.indexOf("const useKaraokeWordStackSupplements ="),
-    pages.indexOf("// Prefetch word supplements for whole karaoke lines"));
   const memos = [];
   let cursor = 0, readingMode = "romaji", glossActive = false;
   const readingCalls = [], glossCalls = [];
@@ -187,8 +180,9 @@ test("mounted word stacks use changed reading and gloss settings on the next rev
     getWordReadings: async (_units, _lang, mode) => { readingCalls.push(mode); return []; },
     getWordGlosses: async () => { glossCalls.push(true); return []; },
   };
-  const sandbox = vm.createContext({
-    window: { ivLyricsWordSupplements: api }, WORD_SUPPLEMENT_RETRY_MAX: 2,
+  const renderWordStack = createKaraokeWordSupplementHook({
+    getService: () => api, getTrackUri: () => "", getDetectedLanguage: () => "ja",
+    subscribeInvalidation: () => undefined, reportDebug: () => {},
     useRef: initial => { const slot = cursor++; return memos[slot] ??= { current: initial }; },
     useMemo: (compute, deps) => {
       const slot = cursor++;
@@ -200,13 +194,12 @@ test("mounted word stacks use changed reading and gloss settings on the next rev
     },
     useState: initial => [initial, () => {}], useEffect: effect => effect(),
   });
-  vm.runInContext(hook + "\nglobalThis.hook = useKaraokeWordStackSupplements;", sandbox);
   const input = { line: {}, timedChars: [], timedText: "生", wordTimed: true, settingsRevision: 0 };
-  sandbox.hook(input);
+  renderWordStack(input);
   cursor = 0;
   readingMode = "gemini_romaji";
   glossActive = true;
-  sandbox.hook({ ...input, settingsRevision: 1 });
+  renderWordStack({ ...input, settingsRevision: 1 });
   assert.deepEqual(readingCalls, ["romaji", "gemini_romaji"]);
   assert.equal(glossCalls.length, 1);
 });

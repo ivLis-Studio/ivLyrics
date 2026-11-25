@@ -1,12 +1,17 @@
+import { readKaraokePageHarnessSource } from "./fixtures/karaoke-page-modules.mjs";
+import { createLyricInterludeTiming } from "../src/lyrics/lyricInterludeTiming.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import * as geometry from "../src/lyrics/lyricsScrollGeometry.mjs";
+import * as lineMotion from "../src/lyrics/lyricsLineMotion.mjs";
+import { getLyricsCenteringProgress } from "../src/lyrics/lyricsExpandedScroll.mjs";
+import { createCompactLyricsDisplay } from "../src/lyrics/compactLyricsDisplay.mjs";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
-const currentSource = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
+const currentSource = readKaraokePageHarnessSource();
 const baselineRevision = "31ff869ec832c29c713abcc4333faee8cdbf8524";
 const baselineSource = execFileSync("git", ["show", `${baselineRevision}:Pages.js`], {
 	cwd: repoRoot,
@@ -51,6 +56,17 @@ const loadCompactRetentionHelper = (source) => {
 };
 
 const loadAnchorHelpers = (source) => {
+	if (source === currentSource) {
+		return {
+			...geometry,
+			...geometry.createLyricsScrollGeometry((element) => ({
+				getPropertyValue: () => element?.anchorRatio ?? "",
+			})),
+			...lineMotion,
+			...lineMotion.createLyricsLineMotion(),
+			getLyricsCenteringProgress,
+		};
+	}
 	const slice = requireSlice(
 		source,
 		"const getLyricsAnchorRatio",
@@ -119,6 +135,15 @@ const loadVocalAnchorHelpers = (source) => {
 };
 
 const loadTrailingInterludeHelpers = (source) => {
+	if (source === currentSource) {
+		const context = { __autoBreaks: true, __trackDuration: 10000 };
+		const helpers = createLyricInterludeTiming({
+			readTrackDuration: () => context.__trackDuration,
+			readLineFillEndTime: (line) => line?.fillEndTime ?? null,
+			readAutoBreakEnabled: () => context.__autoBreaks,
+		});
+		return { helpers, context };
+	}
 	const slice = requireSlice(
 		source,
 		"const getTrailingKaraokeInterludeInfo",
@@ -159,7 +184,6 @@ const loadTrailingInterludeHelpers = (source) => {
 };
 
 const loadAllHelpers = (source) => ({
-	compact: loadCompactRetentionHelper(source),
 	anchor: loadAnchorHelpers(source),
 	vocal: loadVocalAnchorHelpers(source),
 	trailing: loadTrailingInterludeHelpers(source).helpers,
@@ -167,6 +191,7 @@ const loadAllHelpers = (source) => ({
 
 const current = loadAllHelpers(currentSource);
 const baseline = loadAllHelpers(baselineSource);
+const baselineCompact = loadCompactRetentionHelper(baselineSource);
 
 const makeVocalRow = (startTime, endTime) => ({
 	timedChars: [{ startTime, endTime }],
@@ -219,13 +244,11 @@ test("retains active and visual interlude rows while excluding unrelated breaks"
 		[10, 12],
 	];
 
+	const readDisplay = createCompactLyricsDisplay(fixtures, new WeakMap());
 	for (const [activeLineIndex, visualLineIndex] of scenarios) {
-		const currentResult = fixtures.map((line) => current.compact.shouldIncludeSyncedLineInCompactView(
-			line,
-			activeLineIndex,
-			visualLineIndex
-		));
-		const baselineResult = fixtures.map((line) => baseline.compact.shouldIncludeSyncedLineInCompactView(
+		const { indexByLineNumber } = readDisplay(activeLineIndex, visualLineIndex);
+		const currentResult = fixtures.map(line => indexByLineNumber.has(line.lineNumber));
+		const baselineResult = fixtures.map((line) => baselineCompact.shouldIncludeSyncedLineInCompactView(
 			line,
 			activeLineIndex,
 			visualLineIndex
@@ -435,7 +458,7 @@ test("selects trailing karaoke gaps, previews their entry, and keeps postludes t
 	}).isPrecentered, false);
 	assert.equal(current.trailing.createActiveTrailingKaraokeInterludeLine({
 		line,
-		nextLine: { startTime: 6000, marker: "MARKER" },
+		nextLine: { startTime: 6000, text: "♪" },
 		lineIndex: 1,
 		lineCount: 3,
 		position: 4000,
@@ -460,4 +483,23 @@ test("selects trailing karaoke gaps, previews their entry, and keeps postludes t
 		trailingRuntime.helpers.getTrailingKaraokeInterludeInfo(postludeLine, null, 2, 3).isInterlude,
 		false
 	);
+});
+
+test("explicit instrumental markers keep their duration precedence and boundary length", () => {
+	const timing = createLyricInterludeTiming({
+		readTrackDuration: () => 16000,
+		readLineFillEndTime: () => null,
+		readAutoBreakEnabled: () => false,
+	});
+
+	assert.deepEqual(timing.getInterludeInfo(
+		{ startTime: 1000, endTime: 9000, originalText: "<b>&#9834;</b>", text: "Translation" },
+		{ startTime: 1100 }, 0, 3,
+	), { isInterlude: true, durationMs: 100, kind: "prelude" });
+	assert.deepEqual(timing.getInterludeInfo(
+		{ startTime: 5000, text: "&nbsp;" }, { startTime: 5500 }, 1, 3,
+	), { isInterlude: false, durationMs: 500, kind: "break" });
+	assert.deepEqual(timing.getInterludeInfo(
+		{ startTime: 15000, text: "♪" }, undefined, 2, 3,
+	), { isInterlude: true, durationMs: 1000, kind: "postlude" });
 });

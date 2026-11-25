@@ -73,7 +73,10 @@
     pitches: Array.from({ length: 12 }, (_, p) => .08 + .8 * Math.pow((Math.sin(i * .31 + p * .8) + 1) / 2, 2)),
   })) };
   window.CONFIG = { visual: {} };
-  window.Utils = { getSafePlayerProgress: progress, getTrackSyncOffset: async () => 0, getGlobalSyncOffset: () => 0 };
+  window.Utils = {
+    getTrackArtwork: item => item?.metadata?.image_url || "",
+    getSafePlayerProgress: progress, getTrackSyncOffset: async () => 0, getGlobalSyncOffset: () => 0,
+  };
   window.Spicetify = {
     React, SVGIcons: {}, Player: { data: { item: {} }, getProgress: progress, getDuration: () => 180000,
       getVolume: () => .5, getRepeat: () => 0, getShuffle: () => false, getHeart: () => false,

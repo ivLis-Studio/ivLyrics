@@ -1,23 +1,23 @@
+import { expandHistoricalCulturalGlyphFragments, readKaraokePageHarnessSource, karaokePageModules } from "./fixtures/karaoke-page-modules.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { KaraokeWordTiming } from '../src/lyrics/karaokeWordTiming.mjs';
+import { lyricsWordSegmenter } from '../src/lyrics/LyricsWordSegmenter.js';
 
-const currentSource = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
+const currentSource = readKaraokePageHarnessSource();
 let baselineSource = execFileSync('git', ['show', '6bb2348:Pages.js'], {
   cwd: new URL('..', import.meta.url), encoding: 'utf8',
 });
-const segmenterSource = readFileSync(new URL('../LyricsWordSegmenter.js', import.meta.url), 'utf8');
-const serviceSource = readFileSync(new URL('../LyricsService.js', import.meta.url), 'utf8');
 // The anchor lifecycle is intentionally fixed independently of caching and is
 // covered by karaoke_vocal_render_cache. Compare every glyph and presentation
 // value here without requiring the old release-time anchor reset.
 const normalize = value => JSON.parse(JSON.stringify(value, (key, entry) => {
   // Whitespace wrapping intentionally adds layout-only parents in CJK. Keep
   // comparing every original paint/timing node against the old cache path.
-  if (Array.isArray(entry)) return entry.flat(Infinity).flatMap(child =>
-    child?.props?.className === 'lyrics-karaoke-wrap-group' ? child.children.flat(Infinity) : [child]);
+  if (Array.isArray(entry)) return expandHistoricalCulturalGlyphFragments(entry.flat(Infinity).flatMap(child =>
+    child?.props?.className === 'lyrics-karaoke-wrap-group' ? child.children.flat(Infinity) : [child]));
   // One visual wrapper per voice isolates arrival opacity from glyph effects.
   // Its structure is checked separately; compare every existing glyph below it.
   if (entry?.props?.className === 'lyrics-vocal-main') return entry.children[0];
@@ -64,6 +64,7 @@ const createHarness = (source = currentSource, options = {}) => {
     FuriganaConverter: { isAvailable: () => window.furiganaReady },
   };
   const context = vm.createContext({
+    ...karaokePageModules,
     CONFIG, window, console, navigator: { language: 'en' },
     Utils: { applyFuriganaIfEnabled: text => {
       counts.furigana++;
@@ -94,18 +95,15 @@ const createHarness = (source = currentSource, options = {}) => {
     react: { Fragment: 'fragment', memo: component => component,
       createElement: (tag, props, ...children) => ({ tag, props: props || {}, children }) },
   });
-  vm.runInContext(segmenterSource, context);
-  window.LyricsWordSegmenter = { ...context.LyricsWordSegmenter };
+  window.LyricsWordSegmenter = { ...lyricsWordSegmenter };
   const segmentGraphemes = window.LyricsWordSegmenter.segmentGraphemes;
   window.LyricsWordSegmenter.segmentGraphemes = (...args) => {
     counts.graphemes++;
     return segmentGraphemes(...args);
   };
-  const serviceContext = { module: { exports: {} } };
-  vm.runInNewContext(serviceSource, serviceContext);
   window.LyricsService = { buildKaraokeWordSegments: (...args) => {
     counts.textRuns++;
-    return serviceContext.module.exports.KaraokeWordTiming.buildTimedSegments(...args);
+    return KaraokeWordTiming.buildTimedSegments(...args);
   } };
   source = source.replace('const getKaraokeSpeakerPresentation = (speaker, speakerColor = "", speakerFallback = "") => {',
     'const getKaraokeSpeakerPresentation = (speaker, speakerColor = "", speakerFallback = "") => { counts.presentations++;');
@@ -120,9 +118,9 @@ const createHarness = (source = currentSource, options = {}) => {
   const reducedEnd = source.indexOf('\nconst ', reducedStart + 1);
   vm.runInContext([
     source.slice(reducedStart, reducedEnd),
-    slice(source, 'const getTimedSyllablesFromLine', 'const getInterludeInfo'),
-    slice(source, 'const KARAOKE_PRE_SPACE_MIN_DURATION_MS', 'const getSyncedAnimationIndex'),
-    slice(source, 'const getKaraokeLineBounds', 'const SyncedLyricsPage = react.memo'),
+    slice(source, 'const getTimedSyllablesFromLine', source.includes('const { getInterludeInfo') ? 'const { getInterludeInfo' : 'const getInterludeInfo'),
+    slice(source, 'const KARAOKE_PRE_SPACE_MIN_DURATION_MS', source.includes('const shouldHideSyncedLine') ? 'const shouldHideSyncedLine' : 'const getSyncedAnimationIndex'),
+    slice(source, 'const getKaraokeLineBounds', source.includes("createLyricsTrackRevealHook(") ? "const useLyricsTrackReveal =" : 'const SyncedLyricsPage = react.memo'),
     'globalThis.api = { KaraokeLine, hasKaraokeVocalRows, getKaraokeVocalRows };',
   ].join('\n'), context);
   const resolve = (node, path) => {
@@ -363,8 +361,8 @@ const beforePresentationCache = execFileSync('git', ['show', 'aae1e95:Pages.js']
   cwd: new URL('..', import.meta.url), encoding: 'utf8',
 });
 const exactTree = value => JSON.parse(JSON.stringify(value, (key, entry) =>
-  Array.isArray(entry) ? entry.flat(Infinity).flatMap(child =>
-    child?.props?.className === 'lyrics-karaoke-wrap-group' ? child.children.flat(Infinity) : [child]) : entry));
+  Array.isArray(entry) ? expandHistoricalCulturalGlyphFragments(entry.flat(Infinity).flatMap(child =>
+    child?.props?.className === 'lyrics-karaoke-wrap-group' ? child.children.flat(Infinity) : [child])) : entry));
 
 test('inline style preparation is reused while every glyph and vocal anchor matches the previous renderer', () => {
   for (const [text, locale] of [['Hello  long styled words!', 'en'], ['漢字の歌、聞こえる', 'ja'],

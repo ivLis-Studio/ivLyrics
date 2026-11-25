@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { bundleInitializer } from './fixtures/initializer-bundle.mjs';
 
-const moduleSource = readFileSync(new URL('../NowPlayingPanelLyrics.js', import.meta.url), 'utf8');
+const moduleSource = bundleInitializer(new URL('../src/lyrics/NowPlayingPanelLyrics.js', import.meta.url));
 const containerClass = 'ivlyrics-panel-lyrics-container';
 const sectionClass = 'ivlyrics-panel-lyrics-section';
 
@@ -77,9 +77,13 @@ class Element {
   get previousElementSibling() { return this.parentElement?.children[this.parentElement.children.indexOf(this) - 1] || null; }
 }
 
-function harness({ panelInitially = true, headerInitially = true, failPlayerSubscriptions = 0, initialPath = '/', enabled = true } = {}) {
+function harness({
+  panelInitially = true, headerInitially = true, failPlayerSubscriptions = 0, initialPath = '/',
+  enabled = true, modernReact = true, commitRender = true,
+} = {}) {
   let time = 0, nextTimer = 1;
-  const timers = new Map(), observers = [], renders = [], errors = [];
+  let renderAvailable = commitRender;
+  const timers = new Map(), observers = [], renders = [], unmounts = [], errors = [];
   const windowListeners = new Map(), playerListeners = new Map(), historyListeners = new Set();
   const add = (registry, name, listener) => {
     if (!registry.has(name)) registry.set(name, new Set());
@@ -115,12 +119,16 @@ function harness({ panelInitially = true, headerInitially = true, failPlayerSubs
   };
   const render = (element, container) => {
     renders.push({ time, element, container });
-    if (!container.querySelector(`.${sectionClass}`)) container.append(new Element('section', { className: sectionClass }));
+    if (renderAvailable && !container.querySelector(`.${sectionClass}`)) container.append(new Element('section', { className: sectionClass }));
+  };
+  const unmount = (container) => {
+    unmounts.push(container);
+    for (const child of [...container.children]) child.remove();
   };
   const ReactDOM = {
-    createRoot: container => ({ render: element => render(element, container), unmount: () => { container.children = []; } }),
+    ...(modernReact && { createRoot: container => ({ render: element => render(element, container), unmount: () => unmount(container) }) }),
     render,
-    unmountComponentAtNode: container => { container.children = []; },
+    unmountComponentAtNode: unmount,
   };
   const Spicetify = {
     React: { Component: class {}, memo: component => component, createElement: (type, props, ...children) => ({ type, props, children }) },
@@ -134,6 +142,8 @@ function harness({ panelInitially = true, headerInitially = true, failPlayerSubs
   };
   const context = vm.createContext({
     window, document, Spicetify, localStorage: { getItem: key => key === 'ivLyrics:visual:panel-lyrics-enabled' ? String(enabled) : null, setItem() {} },
+    queueMicrotask,
+    navigator: { language: 'en' },
     console: { log() {}, warn: (...args) => errors.push(args), error: (...args) => errors.push(args) },
     CSS: { supports: () => false },
     Date: class extends Date { static now() { return time; } },
@@ -163,13 +173,23 @@ function harness({ panelInitially = true, headerInitially = true, failPlayerSubs
     }
     time = until;
   };
-  const mutate = () => {
-    const mutations = [{ type: 'childList', addedNodes: [new Element('span')], removedNodes: [] }];
+  const mutate = ({ target = body, addedNodes = [new Element('span')], removedNodes = [] } = {}) => {
+    const mutations = [{ type: 'childList', target, addedNodes, removedNodes }];
     for (const observer of [...observers]) if (observer.active) observer.callback(mutations);
   };
+  const navigate = (pathname) => {
+    Spicetify.Platform.History.location.pathname = pathname;
+    window.location.pathname = pathname;
+    for (const listener of [...historyListeners]) listener({ pathname });
+  };
   return {
-    window, document, Spicetify, player, ReactDOM, body, panel, grid, info, timers, errors, renders,
-    addPanel, addHeader, advance, mutate,
+    window, document, Spicetify, player, ReactDOM, body, panel, grid, info, timers, errors, renders, unmounts,
+    addPanel, addHeader, advance, mutate, navigate, element: (props) => new Element('div', props),
+    enableRendering: () => { renderAvailable = true; },
+    changeSetting: name => {
+      for (const listener of windowListeners.get('ivLyrics') || []) listener({ detail: { name } });
+    },
+    songChange: () => { for (const listener of [...(playerListeners.get('songchange') || [])]) listener(); },
     load: () => vm.runInContext(moduleSource, context, { filename: 'NowPlayingPanelLyrics.js' }),
     state: () => window.__ivLyricsNowPlayingPanelModule,
     container: () => document.querySelector(`.${containerClass}`),
@@ -181,6 +201,96 @@ function harness({ panelInitially = true, headerInitially = true, failPlayerSubs
     }),
   };
 }
+
+test('panel display preferences clear presentation while provider policy retires raw lookups', () => {
+  const h = harness({ enabled: false });
+  const cleared = [];
+  h.window.LyricsService = {
+    clearLyricsSnapshot: () => cleared.push('raw'),
+    clearLyricsPresentationSnapshot: () => cleared.push('display'),
+  };
+  h.load();
+  h.changeSetting('translate:pronunciation-notation');
+  h.changeSetting('karaoke-mode-enabled');
+  h.changeSetting('prefer-lyrics-type-over-provider-order');
+  h.changeSetting('panel-font-scale');
+  assert.deepEqual(cleared, ['display', 'display', 'raw']);
+});
+
+test('panel writes its CSS variables once for a preset and discards writes after disposal', async () => {
+  const h = harness();
+  h.load();
+  const writes = [];
+  h.document.documentElement.style.setProperty = (name, value) => writes.push([name, value]);
+  h.changeSetting('panel-lyrics-width');
+  h.changeSetting('panel-lyrics-original-size');
+  h.changeSetting('panel-lyrics-translation-opacity');
+  assert.equal(writes.length, 0);
+  await Promise.resolve();
+  assert.ok(writes.length > 0);
+  assert.equal(new Set(writes.map(([name]) => name)).size, writes.length);
+  const count = writes.length;
+  h.changeSetting('panel-lyrics-translation-opacity');
+  h.window.NowPlayingPanelLyrics.destroy();
+  await Promise.resolve();
+  assert.equal(writes.length, count);
+});
+
+test('the cold lyrics panel restores the persisted global offset before opening ivLyrics', () => {
+  const h = harness();
+  const state = [];
+  h.window.ivLyricsStoragePersistence = {
+    getItem: key => key === 'ivLyrics:visual:global-sync-offset' ? '375' : null,
+  };
+  Object.assign(h.Spicetify.React, {
+    useState(initialValue) {
+      const value = typeof initialValue === 'function' ? initialValue() : initialValue;
+      state.push(value);
+      return [value, () => {}];
+    },
+    useRef: current => ({ current }),
+    useMemo: build => build(),
+    useCallback: callback => callback,
+    useEffect() {},
+    useLayoutEffect() {},
+  });
+  h.load();
+  h.advance(1000);
+  assert.equal(h.window.CONFIG, undefined);
+  h.renders.at(-1).element.children[0].type();
+  assert.ok(state.includes(375), 'the mounted panel applies the saved global offset');
+});
+
+test('a cold panel uses original rows while refreshing cached supplements with an outdated notation', () => {
+  const h = harness();
+  const snapshot = {
+    trackUri: h.player.data.item.uri,
+    displayLyrics: [{ text: "Original lyric", phoneticText: "Previously cached phonetic" }],
+    detectedLanguage: "ja", displayMode1: "gemini_romaji", displayMode2: "none",
+    presentationComplete: true, translationTargetLanguage: "en", pronunciationNotation: "latin",
+  };
+  h.window.LyricsService = { getLyricsSnapshot: () => snapshot };
+  h.window.CONFIG = { visual: {
+    "translate:pronunciation-notation": "ipa", "translation-mode:japanese": "gemini_romaji",
+  } };
+  const state = [];
+  Object.assign(h.Spicetify.React, {
+    useState(initialValue) {
+      const value = typeof initialValue === 'function' ? initialValue() : initialValue;
+      state.push(value);
+      return [value, () => {}];
+    },
+    useRef: current => ({ current }), useMemo: build => build(), useCallback: callback => callback,
+    useEffect() {}, useLayoutEffect() {},
+  });
+  h.load();
+  h.advance(1000);
+  h.renders.at(-1).element.children[0].type();
+  const initial = state.find(value => value && Object.hasOwn(value, "loadedUri"));
+  assert.equal(initial.loadedUri, null);
+  assert.equal(initial.lyrics[0].text, "Original lyric");
+  assert.equal(initial.lyrics[0].phoneticText, "");
+});
 
 for (const dependency of ['Player', 'Player.addEventListener', 'document.body', 'ReactDOM renderer']) {
   test(`panel bootstrap waits for ${dependency} and mounts when it becomes ready`, () => {
@@ -270,10 +380,10 @@ test('frequent native panel mutations cannot postpone the first lyrics mount ind
   assert.equal(h.container(), null);
   h.advance(100);
   h.addPanel();
-  h.mutate();
+  h.mutate({ addedNodes: [h.panel] });
   for (let index = 0; index < 5; index++) {
     h.advance(25);
-    h.mutate();
+    h.mutate({ target: h.panel });
   }
   assert.ok(h.container()?.querySelector(`.${sectionClass}`), 'mount completes while Spotify continues changing the DOM every 25 ms');
   assert.ok(h.renders[0].time <= 225, 'the first mutation establishes a bounded mount time');
@@ -317,4 +427,114 @@ test('enabling the panel while already on ivLyrics installs suppression without 
   assert.ok(h.document.getElementById('ivlyrics-panel-lyrics-styles'));
   assert.equal(h.body.classList.contains('ivlyrics-panel-lyrics-active'), true);
   assert.equal(h.container(), null);
+});
+
+for (const modernReact of [true, false]) {
+  test(`a detached panel unmounts its owned React tree before a replacement mounts (${modernReact ? "modern" : "legacy"})`, () => {
+    const h = harness({ modernReact });
+    h.load();
+    const old = h.container();
+    assert.ok(old);
+    const replacement = h.element({ testId: 'NPV_Panel_OpenDiv' });
+    const header = h.element({ className: 'main-nowPlayingView-contextItemInfo' });
+    replacement.append(header);
+    h.panel.remove();
+    h.body.append(replacement);
+    h.mutate({ addedNodes: [replacement], removedNodes: [h.panel] });
+    h.advance(100);
+    const current = h.container();
+    assert.notEqual(current, old);
+    assert.deepEqual(h.unmounts, [old]);
+    assert.equal(current.previousElementSibling, header);
+    assert.equal(h.timers.size, 1, 'only the replacement root still needs verification');
+  });
+}
+
+test('moving a new track header or painting lyrics reuses the same React tree', () => {
+  const h = harness();
+  h.load();
+  const container = h.container();
+  h.advance(1000);
+  h.mutate({ target: container });
+  h.mutate();
+  assert.equal(h.timers.size, 0, 'lyric and unrelated DOM changes do not schedule insertion');
+
+  h.info.remove();
+  const newHeader = h.element({ className: 'main-nowPlayingView-contextItemInfo' });
+  h.grid.append(newHeader);
+  h.mutate({ target: h.grid, addedNodes: [newHeader], removedNodes: [h.info] });
+  h.advance(100);
+  assert.equal(container.previousElementSibling, newHeader);
+  assert.deepEqual(h.renders.map(render => render.container), [container]);
+  assert.deepEqual(h.unmounts, []);
+});
+
+test('an empty React root has a bounded retry and old checks cannot revive the panel', () => {
+  const h = harness({ commitRender: false });
+  h.load();
+  h.advance(2000);
+  assert.equal(h.renders.length, 2);
+  assert.equal(h.unmounts.length, 2);
+  assert.equal(h.container(), null);
+  h.mutate({ target: h.panel });
+  h.advance(1000);
+  assert.equal(h.renders.length, 2);
+  h.enableRendering();
+  h.songChange();
+  h.advance(100);
+  assert.equal(h.renders.length, 3);
+  assert.ok(h.container()?.querySelector(`.${sectionClass}`));
+
+  const disposed = harness();
+  disposed.load();
+  disposed.window.NowPlayingPanelLyrics.destroy();
+  assert.equal(disposed.timers.size, 0);
+  disposed.advance(1000);
+  assert.equal(disposed.renders.length, 1);
+  assert.equal(disposed.container(), null);
+});
+
+test('route navigation releases the panel and changing its setting leaves the mounted lyrics page active', () => {
+  const h = harness();
+  h.load();
+  const outside = h.container();
+  h.navigate('/ivLyrics');
+  assert.equal(h.container(), null);
+  assert.deepEqual(h.unmounts, [outside]);
+  assert.equal(h.body.classList.contains('ivlyrics-panel-page-active'), true);
+  assert.equal(h.body.classList.contains('ivlyrics-panel-lyrics-active'), true);
+
+  h.body.classList.add('ivlyrics-page-active');
+  h.window.NowPlayingPanelLyrics.setEnabled(false);
+  assert.equal(h.body.classList.contains('ivlyrics-page-active'), true);
+  assert.equal(h.body.classList.contains('ivlyrics-panel-page-active'), false);
+  h.window.NowPlayingPanelLyrics.setEnabled(true);
+  h.body.classList.remove('ivlyrics-page-active');
+  h.navigate('/search');
+  h.advance(150);
+  assert.ok(h.container());
+  assert.notEqual(h.container(), outside);
+});
+
+test('Starry Night mounts to the current bar and falls back to the right panel when the theme leaves', () => {
+  const h = harness();
+  const theme = h.element({ className: 'starrynight-bg-container' });
+  const bar = h.element({ className: 'Root__now-playing-bar' });
+  h.body.append(theme, bar);
+  h.load();
+  const lyrics = bar.querySelector('.ivlyrics-nowplaying-bar-lyrics');
+  assert.ok(lyrics);
+  assert.equal(h.container(), null);
+  bar.remove();
+  const replacement = h.element({ className: 'Root__now-playing-bar' });
+  h.body.append(replacement);
+  h.mutate({ addedNodes: [replacement], removedNodes: [bar] });
+  h.advance(100);
+  assert.deepEqual(h.unmounts, [lyrics]);
+  assert.ok(replacement.querySelector('.ivlyrics-nowplaying-bar-lyrics'));
+  theme.remove();
+  h.mutate({ removedNodes: [theme] });
+  h.advance(100);
+  assert.equal(replacement.querySelector('.ivlyrics-nowplaying-bar-lyrics'), null);
+  assert.ok(h.container());
 });

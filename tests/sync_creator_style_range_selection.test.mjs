@@ -1,26 +1,30 @@
+import { renderSyncCreatorLineInspector } from '#ivlyrics/features/sync/syncCreatorStyleControls.mjs';
+import { renderSyncCreatorStagePanel } from '#ivlyrics/features/sync/syncCreatorStageView.mjs';
+import { createSyncCreatorVocalStyles } from '#ivlyrics/features/sync/syncCreatorVocalStyles.mjs';
+import { rangesToCharRefs } from "#ivlyrics/features/sync/syncCreatorVocalLayout.mjs";
+import { readSyncCreatorFixture, readSyncCreatorVocalEditorSource } from "./fixtures/legacy-page-source.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { createLockedEditor } from './sync_creator_lock_harness.mjs';
 
-const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const source = readSyncCreatorFixture().replace(/\r\n/g, '\n');
 const plain = value => JSON.parse(JSON.stringify(value));
-const section = (startMarker, endMarker) => {
-	const start = source.indexOf(startMarker);
-	const end = source.indexOf(endMarker, start + startMarker.length);
+const section = (startMarker, endMarker, input = source) => {
+	const start = input.indexOf(startMarker);
+	const end = input.indexOf(endMarker, start + startMarker.length);
 	assert.ok(start >= 0 && end > start, `missing production section: ${startMarker}`);
-	return source.slice(start, end);
+	return input.slice(start, end);
 };
 const styleMemo = section('\tconst currentLineMeta = useMemo(', '\tconst getParallelTemplateForLine =');
 const charMemo = section('\tconst currentLineCharRefs = useMemo(', '\tscoreInputContextRef.current =');
-const charRefsHelper = section('\tconst rangesToCharRefs =', '\tconst getSyncCreatorParallelJoinText =');
 const effectMeta = section('\tconst currentSpeakerMeta =', '\tuseEffect(() => {');
-const metaCallbacks = section('\tconst updateParallelPartMeta =', '\tconst updateCurrentLineStyleRanges =');
-const styleCallback = section('\tconst updateCurrentLineStyleRanges =', '\tconst applySongVocalSpeaker =');
-const pickers = section('\tconst getSpeakerTone =', '\tconst renderBulkSpeakerControl =');
-const inspectors = section('\tconst updateCurrentTextEffect =', '\tconst renderGranularitySelector =');
-const stageRenderer = section('\tconst renderStagePanel =', '\tconst renderLineOffsetControls =');
+const vocalEditorSource = readSyncCreatorVocalEditorSource();
+const metaCallbacks = section('\tconst updateParallelPartMeta =', '\tconst updateCurrentLineStyleRanges =', vocalEditorSource);
+const styleCallback = section('\tconst updateCurrentLineStyleRanges =', '\tconst applySongVocalSpeaker =', vocalEditorSource);
+const inspectors = section('\tconst updateCurrentTextEffect =', '\tconst syncGranularityRecordingHint =');
+const stageRenderer = section('\tconst renderStagePanel =', '\tconst { getCurrentLastCharEndInfo, setCurrentLastCharEnd }');
 
 function* nodes(tree) {
 	if (tree === null || tree === undefined || typeof tree === 'boolean') return;
@@ -34,7 +38,7 @@ function* nodes(tree) {
 
 // Reuse the existing production-backed mouse/keyboard host, without changing it.
 // Add the shipping metadata/style memos, updaters, stage and speaker inspector.
-// Only React hosting and unrelated stage/bulk content are replaced. State writes
+// Only React hosting and unrelated stage content are replaced. State writes
 // can be batched; selection itself is made by production event handlers.
 function createStyleEditor({ text = 'ABCDEFGH', mode = 'idle' } = {}) {
 	const h = createLockedEditor({ text, saved: Array.from(text, (_, i) => 10 + i * 0.25) });
@@ -42,6 +46,10 @@ function createStyleEditor({ text = 'ABCDEFGH', mode = 'idle' } = {}) {
 	const queued = [];
 	let deferWrites = false, claims = 0;
 	Object.assign(c, {
+		rangesToCharRefs, renderSyncCreatorLineInspector, renderSyncCreatorStagePanel,
+		syncCreatorVocalStyles: createSyncCreatorVocalStyles({
+			getSpeakerColors: () => null, getActiveColor: () => null, translate: key => key,
+		}),
 		mode, offsetSelectionRange: null, currentLineText: c.currentLineChars.join(''),
 		bulkCustomSpeakerColor: '', bulkCustomSpeakerFallback: 'MALE 1',
 		customSpeakerMetaMemoryRef: { current: new Map() },
@@ -49,10 +57,11 @@ function createStyleEditor({ text = 'ABCDEFGH', mode = 'idle' } = {}) {
 		s: { effectPill: {}, effectCard: {} },
 		claimSessionForLocalEditing() { claims++; },
 		react: { createElement: (type, props, ...children) => ({ type, props: props || {}, children }) },
-		renderBulkSpeakerControl: () => null,
+		requestSongVocalSpeaker() {},
 		isLoading: false, error: null, previousNavigableLineIndex: -1, nextNavigableLineIndex: -1,
 		isCurrentLineSynced: true, showLivePreview: false, syncGranularityRecordingHint: '',
 		goToPrevLine() {}, goToNextLine() {}, renderManualSplitEditor: () => null,
+		renderLivePreviewOverlay: () => null, getSyncCreatorFuriganaReact: text => text,
 		renderCurrentLineCharacters: () => null, renderParallelPartLine: () => null,
 	});
 	for (const name of ['bulkCustomSpeakerColor', 'bulkCustomSpeakerFallback']) {
@@ -76,7 +85,6 @@ function createStyleEditor({ text = 'ABCDEFGH', mode = 'idle' } = {}) {
 				Object.assign(c, { activeParallelPart: null, activeParallelTargetId: 'full', activeParallelPartId: 'full' });
 			}
 			vm.runInContext(`Object.assign(globalThis, (() => {
-				${charRefsHelper}
 				${charMemo}
 				return { currentLineCharRefs, currentLineChars };
 			})());`, c);
@@ -85,9 +93,9 @@ function createStyleEditor({ text = 'ABCDEFGH', mode = 'idle' } = {}) {
 		vm.runInContext(`Object.assign(globalThis, (() => {
 			${styleMemo}
 			${effectMeta}
+			const { normalizeSyncCreatorMetaFieldValue, applySyncCreatorStyleRangePatch } = syncCreatorVocalStyles;
 			${metaCallbacks}
 			${styleCallback}
-			${pickers}
 			${inspectors}
 			${stageRenderer}
 			return { currentLineMeta, currentLineStyleRanges, currentTextEffectKind,
@@ -125,7 +133,9 @@ function createStyleEditor({ text = 'ABCDEFGH', mode = 'idle' } = {}) {
 		},
 		chooseFallback(value) {
 			render();
-			control(node => node?.type === 'select', 'custom speaker fallback').props.onChange({ target: { value } });
+			const fallback = control(node => node?.type === 'select'
+				&& ![...nodes(node.children)].some(option => option?.type === 'option' && option.props.value === ''), 'custom speaker fallback');
+			fallback.props.onChange({ target: { value } });
 		},
 		clearStyle() {
 			render();
@@ -421,13 +431,11 @@ for (const changes of [{ currentLineIndex: 2 }, { activeParallelTargetId: 'other
 	test(`the real clearing effect disarms both selection and its owner after ${Object.keys(changes)[0]} changes`, () => {
 		const h = createStyleEditor();
 		h.rightDrag(1, 2);
-		h.context.isRightOffsetDraggingRef.current = true;
-		h.context.rightOffsetDragStartRef.current = 1;
+		h.pointerStart(9, { button: 2, clientX: 1, clientY: 0 });
 		h.resetSelection(changes);
 		assert.equal(h.selection(), null);
 		assert.equal(h.context.offsetSelectionTargetRef.current, null);
-		assert.equal(h.context.isRightOffsetDraggingRef.current, false);
-		assert.equal(h.context.rightOffsetDragStartRef.current, -1);
+		assert.equal(h.context.pointerGestureRef.current, null);
 		assert.equal(h.style({ kind: 'whisper' }), false);
 	});
 }

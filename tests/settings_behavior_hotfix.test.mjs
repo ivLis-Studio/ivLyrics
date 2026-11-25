@@ -1,9 +1,16 @@
+import { readSettingsSource } from "./fixtures/legacy-page-source.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { createSettingsUiTheme } from "../src/features/settings/settingsUiTheme.mjs";
+import { createSettingsNumericControls } from "../src/features/settings/settingsNumericControls.mjs";
+import { createSettingsColorControls } from "../src/features/settings/settingsColorControls.mjs";
+import { createSettingsFontControls } from "../src/features/settings/settingsFontControls.mjs";
+import { createSettingsEventChannel, createVisualSettingsActions } from "../src/core/visualSettingsActions.mjs";
+import { discardFocusedSettingsTextDraft, SETTINGS_TEXT_DRAFT_ATTRIBUTE } from "../src/features/settings/settingsTextDraft.mjs";
+import { settingsTabModules, installSettingsFixtureBindings } from "./fixtures/settings-tab-modules.mjs";
 
-const source = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
+const source = readSettingsSource();
 const section = (start, end) => {
   const from = source.indexOf(start);
   const to = source.indexOf(end, from + start.length);
@@ -55,6 +62,11 @@ function harness(code, component, globals = {}) {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
   };
   const context = vm.createContext({
+    createSettingsUiTheme,
+    createSettingsNumericControls,
+    createSettingsColorControls,
+    createSettingsFontControls,
+    ...settingsTabModules,
     ...react, react,
     CONFIG: { visual: {} }, APP_NAME: "ivLyrics",
     document: { activeElement: null },
@@ -74,7 +86,6 @@ function harness(code, component, globals = {}) {
     hasSettingDefault: () => false,
     isSettingChanged: () => false,
     useSettingsConfigRevision: () => 0,
-    useSettingsSignal: (signal) => signal?.get(),
     SettingsUiIcon: function SettingsUiIcon() {},
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     StorageManager: {
@@ -83,10 +94,11 @@ function harness(code, component, globals = {}) {
     },
     loadGoogleFontFamily() {},
     syncSettingsLyricsPreviewStyles: () => calls.push(["preview"]),
-    lyricContainerUpdate: () => calls.push(["lyrics"]),
-    reloadLyrics: (...args) => calls.push(["reloadLyrics", ...args]),
+    refreshPageFromSettings: () => calls.push(["lyrics"]),
+    reloadPageFromSettings: (_host, ...args) => calls.push(["reloadLyrics", ...args]),
     ...globals,
   });
+  installSettingsFixtureBindings(context);
   vm.runInContext(`${code}\nglobalThis.component = ${component};`, context);
   return {
     context, calls, listeners, frames,
@@ -110,14 +122,55 @@ function harness(code, component, globals = {}) {
 const compareCode = section("const normalizeSettingComparable =", "const getCurrentSettingValue =");
 const numericCode = [
   compareCode,
-  section("const getSettingsStepDecimals =", "const SETTINGS_CUSTOM_FONT_OPTION ="),
-  section("const ConfigSliderRange =", "const normalizeSettingsHexColor ="),
-  section("  const saveLyricsTypographySetting =", "  const saveVinylSetting ="),
+  `const { SettingsScrubField, ConfigSliderRange } = createSettingsNumericControls({
+    react, host: window, getDocument: () => document, getLanguage: () => undefined,
+    getSettingsText, SettingsUiIcon, hasSettingDefault, settingValuesEqual,
+  });`,
+  section("  const {\n    saveLyricsTypographySetting,", "  const openLyricsHelperDownload ="),
   "globalThis.saveTypography = saveLyricsTypographySetting;",
 ].join("\n");
 const pointer = (type, extra = {}) => ({
   type, pointerId: 7, button: 0, clientX: 0,
   preventDefault() {}, currentTarget: { setPointerCapture() {} }, ...extra,
+});
+
+test("shared visual changes update memory before storage, refresh and notifications", () => {
+  const trace = [];
+  const host = new EventTarget();
+  const config = { visual: { "lyrics-align": "left" } };
+  const channel = createSettingsEventChannel(host, (type, detail) => new CustomEvent(type, { detail }));
+  const unsubscribe = channel.subscribeSettingsConfig(event => trace.push(["event", event.detail, config.visual[event.detail.name]]));
+  const actions = createVisualSettingsActions({
+    getVisualSettings: () => config.visual,
+    persistConfig: (name, value) => trace.push(["persist", name, value, config.visual[name]]),
+    updateLyrics: () => trace.push(["refresh", config.visual["lyrics-align"]]),
+    publishConfigChange: channel.publishSettingsConfigChange,
+  });
+  actions.handleVisualConfigChange("lyrics-align", "center");
+  assert.deepEqual(trace, [
+    ["persist", "lyrics-align", "center", "center"],
+    ["refresh", "center"],
+    ["event", { type: "config", name: "lyrics-align", value: "center" }, "center"],
+  ]);
+
+  unsubscribe();
+  config.visual = {};
+  trace.length = 0;
+  actions.saveVisualSetting("lyrics-align", "right");
+  assert.deepEqual(trace, [["persist", "lyrics-align", "right", "right"]]);
+});
+
+test("a failed visual write leaves the current setting and its notifications intact", () => {
+  const visual = { "lyrics-align": "left" };
+  const actions = createVisualSettingsActions({
+    getVisualSettings: () => visual,
+    persistConfig() { throw new Error("Storage is full"); },
+    updateLyrics() { assert.fail("failed settings cannot refresh the lyrics"); },
+    publishConfigChange() { assert.fail("failed settings cannot notify listeners"); },
+  });
+  assert.throws(() => actions.handleVisualConfigChange("lyrics-align", "center"), /Storage is full/);
+  assert.throws(() => actions.handleVisualConfigChange("new-setting", true), /Storage is full/);
+  assert.deepEqual(visual, { "lyrics-align": "left" });
 });
 
 function numericHarness(component, overrides = {}) {
@@ -173,6 +226,33 @@ for (const component of ["SettingsScrubField", "ConfigSliderRange"]) {
     h.unmount();
   });
 
+  test(`${component}: a rejected storage write restores the previous value and permits the same retry`, (context) => {
+    const h = numericHarness(component);
+    h.context.CONFIG.visual["original-font-size"] = 44;
+    const save = h.context.StorageManager.setItem;
+    const failure = new Error("Storage is full");
+    const warn = context.mock.method(console, "error", () => {});
+    h.context.StorageManager.setItem = () => { throw failure; };
+    h.start();
+    h.move(96);
+    const attempted = Number(h.shown(h.render()));
+    assert.notEqual(attempted, 44);
+    h.control(h.render()).props.onPointerUp(pointer("pointerup"));
+    assert.equal(Number(h.shown(h.render())), 44);
+    assert.equal(h.context.CONFIG.visual["original-font-size"], 44);
+    assert.equal(warn.mock.calls.length, 1);
+    assert.deepEqual(h.calls, []);
+
+    h.context.StorageManager.setItem = save;
+    h.start();
+    h.move(96);
+    h.control(h.render()).props.onPointerUp(pointer("pointerup"));
+    assert.equal(h.context.CONFIG.visual["original-font-size"], attempted);
+    assert.equal(Number(h.shown(h.render())), attempted);
+    assert.deepEqual(h.commits, [attempted, attempted]);
+    h.unmount();
+  });
+
   test(`${component}: cancellation, focus loss, disabling, external reset and unmount discard drafts`, () => {
     for (const stop of ["onPointerCancel", "onLostPointerCapture", "blur", "disabled", "reset", "unmount"]) {
       const h = numericHarness(component);
@@ -220,7 +300,6 @@ test("font-weight scrubbing preserves the 100-unit snap and Shift/Alt modifiers"
 test("scrub manual entry, arrow stepping, comma decimals and focus baseline remain usable", () => {
   const h = numericHarness("SettingsScrubField", { value: 1, min: -5, max: 20, step: 0.5 });
   let input = find(h.render(), (node) => node.type === "input");
-  input.props.onFocus({ target: { value: "1" } });
   input.props.onChange({ target: { value: "2,5" } });
   assert.deepEqual(h.commits, []);
   input.props.onBlur({ target: { value: "2,5" } });
@@ -228,13 +307,94 @@ test("scrub manual entry, arrow stepping, comma decimals and focus baseline rema
   input = find(h.render(), (node) => node.type === "input");
   input.props.onKeyDown({ key: "ArrowUp", shiftKey: true, preventDefault() {}, currentTarget: h.inputHost });
   assert.deepEqual(h.commits, [2.5, 7.5]);
-  assert.equal(h.inputHost.dataset.ivBefore, "7.5", "Escape must not undo a committed keyboard step");
-  find(h.render(), (node) => node.type === "input").props.onBlur({ target: { value: "7.5" } });
+  const afterStep = find(h.render(), (node) => node.type === "input");
+  afterStep.props.onChange({ target: { value: "12.5" } });
+  const field = {
+    hasAttribute: name => Object.hasOwn(afterStep.props, name),
+    blur: () => afterStep.props.onBlur({ target: field }),
+  };
+  assert.ok(discardFocusedSettingsTextDraft(field), "Escape discards typed text");
+  assert.equal(find(h.render(), node => node.type === "input").props.value, "7.5");
   assert.deepEqual(h.commits, [2.5, 7.5], "blur cannot save the keyboard step twice");
-  for (const text of ["", "nonsense"]) input.props.onBlur({ target: { value: text } });
+  for (const text of ["", "nonsense"]) {
+    input.props.onChange({ target: { value: text } });
+    input.props.onBlur({ target: { value: text } });
+  }
   assert.deepEqual(h.commits, [2.5, 7.5]);
   h.unmount();
 });
+
+test("a newer setting invalidates a focused number before and after React renders it", () => {
+  for (const rendered of [false, true]) {
+    let saved = 44;
+    const h = numericHarness("SettingsScrubField", { readConfiguredValue: () => saved });
+    const input = () => find(h.render(), node => node.type === "input");
+    input().props.onChange({ target: { value: "80" } });
+    assert.equal(input().props.value, "80");
+    saved = 62;
+    if (rendered) h.render({ value: saved });
+    input().props.onBlur({ target: { value: "80" } });
+    assert.deepEqual(h.commits, [], "an older draft cannot overwrite a newer committed value");
+    h.render({ value: saved });
+    assert.equal(input().props.value, "62");
+    input().props.onChange({ target: { value: "84" } });
+    input().props.onBlur({ target: { value: "84" } });
+    assert.deepEqual(h.commits, [84]);
+    h.unmount();
+  }
+});
+
+test("an external change invalidates a pending scrub release before the next render", () => {
+  let saved = 44;
+  const h = numericHarness("SettingsScrubField", { readConfiguredValue: () => saved });
+  h.start();
+  h.move(100);
+  saved = 62;
+  h.control(h.render()).props.onPointerUp(pointer("pointerup"));
+  assert.deepEqual(h.commits, []);
+  h.render({ value: saved });
+  assert.equal(h.shown(h.render()), "62");
+  h.unmount();
+});
+
+for (const appearance of [
+  { component: "SettingsFontPicker", original: "Inter", newer: "Roboto", edited: "Avenir Next", factory: "Font" },
+  { component: "ConfigColorControl", original: "#aabbcc", newer: "#bbccdd", edited: "#123456", factory: "Color" },
+]) {
+  const { component, original, newer, edited, factory } = appearance;
+  test(`${component} retains an external setting on blur and saves a subsequent edit`, () => {
+    const h = harness(`const { ${component} } = createSettings${factory}Controls({
+      react, getSettingsText, translate: key => key, SettingsUiIcon,
+    });`, component);
+    const commits = [];
+    let value = original;
+    const props = {
+      label: "Original", value: original, readConfiguredValue: () => value,
+      onChange: text => commits.push(text), onCommit: text => commits.push(text),
+    };
+    const input = () => {
+      let tree = h.render(props);
+      if (factory === "Font" && tree.type !== "input") {
+        find(tree, node => node.type === "select").props.onChange({ target: { value: "__ivlyrics_custom_font__" } });
+        tree = h.render(props);
+      }
+      return find(tree, node => node.type === "input" && node.props.type === "text");
+    };
+    input().props.onChange({ target: { value: edited } });
+    const before = input();
+    assert.ok(Object.hasOwn(before.props, SETTINGS_TEXT_DRAFT_ATTRIBUTE));
+    assert.equal(before.props.value, edited);
+    value = newer;
+    before.props.onBlur({ target: { value: edited } });
+    assert.deepEqual(commits, []);
+    props.value = newer;
+    assert.equal(input().props.value, newer);
+    input().props.onChange({ target: { value: edited } });
+    input().props.onBlur({ target: { value: edited } });
+    assert.deepEqual(commits, [edited]);
+    h.unmount();
+  });
+}
 
 test("range keyboard changes, manual value field and presets still commit immediately", () => {
   const h = numericHarness("ConfigSliderRange", { min: 10, max: 240, step: 1, variant: "fps" });
@@ -246,7 +406,10 @@ test("range keyboard changes, manual value field and presets still commit immedi
 });
 
 test("synced line-window preview renders every configured line, including 0 before and 10 after", () => {
-  const h = harness(section("const SettingsLineWindow =", "// Sync Creator shortcuts:"), "SettingsLineWindow", {
+  const h = harness(`const { SettingsLineWindow } = createSettingsLayoutControls({
+    react, useSettingsConfigRevision, getVisualSettings: () => CONFIG.visual,
+    getSettingsStepper: () => SettingsStepper, isSettingChanged,
+  });`, "SettingsLineWindow", {
     SettingsStepper: function SettingsStepper() {},
   });
   const items = [{ key: "lines-before", desc: "Before" }, { key: "lines-after", desc: "After" }];
@@ -267,7 +430,11 @@ test("translation target selection saves and refreshes current lyrics without re
   const h = harness([
     compareCode,
     section("const saveSettingsTranslationTargetLanguage =", "const getSettingsMotionDurationMs ="),
-    section("  const renderGeneralTab =", "  const renderPerformanceTab ="),
+    `const { renderGeneralTab } = createPlaybackSettingsTabs({
+      react, activeTab, t: key => I18n.t(key), getAvailableLanguages: () => I18n.getAvailableLanguages(),
+      saveSettingsTranslationTargetLanguage,
+      controls: { SettingsSection, OptionList, ConfigSelection, OverlaySettings },
+    });`,
   ].join("\n"), "renderGeneralTab", {
     activeTab: "general",
     SettingsSection: function SettingsSection() {}, OptionList: function OptionList() {},
@@ -301,7 +468,11 @@ test("translation target selection saves and refreshes current lyrics without re
 
 test("section navigation hides only when the actual sections fit and returns on resize", () => {
   const observers = [];
-  const h = harness(section("const isSettingsTocNeeded =", "const getSettingsPreviewKind ="), "SettingsToc", {
+  const h = harness(`const SettingsToc = createSettingsSectionNavigation({
+    react, document, host: window, requestFrame: requestAnimationFrame,
+    cancelFrame: cancelAnimationFrame, getTime: () => performance.now(), getComputedStyle,
+    observeResize: callback => new ResizeObserver(callback),
+  });`, "SettingsToc", {
     ResizeObserver: class {
       constructor(callback) { this.callback = callback; this.targets = new Set(); observers.push(this); }
       observe(target) { this.targets.add(target); }
@@ -325,7 +496,7 @@ test("section navigation hides only when the actual sections fit and returns on 
     querySelectorAll: () => rendered, querySelector: () => page,
     getBoundingClientRect: () => ({ top: 100 }), focus: () => { focused++; },
   };
-  const props = { sections, signal: { get: () => "language" }, contentRef: { current: content }, label: "General" };
+  const props = { sections, signal: { get: () => "language", subscribe: () => () => {} }, contentRef: { current: content }, label: "General" };
   const render = () => h.render(props, (tree) => {
     tree.props.ref.current = toc;
     toc.hidden = tree.props.hidden;

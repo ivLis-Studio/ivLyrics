@@ -1,0 +1,372 @@
+/* Readability on transparent background */
+.lyrics-lyricsContainer-LyricsLine,
+/* Lyrics sub-lines base style (backwards compatibility) */
+.lyrics-lyricsContainer-LyricsLine-sub {
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent);
+  -webkit-text-stroke: 0px rgba(0, 0, 0, 0.35);
+  font-family: "Pretendard Variable", Pretendard, -apple-system,
+    BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI",
+    "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  margin-bottom: 0px;
+}
+
+/* Remove default p tag margins */
+.lyrics-lyricsContainer-LyricsLine>p {
+  margin: 0;
+  padding: 0;
+}
+
+/* Phonetic text style (romaji, romaja, pinyin) */
+.lyrics-lyricsContainer-LyricsLine-phonetic {
+  font-size: var(--lyrics-phonetic-font-size,
+      calc(var(--lyrics-font-size) * 0.6));
+  font-weight: var(--lyrics-phonetic-font-weight, 400);
+  margin-top: var(--lyrics-phonetic-spacing, 4px);
+  opacity: var(--lyrics-phonetic-opacity, 0.7);
+  line-height: calc(var(--lyrics-phonetic-font-size, calc(var(--lyrics-font-size) * 0.6)) * 1.3);
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent);
+  -webkit-text-stroke: 0px rgba(0, 0, 0, 0.35);
+  font-family: "Pretendard Variable", Pretendard, -apple-system,
+    BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI",
+    "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  margin-bottom: 0px;
+}
+
+/* Translation text style (korean, etc) */
+.lyrics-lyricsContainer-LyricsLine-translation {
+  font-size: var(--lyrics-translation-font-size,
+      calc(var(--lyrics-font-size) * 0.7));
+  font-weight: var(--lyrics-translation-font-weight, 600);
+  margin-top: var(--lyrics-translation-spacing, 8px);
+  opacity: var(--lyrics-translation-opacity, 0.6);
+  line-height: calc(var(--lyrics-translation-font-size, calc(var(--lyrics-font-size) * 0.7)) * 1.4);
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent);
+  -webkit-text-stroke: 0px rgba(0, 0, 0, 0.35);
+  font-family: "Pretendard Variable", Pretendard, -apple-system,
+    BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI",
+    "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  margin-bottom: 0px;
+}
+
+/* Sparse AI-generated cultural context shown only on annotated lyric lines. */
+.lyrics-cultural-marker {
+  display: inline;
+  margin-inline-start: 0.12em;
+  color: currentColor;
+  font-family: var(--lyrics-font-family, var(--font-family));
+  font-size: 0.38em;
+  font-weight: 500;
+  line-height: 0;
+  letter-spacing: 0;
+  vertical-align: super;
+  opacity: 0.72;
+  -webkit-text-fill-color: currentColor;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+}
+
+.lyrics-lyricsContainer-LyricsLine > .lyrics-lyricsContainer-LyricsLine-culturalNote {
+  width: min(56rem, 100%);
+  max-width: min(56rem, 100%);
+  margin-left: var(--lyrics-cultural-note-margin-left, auto);
+  margin-right: var(--lyrics-cultural-note-margin-right, auto);
+  margin-top: 10px;
+  margin-bottom: 0;
+  color: var(--lyrics-color-inactive);
+  font-family: var(--lyrics-cultural-note-font-family,
+      var(--lyrics-font-family, var(--font-family)));
+  font-size: var(--lyrics-cultural-note-font-size, 14px);
+  font-weight: var(--lyrics-cultural-note-font-weight, 300);
+  line-height: 1.5;
+  letter-spacing: 0;
+  opacity: var(--lyrics-cultural-note-opacity, 0.6);
+  overflow-wrap: anywhere;
+  white-space: normal;
+  text-align: var(--lyrics-align-text, center);
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent);
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.lyrics-lyricsContainer-LyricsLine-active .lyrics-lyricsContainer-LyricsLine-culturalNote {
+  color: var(--lyrics-color-active);
+  opacity: var(--lyrics-cultural-note-opacity, 0.6);
+  transform: translateY(-2px);
+}
+
+/* Legacy support: .lyrics-lyricsContainer-LyricsLine-sub uses translation style */
+.lyrics-lyricsContainer-LyricsLine-sub {
+  font-size: var(--lyrics-translation-font-size,
+      calc(var(--lyrics-font-size) * 0.7));
+  font-weight: var(--lyrics-translation-font-weight, 600);
+  margin-top: var(--lyrics-line-spacing, 8px);
+  opacity: var(--lyrics-translation-opacity, 0.6);
+  text-shadow: var(--lyrics-text-shadow);
+  line-height: calc(var(--lyrics-translation-font-size, calc(var(--lyrics-font-size) * 0.7)) * 1.4);
+}
+
+.lyrics-lyricsContainer-LyricsLine-active {
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent);
+  -webkit-text-stroke: 0px rgba(0, 0, 0, 0.45);
+}
+
+#ivLyrics-gradient-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  overflow: hidden;
+  transition: background-color 0.5s ease, background-image 0.5s ease,
+    filter 0.5s ease, background 1.5s ease;
+  pointer-events: none;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+  will-change: filter, transform, opacity;
+  contain: paint;
+}
+
+/* Color Gradient Background */
+:is(#ivLyrics-gradient-background, .ivlyrics-video-background-fallback).color-gradient-bg {
+  --c1: var(--ivLyrics-c1, 30, 30, 40);
+  --c2: var(--ivLyrics-c2, 60, 40, 70);
+  --c3: var(--ivLyrics-c3, 20, 50, 60);
+  background-color: rgba(var(--c1), 1);
+  transition: background-color 1.5s ease, filter 0.5s ease;
+}
+
+#ivLyrics-gradient-background.color-gradient-bg::before,
+#ivLyrics-gradient-background.color-gradient-bg::after {
+  display: none;
+}
+
+/* 공통 블롭 스타일 */
+.gradient-blob {
+  position: absolute;
+  /* Blobs sit at the container origin; their keyframes move them with transform only. */
+  top: 0;
+  left: 0;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.85;
+  mix-blend-mode: screen;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform, filter;
+}
+
+.color-gradient-bg .blob-1 {
+  width: 80%;
+  height: 80%;
+  background: rgba(var(--c2), 1);
+  animation: blob-move-1 18s ease-in-out infinite;
+}
+
+.color-gradient-bg .blob-2 {
+  width: 70%;
+  height: 70%;
+  background: rgba(var(--c3), 1);
+  animation: blob-move-2 22s ease-in-out infinite;
+}
+
+.color-gradient-bg .blob-3 {
+  width: 55%;
+  height: 55%;
+  background: rgba(var(--c2), 0.9);
+  filter: blur(60px);
+  animation: blob-move-3 15s ease-in-out infinite;
+}
+
+.color-gradient-bg .blob-4 {
+  width: 75%;
+  height: 75%;
+  background: rgba(var(--c3), 0.8);
+  filter: blur(60px);
+  animation: blob-move-4 25s ease-in-out infinite;
+}
+
+.color-gradient-bg .blob-5 {
+  width: 50%;
+  height: 50%;
+  background: rgba(var(--c2), 0.7);
+  filter: blur(50px);
+  animation: blob-move-5 16s ease-in-out infinite;
+}
+
+.color-gradient-bg .blob-6 {
+  width: 90%;
+  height: 90%;
+  background: rgba(var(--c3), 0.6);
+  filter: blur(70px);
+  animation: blob-move-6 20s ease-in-out infinite;
+}
+
+@keyframes blob-move-1 {
+  0%, 100% { transform: translate(-25%, -25%) scale(1); }
+  20% { transform: translate(62.5%, 12.5%) scale(1.1); }
+  40% { transform: translate(37.5%, 62.5%) scale(0.9); }
+  60% { transform: translate(-12.5%, 37.5%) scale(1.15); }
+  80% { transform: translate(25%, -12.5%) scale(0.95); }
+}
+
+@keyframes blob-move-2 {
+  0%, 100% { transform: translate(85.7143%, 71.4286%) scale(1); }
+  25% { transform: translate(-21.4286%, 28.5714%) scale(1.2); }
+  50% { transform: translate(57.1429%, -21.4286%) scale(0.85); }
+  75% { transform: translate(100%, 57.1429%) scale(1.1); }
+}
+
+@keyframes blob-move-3 {
+  0%, 100% { transform: translate(-18.1818%, 109.0909%) scale(1); }
+  33% { transform: translate(109.0909%, -36.3636%) scale(1.3); }
+  66% { transform: translate(72.7273%, 72.7273%) scale(0.8); }
+}
+
+@keyframes blob-move-4 {
+  0%, 100% { transform: translate(93.3333%, -40%) scale(1); }
+  20% { transform: translate(66.6667%, 80%) scale(0.9); }
+  40% { transform: translate(-26.6667%, 53.3333%) scale(1.2); }
+  60% { transform: translate(40%, -13.3333%) scale(1.05); }
+  80% { transform: translate(106.6667%, 26.6667%) scale(0.85); }
+}
+
+@keyframes blob-move-5 {
+  0%, 100% { transform: translate(100%, 140%) scale(1); }
+  25% { transform: translate(160%, 60%) scale(1.25); }
+  50% { transform: translate(40%, -20%) scale(0.9); }
+  75% { transform: translate(-30%, 100%) scale(1.1); }
+}
+
+@keyframes blob-move-6 {
+  0%, 100% { transform: translate(33.3333%, 33.3333%) scale(1); }
+  33% { transform: translate(-22.2222%, -22.2222%) scale(1.15); }
+  66% { transform: translate(66.6667%, 66.6667%) scale(0.9); }
+}
+
+/* Furigana Ruby Styles */
+ruby {
+  display: ruby;
+  ruby-position: over;
+  ruby-align: center;
+}
+
+ruby rt {
+  font-size: 0.5em;
+  line-height: 1;
+  text-align: center;
+  font-weight: normal;
+  opacity: 0.85;
+  letter-spacing: 0.05em;
+  user-select: none;
+}
+
+.lyrics-lyricsContainer-LyricsLine ruby {
+  display: ruby;
+  ruby-position: over;
+}
+
+.lyrics-lyricsContainer-LyricsLine ruby rt {
+  display: ruby-text;
+  font-size: 0.5em;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Active line furigana styling */
+.lyrics-lyricsContainer-LyricsLine-active ruby rt {
+  opacity: 0.9;
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+
+.lyrics-karaoke-line ruby {
+  ruby-position: over;
+}
+
+.lyrics-karaoke-line ruby rt {
+  font-size: 0.5em;
+  opacity: 0.85;
+  user-select: none;
+  white-space: nowrap;
+}
+
+
+.sync-creator-live-preview-exact .lyrics-karaoke-char-reading,
+.sync-creator-live-preview-exact .lyrics-karaoke-run-reading {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  color: var(--lyrics-color-active);
+  -webkit-text-fill-color: var(--lyrics-color-active);
+  opacity: 0.76;
+}
+
+.sync-creator-live-preview-exact .lyrics-karaoke-line.has-char-readings {
+  padding-bottom: 14px;
+}
+
+/* The sync preview renders the production synced-page markup so page-scoped
+   lyric rules apply identically. These declarations reset only the page
+   layout those borrowed classes carry; every lyric rule stays untouched. */
+.sync-creator-live-preview-stage.lyrics-lyricsContainer-SyncedLyricsPage {
+  display: block;
+  grid-area: auto;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  text-align: var(--lyrics-align-text, inherit);
+  user-select: text;
+}
+
+.sync-creator-live-preview-rows.lyrics-lyricsContainer-SyncedLyrics {
+  display: block;
+  grid-area: auto;
+  height: auto;
+  min-height: 0;
+  text-align: inherit;
+}
+
+.sync-creator-live-preview-rows .lyrics-lyricsContainer-LyricsLine {
+  margin: 0 !important;
+  opacity: 1;
+  transform: none !important;
+  pointer-events: none;
+  text-align: inherit;
+}
+
+.sync-creator-live-preview-rows .lyrics-lyricsContainer-LyricsLine > p:first-child {
+  margin: 0;
+}
+
+/* Furigana (Ruby) Styling */
+.lyrics-lyricsContainer-LyricsLine ruby {
+  ruby-align: center;
+}
+
+.lyrics-lyricsContainer-LyricsLine ruby rt {
+  font-size: var(--lyrics-furigana-font-size, 14px);
+  font-weight: var(--lyrics-furigana-font-weight, 300);
+  opacity: var(--lyrics-furigana-opacity, 0.8);
+  line-height: 1;
+  margin-bottom: var(--lyrics-furigana-spacing, 2px);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.lyrics-lyricsContainer-LyricsLine-sub ruby rt {
+  font-size: calc(var(--lyrics-furigana-font-size, 14px) * 0.85);
+}
+

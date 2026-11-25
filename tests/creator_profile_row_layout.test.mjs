@@ -1,8 +1,8 @@
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const styles = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
+const styles = readPcStylesheet();
 const normalize = value => value.trim().replace(/\s+/g, ' ');
 // Media blocks close at column 0 here; strip them so a narrow override can never
 // be mistaken for the rule a desktop selector resolves to.

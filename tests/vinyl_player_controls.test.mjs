@@ -1,99 +1,70 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
+import { createAppConfig } from "../src/spicetify/createAppConfig.mjs";
+import { startMotionLyrics } from "../src/features/motion/motionApi.mjs";
+import { createHarness, elements, first, second } from "./fixtures/vinyl-controls-harness.mjs";
 
-const source = readFileSync(new URL("../VinylPlayerMode.js", import.meta.url), "utf8");
-const first = { uri: "spotify:track:one", title: "First", artist: "Artist", album: "Album", coverUrl: "one.png" };
-const second = { ...first, uri: "spotify:track:two", title: "Second", coverUrl: "two.png" };
-const elements = node => Array.isArray(node) ? node.flatMap(elements)
-  : node && typeof node === "object" && "type" in node ? [node, ...elements(node.props.children)] : [];
-
-const createHarness = ({ component = "Mode", reducedMotion = false, clocks = [], ...initialProps } = {}) => {
-  const slots = [], mediaListeners = new Set(), timers = new Map();
-  let cursor = 0, dirty = false, effects = [], tree, now = 0, timerId = 0;
-  let props = { track: first, isPlaying: true, vinylSettings: {}, ...initialProps };
-  const sameDeps = (a, b) => a && b && a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
-  const useMemo = (factory, deps) => {
-    const index = cursor++;
-    if (!slots[index] || !sameDeps(slots[index].deps, deps)) slots[index] = { value: factory(), deps };
-    return slots[index].value;
-  };
-  const useState = initial => {
-    const index = cursor++;
-    if (!slots[index]) slots[index] = { value: typeof initial === "function" ? initial() : initial };
-    return [slots[index].value, next => {
-      const value = typeof next === "function" ? next(slots[index].value) : next;
-      if (!Object.is(value, slots[index].value)) { slots[index].value = value; dirty = true; }
-    }];
-  };
-  const useEffect = (effect, deps) => {
-    const index = cursor++;
-    if (!slots[index] || !sameDeps(slots[index].deps, deps)) effects.push(() => {
-      slots[index]?.cleanup?.();
-      slots[index] = { deps, cleanup: effect() };
-    });
-  };
-  const react = {
-    useState, useMemo, useEffect, useLayoutEffect: useEffect,
-    useCallback: (callback, deps) => useMemo(() => callback, deps),
-    useRef: current => useMemo(() => ({ current }), []),
-    memo: fn => fn,
-    createElement: (type, elementProps, ...children) => ({ type, props: { ...elementProps, children } }),
-  };
-  const media = {
-    matches: reducedMotion,
-    addEventListener: (_, callback) => mediaListeners.add(callback),
-    removeEventListener: (_, callback) => mediaListeners.delete(callback),
-  };
-  const window = {
-    matchMedia: () => media,
-    setTimeout: (callback, delay) => { timers.set(++timerId, { callback, due: now + delay }); return timerId; },
-    clearTimeout: id => timers.delete(id),
-    requestAnimationFrame: callback => window.setTimeout(callback, 16),
-    cancelAnimationFrame: id => timers.delete(id),
-    addEventListener() {}, removeEventListener() {},
-  };
-  const context = vm.createContext({
-    Spicetify: { React: react, SVGIcons: {} }, window,
-    document: { addEventListener() {}, removeEventListener() {} },
-    I18n: { t: key => key }, createOutsideTextOutlineShadow: () => "none",
+test("focused playback keeps timing on its own track and suppresses the outgoing motion stage", () => {
+  const Stage = () => null;
+  const ActiveLyric = () => null;
+  const sampled = [];
+  startMotionLyrics({ host: { ivLyricsMotionLyrics: {
+    initialized: true, Stage, hasRealTiming(lyrics) { sampled.push(lyrics); return true; },
+  } } });
+  const oldLyrics = [{ text: "First", startTime: 2000 }];
+  const newLyrics = [{ text: "Second", startTime: 1000 }];
+  const h = createHarness({
+    presentationMode: "motion", track: first, lyricsTrackUri: first.uri,
+    activeLyrics: oldLyrics, activeLyricsKaraoke: true, karaokeRenderGranularity: "word",
+    activeLyricRenderer: ActiveLyric,
   });
-  vm.runInContext(source.replace("    return Mode;", "    window.testComponents = { Mode, VinylPlayer, CompactVinyl, CompactAlbumVinyl };\n    return Mode;"), context);
-  const render = (nextProps = {}) => {
-    props = { ...props, ...nextProps };
-    let passes = 0;
-    do {
-      assert.ok(++passes < 10, "LP updates must settle");
-      dirty = false; cursor = 0; effects = [];
-      tree = window.testComponents[component](props);
-      for (const node of elements(tree)) if (node.props.ref) node.props.ref.current = { getAnimations: () => clocks };
-      for (const effect of effects) effect();
-    } while (dirty);
-    return tree;
-  };
-  render();
-  return {
-    render, get tree() { return tree; }, get timerCount() { return timers.size; },
-    player: () => elements(tree).find(node => node.type === window.testComponents.VinylPlayer)?.props,
-    advance(ms) {
-      const end = now + ms;
-      for (;;) {
-        const next = [...timers].sort((a, b) => a[1].due - b[1].due).find(([, timer]) => timer.due <= end);
-        if (!next) break;
-        now = next[1].due; timers.delete(next[0]); next[1].callback();
-        if (dirty) render();
-      }
-      now = end;
-    },
-    setReducedMotion(matches) { media.matches = matches; for (const listener of mediaListeners) listener(); return render(); },
-    unmount() {
-      for (const slot of slots) slot?.cleanup?.();
-      assert.equal(timers.size, 0, "unmount cancels transition timers");
-      assert.equal(mediaListeners.size, 0, "unmount releases reduced-motion subscription");
-    },
-  };
-};
+  const find = (component) => elements(h.tree).find(node => node.type === component);
+  assert.equal(find(Stage).props.trackUri, first.uri);
+  assert.deepEqual(sampled, [oldLyrics]);
+
+  h.render({ track: second });
+  assert.equal(find(Stage), undefined);
+  assert.equal(find(ActiveLyric), undefined);
+  assert.equal(elements(h.tree).some(node => node.props.className === "fullscreen-motion-notice"), false);
+  assert.deepEqual(sampled, [oldLyrics]);
+
+  h.render({ activeLyrics: newLyrics, lyricsTrackUri: second.uri });
+  assert.equal(find(Stage).props.trackUri, second.uri);
+  assert.equal(find(Stage).props.lyrics, newLyrics);
+  h.render({ presentationMode: "video" });
+  assert.equal(find(ActiveLyric).props.trackUri, second.uri);
+  assert.equal(find(ActiveLyric).props.karaokeRenderGranularity, "word");
+  h.unmount();
+});
+
+test("a track change cancels the tonearm drag and its pending pointer release", () => {
+  const seeks = [];
+  const h = createHarness({
+    component: "VinylPlayer", trackUri: first.uri, tonearmStyle: "linear", animationsEnabled: false,
+    position: 20000, duration: 200000, onSeek: position => seeks.push(position),
+  });
+  const tonearm = () => elements(h.tree).find(node => node.props.role === "slider").props;
+  const pointer = (clientX, buttons = 1) => ({
+    pointerId: 1, pointerType: "mouse", clientX, buttons,
+    preventDefault() {}, stopPropagation() {},
+  });
+  tonearm().onPointerDown(pointer(170));
+  h.render();
+  tonearm().onPointerMove(pointer(122.5));
+  h.render();
+  assert.equal(tonearm()["aria-valuenow"], 120000);
+
+  tonearm().onPointerMove(pointer(122.5, 0));
+  assert.equal(h.timerCount, 1);
+  h.render({ trackUri: second.uri, position: 8500 });
+  h.advance(90);
+  tonearm().onPointerUp(pointer(122.5, 0));
+  h.render();
+  assert.deepEqual(seeks, []);
+  assert.equal(tonearm()["aria-valuenow"], 8500);
+  assert.equal(h.timerCount, 0);
+  h.unmount();
+});
 
 test("disabling track changes swaps metadata immediately while preserving the playing record", () => {
   const h = createHarness({ vinylSettings: { trackChangeAnimation: false, rotationSpeed: 150 } });
@@ -236,14 +207,21 @@ test("CD analysis failure dismisses once, survives settings updates, and resets 
 });
 
 test("saved LP preferences reload with bounded speeds and unchanged defaults", () => {
-  const index = readFileSync(new URL("../index.js", import.meta.url), "utf8");
-  const fields = index.slice(index.indexOf('    "fullscreen-vinyl-track-change-animation":'), index.indexOf('    "fullscreen-vinyl-center-rotation":'));
+  const readVisual = (speed, animation) => createAppConfig({
+    storage: {
+      get: (key, fallback = true) =>
+        key === "ivLyrics:visual:fullscreen-vinyl-track-change-animation" ? animation ?? fallback : fallback,
+      getItem: (key) => key === "ivLyrics:visual:fullscreen-vinyl-rotation-speed" ? speed : null,
+      getPersisted: () => null,
+      setItem() {},
+    },
+  }).visual;
   for (const [stored, speed] of [[null, 100], ["175", 175], ["-10", 25], ["400", 200], ["invalid", 100]]) {
-    const config = vm.runInNewContext(`({${fields}})`, { StorageManager: { get: (_, fallback) => fallback, getItem: () => stored } });
+    const config = readVisual(stored);
     assert.equal(config["fullscreen-vinyl-rotation-speed"], speed);
     assert.equal(config["fullscreen-vinyl-track-change-animation"], true);
   }
-  const config = vm.runInNewContext(`({${fields}})`, { StorageManager: { get: () => false, getItem: () => "50" } });
+  const config = readVisual("50", false);
   assert.equal(config["fullscreen-vinyl-track-change-animation"], false);
   assert.equal(config["fullscreen-vinyl-rotation-speed"], 50);
 });

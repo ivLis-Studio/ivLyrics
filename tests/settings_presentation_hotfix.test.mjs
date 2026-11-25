@@ -1,12 +1,12 @@
+import { readSettingsSource, readSettingsStylesFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { createFullscreenPresentationPicker } from "#ivlyrics/features/settings/settingsFullscreenPresentationPicker.mjs";
 
-const source = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
-const css = vm.runInNewContext(readFileSync(new URL("../SettingsStyles.js", import.meta.url), "utf8")
+const source = readSettingsSource();
+const css = vm.runInNewContext(readSettingsStylesFixture()
   + "\nSETTINGS_MODAL_CSS;", { APP_NAME: "ivLyrics" });
-const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 const elements = node => Array.isArray(node) ? node.flatMap(elements)
   : node?.props ? [node, ...elements(node.props.children)] : [];
 
@@ -23,18 +23,16 @@ function harness() {
     if (!slots[index] || deps.some((value, i) => value !== slots[index][i])) effects.push(effect);
     slots[index] = deps;
   };
-  const react = { useState, createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) };
-  const context = vm.createContext({ react, useEffect, getSettingsText: (_key, fallback) => fallback });
-  vm.runInContext([
-    section("const handleSettingsRadioKeys =", "// Slide toggle"),
-    section("const FULLSCREEN_PRESENTATION_PRESETS =", "const getCurrentSettingsBackgroundMode ="),
-    "globalThis.Picker = FullscreenPresentationPicker;",
-  ].join("\n"), context);
+  const react = {
+    useState, useEffect,
+    createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
+  };
+  const Picker = createFullscreenPresentationPicker({ react, getSettingsText: (_key, fallback) => fallback });
   return {
     changes, focused,
     render(defaultValue = "vinyl") {
       cursor = 0;
-      const tree = context.Picker({ defaultValue, onChange: (...args) => changes.push(args) });
+      const tree = Picker({ defaultValue, onChange: (...args) => changes.push(args) });
       effects.splice(0).forEach(effect => effect());
       return elements(tree).filter(node => node.props.role === "radio");
     },

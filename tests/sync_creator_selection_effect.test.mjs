@@ -1,9 +1,12 @@
+import { renderSyncCreatorLineInspector } from '#ivlyrics/features/sync/syncCreatorStyleControls.mjs';
+import { createSyncCreatorVocalStyles } from '#ivlyrics/features/sync/syncCreatorVocalStyles.mjs';
+import { readSyncCreatorFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const source = readSyncCreatorFixture().replace(/\r\n/g, '\n');
 const slice = (startMarker, endMarker) => {
 	const start = source.indexOf(startMarker);
 	const end = source.indexOf(endMarker, start + startMarker.length);
@@ -93,25 +96,16 @@ test('selection speaker is the uniform speaker meta across selected refs, null w
 test('the redundant bottom partial-effects tab is removed; main picker and speaker panel cover selection', () => {
 	assert.ok(!source.includes('const renderStyleRangeEditor ='), 'range editor function is gone');
 	assert.ok(!source.includes('renderStyleRangeColorColumn'), 'range color column is gone');
-	const stage = slice('const renderStagePanel =', 'const renderLineOffsetControls =');
+	const stage = readFileSync(new URL('../src/features/sync/syncCreatorStageView.mjs', import.meta.url), 'utf8');
 	assert.ok(!stage.includes('renderStyleRangeEditor'), 'stage no longer renders the tab');
 });
 
 test('clearing a styled range removes its effect and color but keeps neighbors', () => {
-	const helpers = vm.createContext({ window: {}, I18n: { t: () => '' }, CONFIG: { visual: {} }, localStorage: { getItem: () => null } });
-	const take = (s, e) => {
-		const a = source.indexOf(s);
-		const b = source.indexOf(e, a + s.length);
-		assert.ok(a >= 0 && b > a, `missing section: ${s}`);
-		return source.slice(a, b);
-	};
-	vm.runInContext([
-		take('const SYNC_CREATOR_SPEAKER_OPTIONS =', 'const hasSyncCreatorCharacterPronunciationConsent ='),
-		take('const SYNC_CREATOR_KIND_OPTIONS =', 'const SYNC_CREATOR_PARALLEL_HINT_REGEX ='),
-		take('const normalizeSyncCreatorSpeakerToken =', 'const getSyncCreatorHexColorWithAlpha ='),
-		take('const normalizeSyncCreatorKind =', 'const getSyncCreatorParenthesisClose ='),
-	].join('\n') + '\nglobalThis.__clear = { normalizeSyncCreatorStyleRanges, applySyncCreatorStyleRangePatch };', helpers);
-	const { normalizeSyncCreatorStyleRanges, applySyncCreatorStyleRangePatch } = helpers.__clear;
+	const { normalizeSyncCreatorStyleRanges, applySyncCreatorStyleRangePatch } = createSyncCreatorVocalStyles({
+		getSpeakerColors: () => null,
+		getActiveColor: () => undefined,
+		translate: () => '',
+	});
 	const lineStart = 100;
 	const lineEnd = 109;
 	const ranges = [
@@ -128,7 +122,23 @@ test('clearing a styled range removes its effect and color but keeps neighbors',
 });
 
 test('the speaker panel header carries a selection-gated clear-style button', () => {
-	const inspector = slice('const renderLineInspector =', 'const renderGranularitySelector =');
-	assert.ok(inspector.includes('rangeStyleClear'), 'clear button lives in the speaker panel');
-	assert.ok(inspector.includes('hasInspectorSelectionTarget'), 'clear button follows the selection');
+	const vocalStyles = createSyncCreatorVocalStyles({
+		getSpeakerColors: () => null, getActiveColor: () => null, translate: key => key,
+	});
+	const react = { createElement: (tag, props, ...children) => ({ tag, props, children }) };
+	const cleared = [];
+	const render = offsetSelectionRange => renderSyncCreatorLineInspector({
+		react, i18n: { t: key => key }, toast: { success() {} }, styles: {}, vocalStyles,
+		line: { currentLineStart: 3, currentLineMeta: { speaker: 'NORMAL' }, lyricsLines: ['A'] },
+		selection: { mode: 'idle', offsetSelectionRange, currentLineStyleRanges: [], currentLineCharRefs: [{ absoluteIndex: 3, localIndex: 0 }], currentLineChars: ['A'] },
+		customSpeaker: { customSpeakerMetaMemoryRef: { current: new Map() } },
+		actions: { updateCurrentLineStyleRanges: patch => cleared.push(patch) },
+	});
+	const clearButton = tree => tree.children[0].children[0].children.find(child => child.tag === 'button');
+	assert.equal(clearButton(render(null)).props.disabled, true);
+	const enabled = clearButton(render({ start: 0, end: 0 }));
+	assert.equal(enabled.props.title, 'syncCreator.rangeStyleClear');
+	assert.equal(enabled.props.disabled, false);
+	enabled.props.onClick();
+	assert.deepEqual(cleared, [{ kind: null, speaker: null }]);
 });

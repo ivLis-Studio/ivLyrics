@@ -1,17 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
+import { createLyricsPageRenderer } from '../src/lyrics/createLyricsPageRenderer.mjs';
+import { createSyncedLyricsPlaybackTracker } from '../src/lyrics/createSyncedLyricsPlaybackTracker.mjs';
 
-const source = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
-const slice = (start, end) => {
-  const a = source.indexOf(start), b = source.indexOf(end, a);
-  assert.ok(a >= 0 && b > a, start);
-  return source.slice(a, b);
-};
 const createHarness = () => {
   const slots = [], events = [];
   let cursor = 0, position = 0;
+  let observePosition, trackerRenders = 0;
   const useMemo = (fn, deps) => {
     const index = cursor++, old = slots[index];
     if (!old || deps.length !== old.deps.length || deps.some((v, i) => !Object.is(v, old.deps[i]))) {
@@ -20,39 +15,38 @@ const createHarness = () => {
     return slots[index].value;
   };
   const CONFIG = { visual: { 'synced-compact': true, 'pseudo-karaoke-render-advance': 150 } };
-  const context = vm.createContext({
-    CONFIG, useMemo, useEffect: useMemo,
-    react: { memo: f => f, createElement: (type, props, ...children) => ({ type, props, children }), Fragment: 'fragment' },
-    window: { dispatchEvent: e => events.push(JSON.parse(JSON.stringify(e.detail))) },
-    CustomEvent: class { constructor(type, data) { Object.assign(this, { type, ...data }); } },
-    emptyLine: { text: '', startTime: 0 },
-    PSEUDO_KARAOKE_SOURCES: new Set(['pseudo']),
-    useLyricsPlaybackPosition: () => position,
-    getCurrentTrackDurationMs: () => 20000,
-    getEmbeddedAuxiliaryDisplayValues: line => line,
-    getInterludeInfo: () => ({ isInterlude: false }),
-    buildLyricDisplayState: () => ({}),
-    SyncedLyricsPage: 'compact-page', SyncedExpandedLyricsPage: 'expanded-page',
-    UnsyncedLyricsPage: 'unsynced-page', LyricsUnavailableView: 'unavailable',
-    MarketplacePage: 'marketplace', CreditFooter: 'footer',
+  const readCompactMode = () => CONFIG.visual['synced-compact'];
+  const react = {
+    memo: component => component,
+    useMemo, useRef: value => useMemo(() => ({ current: value }), []),
+    useCallback: (fn, deps) => useMemo(() => fn, deps),
+    createElement: (type, props, ...children) => ({ type, props, children }),
+    Fragment: 'fragment',
+  };
+  const tracker = createSyncedLyricsPlaybackTracker({
+    react, readCompactMode,
+    getPseudoKaraokeRenderAdvance: source => source === 'pseudo' ? CONFIG.visual['pseudo-karaoke-render-advance'] : 0,
+    publishLyricIndex: (activeLineIndex, leadingEmptyLines, total) => events.push({
+      index: Math.max(0, activeLineIndex - leadingEmptyLines), total,
+    }),
+    useLyricsPlaybackObserver(observe) { observePosition = observe; observe(position); },
   });
-  vm.runInContext([
-    slice('const getPseudoKaraokeRenderAdvance', 'const shouldIncludeSyncedLineInCompactView'),
-    slice('const getActiveTimedLineIndex', 'const getPrecenteredTimedLineIndex'),
-    slice('const prepareSyncedLineStartIndex', 'const buildSyncedPlaybackBoundaries'),
-    slice('const usePreparedSyncedLyrics', 'const useSyncedLyricsEngine'),
-    slice('const LyricsPageRenderer', 'window.LyricsPageRenderer'),
-    'globalThis.api = { SyncedLyricsPlaybackTracker, LyricsPageRenderer };',
-  ].join('\n'), context);
+  const LyricsPageRenderer = createLyricsPageRenderer({
+    react, readCompactMode, getMarketplacePage: () => 'marketplace', SyncedLyricsPlaybackTracker: tracker,
+    SyncedLyricsPage: 'compact-page', SyncedExpandedLyricsPage: 'expanded-page',
+    UnsyncedLyricsPage: 'unsynced-page', LyricsUnavailableView: 'unavailable', CreditFooter: 'footer',
+  });
   return {
-    CONFIG, events,
-    tracker: context.api.SyncedLyricsPlaybackTracker,
+    CONFIG, events, tracker,
+    get trackerRenders() { return trackerRenders; },
+    sample(time) { observePosition(time); return events.at(-1); },
     tick(lyrics, time, options = {}) {
       cursor = 0; position = time;
-      assert.equal(context.api.SyncedLyricsPlaybackTracker({ lyrics, ...options }), null);
+      trackerRenders++;
+      assert.equal(tracker({ lyrics, trackUri: '', ...options }), null);
       return events.at(-1);
     },
-    render(props) { cursor = 0; return context.api.LyricsPageRenderer(props); },
+    render: LyricsPageRenderer,
   };
 };
 
@@ -88,6 +82,50 @@ test('tracker retains pseudo karaoke advance and only publishes boundary or lyri
   assert.deepEqual(h.tick([], 1900), { index: 0, total: 0 });
 });
 
+test('steady fullscreen playback observes the clock without rendering tracker or preparing display rows', () => {
+  const h = createHarness();
+  const makeLine = startTime => ({
+    startTime,
+    get text() { assert.fail('a hidden renderer must only read timing'); },
+  });
+  const lyrics = [makeLine(1000), makeLine(3000)];
+  h.tick(lyrics, 1100);
+  for (let time = 1100; time < 3000; time += 17) h.sample(time);
+  assert.deepEqual(h.events, [{ index: 0, total: 2 }]);
+  assert.deepEqual(h.sample(3000), { index: 1, total: 2 });
+  assert.deepEqual(h.sample(1500), { index: 0, total: 2 });
+  assert.equal(h.trackerRenders, 1);
+});
+
+test('focused lyric tracking retains the existing notifications for preroll and empty rows', () => {
+  for (const compact of [true, false]) {
+    const h = createHarness();
+    h.CONFIG.visual['synced-compact'] = compact;
+    const lyrics = [{ startTime: '-100' }, , undefined, { startTime: 'invalid' }, { startTime: 500 }];
+    const lead = compact ? 2 : 1;
+    const padded = Array.from({ length: lead }, () => ({ startTime: 0 })).concat(lyrics)
+      .map(line => ({ ...line }));
+    const expected = [];
+    let previous = null;
+    h.tick(lyrics, -300);
+    for (const time of [-300, -100, -50, 0, 499, 500, 0, -300]) {
+      h.sample(time);
+      const active = Math.max(0, padded.findLastIndex(line => line && time >= (line.startTime || 0)));
+      if (active !== previous) expected.push({ index: Math.max(0, active - lead), total: lyrics.length });
+      previous = active;
+    }
+    assert.deepEqual(h.events, expected);
+  }
+});
+
+test('a new track publishes its current lyric even when the index and line count match', () => {
+  const h = createHarness();
+  const lyrics = [{ startTime: 1000 }, { startTime: 2000 }];
+  h.tick(lyrics, 3000, { trackUri: 'first' });
+  h.tick(lyrics, 3000, { trackUri: 'second' });
+  assert.deepEqual(h.events, [{ index: 1, total: 2 }, { index: 1, total: 2 }]);
+});
+
 test('focused presentations mount only the tracker and restore the normal renderer on exit', () => {
   for (const mode of [0, 1, 3]) {
     const h = createHarness(), lyrics = [{ text: 'line', startTime: 0 }];
@@ -108,4 +146,19 @@ test('hidden unsynced/unavailable pages do not mount rows while marketplace stay
   assert.equal(h.render({ playbackOnly: true, mode: 2, unsynced: [{}] }), null);
   assert.equal(h.render({ playbackOnly: true, mode: -1 }), null);
   assert.equal(h.render({ playbackOnly: true, showMarketplace: true }).children[0].type, 'marketplace');
+});
+
+test('renderer keeps custom mode mapping, provider credits and marketplace overrides', () => {
+  const h = createHarness();
+  const karaoke = [{ startTime: 0 }];
+  const common = { karaoke, currentLyrics: null, karaokeMode: 8, wordMode: 9, provider: 'source', syncPoints: 25 };
+  const { children: [karaokePage, footer] } = h.render({ ...common, mode: 9 });
+  assert.equal(karaokePage.props.karaokeRenderGranularity, 'word');
+  assert.equal(karaokePage.props.lyrics, karaoke);
+  assert.equal(footer.props.provider, 'source');
+  assert.equal(footer.props.syncPoints, 25);
+  const close = () => {};
+  const { children: [marketplace] } = h.render({ showMarketplace: true, marketplaceComponent: 'other', onCloseMarketplace: close });
+  assert.deepEqual(marketplace, { type: 'other', props: { onClose: close }, children: [] });
+  assert.equal(h.render({ showMarketplace: true, marketplaceComponent: null }).children[0].type, 'unavailable');
 });

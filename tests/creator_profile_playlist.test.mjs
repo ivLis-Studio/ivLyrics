@@ -1,22 +1,14 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
-
-const read = (name) => readFileSync(new URL('../' + name, import.meta.url), 'utf8');
-const source = read('Pages.js');
-
-const start = source.indexOf('const CreatorProfileTrackRow =');
-const end = source.indexOf('const CreatorDecorationEditor =');
-assert.ok(start >= 0 && end > start, 'CreatorProfileTrackRow must be its own component');
+import { createCreatorTrackRow } from '../src/lyrics/creator-profile/profileTracks.mjs';
 
 const pickerCalls = [];
 const PlaylistPickerButton = (props) => {
 	pickerCalls.push(props);
 	return { type: 'PlaylistPickerButton', props };
 };
-const context = vm.createContext({
-	window: { PlaylistPicker: { PlaylistPickerButton } },
+const Row = createCreatorTrackRow({
+	getPlaylistPickerButton: () => PlaylistPickerButton,
 	react: {
 		Fragment: Symbol('Fragment'),
 		memo: (component) => component,
@@ -28,10 +20,7 @@ const context = vm.createContext({
 	},
 	CreatorProfileTrackCover: 'Cover',
 	SyncScoreBadge: 'ScoreBadge',
-	formatContributorTimestamp: () => '2 days ago'
 });
-vm.runInContext(`${source.slice(start, end)}\nglobalThis.Row = CreatorProfileTrackRow;`, context);
-const Row = context.Row;
 
 const walk = (node, visit, parents = []) => {
 	if (Array.isArray(node)) return node.forEach((child) => walk(child, visit, parents));
@@ -46,7 +35,8 @@ const findAll = (tree, predicate) => {
 	});
 	return found;
 };
-const item = (overrides = {}) => ({ trackId: '4uLU6hMCjMI75M1A2tKUQC', trackName: 'Everlong', artists: 'Foo Fighters', provider: 'lrclib', ...overrides });
+const updatedAt = 1700000000;
+const item = (overrides = {}) => ({ trackId: '4uLU6hMCjMI75M1A2tKUQC', trackName: 'Everlong', artists: 'Foo Fighters', provider: 'lrclib', updatedAt, ...overrides });
 
 const render = (overrides = {}) => {
 	pickerCalls.length = 0;
@@ -123,7 +113,7 @@ test('the updated date reads with the track, not with the row actions', () => {
 	const updated = findAll(tree, (node) => node.props?.className === 'lyrics-creator-profile-track-updated');
 
 	assert.equal(updated.length, 1);
-	assert.equal(updated[0].children[0], 'Updated 2 days ago');
+	assert.equal(updated[0].children[0], `Updated ${new Date(updatedAt * 1000).toLocaleDateString()}`);
 
 	let zone = null;
 	walk(tree, (node, parents) => {

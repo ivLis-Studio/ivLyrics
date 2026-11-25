@@ -1,3 +1,6 @@
+import { createSyncCreatorLrclibClient } from '#ivlyrics/features/sync/syncCreatorLrclibClient.mjs';
+import { getRuntimeService as getEditorRuntimeService } from '../src/spicetify/runtimeServices.mjs';
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { getEventListeners } from 'node:events';
@@ -7,10 +10,18 @@ import vm from 'node:vm';
 const BASE = 'https://lrclib.net/api';
 const GET_URL = `${BASE}/get/18694795`;
 const PROXY = 'https://cors-proxy.spicetify.app/';
-const source = readFileSync(new URL('../Addon_Lyrics_Lrclib.js', import.meta.url), 'utf8');
-const managerSource = readFileSync(new URL('../LyricsAddonManager.js', import.meta.url), 'utf8');
-const editorSource = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
-const manifest = JSON.parse(readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'));
+// Expose the private ID parser only in the VM harness.
+const addonSource = bundleInitializer(new URL('../src/providers/lyrics/Addon_Lyrics_Lrclib.js', import.meta.url), {
+    transformSource(source) {
+        const marker = '    registerLyricsAddon(LrclibLyricsAddon, window);';
+        assert.ok(source.includes(marker));
+        return 'import initializeManager from "./LyricsAddonManager.js";\n'
+            + source.replace(marker, `    window.fetchCandidateById = fetchLrclibCandidateById;\n${marker}`)
+            + '\nwindow.initializeFixtureLyricsManager = initializeManager;\n';
+    }
+});
+import inputs from '../src/spicetify/inputs.json' with { type: 'json' };
+import { sourcePath } from './fixtures/source-paths.mjs';
 const track = { uri: 'spotify:track:test', title: 'Test Song', artist: 'Test Artist', album: 'Test Album', duration: 180000 };
 const candidate = {
     id: 18694795, trackName: track.title, artistName: track.artist, albumName: track.album,
@@ -39,11 +50,11 @@ function setup(responder, { localStorage, syncData, managerReady = true, storedV
         SyncDataService: { getSyncData: async () => syncData }
     };
     const context = vm.createContext({
-        window, fetch, console, Spicetify: {
+        window, fetch, console, getEditorRuntimeService, Spicetify: {
             Config: { version: 'test' },
             LocalStorage: { get: key => stored.get(key) ?? null, set: (key, value) => stored.set(key, value) }
         },
-        URL, URLSearchParams, Headers, AbortController, performance,
+        URL, URLSearchParams, Headers, AbortController, AbortSignal, performance,
         setTimeout(callback, delay) {
             const id = ++nextTimer;
             timers.set(id, { callback, deadline: now + delay });
@@ -51,25 +62,19 @@ function setup(responder, { localStorage, syncData, managerReady = true, storedV
         },
         clearTimeout(id) { timers.delete(id); }
     });
-    // Exercise the real public export; expose the private ID parser only in the VM.
-    const marker = '    const registerAddon = () => {';
-    assert.ok(source.includes(marker));
-    vm.runInContext(source.replace(marker, `
-        window.fetchCandidateById = fetchLrclibCandidateById;
-        ${marker}`), context);
+    vm.runInContext(addonSource, context);
     return {
         get addon() { return addon || window.LyricsAddonManager?.getAddon?.('lrclib'); },
         window, requests, timers, fetch: window.IvLyricsLrclibTransport.fetch, fetchCandidate: window.fetchCandidateById,
         loadManager() {
-            vm.runInContext(managerSource, context);
+            window.initializeFixtureLyricsManager();
             return window.LyricsAddonManager;
         },
         loadEditorWrapper() {
-            const start = editorSource.indexOf('const fetchSyncCreatorLrclib =');
-            const end = editorSource.indexOf('const SYNC_CREATOR_RTL_STRONG_CHAR_REGEX', start);
-            assert.ok(start >= 0 && end > start, 'actual editor transport wrapper exists');
-            vm.runInContext(`${editorSource.slice(start, end)}\nwindow.editorFetch = fetchSyncCreatorLrclib;`, context);
-            return window.editorFetch;
+            const { fetchLrclib } = createSyncCreatorLrclibClient({
+                getTransport: () => getEditorRuntimeService('IvLyricsLrclibTransport', window),
+            });
+            return fetchLrclib;
         },
         elapse(ms) {
             now += ms;
@@ -109,7 +114,7 @@ test('frozen transport and actual editor wrapper work before delayed manager reg
     assert.equal(h.requests.length, 2);
     assert.equal(h.requests[1].url, `${PROXY}${GET_URL}`);
     assert.equal(h.window.LyricsAddonManager, undefined, 'transport never waits for the manager');
-    assert.equal(h.timers.size, 1, 'only the existing registration poll remains');
+    assert.equal(h.timers.size, 0, 'no registration timer while the manager is absent');
 
     const manager = h.loadManager();
     assert.equal(manager.getAddon('lrclib'), null);
@@ -120,10 +125,15 @@ test('frozen transport and actual editor wrapper work before delayed manager reg
 });
 
 test('actual disabled manager leaves editor ID/search CORS recovery available through the manifest extension', async () => {
-    assert.ok(manifest.subfiles_extension.includes('Addon_Lyrics_Lrclib.js'));
-    assert.ok(manifest.subfiles_extension.indexOf('Addon_Lyrics_Lrclib.js')
-        < manifest.subfiles_extension.indexOf('LyricsAddonManager.js'));
-    assert.ok(manifest.subfiles.includes('SyncDataCreator.js'));
+    assert.ok(inputs.startup.includes(sourcePath('Addon_Lyrics_Lrclib.js')));
+    assert.ok(inputs.startup.indexOf(sourcePath('Addon_Lyrics_Lrclib.js'))
+        < inputs.startup.indexOf(sourcePath('LyricsAddonManager.js')));
+    const composePath = sourcePath('composePageMenus.js');
+    const page = readFileSync(new URL("../" + sourcePath("index.js"), import.meta.url), "utf8");
+    assert.match(page, /import \{ startPageMenus \} from "#ivlyrics\/spicetify\/composePageMenus.js"/);
+    assert.match(page, /} = startPageMenus\(/);
+    const compose = readFileSync(new URL('../' + composePath, import.meta.url), 'utf8');
+    assert.match(compose, /import \{ createSyncDataCreator \} from "#ivlyrics\/features\/sync\/SyncDataCreator.js"/);
     const h = setup(url => {
         if (!url.startsWith(PROXY)) throw new TypeError('Failed to fetch');
         return Response.json(url.includes('/search?') ? [candidate] : candidate);
@@ -400,6 +410,21 @@ test('manual and structured candidate searches recover through the relay without
         if (manual) assert.equal(new URL(h.requests[0].url).searchParams.get('q'), 'Test Song & Test Artist');
         assert.equal(h.timers.size, 0);
     }
+});
+
+test('closing a manual search aborts the response body after the headers arrive', async () => {
+    const controller = new AbortController();
+    const reading = deferred();
+    const body = deferred();
+    const h = setup(() => ({ ok: true, json() { reading.resolve(); return body.promise; } }));
+    const search = h.addon.searchCandidatesByQuery('Test Song', track, { signal: controller.signal });
+    await reading.promise;
+    controller.abort();
+    body.resolve([candidate]);
+    assert.equal((await search).success, false);
+    assert.equal(h.requests[0].options.signal.aborted, true);
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.timers.size, 0);
 });
 
 test('manual 404 and manual/structured 429 retain existing errors and do not invoke the relay', async () => {

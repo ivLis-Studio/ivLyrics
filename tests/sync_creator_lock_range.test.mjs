@@ -1,9 +1,10 @@
+import { readSyncCreatorFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
+const source = readSyncCreatorFixture();
 const slice = (startMarker, endMarker) => {
 	const start = source.indexOf(startMarker);
 	const end = source.indexOf(endMarker, start + startMarker.length);

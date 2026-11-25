@@ -1,71 +1,14 @@
+import { readSettingsSource } from "./fixtures/legacy-page-source.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { createAppConfig, createDefaultVisualSettings } from "../src/spicetify/createAppConfig.mjs";
+import {
+  SETTINGS_DEFAULT_VALUES, SETTINGS_FALLBACK_DEFAULT_VALUES, SETTINGS_BACKGROUND_MODE_KEY,
+  getSettingDefaultValue, hasSettingDefault,
+} from "../src/features/settings/settingsDefaults.mjs";
 
-// The settings window marks changed settings, offers a per-row reset and
-// draws a default marker on sliders from a table of defaults in Settings.js
-// (SETTINGS_DEFAULT_VALUES). The real defaults live in the CONFIG literal of
-// index.js; this test keeps the two in sync.
-const settingsSource = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
-const indexSource = readFileSync(new URL("../index.js", import.meta.url), "utf8");
-
-const section = (source, start, end) => {
-  const from = source.indexOf(start);
-  const to = source.indexOf(end, from);
-  assert.ok(from >= 0 && to > from, `Missing source section: ${start}`);
-  return source.slice(from, to);
-};
-
-const loadSettingsTable = () => {
-  const context = vm.createContext({});
-  vm.runInContext(`${section(settingsSource, "const SETTINGS_DEFAULT_VALUES =", "const getCurrentSettingValue =")}
-    globalThis.table = {
-      SETTINGS_DEFAULT_VALUES, SETTINGS_FALLBACK_DEFAULT_VALUES, hasSettingDefault, getSettingDefaultValue,
-      normalizeSettingComparable, settingValuesEqual,
-    };`, context);
-  return context.table;
-};
-
-// CONFIG.visual as index.js builds it on a fresh install (empty storage).
-// Helpers the literal calls are copied in as they are discovered.
-const loadIndexDefaults = () => {
-  const start = indexSource.indexOf("const CONFIG = {");
-  const end = indexSource.indexOf("window.CONFIG = CONFIG;", start);
-  assert.ok(start >= 0 && end > start, "CONFIG literal found in index.js");
-  const body = indexSource.slice(start, end);
-  const extract = (name) => {
-    const match = new RegExp(`^(?:const ${name} =[ \\n]|function ${name}\\s*\\()`, "m").exec(indexSource);
-    assert.ok(match, `helper ${name} found in index.js`);
-    const rest = indexSource.slice(match.index + 1);
-    const next = rest.search(/\n(?=(?:const|let|var|function|class|window\.|\(function)\b)/);
-    return indexSource.slice(match.index, match.index + 1 + next);
-  };
-  const helpers = [];
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const context = vm.createContext({
-      APP_NAME: "ivLyrics",
-      StorageManager: {
-        get: (_key, fallback = true) => fallback,
-        getItem: () => null, setItem() {}, removeItem() {},
-        getPersisted: () => null, setPersisted() {},
-      },
-      window: {},
-      localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
-      navigator: { language: "en-US", languages: ["en-US"] },
-      console,
-    });
-    try {
-      vm.runInContext(`${helpers.map(extract).join("\n")}\n${body}\nglobalThis.visual = CONFIG.visual;`, context);
-      return context.visual;
-    } catch (error) {
-      const missing = /^(\w+) is not defined/.exec(error.message)?.[1];
-      if (!missing || helpers.includes(missing)) throw error;
-      helpers.unshift(missing);
-    }
-  }
-  throw new Error("could not evaluate the CONFIG literal of index.js");
-};
+const settingsSource = readSettingsSource();
 
 // Settings without a fixed default (environment, per-song or account data,
 // colours the theme decides) and the background presets, which the window
@@ -78,38 +21,86 @@ const NOT_TRACKED = [
   /^translate:(?:translated-lyrics-source|display-mode|pronunciation-notation|detect-language-override)$/,
 ];
 
-test("every default in the settings table matches index.js", () => {
-  const table = loadSettingsTable();
-  const visual = loadIndexDefaults();
-  const mismatched = Object.entries(table.SETTINGS_DEFAULT_VALUES)
-    .filter(([key, value]) => !(key in visual) || !table.settingValuesEqual(value, visual[key]))
-    .map(([key, value]) => `${key}: table ${JSON.stringify(value)}, index.js ${JSON.stringify(visual[key])}`);
-  assert.deepEqual(mismatched, []);
-});
-
-test("every CONFIG.visual setting of index.js has a default in the table or is deliberately not tracked", () => {
-  const table = loadSettingsTable();
-  const visual = loadIndexDefaults();
-  const missing = Object.keys(visual).filter((key) =>
-    !(key in table.SETTINGS_DEFAULT_VALUES) && !NOT_TRACKED.some((pattern) => pattern.test(key)));
-  assert.deepEqual(missing, []);
-});
-
-test("fallback defaults only cover settings index.js does not seed", () => {
-  const table = loadSettingsTable();
-  const visual = loadIndexDefaults();
-  const seeded = Object.keys(table.SETTINGS_FALLBACK_DEFAULT_VALUES).filter((key) => key in visual);
-  assert.deepEqual(seeded, []);
-  for (const [key, value] of Object.entries(table.SETTINGS_FALLBACK_DEFAULT_VALUES)) {
-    assert.equal(table.hasSettingDefault(key), true);
-    assert.equal(table.getSettingDefaultValue(key), value);
+test("settings use startup defaults for every resettable value", () => {
+  const visual = createDefaultVisualSettings();
+  for (const [key, value] of Object.entries(visual)) {
+    const resettable = !NOT_TRACKED.some(pattern => pattern.test(key));
+    assert.equal(hasSettingDefault(key), resettable, key);
+    if (resettable) assert.equal(getSettingDefaultValue(key), value, key);
   }
-  assert.equal(table.hasSettingDefault("not-a-setting"), false);
-  assert.equal(table.hasSettingDefault(undefined), false);
+  assert.equal(getSettingDefaultValue(SETTINGS_BACKGROUND_MODE_KEY), "gradient-background");
+  assert.equal(getSettingDefaultValue("panel-font-scale"), "100");
+  assert.equal(getSettingDefaultValue("original-font-size"), 44);
+  assert.equal(getSettingDefaultValue("fullscreen-vinyl-original-font-size"), 31);
+  assert.equal(getSettingDefaultValue("fullscreen-video-stage-lyric-background-opacity"), 46);
+});
+
+test("fallback defaults cover keys startup does not load", () => {
+  const visual = createDefaultVisualSettings();
+  for (const [key, value] of Object.entries(SETTINGS_FALLBACK_DEFAULT_VALUES)) {
+    assert.equal(Object.hasOwn(visual, key), false);
+    assert.equal(hasSettingDefault(key), true);
+    assert.equal(getSettingDefaultValue(key), value);
+  }
+  assert.equal(hasSettingDefault("not-a-setting"), false);
+  assert.equal(hasSettingDefault(undefined), false);
+});
+
+test("stored settings retain their coercion, inheritance, and locale-dependent modes", () => {
+  const initial = new Map(Object.entries({
+    "language": "ko",
+    "panel-lyrics-enabled": "false",
+    "original-font-family": "  Noto Sans  ",
+    "original-font-size": "50",
+    "phonetic-font-size": "0",
+    "fullscreen-vinyl-translation-font-size": "30",
+    "fullscreen-focus-presentation": "standard",
+    "fullscreen-video-stage-lyric-background-opacity": "false",
+    "fullscreen-vinyl-rotation-speed": "1000",
+    "pseudo-karaoke-render-advance": "-10",
+    "fullscreen-cd-visualizer-density": "0",
+    "video-scale": "0",
+    "translation-mode-2:korean": "gemini_ko",
+  }).map(([key, value]) => ["ivLyrics:visual:" + key, value]));
+  const storage = {
+    get(key, fallback = true) {
+      const value = initial.get(key);
+      return value === "true" || value === "false" ? value === "true" : fallback;
+    },
+    getItem: (key) => initial.get(key) ?? null,
+    getPersisted: (key) => initial.get(key) ?? null,
+    setItem: (key, value) => initial.set(key, String(value)),
+  };
+  let i18n;
+  const config = createAppConfig({ storage, readI18n: () => i18n });
+  assert.equal(config.visual.language, "ko");
+  assert.equal(config.visual["panel-lyrics-enabled"], false);
+  assert.equal(config.visual["original-font-family"], "  Noto Sans  ");
+  assert.equal(config.visual["fullscreen-vinyl-original-font-size"], 35);
+  assert.equal(config.visual["fullscreen-vinyl-phonetic-font-size"], 0);
+  assert.equal(config.visual["fullscreen-vinyl-translation-font-size"], 30);
+  assert.equal(config.visual["fullscreen-focus-presentation"], "vinyl");
+  assert.equal(config.visual["fullscreen-video-stage-lyric-background-opacity"], 0);
+  assert.equal(config.visual["fullscreen-vinyl-rotation-speed"], 200);
+  assert.equal(config.visual["pseudo-karaoke-render-advance"], 0);
+  assert.equal(config.visual["fullscreen-cd-visualizer-density"], 0);
+  assert.equal(config.visual["video-scale"], 105);
+  assert.equal(config.visual["translation-mode-2:korean"], "gemini_ko");
+  assert.equal(config.visual["translation-mode:korean"], "none");
+  assert.equal(initial.get("ivLyrics:visual:fullscreen-vinyl-original-font-family"), "Noto Sans");
+  assert.equal(initial.get("ivLyrics:visual:fullscreen-video-stage-original-font-family"), "Noto Sans");
+  assert.equal(getSettingDefaultValue("fullscreen-vinyl-original-font-family"), "Pretendard Variable");
+  assert.equal(SETTINGS_DEFAULT_VALUES["fullscreen-vinyl-original-font-size"], 31);
+  assert.deepEqual(config.modes, ["Karaoke", "Synced", "Unsynced"]);
+  i18n = { t: (key) => "ko:" + key };
+  assert.deepEqual(config.modes, ["ko:modes.karaoke", "ko:modes.synced", "ko:modes.unsynced"]);
 });
 
 test("stored values are compared the way they are shown", () => {
-  const { settingValuesEqual: equal } = loadSettingsTable();
+  const start = settingsSource.indexOf("const normalizeSettingComparable =");
+  const end = settingsSource.indexOf("const getCurrentSettingValue =", start);
+  assert.ok(start >= 0 && end > start);
+  const equal = vm.runInNewContext(settingsSource.slice(start, end) + "\nsettingValuesEqual;");
   assert.equal(equal("16", 16), true);
   assert.equal(equal("0.50", 0.5), true);
   assert.equal(equal("-2", -2), true);
@@ -123,4 +114,18 @@ test("stored values are compared the way they are shown", () => {
   assert.equal(equal("", 0), false);
   assert.equal(equal(false, 0), false);
   assert.equal(equal("Roboto", "roboto"), false);
+});
+
+test("video-stage lyric background opacity reloads numeric values including zero", () => {
+  const key = "ivLyrics:visual:fullscreen-video-stage-lyric-background-opacity";
+  const setting = "fullscreen-video-stage-lyric-background-opacity";
+  for (const [stored, opacity] of [["0", 0], ["28", 28], ["101", 100], ["", 46], ["invalid", 46], ["true", 1]]) {
+    const storage = {
+      get: (_key, fallback = true) => fallback,
+      getItem: name => name === key ? stored : null,
+      getPersisted: () => null,
+      setItem() {},
+    };
+    assert.equal(createAppConfig({ storage }).visual[setting], opacity, stored);
+  }
 });

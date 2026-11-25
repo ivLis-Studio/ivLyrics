@@ -1,28 +1,35 @@
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
+import { createSettingsPreviewDock } from "../src/features/settings/settingsPreviewDock.mjs";
+import { readSettingsSource, readSettingsStylesFixture } from "./fixtures/legacy-page-source.mjs";
+import { readLanguageTable } from "./fixtures/language-source.mjs";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const source = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
-const styleSource = readFileSync(new URL("../SettingsStyles.js", import.meta.url), "utf8");
+const source = readSettingsSource();
+const styleSource = readSettingsStylesFixture();
 const css = vm.runInNewContext(styleSource + "\nSETTINGS_MODAL_CSS;", { APP_NAME: "ivLyrics" });
-const toolbarCss = readFileSync(new URL("../style.css", import.meta.url), "utf8");
-const slice = (start, end) => {
-  const from = source.indexOf(start), to = source.indexOf(end, from);
+const toolbarCss = readPcStylesheet();
+const slice = (start, end, text = source) => {
+  const from = text.indexOf(start), to = text.indexOf(end, from);
   assert.ok(from >= 0 && to > from);
-  return source.slice(from, to);
+  return text.slice(from, to);
 };
 
 test("the layer preview has one edit action and four informational color labels", () => {
   const calls = [];
   const react = { createElement: (type, props, ...children) => ({ type, props: props || {}, children }) };
-  const context = vm.createContext({
-    react, SettingsUiIcon: "SettingsUiIcon",
+  const SettingsDock = createSettingsPreviewDock({
+    react: { ...react, useState: initial => [initial()], useEffect() {} },
+    SettingsUiIcon: "SettingsUiIcon",
+    SettingsLyricsPreview: "SettingsLyricsPreview",
     getSettingsText: (_key, fallback) => fallback,
   });
-  vm.runInContext(slice("const getSettingsLayerLegend =", "const renderSettingsPreviewLine =")
-    + "\nglobalThis.Links = SettingsPreviewLayerControls;", context);
-  const tree = context.Links({ onNavigate: (...args) => calls.push(args) });
+  const dock = SettingsDock({ open: true, menu: "appearance", onNavigate: (...args) => calls.push(args) });
+  const legendContainer = dock.children[1].children.find(child => child?.type?.name === "SettingsPreviewLayerControls");
+  assert.ok(legendContainer);
+  const tree = legendContainer.type(legendContainer.props);
   assert.equal(tree.props.className, "settings-preview-layers");
   assert.equal(tree.props.role, "group");
   assert.equal(tree.props["aria-label"], "Lyric layers");
@@ -51,12 +58,10 @@ test("the layer preview has one edit action and four informational color labels"
 });
 
 test("the shared edit action uses existing translated strings in every locale", () => {
-  const languages = readdirSync(new URL("../langs/", import.meta.url)).filter(name => /^Lang.*\.js$/.test(name));
+  const languages = readdirSync(new URL("../src/i18n/langs/", import.meta.url)).filter(name => /^Lang.*\.js$/.test(name));
   assert.equal(languages.length, 22);
   for (const language of languages) {
-    const window = {};
-    vm.runInNewContext(readFileSync(new URL(`../langs/${language}`, import.meta.url), "utf8"), { window });
-    const strings = Object.values(window)[0];
+    const strings = readLanguageTable(language);
     assert.ok(strings.buttons.edit?.trim(), `${language}: edit action`);
     assert.ok(strings.settingsUi.sections.lyricLayers.title?.trim(), `${language}: layer editor name`);
   }
@@ -74,11 +79,4 @@ test("toolbar focus ring stays inside entries clipped by the scroll container", 
   assert.match(toolbarCss, /\.ivl-tb-item:focus-visible \{\s*outline: 2px solid var\(--ivl-tb-accent-text\);\s*outline-offset: -3px;\s*box-shadow: none;/);
   assert.match(toolbarCss, /\.ivl-tb-content \{[^}]*overflow-x: hidden;[^}]*overflow-y: auto;/);
   assert.doesNotMatch(toolbarCss, /\.ivl-tb-item:focus-visible \{\s*outline: none/);
-});
-
-test("navigation reveals narrow layer tabs even when their anchor is already rendered", () => {
-  const navigation = slice("const tryScroll = () => {", "const scrollTop = pendingScrollTopRef.current;");
-  assert.match(navigation, /if \(attempt === 1\) \{[\s\S]*settings-reveal[\s\S]*requestAnimationFrame\(tryScroll\);\s*return;/);
-  assert.doesNotMatch(navigation, /if \(!target && attempt === 1\)/);
-  assert.match(navigation, /behavior: attempt <= 2 \? "smooth" : "auto"/);
 });

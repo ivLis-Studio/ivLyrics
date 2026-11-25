@@ -1,14 +1,11 @@
+import { readPlaylistPickerFixture } from "./fixtures/legacy-page-source.mjs";
+import { readLanguageTable } from "./fixtures/language-source.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const read = (name) => readFileSync(new URL('../' + name, import.meta.url), 'utf8');
-
 const KO = (() => {
-	const context = { window: {} };
-	vm.runInNewContext(read('langs/LangKo.js'), context);
-	return Object.values(context.window)[0];
+	return readLanguageTable("LangKo.js");
 })();
 const t = (key) => key.split('.').reduce((value, part) => value?.[part], KO) ?? key;
 
@@ -24,19 +21,24 @@ const createHarness = ({
 	rootlist = [],
 	contains = new Set(),
 	trackUri = 'spotify:track:t1',
+	findMatch = null,
+	playlistContents = [],
+	holdRootlist,
+	holdAdd,
 	failAdd = false,
 	failLoad = false,
 	buttonClassName = 'fullscreen-control-btn',
 	anchored = false,
 	theme = null
 } = {}) => {
-	const calls = { add: [], remove: [], find: [], rootlist: 0 };
+	const calls = { add: [], remove: [], find: [], contents: [], metadata: [], rootlist: 0 };
 	const toasts = [];
 	const warnings = [];
 	const portalled = [];
 	const anchorRect = { top: 400, bottom: 436, left: 100, right: 136 };
 	let now = 1_700_000_000_000;
 	let active = null;
+	let PlaylistPickerMenu;
 	const sameDeps = (a, b) => a && b && a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
 
 	const react = {
@@ -75,6 +77,7 @@ const createHarness = ({
 		// React would attach the real node; a measurable stand-in is enough to
 		// exercise the anchored placement.
 		createElement: (type, props, ...children) => {
+			if (type === PlaylistPickerMenu) return type(props);
 			if (props?.ref) props.ref.current = { getBoundingClientRect: () => anchorRect };
 			return { type, props: { ...props, children } };
 		}
@@ -90,20 +93,25 @@ const createHarness = ({
 			RootlistAPI: {
 				getContents: async () => {
 					calls.rootlist += 1;
+					await holdRootlist?.();
 					if (failLoad) throw new Error('rootlist down');
-					return { items: rootlist };
+					return { items: typeof rootlist === 'function' ? rootlist(spicetify.Platform.LocalStorageAPI.namespace) : rootlist };
 				}
 			},
 			PlaylistAPI: {
-				getMetadata: async () => null,
+				getMetadata: async (uri) => { calls.metadata.push(uri); return null; },
 				find: async (playlistUri, uris) => {
 					calls.find.push([playlistUri, uris]);
-					return contains.has(playlistUri) ? { [uris[0]]: { uids: ['uid-1'] } } : {};
+					return findMatch?.(playlistUri, uris[0]) ?? (contains.has(playlistUri) ? { [uris[0]]: { uids: ['uid-1'] } } : {});
 				},
-				getContents: async () => ({ items: [] }),
+				getContents: async (uri) => {
+					calls.contents.push(uri);
+					return { items: typeof playlistContents === 'function' ? playlistContents() : playlistContents };
+				},
 				add: async (playlistUri, uris) => {
 					calls.add.push([playlistUri, uris]);
 					if (failAdd) throw new Error('nope');
+					if (holdAdd) await holdAdd;
 				},
 				remove: async (playlistUri, items) => { calls.remove.push([playlistUri, items]); }
 			}
@@ -113,6 +121,7 @@ const createHarness = ({
 	// Production resolves ReactDOM off window, the way the rest of the app does.
 	// Never inject a bare `reactDom` global here: the bundle has no such binding.
 	const context = vm.createContext({
+		AbortController,
 		window: {
 			innerWidth: 1200,
 			innerHeight: 900,
@@ -141,8 +150,9 @@ const createHarness = ({
 			error: (message) => toasts.push(['error', message])
 		}
 	});
-	vm.runInContext(read('PlaylistPicker.js'), context);
+	vm.runInContext(readPlaylistPickerFixture(), context);
 	const { PlaylistPickerButton } = context.window.PlaylistPicker;
+	({ PlaylistPickerMenu } = context.window.PlaylistPicker);
 
 	const create = (overrides = {}) => {
 		const props = { trackUri, buttonClassName, anchored, theme, ...overrides };
@@ -202,6 +212,7 @@ const createHarness = ({
 			instance.menuItems()[index].props.onClick();
 			await instance.settle();
 		};
+		instance.changeTrack = (uri) => { props.trackUri = uri; };
 
 		instance.render();
 		return instance;
@@ -210,6 +221,7 @@ const createHarness = ({
 	return {
 		calls, toasts, warnings, portalled, create,
 		advance: (ms) => { now += ms; },
+		changeUser: (id) => { spicetify.Platform.LocalStorageAPI.namespace = `spotify:user:${id}`; },
 		plain: (value) => JSON.parse(JSON.stringify(value))
 	};
 };
@@ -262,6 +274,238 @@ test('clicking a playlist that already holds the track removes it and keeps the 
 	assert.deepEqual(harness.calls.add, []);
 	assert.ok(picker.popover());
 	assert.deepEqual(harness.toasts, [['success', t('fullscreen.controls.playlistRemoved').replace('{playlist}', 'List a')]]);
+});
+
+test('removal looks up the row UID when the Spotify membership result is boolean', async () => {
+	const fixture = createHarness({
+		rootlist: [owned('a')],
+		findMatch: (playlist, track) => ({ [track]: true }),
+		playlistContents: [{ uid: 'linked-row', track: { uri: 'spotify:track:relinked', linkedFrom: { uri: 'spotify:track:t1' } } }],
+	});
+	const picker = fixture.create();
+	await picker.open();
+	await picker.clickItem(0);
+	assert.deepEqual(fixture.plain(fixture.calls.remove), [['spotify:playlist:a', [{ uri: 'spotify:track:t1', uid: 'linked-row' }]]]);
+	assert.equal(fixture.calls.add.length, 0);
+	assert.ok(picker.popover());
+});
+
+test('removal collects every matching duplicate and linked row in the find response', async () => {
+	const fixture = createHarness({ rootlist: [owned('a')], findMatch: (_playlist, track) => [
+		{ uri: track, uid: 'first' },
+		{ uri: 'spotify:track:relinked', linkedUri: track, uid: 'second' },
+		{ uri: 'spotify:track:unrelated', uid: 'skip' },
+		{ track: { uri: track }, uid: 'first' },
+	] });
+	const picker = fixture.create();
+	await picker.open();
+	await picker.clickItem(0);
+	assert.deepEqual(fixture.plain(fixture.calls.remove), [['spotify:playlist:a', [
+		{ uri: 'spotify:track:t1', uid: 'first' }, { uri: 'spotify:track:t1', uid: 'second' },
+	]]]);
+});
+
+test('an add selection never removes a track that arrived after the menu opened', async () => {
+	const contains = new Set();
+	const fixture = createHarness({ rootlist: [owned('a')], contains });
+	const picker = fixture.create();
+	await picker.open();
+	contains.add('spotify:playlist:a');
+	await picker.clickItem(0);
+	assert.deepEqual(fixture.calls.add, []);
+	assert.deepEqual(fixture.calls.remove, []);
+	assert.match(picker.menuItems()[0].props.className, /contains-current-track/);
+	assert.deepEqual(fixture.toasts, []);
+});
+
+test('an unavailable membership read cannot cause a duplicate add', async () => {
+	const unavailable = () => { throw new Error('playlist lookup unavailable'); };
+	const fixture = createHarness({ rootlist: [owned('a')], findMatch: unavailable, playlistContents: unavailable });
+	const picker = fixture.create();
+	await picker.open();
+	await picker.clickItem(0);
+	assert.deepEqual(fixture.calls.add, []);
+	assert.deepEqual(fixture.calls.remove, []);
+	assert.ok(picker.popover());
+	assert.deepEqual(fixture.toasts, [['error', t('fullscreen.controls.playlistAddFailed')]]);
+});
+
+test('a removal with incomplete row UIDs leaves the playlist untouched', async () => {
+	const fixture = createHarness({ rootlist: [owned('a')],
+		findMatch: (_playlist, track) => ({ [track]: { count: 2, uids: ['first'] } }),
+		playlistContents: [{ uri: 'spotify:track:t1', uid: 'first' }, { uri: 'spotify:track:t1' }],
+	});
+	const picker = fixture.create();
+	await picker.open();
+	await picker.clickItem(0);
+	assert.deepEqual(fixture.calls.remove, []);
+	assert.deepEqual(fixture.toasts, [['error', t('fullscreen.controls.playlistRemoveFailed')]]);
+});
+
+test('two open pickers recheck the same playlist in write order and only add once', async () => {
+	let finishAdd;
+	const holdAdd = new Promise(resolve => { finishAdd = resolve; });
+	const contains = new Set();
+	const fixture = createHarness({ rootlist: [owned('a')], contains, holdAdd });
+	const first = fixture.create(), second = fixture.create();
+	await first.open();
+	await second.open();
+	first.menuItems()[0].props.onClick();
+	second.menuItems()[0].props.onClick();
+	await second.settle();
+	assert.equal(fixture.calls.add.length, 1);
+	contains.add('spotify:playlist:a');
+	finishAdd();
+	await first.settle();
+	await second.settle();
+	assert.equal(fixture.calls.add.length, 1);
+	assert.match(second.menuItems()[0].props.className, /contains-current-track/);
+});
+
+test('a reopened picker waits for a sent write and other open pickers receive its committed membership', async () => {
+	const holdAdd = Promise.withResolvers();
+	const contains = new Set();
+	const fixture = createHarness({ rootlist: [owned('a')], contains, holdAdd: holdAdd.promise });
+	const first = fixture.create(), second = fixture.create();
+	await first.open();
+	await second.open();
+	await first.clickItem(0);
+	await first.close();
+	const findBeforeReopen = fixture.calls.find.length;
+	await first.open();
+	assert.equal(first.menuItems()[0].props.disabled, true);
+	assert.equal(fixture.calls.find.length, findBeforeReopen);
+	contains.add('spotify:playlist:a');
+	holdAdd.resolve();
+	await first.settle();
+	await second.settle();
+	for (const picker of [first, second]) {
+		assert.ok(picker.popover());
+		assert.match(picker.menuItems()[0].props.className, /contains-current-track/);
+	}
+	assert.deepEqual(fixture.toasts, []);
+	assert.equal(fixture.calls.add.length, 1);
+});
+
+test('a late membership read cannot overwrite the result of a committed change', async () => {
+	const lookup = Promise.withResolvers();
+	let hold = false;
+	const fixture = createHarness({ rootlist: [owned('a')], findMatch: () => hold ? lookup.promise : {} });
+	const first = fixture.create(), second = fixture.create();
+	await first.open();
+	hold = true;
+	await second.open();
+	assert.equal(second.menuItems()[0].props.disabled, true);
+	hold = false;
+	await first.clickItem(0);
+	await second.settle();
+	assert.match(second.menuItems()[0].props.className, /contains-current-track/);
+	lookup.resolve({});
+	await second.settle();
+	assert.match(second.menuItems()[0].props.className, /contains-current-track/);
+});
+
+test('closing the last picker during the library read skips its unused metadata work', async () => {
+	const library = Promise.withResolvers();
+	let hold = true;
+	const fixture = createHarness({ rootlist: [owned('a'), owned('b')], holdRootlist: () => hold ? library.promise : null });
+	const first = fixture.create(), second = fixture.create();
+	await first.open();
+	await second.open();
+	assert.equal(fixture.calls.rootlist, 1);
+	await first.close();
+	await second.close();
+	hold = false;
+	library.resolve();
+	await first.settle();
+	assert.deepEqual(fixture.calls.metadata, []);
+	await first.open();
+	assert.equal(fixture.calls.rootlist, 2);
+	assert.deepEqual(first.menuItems().map(first.nameOf), ['List a', 'List b']);
+});
+
+test('two menus share a membership lookup and the last close stops its fallback contents read', async () => {
+	const lookup = Promise.withResolvers();
+	const fixture = createHarness({ rootlist: [owned('a')], findMatch: () => lookup.promise });
+	const first = fixture.create(), second = fixture.create();
+	await first.open();
+	await second.open();
+	assert.equal(fixture.calls.find.length, 1);
+	await first.close();
+	await second.close();
+	lookup.resolve({});
+	await first.settle();
+	assert.equal(fixture.calls.contents.length, 0);
+});
+
+test('changing tracks during a membership check cancels a write that has not started', async () => {
+	let finishCheck;
+	const check = new Promise(resolve => { finishCheck = resolve; });
+	let hold = false;
+	const fixture = createHarness({ rootlist: [owned('a')], findMatch: (_playlist, track) => (
+		hold && track === 'spotify:track:t1' ? check : {}
+	) });
+	const picker = fixture.create();
+	await picker.open();
+	hold = true;
+	picker.menuItems()[0].props.onClick();
+	await picker.settle();
+	picker.changeTrack('spotify:track:t2');
+	await picker.settle();
+	const contentsBeforeResolve = fixture.calls.contents.length;
+	finishCheck({});
+	await picker.settle();
+	assert.equal(fixture.calls.contents.length, contentsBeforeResolve);
+	assert.deepEqual(fixture.calls.add, []);
+	assert.deepEqual(fixture.calls.remove, []);
+	assert.ok(picker.popover());
+});
+
+test('rapid clicks start one request and a previous track cannot close the current menu', async () => {
+	let finishAdd;
+	const holdAdd = new Promise(resolve => { finishAdd = resolve; });
+	const fixture = createHarness({ rootlist: [owned('a')], holdAdd });
+	const picker = fixture.create();
+	await picker.open();
+	const click = picker.menuItems()[0].props.onClick;
+	click();
+	click();
+	await picker.settle();
+	assert.equal(fixture.calls.add.length, 1);
+	assert.equal(fixture.calls.add[0][1][0], 'spotify:track:t1');
+
+	picker.changeTrack('spotify:track:t2');
+	await picker.settle();
+	assert.equal(picker.menuItems()[0].props.disabled, false);
+	finishAdd();
+	await picker.settle();
+	assert.ok(picker.popover());
+	assert.doesNotMatch(picker.menuItems()[0].props.className, /contains-current-track/);
+	assert.equal(fixture.toasts.length, 0);
+});
+
+test('reopening an empty cached list keeps its explanation', async () => {
+	const fixture = createHarness();
+	const picker = fixture.create();
+	await picker.open();
+	assert.deepEqual(picker.stateText(), [t('fullscreen.controls.playlistEmpty')]);
+	await picker.close();
+	await picker.open();
+	assert.deepEqual(picker.stateText(), [t('fullscreen.controls.playlistEmpty')]);
+	assert.equal(fixture.calls.rootlist, 1);
+});
+
+test('the playlist cache follows the Spotify account', async () => {
+	const fixture = createHarness({
+		rootlist: (namespace) => [owned(namespace === 'spotify:user:tester' ? 'a' : 'b')],
+	});
+	const picker = fixture.create();
+	await picker.open();
+	assert.equal(picker.nameOf(picker.menuItems()[0]), 'List a');
+	fixture.changeUser('other');
+	await picker.settle();
+	assert.equal(picker.nameOf(picker.menuItems()[0]), 'List b');
+	assert.equal(fixture.calls.rootlist, 2);
 });
 
 test('tracks that are not Spotify tracks are refused before any playlist API call', async () => {

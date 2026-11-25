@@ -1,12 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
 
-const source = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
-const start = source.indexOf('const createLyricsLayoutObserver =');
-const end = source.indexOf('const prepareGlobalCharTimeline', start);
-assert.ok(start >= 0 && end > start);
+import { createLyricsLayoutObserver } from '../src/lyrics/lyricsLayoutObserver.mjs';
 
 function harness({ mutations = true } = {}) {
   const frames = new Map(), observers = [], reads = [];
@@ -21,12 +16,11 @@ function harness({ mutations = true } = {}) {
     unobserve(target) { this.targets.delete(target); this.removals++; }
     disconnect() { this.targets.clear(); }
   }
-  const context = vm.createContext({
+  const manager = createLyricsLayoutObserver({
     ResizeObserver: Observer, MutationObserver: mutations ? Observer : undefined,
-    requestAnimationFrame(callback) { const id = ++requested; frames.set(id, callback); return id; },
-    cancelAnimationFrame(id) { cancelled++; frames.delete(id); },
+    scheduleFrame(callback) { const id = ++requested; frames.set(id, callback); return id; },
+    cancelFrame(id) { cancelled++; frames.delete(id); },
   });
-  const manager = vm.runInContext(source.slice(start, end) + '\ncreateLyricsLayoutObserver()', context);
   return { manager, observers, reads, frames,
     counters: () => ({ requested, cancelled }),
     flush() { const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(callback => callback()); },
@@ -48,6 +42,8 @@ test('layout notifications read the latest geometry once per frame and dispose q
   assert.equal(h.frames.size, 0);
   assert.ok(h.observers.every(observer => observer.targets.size === 0));
   queued();
+  h.manager.update({}, {}, () => assert.fail("a disposed observer cannot reconnect"));
+  assert.ok(h.observers.every(observer => observer.targets.size === 0));
   h.observers[0].callback();
   assert.deepEqual(h.reads, [95], 'callbacks delivered after unmount cannot measure');
   assert.equal(h.frames.size, 0);

@@ -1,9 +1,9 @@
-import assert from "node:assert/strict";
+import { createSetupWizardWelcome } from "../src/app/setupWizardWelcome.mjs";
 import { readFileSync } from "node:fs";
+import assert from "node:assert/strict";
 import test from "node:test";
-import vm from "node:vm";
 
-const source = readFileSync(new URL("../SetupWizard.js", import.meta.url), "utf8");
+const source = readFileSync(new URL("../src/app/setupWizardStyles.mjs", import.meta.url), "utf8");
 
 function harness({ language = "ko", reduced = false, hidden = false } = {}) {
   const slots = [], timers = new Map(), events = new Map(), motionEvents = new Map(), mutations = [];
@@ -41,28 +41,25 @@ function harness({ language = "ko", reduced = false, hidden = false } = {}) {
       });
     },
   };
-  const context = vm.createContext({
-    document, react, useState,
-    window: { matchMedia: (query) => {
+  const api = createSetupWizardWelcome({
+    document, react: { ...react, useState },
+    host: { matchMedia: (query) => {
       assert.equal(query, "(prefers-reduced-motion: reduce)");
       return motion;
     } },
-    I18n: { setLanguage: (...args) => mutations.push(args) },
-    StorageManager: { saveConfig: (...args) => mutations.push(args), setItem: (...args) => mutations.push(args) },
-    setInterval: (fn, delay) => {
+    schedule: (fn, delay) => {
       assert.equal(delay, 3500);
       const id = ++timerID;
       timers.set(id, fn);
       return id;
     },
-    clearInterval: (id) => timers.delete(id),
+    cancel: (id) => timers.delete(id),
   });
-  vm.runInContext(source + "\nglobalThis.api = { useWizardWelcomeLanguage, WizardWelcomeText };", context);
   const render = (next = {}) => {
     props = { ...props, ...next };
     cursor = 0;
     pending = [];
-    const result = context.api.useWizardWelcomeLanguage(props.active, props.language, props.settled);
+    const result = api.useWizardWelcomeLanguage(props.active, props.language, props.settled);
     for (const effect of pending) effect();
     return result;
   };
@@ -72,7 +69,7 @@ function harness({ language = "ko", reduced = false, hidden = false } = {}) {
     setHidden(value) { document.hidden = value; for (const fn of events.get("visibilitychange") || []) fn(); return render(); },
     setReduced(value) { motion.matches = value; for (const fn of motionEvents.get("change") || []) fn(); return render(); },
     unmount() { for (const slot of slots) slot?.cleanup?.(); },
-    text: (props) => context.api.WizardWelcomeText(props),
+    text: (props) => api.WizardWelcomeText(props),
   };
 }
 

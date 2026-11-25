@@ -1,10 +1,12 @@
+import { createKaraokeHarnessFactory, expandHistoricalCulturalGlyphFragments, readKaraokePageHarnessSource } from "./fixtures/karaoke-page-modules.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { KaraokeWordTiming } from '../src/lyrics/karaokeWordTiming.mjs';
 
-const currentSource = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
+const currentSource = readKaraokePageHarnessSource();
 const previousSource = execFileSync('git', ['show', 'd725515:Pages.js'], {
   cwd: new URL('..', import.meta.url), encoding: 'utf8',
 });
@@ -16,15 +18,17 @@ assert.ok(fixtureStart >= 0 && fixtureEnd > fixtureStart);
 const harnessSource = fixtureSource.slice(fixtureStart, fixtureEnd)
   .replaceAll('import.meta.url', JSON.stringify(harnessUrl.href))
   .replace('activeCharScans: 0,', 'charFills: 0, wordFills: 0, activeCharScans: 0,');
-const { createHarness, makeLine } = new Function('assert', 'execFileSync', 'readFileSync', 'vm',
-  harnessSource + '\nreturn { createHarness, makeLine };')(assert, execFileSync, readFileSync, vm);
+const { createHarness, makeLine } = createKaraokeHarnessFactory('assert', 'execFileSync', 'readFileSync', 'vm', 'KaraokeWordTiming',
+  harnessSource + '\nreturn { createHarness, makeLine };')(assert, execFileSync, readFileSync, vm, KaraokeWordTiming);
 const measured = source => source
   .replace('const getKaraokeCharFill = (position, isActive, startTime, endTime, isComplete = false) => {',
     'const getKaraokeCharFill = (position, isActive, startTime, endTime, isComplete = false) => { counts.charFills++;')
   .replace('const getKaraokeInstantWordFill = (segment, position, isActive, isComplete) => {',
     'const getKaraokeInstantWordFill = (segment, position, isActive, isComplete) => { counts.wordFills++;');
 const pair = options => [createHarness(measured(currentSource), options), createHarness(measured(previousSource), options)];
-const exactTree = value => JSON.parse(JSON.stringify(value));
+// Legacy fragments did not produce a DOM node of their own.
+const exactTree = value => JSON.parse(JSON.stringify(value, (_key, entry) =>
+  Array.isArray(entry) ? expandHistoricalCulturalGlyphFragments(entry) : entry));
 const compare = (current, previous, line, position, props = {}) => {
   assert.deepEqual(exactTree(current.render(line, position, props)),
     exactTree(previous.render(line, position, props)), `position ${position}, ${props.renderGranularity || 'character'}`);

@@ -1,19 +1,6 @@
+import { setUpSyncCreatorLrclibActions } from "./fixtures/sync-creator-lrclib.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
-
-const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
-
-const slice = (from, to) => {
-	const start = source.indexOf(from);
-	const end = source.indexOf(to, start + 1);
-	assert.ok(start >= 0 && end > start, `the source contains ${from}`);
-	return source.slice(start, end);
-};
-
-const helpersSource = slice('const normalizeSyncCreatorLrclibId =', 'const isCompleteSyncCreatorLrclibSource =');
-const loadLyricsSource = slice('const loadLyrics = useCallback(', '// 제작기에 진입하면');
 
 const TRACK_URI = 'spotify:track:fixture';
 
@@ -22,7 +9,7 @@ const createHarness = ({ snapshot = null, typedId = false, trackIsrc = '' } = {}
 	const applied = [];
 	const providerInfo = [];
 	const syncReads = [];
-	const context = vm.createContext({
+	const context = {
 		console,
 		I18n: { t: key => key },
 		useCallback: fn => fn,
@@ -47,22 +34,15 @@ const createHarness = ({ snapshot = null, typedId = false, trackIsrc = '' } = {}
 		},
 		beginSyncCreatorSourceChange: () => 1,
 		isCurrentSyncCreatorSourceChange: () => true,
-		clearLrclibCandidateState() {},
-		buildSyntheticLrclibResult() { throw new Error('the candidate branch was not selected'); },
+		clearLrclibCandidateState() {}, resetSyncCreatorLyricsLoadingState() {},
 		applyLoadedLyricsResult: async result => {
 			applied.push(result);
 			// The real callback mirrors the loaded entry's id unless an id was typed.
 			if (!context.lrclibIdInputEditedRef.current && result.lrclibId) context.setLrclibIdInput(String(result.lrclibId));
 			return true;
 		}
-	});
-	for (const [, setter] of loadLyricsSource.matchAll(/\b(set[A-Z]\w*)\b/g)) {
-		context[setter] = value => { calls.push([setter, value]); };
-	}
-	vm.runInContext(
-		`${helpersSource}\n${loadLyricsSource}\nglobalThis.loadCreatorLyrics = loadLyrics;`,
-		context
-	);
+	};
+	context.loadCreatorLyrics = setUpSyncCreatorLrclibActions(context, (name, value) => calls.push([name, value])).loadLyrics;
 	return {
 		context,
 		calls,
@@ -124,4 +104,23 @@ test('loading stays on the addon search: no editor-side pre-load and no previous
 	assert.equal(info.lrclibId, undefined, 'the ID box never steers the metadata search');
 	assert.equal(info.lrclibSource, undefined, 'a reload never pins the previously loaded entry');
 	assert.equal(info.isrc, 'USRC17607839', 'the addon resolves the same published sync as the editor');
+});
+
+test('metadata lookup failure opens a saved draft and keeps its LRCLIB ID', async () => {
+	const h = createHarness({ snapshot: officialSnapshot });
+	h.context.console = { error() {} };
+	h.context.Providers.lrclib = async () => { throw new Error('fixture offline'); };
+	let fallbackCalls = 0;
+	h.context.captureOfflineDraftRecovery = requestId => async () => {
+		assert.equal(requestId, 1);
+		fallbackCalls++;
+		h.context.setLrclibIdInput('233');
+		h.context.setIsLoading(false);
+		return { draftKey: 'draft' };
+	};
+	const { loadLyrics } = setUpSyncCreatorLrclibActions(h.context, (name, value) => h.calls.push([name, value]));
+	await loadLyrics();
+	assert.equal(fallbackCalls, 1);
+	assert.deepEqual(h.boxValues(), ['233']);
+	assert.equal(h.calls.some(([name]) => name === 'setError'), false);
 });

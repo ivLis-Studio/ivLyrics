@@ -1,4 +1,4 @@
-<img width="2208" height="512" alt="ivLyrics — 당신의 언어로 즐기는 음악" src="https://github.com/ivLis-Studio/ivLyrics/blob/main/preview_readme_ko.png?raw=true" />
+![ivLyrics — 당신의 언어로 즐기는 음악](docs/assets/preview_readme_ko.png)
 
 [한국어](README.md) · [English](README_EN.md)
 
@@ -80,6 +80,8 @@ spicetify apply
 ```
 
 직접 설치한 경우에는 새 버전도 릴리스에서 내려받아 교체할 수 있습니다. 자세한 폴더 안내는 [Spicetify 공식 문서](https://spicetify.app/docs/customization/custom-apps)를 참고하세요.
+
+GitHub의 `Source code.zip`은 소스 배포본입니다. 직접 빌드하려면 [개발 안내](https://github.com/ivLis-Studio/ivLyrics/blob/main/CONTRIBUTING.md#development-setup)를 참고하세요.
 
 </details>
 
@@ -213,10 +215,39 @@ ivLyrics의 소스 코드는 [GNU LGPL v2.1](LICENSE)을 따릅니다. 포함된
 
 ivLis Studio는 서버 부하를 관리하기 위해 `ivlis.kr`, `ivl.is` 및 각 하위 도메인에서 운영하는 서비스에 대한 앱의 자동 요청을 공식 ivLyrics 배포본과 사전 승인된 클라이언트에 한해 허용합니다. 승인받지 않은 포크나 외부 앱에서는 이들 주소로 보내는 요청을 비활성화하거나 자체 서버로 전환해 주세요. 이 정책은 ivLis Studio가 운영하는 서비스에 대한 접근에 적용되며, 코드의 사용·수정·재배포는 LGPL v2.1을 따릅니다.
 
-Spicetify lyrics-plus의 출처, 기존 기여, 각 구성요소의 라이선스는 [NOTICE.md](NOTICE.md)에서 확인할 수 있습니다.
+Copyright (c) 2025–2026 ivLis Studio and contributors.
 
-- **TinySegmenter** — Copyright (c) 2008, Taku Kudo. [저작권·라이선스 고지](TinySegmenter.LICENSE.txt)
-- **wa-sqlite 1.0.0** — Copyright (c) 2023 Roy T. Hashimoto. MIT 라이선스이며, 고지 전문은 배포되는 `LrclibLocalDatabaseRuntime.js`에도 보존되어 있습니다.
+<details>
+<summary>LGPL-2.1 적용 파일과 기여자</summary>
+
+아래 소스와 그 소스에서 빌드된 부분에는 [LGPL-2.1](third_party/lyrics-plus.LGPL-2.1.txt)이 적용됩니다. 사용·수정·재배포 권한도 해당 라이선스를 따릅니다. v7.1.17까지의 릴리스(커밋 `3c251f7`)는 기존 조건으로 계속 제공됩니다.
+
+**Spicetify lyrics-plus 파생 파일**
+
+`src/spicetify/index.js`, `src/styles/`, `src/core/Utils.js`, `src/lyrics/speakerColors.mjs`, `src/lyrics/LyricsService.js`, `src/lyrics/Pages.js`, `src/features/settings/Settings.js`, `src/app/OptionsMenu.js`, `src/features/player/PlaybarButton.js`, `manifest.json`, `src/lyrics/NowPlayingPanelLyrics.js`, `src/lyrics/TranslationModeHelper.js`
+
+위 파일에서 분리한 `src/lyrics/creator-profile/`과 `src/features/settings/`의 `.mjs` 파일, `src/lyrics/`의 `furigana.mjs`, `translation*.mjs`, `lyricsBackgroundStyles.mjs`, `lyricsLanguage*.mjs`, `karaokeWordTiming.mjs`, `karaokeFill.mjs`, `karaokeMotion.mjs`, `karaokeGlyphUpdates.mjs`, `karaokeLivePainter.mjs`, `karaokeWordSupplementHook.mjs`, `createWordSupplementPrefetcher.mjs`, `lyricsTextOutline.mjs`, `lyricsTypography.mjs`, `lyricInterludePresentation.mjs`, `lyricTextMarkup.mjs`, `lyricCulturalAnnotations.mjs`, `createLyricSubLineRenderer.mjs`, `createLyricLineActions.mjs`, `lyricsLineComponents.mjs`, `createSyncedLyricRows.mjs`, `syncDataSourceCompatibility.mjs`에도 같은 라이선스가 적용됩니다.
+
+`src/core/trackIdentity.mjs`, `src/lyrics/panelLyricPresentation.mjs`, `src/features/overlay/overlayLyricPayload.mjs`, `src/features/overlay/overlayOffsets.mjs`에도 같은 라이선스가 적용됩니다.
+
+**LGPL-2.1로 제출된 기여가 포함된 파일**
+
+- 런타임: `src/providers/ai/AIAddonManager.js`, `src/providers/ai/AIRequest.js`, `src/providers/ai/Addon_AI_ChatGPT.js`, `src/providers/lyrics/Addon_Lyrics_LrcRed.js`, `src/providers/lyrics/Addon_Lyrics_Lrclib.js`, `src/providers/lyrics/Addon_Lyrics_OpenLyrics.js`, `src/features/fullscreen/FullscreenOverlay.js`, `src/features/share/LyricsShareImage.js`, `src/lyrics/LyricsWordSegmenter.js`, `src/features/player/PlaylistPicker.js`, `src/lyrics/PronunciationFirst.js`, `src/features/sync/SyncDataCreator.js`, `src/features/sync/syncCreatorVocalStyles.mjs`, `src/features/video/VideoBackground.js`, `src/features/video/VideoBackgroundDepend.js`, `src/features/video/VideoMatch.js`, `src/lyrics/WordLevelSupplements.js`, `src/lyrics/createWordSupplementService.mjs`, `src/lyrics/createWordSupplementBatcher.mjs`
+- 번역: `src/i18n/langs/`의 전체 파일
+- 분리한 모듈: `src/providers/ai/`과 `src/features/sync/`의 `.mjs` 파일
+- 테스트: `tests/capability_master_switch.test.mjs`, `tests/cdn_script_integrity.test.mjs`, `tests/character_pronunciation_repair.test.mjs`, `tests/chatgpt_capability_seeding.test.mjs`, `tests/chinese_pronunciation_tones.test.mjs`, `tests/creator_profile_playlist.test.mjs`, `tests/creator_profile_row_layout.test.mjs`, `tests/fixtures/fullscreen_controller_background_browser.js`, `tests/fixtures/playlist_picker_browser.js`, `tests/fixtures/sync_creator_preview_browser.js`, `tests/fullscreen_controller_background.test.mjs`, `tests/fullscreen_playback_updates.test.mjs`, `tests/interlude_padding_collapse.test.mjs`, `tests/karaoke_adaptive_motion.test.mjs`, `tests/karaoke_expressive_long_words.test.mjs`, `tests/karaoke_expressive_motion.test.mjs`, `tests/karaoke_static_render_cache.test.mjs`, `tests/karaoke_style_invalidation.test.mjs`, `tests/karaoke_vocal_render_cache.test.mjs`, `tests/language_detection.test.mjs`, `tests/lyrics_provider_same_song.test.mjs`, `tests/lyrics_seek_fade_compensation.test.mjs`, `tests/lyrics_text_shadow.test.mjs`, `tests/lyrics_word_segmenter_quoted_words.test.mjs`, `tests/openai_connections.test.mjs`, `tests/openai_connections_unified.test.mjs`, `tests/openai_primary_presentation.test.mjs`, `tests/panel_lyric_html_escaping.test.mjs`, `tests/playlist_picker_button.test.mjs`, `tests/playlist_picker_panel.test.mjs`, `tests/playlist_picker_placement.test.mjs`, `tests/pronunciation_fill.test.mjs`, `tests/renderer_settings_equivalence.test.mjs`, `tests/settings_fullscreen_preview.test.mjs`, `tests/settings_import_endpoint_guard.test.mjs`, `tests/settings_menu_ownership.test.mjs`, `tests/settings_provider_master_switch.test.mjs`, `tests/share_image_controls_contract.test.mjs`, `tests/share_image_word_level.test.mjs`, `tests/sync_adjust_panel.test.mjs`, `tests/sync_creator_loaded_lrclib_id.test.mjs`, `tests/sync_creator_lock_integration.test.mjs`, `tests/sync_creator_lrclib_transport.test.mjs`, `tests/sync_creator_preview_navigation.test.mjs`, `tests/sync_creator_preview_rules.test.mjs`, `tests/sync_creator_pronunciation_bubble_layout.test.mjs`, `tests/sync_creator_segment_offset.test.mjs`, `tests/sync_creator_selection_effect.test.mjs`, `tests/sync_unsubmitted_draft.test.mjs`, `tests/synced_render_reuse.test.mjs`, `tests/track_sync_migration.test.mjs`, `tests/video_drift_correction.test.mjs`, `tests/video_match_quality.test.mjs`, `tests/video_prefetch_track_identity.test.mjs`, `tests/video_quick_sync.test.mjs`, `tests/word_supplement_han_mixed_line.test.mjs`, `tests/word_supplement_pending_dedup.test.mjs`, `tests/word_supplement_persistence_fallback.test.mjs`, `tests/word_supplement_prefetch_track_id.test.mjs`, `tests/word_supplement_quoted_units.test.mjs`, `tests/word_supplement_regenerate.test.mjs`, `tests/youtube_ad_suppression.test.mjs`
+
+기여자: PixelAxolotl, Ahmedxsaad, Oein, hohofught, kpnkpn1324, twoeater, karma-skz, Junsu Park, alixti, moxuun. 전체 기여 이력은 Git에서 확인할 수 있습니다.
+
+</details>
+
+<details>
+<summary>제3자 구성요소 및 라이선스</summary>
+
+- **Preact** — MIT. 모바일 모션 가사 빌드에 포함됩니다. [라이선스 전문](third_party/preact/LICENSE)
+- **Bootstrap** — MIT. `src/styles/`에 일부가 포함됩니다.
+- **TinySegmenter** — Copyright (c) 2008, Taku Kudo. [저작권·라이선스 고지](third_party/TinySegmenter.LICENSE.txt)
+- **wa-sqlite 1.0.0** — Copyright (c) 2023 Roy T. Hashimoto. MIT 라이선스이며, 고지 전문은 설치본의 `startup.js`에 보존되어 있습니다.
 - **spicetify-visualizer** — Copyright (c) 2026 Konsl. MIT 라이선스입니다. CD 비주얼라이저의 음량·피치 보간 로직 일부를 [원본 커밋](https://github.com/Konsl/spicetify-visualizer/tree/12cb2a9066690b4e023bccc9466ae784ebb62364)에서 수정·통합했습니다. 원형 렌더러와 생명주기 처리는 ivLyrics에서 구현했습니다.
 
 <details>
@@ -245,5 +276,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+</details>
 
 </details>

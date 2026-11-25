@@ -1,0 +1,967 @@
+.lyrics-idling-indicator {
+  display: inline-block;
+  opacity: 1;
+  transition: opacity 0.2s cubic-bezier(0, 0, 0.58, 1);
+}
+
+.lyrics-idling-indicator-hidden {
+  opacity: 0;
+}
+
+.lyrics-idling-indicator__circle {
+  background-color: var(--lyrics-color-active);
+  border-radius: 50%;
+  display: inline-block;
+  opacity: 0.5;
+  margin-right: calc(var(--lyrics-font-size) / 4);
+
+  transform-origin: center;
+  transition-timing-function: linear;
+  transition-duration: var(--indicator-delay);
+  transition-property: transform, opacity;
+  height: var(--lyrics-font-size);
+  width: var(--lyrics-font-size);
+  transform: scale(0.5);
+}
+
+.lyrics-idling-indicator__circle.active {
+  opacity: 1;
+  transform: scale(0.7);
+}
+
+@keyframes lyricsBreakBarPulse {
+  0%,
+  100% {
+    transform: scaleY(0.32);
+    opacity: 0.42;
+  }
+
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes lyricsBreakDotWave {
+  0%,
+  100% {
+    transform: translateY(0.15em) scale(0.7);
+    opacity: 0.38;
+  }
+
+  50% {
+    transform: translateY(-0.15em) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes lyricsBreakRingBreathe {
+  0% {
+    transform: scale(0.35);
+    opacity: 0;
+  }
+
+  45% {
+    opacity: 0.9;
+  }
+
+  100% {
+    transform: scale(1.3);
+    opacity: 0;
+  }
+}
+
+@keyframes lyricsBreakOrbitOne {
+  from {
+    transform: rotate(0deg) translateX(0.42em);
+  }
+
+  to {
+    transform: rotate(360deg) translateX(0.42em);
+  }
+}
+
+@keyframes lyricsBreakOrbitTwo {
+  from {
+    transform: rotate(120deg) translateX(0.42em);
+  }
+
+  to {
+    transform: rotate(480deg) translateX(0.42em);
+  }
+}
+
+@keyframes lyricsBreakOrbitThree {
+  from {
+    transform: rotate(240deg) translateX(0.42em);
+  }
+
+  to {
+    transform: rotate(600deg) translateX(0.42em);
+  }
+}
+
+@keyframes lyricsBreakDiamondStep {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: rotate(45deg) scale(0.72);
+  }
+
+  50% {
+    opacity: 1;
+    transform: rotate(45deg) scale(1.05);
+  }
+}
+
+@keyframes lyricsBreakScanMove {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(2em);
+  }
+}
+
+@keyframes lyricsBreakArcSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes lyricsBreakSignalFlow {
+  0% {
+    opacity: 0.48;
+    stroke-dashoffset: 0;
+  }
+
+  45% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.48;
+    stroke-dashoffset: -48;
+  }
+}
+
+@keyframes lyricsBreakDotPulse {
+  0% {
+    transform: scale(0.25);
+    opacity: 0.8;
+  }
+
+  100% {
+    transform: scale(1.75);
+    opacity: 0;
+  }
+}
+
+@keyframes lyricsBreakStackShift {
+  0%,
+  100% {
+    opacity: 0.38;
+    transform: scaleX(0.6);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes lyricsBreakSparkRotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes lyricsBreakSplitBar {
+  0%,
+  100% {
+    transform: scaleY(0.24);
+    opacity: 0.36;
+  }
+
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes lyricsBreakMetronome {
+  from {
+    transform: rotate(-24deg);
+  }
+
+  to {
+    transform: rotate(24deg);
+  }
+}
+
+@keyframes lyricsBreakSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes lyricsBreakBeatHit {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.5;
+  }
+
+  9% {
+    transform: scale(1.28);
+    opacity: 1;
+  }
+
+  45% {
+    transform: scale(0.82);
+    opacity: 0.7;
+  }
+
+  100% {
+    transform: scale(0.5);
+    opacity: 0.5;
+  }
+}
+
+@keyframes lyricsBreakTrianglePulse {
+  0%,
+  100% {
+    transform: scale(0.7);
+    opacity: 0.45;
+  }
+
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+@keyframes lyricsBreakMorphShape {
+  0%,
+  100% {
+    border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+    transform: rotate(0deg);
+  }
+
+  25% {
+    border-radius: 70% 30% 50% 50% / 30% 70% 30% 70%;
+    transform: rotate(90deg);
+  }
+
+  50% {
+    border-radius: 50% 50% 30% 70% / 70% 30% 70% 30%;
+    transform: rotate(180deg);
+  }
+
+  75% {
+    border-radius: 30% 70% 70% 30% / 50% 50% 50% 50%;
+    transform: rotate(270deg);
+  }
+}
+
+@keyframes lyricsBreakStringPluck {
+  0% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+
+  4% {
+    transform: translateY(-0.08em);
+    opacity: 1;
+  }
+
+  9% {
+    transform: translateY(0.06em);
+  }
+
+  14% {
+    transform: translateY(-0.04em);
+  }
+
+  19% {
+    transform: translateY(0.03em);
+    opacity: 0.75;
+  }
+
+  28%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+}
+
+@keyframes lyricsBreakKeyPress {
+  0%,
+  35%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.55;
+  }
+
+  5% {
+    transform: translateY(0.12em);
+    opacity: 1;
+  }
+
+  20% {
+    transform: translateY(0);
+    opacity: 0.85;
+  }
+}
+
+@keyframes lyricsBreakBloomPulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes lyricsBreakSpeakerRing {
+  0%,
+  100% {
+    transform: scale(0.9);
+    opacity: 0.4;
+  }
+
+  18% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+}
+
+@keyframes lyricsBreakSpeakerCenter {
+  0%,
+  100% {
+    transform: scale(0.68);
+  }
+
+  18% {
+    transform: scale(1.2);
+  }
+}
+
+@keyframes lyricsBreakCrossfadeBreathe {
+  0%,
+  100% {
+    transform: scale(0.55);
+  }
+
+  50% {
+    transform: scale(1);
+  }
+}
+
+.lyrics-break-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  max-width: 100%;
+  color: currentColor;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.lyrics-lyricsContainer-LyricsLine-interludeMain {
+  display: flex;
+  align-items: center;
+  min-height: 1.2em;
+}
+
+.lyrics-break-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.16em;
+  height: 1.16em;
+  min-width: 18px;
+  min-height: 18px;
+  flex: 0 0 auto;
+  overflow: visible;
+  color: currentColor;
+}
+
+.lyrics-break-icon span,
+.lyrics-break-icon svg {
+  flex: 0 0 auto;
+}
+
+.lyrics-break-label {
+  font-family: var(--break-label-font-family, var(--lyrics-original-font-family, inherit));
+  font-size: var(--break-label-font-size, 20px);
+  font-weight: var(--break-label-font-weight, 200);
+  line-height: 1;
+  letter-spacing: 0;
+  opacity: var(--break-label-opacity, 0.65);
+}
+
+.lyrics-break-icon-equalizer,
+.lyrics-break-icon-dotWave,
+.lyrics-break-icon-diamonds,
+.lyrics-break-icon-splitBars,
+.lyrics-break-icon-reels,
+.lyrics-break-icon-piano {
+  display: inline-flex;
+}
+
+.lyrics-break-icon-equalizer,
+.lyrics-break-icon-splitBars {
+  align-items: center;
+  gap: 0.09em;
+}
+
+.lyrics-break-icon-equalizer span,
+.lyrics-break-icon-splitBars span {
+  display: block;
+  width: 0.11em;
+  min-width: 2px;
+  height: 0.76em;
+  border-radius: 999px;
+  background: currentColor;
+  transform: scaleY(0.4);
+  transform-origin: center;
+}
+
+.lyrics-break-icon-equalizer span {
+  animation: lyricsBreakBarPulse var(--break-duration, 1100ms) ease-in-out infinite;
+}
+
+.lyrics-break-icon-equalizer span:nth-child(2) {
+  animation-delay: calc(var(--break-duration, 1100ms) * -0.18);
+}
+
+.lyrics-break-icon-equalizer span:nth-child(3) {
+  animation-delay: calc(var(--break-duration, 1100ms) * -0.36);
+}
+
+.lyrics-break-icon-equalizer span:nth-child(4) {
+  animation-delay: calc(var(--break-duration, 1100ms) * -0.54);
+}
+
+.lyrics-break-icon-dotWave {
+  align-items: center;
+  gap: 0.1em;
+}
+
+.lyrics-break-icon-dotWave span {
+  width: 0.14em;
+  height: 0.14em;
+  border-radius: 50%;
+  background: currentColor;
+  animation: lyricsBreakDotWave var(--break-duration-fast, 790ms) ease-in-out infinite;
+}
+
+.lyrics-break-icon-dotWave span:nth-child(2) {
+  animation-delay: calc(var(--break-duration-fast, 790ms) * 0.1);
+}
+
+.lyrics-break-icon-dotWave span:nth-child(3) {
+  animation-delay: calc(var(--break-duration-fast, 790ms) * 0.2);
+}
+
+.lyrics-break-icon-dotWave span:nth-child(4) {
+  animation-delay: calc(var(--break-duration-fast, 790ms) * 0.3);
+}
+
+.lyrics-break-icon-dotWave span:nth-child(5) {
+  animation-delay: calc(var(--break-duration-fast, 790ms) * 0.4);
+}
+
+.lyrics-break-icon-ripples::before,
+.lyrics-break-icon-ripples::after,
+.lyrics-break-icon-ripples span {
+  content: "";
+  position: absolute;
+  inset: 0.28em;
+  border: 0.055em solid currentColor;
+  border-radius: 50%;
+  animation: lyricsBreakRingBreathe var(--break-duration-slow, 1815ms) ease-in-out infinite;
+}
+
+.lyrics-break-icon-ripples::after {
+  animation-delay: calc(var(--break-duration-slow, 1815ms) * -0.33);
+}
+
+.lyrics-break-icon-ripples span {
+  animation-delay: calc(var(--break-duration-slow, 1815ms) * -0.66);
+}
+
+.lyrics-break-icon-orbit::before,
+.lyrics-break-icon-orbit::after,
+.lyrics-break-icon-orbit span {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.14em;
+  height: 0.14em;
+  margin: -0.07em;
+  border-radius: 50%;
+  background: currentColor;
+  transform-origin: center;
+}
+
+.lyrics-break-icon-orbit::before {
+  animation: lyricsBreakOrbitOne var(--break-duration-slow, 1815ms) linear infinite;
+}
+
+.lyrics-break-icon-orbit::after {
+  animation: lyricsBreakOrbitTwo var(--break-duration-slow, 1815ms) linear infinite;
+}
+
+.lyrics-break-icon-orbit span {
+  animation: lyricsBreakOrbitThree var(--break-duration-slow, 1815ms) linear infinite;
+}
+
+.lyrics-break-icon-diamonds {
+  align-items: center;
+  gap: 0.17em;
+}
+
+.lyrics-break-icon-diamonds span {
+  width: 0.2em;
+  height: 0.2em;
+  background: currentColor;
+  transform: rotate(45deg) scale(0.72);
+  animation: lyricsBreakDiamondStep var(--break-duration, 1100ms) ease-in-out infinite;
+}
+
+.lyrics-break-icon-diamonds span:nth-child(2) {
+  animation-delay: calc(var(--break-duration, 1100ms) * 0.13);
+}
+
+.lyrics-break-icon-diamonds span:nth-child(3) {
+  animation-delay: calc(var(--break-duration, 1100ms) * 0.25);
+}
+
+.lyrics-break-icon-scan {
+  width: 1.22em;
+  height: 0.5em;
+  border-left: 0.06em solid currentColor;
+  border-right: 0.06em solid currentColor;
+  overflow: hidden;
+}
+
+.lyrics-break-icon-scan::before {
+  content: "";
+  position: absolute;
+  top: calc(50% - 0.05em);
+  left: -0.76em;
+  width: 0.72em;
+  height: 0.1em;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0.32em 0 0 currentColor, 0.64em 0 0 currentColor;
+  animation: lyricsBreakScanMove var(--break-duration, 1100ms) ease-in-out infinite;
+}
+
+.lyrics-break-icon-arcs::before,
+.lyrics-break-icon-arcs::after {
+  content: "";
+  position: absolute;
+  inset: 0.16em;
+  border: 0.07em solid transparent;
+  border-top-color: currentColor;
+  border-right-color: currentColor;
+  border-radius: 50%;
+  animation: lyricsBreakArcSpin var(--break-duration-slow, 1815ms) linear infinite;
+}
+
+.lyrics-break-icon-arcs::after {
+  inset: 0.34em;
+  border-width: 0.055em;
+  border-top-color: transparent;
+  border-right-color: currentColor;
+  border-bottom-color: currentColor;
+  animation-direction: reverse;
+  animation-duration: var(--break-duration, 1100ms);
+}
+
+.lyrics-break-icon-signal {
+  width: 1.32em;
+  height: 0.52em;
+  overflow: visible;
+}
+
+.lyrics-break-icon-signal svg {
+  display: block;
+  width: 1.32em;
+  height: 0.52em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.lyrics-break-icon-signal path {
+  stroke-dasharray: 18 14;
+  animation: lyricsBreakSignalFlow var(--break-duration-slow, 1815ms) linear infinite;
+}
+
+.lyrics-break-icon-pulseDot::before,
+.lyrics-break-icon-pulseDot::after {
+  content: "";
+  position: absolute;
+  inset: 0.4em;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.lyrics-break-icon-pulseDot::after {
+  inset: 0.26em;
+  background: transparent;
+  border: 0.04em solid currentColor;
+  animation: lyricsBreakDotPulse var(--break-duration, 1100ms) ease-out infinite;
+}
+
+.lyrics-break-icon-stack {
+  display: grid;
+  place-items: center;
+  gap: 0.08em;
+}
+
+.lyrics-break-icon-stack span {
+  display: block;
+  width: 0.78em;
+  height: 0.09em;
+  border-radius: 999px;
+  background: currentColor;
+  animation: lyricsBreakStackShift var(--break-duration, 1100ms) ease-in-out infinite;
+}
+
+.lyrics-break-icon-stack span:nth-child(2) {
+  width: 0.52em;
+  animation-delay: calc(var(--break-duration, 1100ms) * -0.17);
+}
+
+.lyrics-break-icon-stack span:nth-child(3) {
+  width: 0.92em;
+  animation-delay: calc(var(--break-duration, 1100ms) * -0.34);
+}
+
+.lyrics-break-icon-spark {
+  animation: lyricsBreakSparkRotate var(--break-duration-xslow, 4180ms) linear infinite;
+}
+
+.lyrics-break-icon-spark span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.1em;
+  height: 0.1em;
+  margin: -0.05em;
+  border-radius: 50%;
+  background: currentColor;
+  transform: rotate(calc(var(--i) * 45deg)) translateX(0.42em) scale(calc(0.45 + var(--i) * 0.06));
+  opacity: calc(0.22 + var(--i) * 0.08);
+}
+
+.lyrics-break-icon-splitBars span {
+  animation: lyricsBreakSplitBar var(--break-duration, 1100ms) ease-in-out infinite;
+}
+
+.lyrics-break-icon-splitBars span:nth-child(1),
+.lyrics-break-icon-splitBars span:nth-child(4) {
+  animation-delay: calc(var(--break-duration, 1100ms) * -0.22);
+}
+
+.lyrics-break-icon-splitBars span:nth-child(2),
+.lyrics-break-icon-splitBars span:nth-child(3) {
+  animation-delay: calc(var(--break-duration, 1100ms) * -0.06);
+}
+
+.lyrics-break-icon-metronome::before {
+  content: "";
+  position: absolute;
+  left: calc(50% - 0.05em);
+  bottom: 0.2em;
+  width: 0.1em;
+  height: 0.76em;
+  border-radius: 999px;
+  background: currentColor;
+  transform-origin: bottom center;
+  animation: lyricsBreakMetronome var(--break-duration-fast, 790ms) ease-in-out infinite alternate;
+}
+
+.lyrics-break-icon-metronome::after {
+  content: "";
+  position: absolute;
+  left: calc(50% - 0.25em);
+  bottom: 0.14em;
+  width: 0.5em;
+  height: 0.07em;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+.lyrics-break-icon-vinyl {
+  border: 0.04em solid currentColor;
+  border-radius: 50%;
+  animation: lyricsBreakSpin var(--break-duration-xslow, 4180ms) linear infinite;
+}
+
+.lyrics-break-icon-vinyl::before {
+  content: "";
+  position: absolute;
+  inset: 0.22em;
+  border: 0.025em solid currentColor;
+  border-radius: 50%;
+  opacity: 0.45;
+}
+
+.lyrics-break-icon-vinyl::after {
+  content: "";
+  position: absolute;
+  inset: 0.47em;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.lyrics-break-icon-vinyl > span {
+  position: absolute;
+  top: 0.08em;
+  left: 50%;
+  width: 0.08em;
+  height: 0.08em;
+  margin-left: -0.04em;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.lyrics-break-icon-beat {
+  width: 0.68em;
+  height: 0.68em;
+  border-radius: 50%;
+  background: currentColor;
+  animation: lyricsBreakBeatHit var(--break-duration-fast, 790ms) cubic-bezier(0.18, 0.9, 0.36, 1) infinite;
+}
+
+.lyrics-break-icon-reels {
+  align-items: center;
+  gap: 0.2em;
+}
+
+.lyrics-break-icon-reels span {
+  position: relative;
+  width: 0.42em;
+  height: 0.42em;
+  border: 0.04em solid currentColor;
+  border-radius: 50%;
+  animation: lyricsBreakSpin var(--break-duration-slow, 1815ms) linear infinite;
+}
+
+.lyrics-break-icon-reels span:nth-child(2) {
+  animation-direction: reverse;
+}
+
+.lyrics-break-icon-reels span::before,
+.lyrics-break-icon-reels span::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  background: currentColor;
+}
+
+.lyrics-break-icon-reels span::before {
+  width: 0.3em;
+  height: 0.035em;
+  margin: -0.0175em 0 0 -0.15em;
+}
+
+.lyrics-break-icon-reels span::after {
+  width: 0.035em;
+  height: 0.3em;
+  margin: -0.15em 0 0 -0.0175em;
+}
+
+.lyrics-break-icon-triangle::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 0.56em solid currentColor;
+  border-top: 0.34em solid transparent;
+  border-bottom: 0.34em solid transparent;
+  animation: lyricsBreakTrianglePulse var(--break-duration, 1100ms) ease-in-out infinite;
+}
+
+.lyrics-break-icon-morph {
+  width: 0.88em;
+  height: 0.88em;
+  background: currentColor;
+  border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+  animation: lyricsBreakMorphShape var(--break-duration-xslow, 4180ms) ease-in-out infinite;
+}
+
+.lyrics-break-icon-strings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.13em;
+}
+
+.lyrics-break-icon-strings span {
+  display: block;
+  width: 1em;
+  height: 0.035em;
+  border-radius: 999px;
+  background: currentColor;
+  animation: lyricsBreakStringPluck var(--break-duration-slow, 1815ms) ease-out infinite;
+}
+
+.lyrics-break-icon-strings span:nth-child(2) {
+  animation-delay: calc(var(--break-duration-slow, 1815ms) * 0.05);
+}
+
+.lyrics-break-icon-strings span:nth-child(3) {
+  animation-delay: calc(var(--break-duration-slow, 1815ms) * 0.1);
+}
+
+.lyrics-break-icon-strings span:nth-child(4) {
+  animation-delay: calc(var(--break-duration-slow, 1815ms) * 0.15);
+}
+
+.lyrics-break-icon-piano {
+  align-items: center;
+  gap: 0.08em;
+}
+
+.lyrics-break-icon-piano span {
+  display: block;
+  width: 0.12em;
+  height: 0.76em;
+  border-radius: 0 0 0.04em 0.04em;
+  background: currentColor;
+  animation: lyricsBreakKeyPress var(--break-duration-slow, 1815ms) ease-in-out infinite;
+}
+
+.lyrics-break-icon-piano span:nth-child(2) {
+  animation-delay: calc(var(--break-duration-slow, 1815ms) * 0.45);
+}
+
+.lyrics-break-icon-piano span:nth-child(3) {
+  animation-delay: calc(var(--break-duration-slow, 1815ms) * 0.14);
+}
+
+.lyrics-break-icon-piano span:nth-child(4) {
+  animation-delay: calc(var(--break-duration-slow, 1815ms) * 0.68);
+}
+
+.lyrics-break-icon-piano span:nth-child(5) {
+  animation-delay: calc(var(--break-duration-slow, 1815ms) * 0.28);
+}
+
+.lyrics-break-icon-bloom span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.2em;
+  height: 0.2em;
+  margin: -0.1em;
+  border-radius: 50%;
+  background: currentColor;
+  animation: lyricsBreakBloomPulse var(--break-duration-slow, 1815ms) ease-in-out infinite;
+}
+
+.lyrics-break-icon-bloom span:nth-child(1) {
+  transform: translateX(-0.32em);
+}
+
+.lyrics-break-icon-bloom span:nth-child(2) {
+  transform: translateX(0.32em);
+  animation-delay: calc(var(--break-duration-slow, 1815ms) * 0.25);
+}
+
+.lyrics-break-icon-bloom span:nth-child(3) {
+  transform: translateY(-0.32em);
+  animation-delay: calc(var(--break-duration-slow, 1815ms) * 0.13);
+}
+
+.lyrics-break-icon-bloom span:nth-child(4) {
+  transform: translateY(0.32em);
+  animation-delay: calc(var(--break-duration-slow, 1815ms) * 0.38);
+}
+
+.lyrics-break-icon-speaker {
+  border: 0.04em solid currentColor;
+  border-radius: 50%;
+}
+
+.lyrics-break-icon-speaker::before {
+  content: "";
+  position: absolute;
+  inset: 0.22em;
+  border: 0.04em solid currentColor;
+  border-radius: 50%;
+  animation: lyricsBreakSpeakerRing var(--break-duration-fast, 790ms) cubic-bezier(0.2, 0.85, 0.4, 1) infinite;
+}
+
+.lyrics-break-icon-speaker::after {
+  content: "";
+  position: absolute;
+  inset: 0.44em;
+  border-radius: 50%;
+  background: currentColor;
+  animation: lyricsBreakSpeakerCenter var(--break-duration-fast, 790ms) cubic-bezier(0.2, 0.85, 0.4, 1) infinite;
+}
+
+.lyrics-break-icon-crossfade::before,
+.lyrics-break-icon-crossfade::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 0.5em;
+  height: 0.5em;
+  margin-top: -0.25em;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+  animation: lyricsBreakCrossfadeBreathe var(--break-duration-slow, 1815ms) ease-in-out infinite;
+}
+
+.lyrics-break-icon-crossfade::before {
+  left: 0.24em;
+}
+
+.lyrics-break-icon-crossfade::after {
+  right: 0.24em;
+  animation-delay: calc(var(--break-duration-slow, 1815ms) * -0.5);
+}
+
+.lyrics-lyricsContainer-LyricsLine-interlude:not(.lyrics-lyricsContainer-LyricsLine-active) .lyrics-break-icon,
+.lyrics-lyricsContainer-LyricsLine-interlude:not(.lyrics-lyricsContainer-LyricsLine-active) .lyrics-break-icon *,
+.lyrics-lyricsContainer-LyricsLine-interlude:not(.lyrics-lyricsContainer-LyricsLine-active) .lyrics-break-icon::before,
+.lyrics-lyricsContainer-LyricsLine-interlude:not(.lyrics-lyricsContainer-LyricsLine-active) .lyrics-break-icon::after,
+.lyrics-lyricsContainer-LyricsLine-interlude:not(.lyrics-lyricsContainer-LyricsLine-active) .lyrics-break-icon *::before,
+.lyrics-lyricsContainer-LyricsLine-interlude:not(.lyrics-lyricsContainer-LyricsLine-active) .lyrics-break-icon *::after {
+  animation-play-state: paused;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.playback-paused .lyrics-break-icon,
+.lyrics-lyricsContainer-LyricsContainer.playback-paused .lyrics-break-icon *,
+.lyrics-lyricsContainer-LyricsContainer.playback-paused .lyrics-break-icon::before,
+.lyrics-lyricsContainer-LyricsContainer.playback-paused .lyrics-break-icon::after,
+.lyrics-lyricsContainer-LyricsContainer.playback-paused .lyrics-break-icon *::before,
+.lyrics-lyricsContainer-LyricsContainer.playback-paused .lyrics-break-icon *::after {
+  animation-play-state: paused;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.motion-reduced .lyrics-break-icon,
+.lyrics-lyricsContainer-LyricsContainer.motion-reduced .lyrics-break-icon *,
+.lyrics-lyricsContainer-LyricsContainer.motion-reduced .lyrics-break-icon::before,
+.lyrics-lyricsContainer-LyricsContainer.motion-reduced .lyrics-break-icon::after,
+.lyrics-lyricsContainer-LyricsContainer.motion-reduced .lyrics-break-icon *::before,
+.lyrics-lyricsContainer-LyricsContainer.motion-reduced .lyrics-break-icon *::after {
+  animation: none !important;
+}
+

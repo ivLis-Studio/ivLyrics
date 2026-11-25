@@ -1,19 +1,10 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
+import { readFileSync } from "node:fs";
+import { createVideoDriftState, resetVideoDriftState, planVideoDriftCorrection } from "../src/features/video/videoDriftCorrection.mjs";
+import { createYouTubeBackgroundTimeline } from "../src/features/video/youTubeBackgroundTimeline.mjs";
 
-const source = readFileSync(new URL("../VideoBackground.js", import.meta.url), "utf8");
-const helperBoundary = source.indexOf("const disableYouTubeCaptions");
-assert.ok(helperBoundary > 0, "VideoBackground sync helpers must remain before the component helpers");
-
-const context = vm.createContext({ window: {} });
-vm.runInContext(
-    `${source.slice(0, helperBoundary)}\n` +
-    "globalThis.__drift = { createVideoDriftState, resetVideoDriftState, planVideoDriftCorrection, syncYouTubePlayerTimeline };",
-    context
-);
-const { createVideoDriftState, resetVideoDriftState, planVideoDriftCorrection, syncYouTubePlayerTimeline } = context.__drift;
+const { syncYouTubePlayerTimeline } = createYouTubeBackgroundTimeline({ isYouTubeAdPlaying: () => false });
 
 const TICK_MS = 250;
 
@@ -498,5 +489,6 @@ test("a reloading background that only stalls is left to buffer; a pause or a Sp
 });
 
 test("the YouTube sync marks its seeks as reloads", () => {
-    assert.match(source, /allowSoftSeek: false,\s*reloadsOnSeek: true,/);
+    const timeline = readFileSync(new URL("../src/features/video/youTubeBackgroundTimeline.mjs", import.meta.url), "utf8");
+    assert.match(timeline, /allowSoftSeek: false,\s*reloadsOnSeek: true,/);
 });

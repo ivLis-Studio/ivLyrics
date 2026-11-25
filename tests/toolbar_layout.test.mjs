@@ -1,3 +1,11 @@
+import { createLyricsModeLockStore } from "../src/lyrics/lyricsRenderModes.mjs";
+import { createLyricsPageModes } from "../src/lyrics/lyricsPageModes.mjs";
+import { renderLyricsPageToolbar } from "../src/lyrics/lyricsPageToolbarView.mjs";
+import { renderLyricsStudyPanel } from "../src/lyrics/lyricsPageFullscreenView.mjs";
+import { computeSyncAdjustPanelPosition } from "../src/app/toolbar/sync/syncAdjustPanelPosition.mjs";
+import { readInstrumentedOptionsMenuFixture } from "./fixtures/legacy-page-source.mjs";
+import { readLanguageTable } from "./fixtures/language-source.mjs";
+import { sourceUrl } from "./fixtures/source-paths.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -6,14 +14,13 @@ import vm from "node:vm";
 // The lyrics-page floating toolbar, rendered from the real OptionsMenu.js with
 // a small hook-aware renderer (no DOM): its layout, every action of the old
 // toolbar in its new place, and the handlers each control still reaches.
-const read = (name) => readFileSync(new URL("../" + name, import.meta.url), "utf8");
-const optionsSource = read("OptionsMenu.js");
+const read = (name) => readFileSync(sourceUrl(name), "utf8");
+const optionsSource = readInstrumentedOptionsMenuFixture();
 const indexSource = read("index.js");
+const viewSource = readFileSync(new URL("../src/lyrics/lyricsPageView.mjs", import.meta.url), "utf8");
 
 const KO = (() => {
-  const context = { window: {} };
-  vm.runInNewContext(read("langs/LangKo.js"), context);
-  return Object.values(context.window)[0];
+  return readLanguageTable("LangKo.js");
 })();
 const t = (key) => key.split(".").reduce((value, part) => value?.[part], KO) ?? key;
 
@@ -142,7 +149,8 @@ function createToolbar(initialProps = {}) {
     },
     TrackLanguageDB: { setLanguage: record("TrackLanguageDB.setLanguage"), clearLanguage: record("TrackLanguageDB.clearLanguage") },
     LyricsService: { clearLyricsSnapshot: record("clearLyricsSnapshot") },
-    lyricContainer: null,
+    lyricContainer: { refreshLyricsView: record("lyricContainerUpdate"), forceUpdate() {} },
+    ivLyricsOpenConfig: record("openConfig"),
   };
   const context = vm.createContext({
     react, useState, useEffect, useCallback, useMemo, useRef,
@@ -164,11 +172,11 @@ function createToolbar(initialProps = {}) {
       setGlobalSyncOffset: record("setGlobalSyncOffset"),
     },
     Toast: { show: record("toast"), success: record("toast"), error: record("toast") },
-    lyricContainerUpdate: record("lyricContainerUpdate"),
-    openConfig: record("openConfig"),
     getSettingsMotionDurationMs: () => 0,
     ConfigSlider: "ConfigSlider",
     ConfigButton: "ConfigButton",
+    CommunityVideoSelector: "CommunityVideoSelector",
+    SyncDataCreator: "SyncDataCreator",
     Spicetify: { Player: { data: { item: { uri: "spotify:track:abc" } } } },
     window,
     document: {
@@ -195,8 +203,10 @@ function createToolbar(initialProps = {}) {
     requestAnimationFrame: () => 0,
     cancelAnimationFrame() {},
   });
-  vm.runInContext(optionsSource + "\n;globalThis.__toolbar = { IvLyricsFloatingToolbar, getRegenerateTranslationChoiceItems };", context);
-  // Dialogs a panel hands over to (function declarations, so they can be watched).
+  vm.runInContext(optionsSource + "\n;globalThis.__toolbar = { IvLyricsFloatingToolbar, getRegenerateTranslationChoiceItems, IvLyricsTooltip, IvLyricsToolbarIcon };", context);
+  assert.equal(window.IvLyricsTooltip, context.__toolbar.IvLyricsTooltip);
+  assert.equal(window.IvLyricsToolbarIcon, context.__toolbar.IvLyricsToolbarIcon);
+  // Capture the dialog arguments at the toolbar's dialog boundary.
   for (const name of ["openCommunityVideoSelector", "openShareImageModal", "openSyncDataCreator", "openLocalLyricsLrclibSearchModal"]) {
     context[name] = record(name);
   }
@@ -465,17 +475,31 @@ test("every retained toolbar action has exactly one place in the new layout", ()
   }
 
   // Actions inside dialogs: the dialog keeps them; the panel reaches the dialog.
+  const cacheEditor = readFileSync(new URL("../src/lyrics/LyricsCacheEditModal.mjs", import.meta.url), "utf8");
   const dialogActions = {
-    "cacheEdit.shift": () => assert.match(slice(indexSource, "const LyricsCacheEditModal =", "const GENERATION_PILL_TIMING"), /lyricsCacheEditor\.shiftDown/),
-    "cacheEdit.save": () => assert.match(slice(indexSource, "const LyricsCacheEditModal =", "const GENERATION_PILL_TIMING"), /lyricsCacheEditor\.save/),
-    "study.panel": () => assert.match(indexSource, /window\.IvLyricsLearningMode\.StudyPanel/),
+    "cacheEdit.shift": () => assert.match(cacheEditor, /lyricsCacheEditor\.shiftDown/),
+    "cacheEdit.save": () => assert.match(cacheEditor, /lyricsCacheEditor\.save/),
+    "study.panel": () => {
+      const StudyPanel = () => null;
+      const study = renderLyricsStudyPanel({
+        react: { createElement: (type, props) => ({ type, props }) },
+        StudyPanel, state: { uri: "track", currentLyrics: [{ text: "lyric" }] },
+      });
+      assert.equal(study.type, StudyPanel);
+      assert.equal(study.props.trackUri, "track");
+      assert.match(viewSource, /StudyPanel: readLearningMode\(host\)\?\.StudyPanel/);
+    },
   };
-  const videoSource = read("CommunityVideoSelector.js");
+  const videoSource = [
+    read("CommunityVideoSelector.js"),
+    readFileSync(new URL("../src/features/video/communityVideoListItem.mjs", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/features/video/communityVideoSubmissionForm.mjs", import.meta.url), "utf8"),
+  ].join("\n");
   for (const [id, key] of [["communityVideo.random", "randomSelectionLabel"], ["communityVideo.hideDisliked", "hideDislikedLabel"],
     ["communityVideo.apply", "apply"], ["communityVideo.preview", "preview"], ["communityVideo.add", "addVideoNoEmoji"]]) {
     dialogActions[id] = () => assert.ok(videoSource.includes('"communityVideo.' + key + '"'), id + " stays in the video dialog");
   }
-  const shareSource = slice(optionsSource, "const ShareImageModal =", "// Open Share Image Modal");
+  const shareSource = readFileSync(new URL("../src/features/share/shareImageDialog.mjs", import.meta.url), "utf8");
   for (const [id, key] of [["shareImage.copyright", "shareImage.copyrightTitle"], ["shareImage.select", "shareImage.selectLyrics"],
     ["shareImage.preset", "shareImage.template"], ["shareImage.advanced", "share-image-advanced-panel"], ["shareImage.copy", "shareImage.actions.copy"],
     ["shareImage.download", "shareImage.actions.download"], ["shareImage.share", "shareImage.actions.share"]]) {
@@ -564,14 +588,14 @@ test("current-track panel drills into provider and background views and opens th
   click(toolbar, lrclib);
   return new Promise((resolve) => setImmediate(resolve)).then(() => {
     toolbar.render();
-    assert.deepEqual(toolbar.calls.find(([name]) => name === "onSelectProvider"), ["onSelectProvider", "lrclib"]);
+    assert.deepEqual(toolbar.calls.find(([name]) => name === "onSelectProvider"), ["onSelectProvider", "lrclib", "spotify:track:abc"]);
     assert.equal(textOf(nodesOf([panel(toolbar)]).find((node) => hasClass(node, "ivl-tb-fly-title"))), t("menu.currentTrack"), "back to 현재 곡 after choosing");
 
     click(toolbar, findOne(toolbar, menuItem(t("menu.trackBackground")), "background item"));
     click(toolbar, inPanel(toolbar, (node) => node.props?.role === "option" && textOf(node) === t("settings.colorful.label"))[0]);
-    assert.deepEqual(toolbar.calls.find(([name]) => name === "onSelectBackground"), ["onSelectBackground", "colorful"]);
+    assert.deepEqual(toolbar.calls.find(([name]) => name === "onSelectBackground"), ["onSelectBackground", "colorful", "spotify:track:abc"]);
     click(toolbar, inPanel(toolbar, (node) => node.props?.role === "option" && textOf(node) === t("menu.trackBackgroundUseGlobal"))[0]);
-    assert.deepEqual(toolbar.calls.filter(([name]) => name === "onSelectBackground").at(-1), ["onSelectBackground", null]);
+    assert.deepEqual(toolbar.calls.filter(([name]) => name === "onSelectBackground").at(-1), ["onSelectBackground", null, "spotify:track:abc"]);
 
     click(toolbar, nodesOf([panel(toolbar)]).find((node) => hasClass(node, "ivl-tb-fly-back")));
     click(toolbar, findOne(toolbar, menuItem(t("communityVideo.selectVideo")), "video item"));
@@ -584,6 +608,23 @@ test("current-track panel drills into provider and background views and opens th
   });
 });
 
+test("a completed provider save cannot dismiss a later track's menu", async () => {
+  const saved = Promise.withResolvers();
+  const toolbar = createToolbar({ actions: { onSelectProvider: () => saved.promise } });
+  openPanel(toolbar, "track");
+  click(toolbar, findOne(toolbar, menuItem(t("menu.lyricsProviderSelect")), "provider item"));
+  click(toolbar, inPanel(toolbar, node => node.props?.role === "option" && textOf(node) === "LRCLIB")[0]);
+  openPanel(toolbar, "track");
+  toolbar.setProps({ trackUri: "spotify:track:next" });
+  openPanel(toolbar, "track");
+  click(toolbar, findOne(toolbar, menuItem(t("menu.trackBackground")), "new track background"));
+
+  saved.resolve();
+  await new Promise(setImmediate);
+  toolbar.render();
+  assert.equal(textOf(inPanel(toolbar, node => hasClass(node, "ivl-tb-fly-title"))[0]), t("menu.trackBackgroundTitle"));
+});
+
 test("a local track gets the local lyrics tools; deletion is offered only with saved lyrics", () => {
   const toolbar = createToolbar({ isLocalTrack: true, trackUri: "spotify:local:a:b:c:1", hasKaraoke: false });
   openPanel(toolbar, "track");
@@ -592,11 +633,13 @@ test("a local track gets the local lyrics tools; deletion is offered only with s
   assert.ok(textOf(creator).includes(t("syncCreator.trackIdRequired")));
   click(toolbar, findOne(toolbar, menuItem(t("menu.localLyricsTools")), "local lyrics item"));
   click(toolbar, inPanel(toolbar, (node) => node.type === "button" && textOf(node) === t("menu.search"))[0]);
-  assert.deepEqual(plain(toolbar.calls.find(([name]) => name === "openLocalLyricsLrclibSearchModal")[1].trackInfo), { title: "Song", artist: "Artist" });
+  assert.deepEqual(plain(toolbar.calls.find(([name]) => name === "openLocalLyricsLrclibSearchModal")[1].trackInfo),
+    { title: "Song", artist: "Artist", uri: "spotify:local:a:b:c:1" });
   openPanel(toolbar, "track");
   click(toolbar, findOne(toolbar, menuItem(t("menu.localLyricsTools")), "local lyrics item"));
   click(toolbar, inPanel(toolbar, (node) => node.type === "button" && textOf(node) === t("buttons.delete"))[0]);
-  assert.ok(toolbar.calls.some(([name]) => name === "onDeleteLocalLyrics"));
+  assert.deepEqual(plain(toolbar.calls.find(([name]) => name === "onDeleteLocalLyrics")),
+    ["onDeleteLocalLyrics", { trackUri: "spotify:local:a:b:c:1" }]);
   toolbar.setHasLocalLyrics(false);
   openPanel(toolbar, "track");
   click(toolbar, findOne(toolbar, menuItem(t("menu.localLyricsTools")), "local lyrics item"));
@@ -635,29 +678,39 @@ test("more panel: learning is an open action, alongside sharing and marketplace 
   assert.ok(toolbar.calls.some(([name]) => name === "onToggleFullscreen"));
 });
 
-test("index.js gives the toolbar every action it calls, from one stable object", () => {
-  const toolbarSource = slice(optionsSource, "// Lyrics-page floating toolbar", "// 전역으로 노출");
+test("the lyrics page gives the toolbar every action it calls, from one stable object", () => {
+  const toolbarSource = [
+    "toolbarEntries", "createToolbarInteraction", "createToolbarActionMenus", "createToolbarPanelViews", "createFloatingLyricsToolbar",
+  ].map(name => readFileSync(new URL(`../src/app/toolbar/${name}.mjs`, import.meta.url), "utf8")).join("\n");
   const used = new Set([...toolbarSource.matchAll(/(?<![.\w])actions\??\.(\w+)/g)].map((match) => match[1]));
   assert.ok(used.size > 15);
-  const block = slice(indexSource, "this.floatingToolbarActions = Object.freeze({", "\n    });");
-  const defined = new Set([...block.matchAll(/^ {6}(\w+):/gm)].map((match) => match[1]));
-  for (const name of used) assert.ok(defined.has(name), "index.js defines toolbar action " + name);
-  assert.match(indexSource, /react\.createElement\(IvLyricsFloatingToolbar, \{\n\s+actions: this\.floatingToolbarActions,/);
+  const pageToolbarSource = readFileSync("src/lyrics/lyricsPageToolbar.mjs", "utf8");
+  const block = slice(pageToolbarSource, "const actions = Object.freeze({", "\n  });");
+  const defined = new Set([...block.matchAll(/^ {4}(\w+):/gm)].map((match) => match[1]));
+  for (const name of used) assert.ok(defined.has(name), "the lyrics page defines toolbar action " + name);
+  assert.match(viewSource, /renderLyricsPageToolbar\(\{\s*react, Toolbar,[^\n]+\n\s*actions: page\.floatingToolbarActions,/);
+  assert.match(indexSource, /Toolbar: IvLyricsFloatingToolbar, modeKeys: FLOATING_TOOLBAR_MODE_KEYS/);
+  const actions = Object.freeze({});
+  const rendered = renderLyricsPageToolbar({
+    react: { createElement: (_type, props) => props },
+    actions, state: {}, visual: {}, modeKeys: {},
+    getContentTopOffset: () => 0, isModeAvailable: () => false, canToggleFullscreen: () => true,
+    pronunciation: {}, track: {}, sync: {}, video: { getIvLyricsTrackBackgroundMode: () => null },
+  });
+  assert.equal(rendered.actions, actions);
 });
 
 test("the mode lock switch locks the mode on screen and releases the lock in effect", () => {
-  const constants = slice(indexSource, "const KARAOKE =", "const VINYL_TYPOGRAPHY_DEFAULT_SCALE");
-  const modeMethods = slice(indexSource, "  isModeAvailable(mode,", "\n  render() {");
-  const lockMethods = slice(indexSource, "  setCurrentModeLock(locked) {", "  // Right-clicking the mode entry");
-  const toggle = slice(indexSource, "  toggleModeLock(mode, event = null) {", "\n}\n");
   const remembered = [];
-  const context = vm.createContext({
-    CONFIG: { visual: { "karaoke-mode-enabled": true } },
-    StorageManager: { setItem: (_key, value) => remembered.push(Number(value)) },
-    ivLyricsDebug: () => {},
+  const { rememberLyricsRenderModeLock } = createLyricsModeLockStore({
+    storage: { setItem: (_key, value) => remembered.push(Number(value)) }, debug: () => {},
   });
-  vm.runInContext(constants + "\nclass Page {" + modeMethods + lockMethods + toggle + "}\nglobalThis.page = new Page();", context);
-  const page = context.page;
+  const page = {};
+  const modes = createLyricsPageModes({
+    page,
+    readVisualSettings: () => ({ "karaoke-mode-enabled": true }),
+    rememberModeLock: rememberLyricsRenderModeLock,
+  });
   const lines = [{ text: "a" }];
   page.resolveLyricsForMode = () => lines;
   page.lyricsSource = () => {};
@@ -666,25 +719,23 @@ test("the mode lock switch locks the mode on screen and releases the lock in eff
     done?.();
   };
   page.state = { karaoke: lines, synced: lines, unsynced: lines, lockedMode: -1, explicitMode: 1 };
-  page.setCurrentModeLock(true);
+  modes.setCurrentModeLock(true);
   assert.equal(page.state.lockedMode, 1, "locks the mode on screen");
-  page.setCurrentModeLock(true);
+  modes.setCurrentModeLock(true);
   assert.deepEqual(remembered, [1], "locking again changes nothing");
-  page.setCurrentModeLock(false);
+  modes.setCurrentModeLock(false);
   assert.equal(page.state.lockedMode, -1);
   // A lock on a mode this song cannot show is not in effect: the switch is off,
   // and turning it on locks the mode on screen instead.
   page.state = { synced: lines, unsynced: lines, lockedMode: 0, explicitMode: 2 };
-  page.setCurrentModeLock(false);
+  modes.setCurrentModeLock(false);
   assert.equal(page.state.lockedMode, 0);
-  page.setCurrentModeLock(true);
+  modes.setCurrentModeLock(true);
   assert.equal(page.state.lockedMode, 2);
 });
 
 test("panels open beside the toolbar, level with their entry and inside the lyrics page", () => {
-  const helper = slice(optionsSource, "const SYNC_ADJUST_PANEL_GAP = 10;", "\nconst useToolbarSyncOffsets");
-  const context = vm.createContext({});
-  vm.runInContext(helper + "\nglobalThis.compute = computeSyncAdjustPanelPosition;", context);
+  const context = { compute: computeSyncAdjustPanelPosition };
   const page = { left: 240, top: 64, right: 1440, bottom: 810 };
   const entry = (top) => ({ left: 1376, top, width: 60, height: 54 });
   const place = (anchor, size, bounds = page, edge = 1372) =>

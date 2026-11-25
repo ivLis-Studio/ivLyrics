@@ -1,17 +1,23 @@
+import { readKaraokeRendererDeclarations } from "./fixtures/karaoke-renderer-declarations.mjs";
+import { createToolbarTranslationPreferences } from "../src/app/toolbar/toolbarTranslationPreferences.mjs";
+import { karaokePageModules } from "./fixtures/karaoke-page-modules.mjs";
+import { sourceUrl } from "./fixtures/source-paths.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import vm from "node:vm";
+import { createAppConfig } from "../src/spicetify/createAppConfig.mjs";
+import { createSyncedLyricsPages } from "../src/lyrics/createSyncedLyricsPages.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 // Set IVLYRICS_DISPLAY_TEST_REVISION=5f8e57e to reproduce these regressions
 // against the previous implementation without modifying the working tree.
 const readSource = file => process.env.IVLYRICS_DISPLAY_TEST_REVISION
 	? execFileSync("git", ["show", `${process.env.IVLYRICS_DISPLAY_TEST_REVISION}:${file}`], { cwd: root, encoding: "utf8" })
-	: readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
-const source = readSource("Pages.js");
+	: readFileSync(sourceUrl(file), "utf8");
+const source = readKaraokeRendererDeclarations();
 const section = (text, startMarker, endMarker) => {
 	const start = text.indexOf(startMarker);
 	const end = text.indexOf(endMarker, start + startMarker.length);
@@ -54,6 +60,7 @@ const createHarness = (page, { mode = "replace", scrolling = false } = {}) => {
 	const useEffect = () => { cursor++; };
 	const react = {
 		memo: component => component,
+		useEffect, useMemo, useRef, useState, useCallback,
 		createElement: (type, props, ...children) => ({ type, props, children }),
 	};
 	const CONFIG = { visual: {
@@ -67,12 +74,27 @@ const createHarness = (page, { mode = "replace", scrolling = false } = {}) => {
 	};
 	const LyricsLineBlock = () => null;
 	const context = vm.createContext({
+		...karaokePageModules,
+		createSyncedLyricsPages,
+		compactLyricsLineMotion: karaokePageModules.createLyricsLineMotion(),
+		prepareGlobalCharTimeline: karaokePageModules.createKaraokeCharacterTimelineBuilder(karaokePageModules.createKaraokeGraphemes()),
+		...karaokePageModules.createLyricInterludeTiming({
+			readTrackDuration: () => null,
+			readLineFillEndTime: () => assert.fail("plain sync must not read karaoke fill timing"),
+			readAutoBreakEnabled: () => false,
+		}),
+		isAutoInstrumentalBreakEnabled: () => false,
+		useSyncedLyricsViewport: karaokePageModules.createSyncedLyricsViewportHook({
+			react: { useMemo, useState, useRef, useCallback, useEffect },
+		}),
 		react, CONFIG, window, I18n: { t: key => key },
 		useMemo, useState, useRef, useCallback, useEffect, useSyncedLayoutEffect: useEffect,
 		// This fixture exercises display memoization, not DOM animation. Reveal
 		// lifecycle and page reconciliation keys are covered in lyrics_track_reveal.
 		useLyricsTrackReveal() {},
 		useLyricsPlaybackPosition: () => position,
+		getFrameAlignedLyricsPlaybackPosition: () => position,
+		getPseudoKaraokeRenderAdvance: () => assert.fail("plain sync must not use karaoke advance"),
 		useScrollActivity: () => ({ isScrolling: scrolling, handleContainerClick() {} }),
 		Utils: {
 			applyFuriganaIfEnabled(text) {
@@ -85,6 +107,7 @@ const createHarness = (page, { mode = "replace", scrolling = false } = {}) => {
 		emptyLine: { startTime: 0, endTime: 0, text: [] },
 		getInterludeInfo: () => ({ isInterlude: false }),
 		getCurrentTrackDurationMs: () => null,
+		getKaraokeLineFillEndTime: () => assert.fail("plain sync must not read karaoke fill timing"),
 		createActiveTrailingKaraokeInterludeLine: () => null,
 		getKaraokeSpeakerStyle: () => ({}),
 		getKaraokeLineMetaClass: () => "",
@@ -95,14 +118,16 @@ const createHarness = (page, { mode = "replace", scrolling = false } = {}) => {
 		KARAOKE_COMPLETION_POSITION_OFFSET_MS: 900,
 		KARAOKE_RELEASE_WINDOW_MS: 820,
 		LyricsLineBlock, IdlingIndicator: () => null, SearchBar: () => null,
+		LyricsBackdropLayer: () => null, renderLyricsUnavailable: () => null,
 	});
 	vm.runInContext([
-		section(source, "const safeRenderText =", "function renderLyricsUnavailable"),
-		section(source, "const normalizeUnsyncedLyrics =", "const getCopyableText ="),
-		section(source, "const buildPreparedSyncedLyrics =", "const LyricsLineBlock ="),
-		section(source, "const renderLyricsItems =", "// Global animation manager"),
-		section(source, "const SyncedLyricsPage =", "// Global SearchBar manager"),
-		section(source, "const SyncedExpandedLyricsPage =", "const LoadingIcon ="),
+		section(source, source.includes("const { getUnsyncedLineRenderData") ? "const { getUnsyncedLineRenderData" : "const safeRenderText =",
+			source.includes("createLyricsUnavailableView") ? "const getTrackPositionFPS" : "function renderLyricsUnavailable"),
+		source.includes("const normalizeUnsyncedLyrics =") ? section(source, "const normalizeUnsyncedLyrics =", "const getCopyableText =") : "",
+		section(source, "const buildPreparedSyncedLyrics =", source.includes("const lyricLineActions =") ? "const lyricLineActions =" : "const LyricsLineBlock ="),
+		section(source, source.includes("const { renderLyricsItems") ? "const { renderLyricsItems" : "const renderLyricsItems =", "const getKaraokeLineBounds"),
+		section(source, "const UnsyncedLyricsPage =", "const { renderLyricsUnavailable"),
+		section(source, "const { SyncedLyricsPage, SyncedExpandedLyricsPage", "const readCompactMode"),
 		"globalThis.pages = { compact: SyncedLyricsPage, expanded: SyncedExpandedLyricsPage, plain: UnsyncedLyricsPage };",
 	].join("\n"), context);
 	return {
@@ -217,33 +242,30 @@ test("compact manual-scroll rows also restore originals when switching to below"
 });
 
 test("default display mode is below while saved explicit display choices are preserved", () => {
-	const field = section(readSource("index.js"), '    "translate:display-mode":', '    "translate:target-language":');
 	for (const saved of [null, undefined, "", "below", "replace"]) {
-		const value = vm.runInNewContext(`({${field}})["translate:display-mode"]`, {
-			StorageManager: { getItem(key) {
-				assert.equal(key, "ivLyrics:visual:translate:display-mode");
-				return saved;
-			} },
+		const { visual } = createAppConfig({
+			storage: {
+				get: (_key, fallback = true) => fallback,
+				getItem: (key) => key === "ivLyrics:visual:translate:display-mode" ? saved : null,
+				getPersisted: () => null,
+				setItem() {},
+			},
 		});
-		assert.equal(value, saved || "below");
+		assert.equal(visual["translate:display-mode"], saved || "below");
 	}
 });
 
 test("opening the translation menu refreshes a changed display mode once and leaves below mode cached", () => {
-	const menu = section(readSource("OptionsMenu.js"), "const TranslationMenu =", "const LyricsProviderSelectButton =");
-	// Run the actual beginning of the click callback. The following modal-option
-	// construction has no role in changing the display preference or refreshing it.
-	const openBody = section(menu, "  const open = () => {", "    // Determine the correct mode key");
 	for (const initial of ["replace", "below"]) {
 		const h = createHarness("plain", { mode: initial });
 		const lyrics = makeLyrics();
 		let rows = h.render(lyrics);
 		const stored = [];
 		let refreshes = 0;
-		const open = vm.runInNewContext(`(() => { ${openBody} }; return open; })()`, {
-			CONFIG: h.CONFIG, APP_NAME: "ivLyrics",
-			StorageManager: { setItem: (key, value) => stored.push([key, value]) },
-			lyricContainerUpdate() {
+		const { prepareDisplay: open } = createToolbarTranslationPreferences({
+			getVisualSettings: () => h.CONFIG.visual,
+			writeSetting: (key, value) => stored.push([`ivLyrics:visual:${key}`, value]),
+			refreshLyrics() {
 				assert.equal(h.CONFIG.visual["translate:display-mode"], "below");
 				assert.deepEqual(stored.at(-1), ["ivLyrics:visual:translate:display-mode", "below"]);
 				rows = h.render(lyrics, { settingsRevision: ++refreshes });
@@ -278,3 +300,81 @@ for (const page of ["compact", "expanded"]) {
 		assert.equal(changed[0].mainText, pronunciation);
 	});
 }
+
+test("a delayed toolbar language save cannot apply the old track's setting to the next mounted page", async () => {
+	const events = [];
+	let allowSave;
+	const written = new Promise((resolve) => { allowSave = resolve; });
+	const firstUri = "spotify:track:first";
+	const secondUri = "spotify:track:second";
+	let currentUri = firstUri;
+	let page = { currentTrackUri: firstUri, forceUpdate() { events.push("old-page update"); } };
+	const { save } = createToolbarTranslationPreferences({
+		readCurrentTrackUri: () => currentUri,
+		readMountedPage: () => page,
+		readTrackLanguageStore: () => ({
+			setLanguage(uri, language) {
+				events.push(["write", uri, language]);
+				return written;
+			},
+			clearLanguage(uri) { events.push(["clear", uri]); },
+		}),
+		clearTrackSnapshot: (uri) => events.push(["snapshot", uri]),
+		refreshLyrics: () => events.push("refresh"),
+	});
+	const pending = save("track-language-override", "ja");
+	currentUri = secondUri;
+	page = {
+		currentTrackUri: secondUri, trackLanguageOverride: "de",
+		_dmResults: { retained: true }, lastProcessedUri: secondUri, lastProcessedMode: "translation",
+		forceUpdate() { events.push("new-page update"); },
+	};
+	allowSave();
+	await pending;
+	assert.equal(page.trackLanguageOverride, "de");
+	assert.deepEqual(page._dmResults, { retained: true });
+	assert.equal(page.lastProcessedUri, secondUri);
+	assert.equal(page.lastProcessedMode, "translation");
+	assert.deepEqual(events, [["write", firstUri, "ja"], ["snapshot", firstUri]]);
+
+	await save("track-language-override", "auto");
+	assert.equal(page.trackLanguageOverride, null);
+	assert.deepEqual(page._dmResults, {});
+	assert.deepEqual(events.slice(2), [["clear", secondUri], ["snapshot", secondUri], "new-page update", "refresh"]);
+});
+
+test("rapid language selections publish the last committed setting when the final write fails", async () => {
+	const pendingWrites = [], applied = [], errors = [];
+	const uri = "spotify:track:current";
+	const page = { currentTrackUri: uri, trackLanguageOverride: "es", forceUpdate() {} };
+	const preferences = createToolbarTranslationPreferences({
+		readCurrentTrackUri: () => uri,
+		readMountedPage: () => page,
+		readTrackLanguageStore: () => ({ setLanguage(trackUri, value, options) {
+			assert.equal(trackUri, uri);
+			assert.equal(options.requireCommit, true);
+			const pending = Promise.withResolvers();
+			pendingWrites.push({ value, ...pending });
+			return pending.promise;
+		} }),
+		clearTrackSnapshot: () => {},
+		refreshLyrics: () => applied.push(page.trackLanguageOverride),
+		reportLanguageSaveError: error => errors.push(error.message),
+	});
+	const first = preferences.save("track-language-override", "ja", uri);
+	const last = preferences.save("track-language-override", "en", uri);
+	await Promise.resolve();
+	assert.deepEqual(pendingWrites.map(write => write.value), ["ja"]);
+	pendingWrites[0].resolve();
+	await first;
+	assert.deepEqual(applied, []);
+	assert.deepEqual(pendingWrites.map(write => write.value), ["ja", "en"]);
+	pendingWrites[1].reject(new Error("storage denied"));
+	await last;
+	assert.deepEqual(applied, ["ja"]);
+	assert.deepEqual(errors, ["storage denied"]);
+	assert.equal(preferences.readTrackLanguage(), "ja");
+
+	await preferences.save("track-language-override", "de", "spotify:track:departed");
+	assert.equal(pendingWrites.length, 2);
+});

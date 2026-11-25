@@ -1,0 +1,1017 @@
+/* ==========================================
+   Fullscreen Enhanced UI Components
+   ========================================== */
+
+/* Bottom-left corner - Context info */
+.fullscreen-bottom-left {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 50;
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-bottom-left.hidden {
+  opacity: 0;
+  transform: translateY(var(--iv-motion-distance-sm));
+  pointer-events: none;
+}
+
+/* Top-right corner - Clock & Next track */
+.fullscreen-top-right {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 16px;
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-top-right.hidden {
+  opacity: 0;
+  transform: translateY(calc(var(--iv-motion-distance-sm) * -1));
+  pointer-events: none;
+}
+
+/* Clock wrapper for auto-hide */
+.fullscreen-clock-wrapper {
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-clock-wrapper.hidden {
+  opacity: 0;
+  transform: translateY(calc(var(--iv-motion-distance-sm) * -1));
+  pointer-events: none;
+}
+
+/* Clock */
+.fullscreen-clock {
+  font-size: 48px;
+  font-weight: 300;
+  color: var(--spice-text);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  letter-spacing: 2px;
+  opacity: 0.9;
+}
+
+/* Context info (playlist/album name) */
+.fullscreen-context-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 12px;
+  max-width: 350px;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    gap var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    background var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-context-image {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    border-radius var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    box-shadow var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-context-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-context-type {
+  font-size: 11px;
+  color: var(--spice-subtext);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.8;
+}
+
+.fullscreen-context-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--spice-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Next track preview */
+.fullscreen-next-track {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 12px;
+  animation: slideInRight var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+  max-width: 300px;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    background var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    border-radius var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(var(--iv-motion-distance-md));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.fullscreen-next-track-label {
+  font-size: 11px;
+  color: var(--spice-subtext);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.8;
+}
+
+.fullscreen-next-track-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    gap var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-next-track-image {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    box-shadow var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    border-radius var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-next-track-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-next-track-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--spice-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fullscreen-next-track-artist {
+  font-size: 12px;
+  color: var(--spice-subtext);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Bottom - Player controls */
+.fullscreen-bottom {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  overflow: hidden;
+  transform-origin: bottom center;
+  max-height: var(--iv-fullscreen-controls-height);
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    max-height var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis);
+}
+
+.fullscreen-bottom.hidden {
+  opacity: 0;
+  transform: translateX(-50%) translateY(var(--iv-motion-distance-md)) scale(0.985);
+  max-height: 0;
+  pointer-events: none;
+}
+
+.fullscreen-bottom.hidden .fullscreen-player-controls {
+  transform: translateY(var(--iv-motion-distance-sm)) scale(0.985);
+  opacity: 0;
+}
+
+/* Player controls container */
+.fullscreen-player-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  min-width: 350px;
+  transition:
+    transform var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+/* Compact mode for left panel */
+.fullscreen-player-controls.compact {
+  min-width: unset;
+  width: 100%;
+  max-width: 400px;
+  padding: 16px 0;
+  gap: 12px;
+}
+
+/* Controls in left panel (under album) */
+.fullscreen-left-controls {
+  margin-top: 24px;
+  width: 100%;
+  min-width: 0;
+  max-width: min(100%, var(--iv-fullscreen-controller-max-width, 100%));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  overflow: visible;
+  position: relative;
+  z-index: 70;
+  transform-origin: top center;
+  max-height: var(--iv-fullscreen-controls-height);
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    margin-top var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    max-height var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis);
+}
+
+.fullscreen-left-controls.left-controls-progress-only {
+  max-height: var(--iv-fullscreen-progress-height);
+}
+
+.fullscreen-left-controls.hidden {
+  opacity: 0;
+  transform: translateY(var(--iv-motion-distance-md)) scale(0.985);
+  margin-top: 0;
+  max-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Lyrics progress container (bottom right) */
+.fullscreen-lyrics-progress-container {
+  --iv-lyrics-progress-right: 24px;
+  position: fixed;
+  bottom: 24px;
+  right: var(--iv-lyrics-progress-right);
+  width: max-content;
+  max-width: calc(100% - var(--iv-lyrics-progress-right) - 24px);
+  z-index: 50;
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    right var(--iv-motion-duration-medium) var(--iv-motion-ease-emphasis),
+    max-width var(--iv-motion-duration-medium) var(--iv-motion-ease-emphasis);
+}
+
+.fullscreen-lyrics-progress-container.hidden {
+  opacity: 0;
+  transform: translateY(var(--iv-motion-distance-md));
+  pointer-events: none;
+}
+
+.fullscreen-lyrics-progress-container .fullscreen-lyrics-progress {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.fullscreen-lyrics-progress-container .fullscreen-lyrics-progress-bar {
+  flex: 0 1 120px;
+  min-width: 0;
+}
+
+.fullscreen-lyrics-progress-container .fullscreen-lyrics-progress-text {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.motion-reduced .fullscreen-lyrics-progress-container {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fullscreen-lyrics-progress-container {
+    transition: none;
+  }
+}
+
+/* Progress bar container */
+.fullscreen-progress-container,
+.fullscreen-progress-standalone {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 400px;
+  margin-bottom: 12px;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    gap var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-time {
+  font-size: 13px;
+  color: var(--spice-subtext);
+  font-variant-numeric: tabular-nums;
+  min-width: 45px;
+  text-align: center;
+}
+
+.fullscreen-progress-bar {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  /* Height-independent radius: both ends stay round when hover thickens the bar. */
+  border-radius: 999px;
+  cursor: pointer;
+  touch-action: pan-y pinch-zoom;
+  position: relative;
+  transition:
+    height var(--iv-motion-duration-fast) var(--iv-motion-ease-emphasis),
+    transform var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    background var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-progress-bar:hover {
+  height: 8px;
+}
+
+/* Rounded clip for the fill. The fill is a full-width pill moved with
+   translateX, so both visible ends stay round and the progress animation
+   stays a compositor transform rather than a per-frame width layout. */
+.fullscreen-progress-clip {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.fullscreen-progress-fill {
+  width: 100%;
+  height: 100%;
+  background: var(--spice-text);
+  border-radius: 999px;
+  transform: translateX(-100%);
+  transition: transform var(--iv-motion-duration-medium) var(--iv-motion-ease-emphasis);
+}
+
+.fullscreen-progress-handle {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  background: var(--spice-text);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition:
+    opacity var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-fast) var(--iv-motion-ease-emphasis);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.fullscreen-progress-bar:hover .fullscreen-progress-handle {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.06);
+}
+
+/* Player controls - 개선된 레이아웃 */
+.fullscreen-player-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    gap var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-player-controls.with-background {
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 16px 20px;
+  border-radius: 16px;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    background var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    border-radius var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    box-shadow var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+/* Control rows */
+.fullscreen-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    gap var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-control-main-row {
+  gap: 6px;
+}
+
+.fullscreen-control-volume-row {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+/* Control buttons */
+.fullscreen-control-btn {
+  background: transparent;
+  border: none;
+  color: var(--spice-text);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    transform var(--iv-motion-duration-fast) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    background var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    box-shadow var(--iv-motion-duration-fast) var(--iv-motion-ease-standard),
+    color var(--iv-motion-duration-fast) var(--iv-motion-ease-standard);
+  opacity: 0.7;
+}
+
+.fullscreen-control-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px) scale(1.08);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.fullscreen-control-btn:active {
+  transform: translateY(0) scale(0.94);
+}
+
+.fullscreen-control-btn svg {
+  width: 100%;
+  height: 100%;
+}
+
+.fullscreen-control-btn.active {
+  opacity: 1;
+  color: var(--spice-button-active, #1db954);
+}
+
+/* Play button - 메인 버튼 강조 */
+.fullscreen-control-btn.fullscreen-control-play {
+  background: var(--spice-text);
+  color: var(--spice-main);
+  opacity: 1;
+  padding: 10px;
+}
+
+.fullscreen-control-btn.fullscreen-control-play:hover {
+  transform: translateY(-2px) scale(1.08);
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.25);
+  background: var(--spice-text);
+}
+
+/* Like button */
+.fullscreen-like-btn.liked {
+  color: #1db954;
+  opacity: 1;
+}
+
+.fullscreen-like-btn.liked svg {
+  filter: drop-shadow(0 0 4px rgba(29, 185, 84, 0.5));
+}
+
+.fullscreen-playlist-control {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fullscreen-playlist-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 12px);
+  width: min(280px, 78vw);
+  max-height: 320px;
+  padding: 10px;
+  overflow: auto;
+  z-index: 1000;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.24) transparent;
+  background: rgba(18, 18, 18, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.fullscreen-left-controls:has(.fullscreen-playlist-popover),
+.portrait-overlay-bottom:has(.fullscreen-playlist-popover) {
+  z-index: 140;
+  overflow: visible;
+}
+
+.fullscreen-playlist-popover::-webkit-scrollbar {
+  width: 8px;
+}
+
+.fullscreen-playlist-popover::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.fullscreen-playlist-popover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.fullscreen-playlist-popover::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.36);
+  background-clip: padding-box;
+}
+
+.fullscreen-playlist-popover-title {
+  padding: 4px 8px 0;
+  margin-bottom: 8px;
+  color: var(--spice-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.fullscreen-playlist-state {
+  padding: 14px 10px;
+  color: var(--spice-subtext);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.fullscreen-playlist-state.error {
+  color: #ff9b9b;
+}
+
+.fullscreen-playlist-item {
+  width: 100%;
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--spice-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.fullscreen-playlist-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.fullscreen-playlist-item.contains-current-track {
+  background: rgba(29, 185, 84, 0.08);
+}
+
+.fullscreen-playlist-item.contains-current-track:hover {
+  background: rgba(255, 82, 82, 0.10);
+}
+
+.fullscreen-playlist-item:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.fullscreen-playlist-item-image,
+.fullscreen-playlist-item-fallback {
+  width: 34px;
+  height: 34px;
+  border-radius: 4px;
+  flex: 0 0 auto;
+}
+
+.fullscreen-playlist-item-image {
+  object-fit: cover;
+}
+
+.fullscreen-playlist-item-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.10);
+  color: var(--spice-subtext);
+  font-size: 16px;
+}
+
+.fullscreen-playlist-item-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fullscreen-playlist-item-name {
+  overflow: hidden;
+  color: var(--spice-text);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fullscreen-playlist-item-count,
+.fullscreen-playlist-item-loading {
+  color: var(--spice-subtext);
+  font-size: 11px;
+}
+
+.fullscreen-playlist-item-status {
+  justify-self: end;
+  max-width: 84px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fullscreen-playlist-item-status.checking {
+  background: rgba(255, 255, 255, 0.10);
+  color: var(--spice-subtext);
+}
+
+.fullscreen-playlist-item-status.contains {
+  background: rgba(29, 185, 84, 0.18);
+  color: #1ed760;
+}
+
+.fullscreen-playlist-item-status-remove {
+  display: none;
+}
+
+.fullscreen-playlist-item.contains-current-track:hover .fullscreen-playlist-item-status.contains {
+  background: rgba(255, 82, 82, 0.18);
+  color: #ff6b6b;
+}
+
+.fullscreen-playlist-item.contains-current-track:hover .fullscreen-playlist-item-status-default {
+  display: none;
+}
+
+.fullscreen-playlist-item.contains-current-track:hover .fullscreen-playlist-item-status-remove {
+  display: inline;
+}
+
+/* Volume wrapper */
+.fullscreen-volume-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-volume-slider {
+  width: 80px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  transition:
+    width var(--iv-motion-duration-medium) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-volume-wrapper:hover .fullscreen-volume-slider {
+  width: 108px;
+}
+
+.fullscreen-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--spice-text);
+  cursor: pointer;
+  transition: transform var(--iv-motion-duration-fast) var(--iv-motion-ease-emphasis);
+}
+
+.fullscreen-volume-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.3);
+}
+
+.fullscreen-volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--spice-text);
+  cursor: pointer;
+  border: none;
+}
+
+/* Player controls with background */
+.fullscreen-player-controls.with-background {
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 16px 20px;
+  border-radius: 16px;
+}
+
+/* A surface groups its timeline: the surface gap replaces the standalone
+   margin and the timeline spans the whole inner width. */
+.fullscreen-player-controls > .fullscreen-progress-standalone {
+  margin-bottom: 0;
+  max-width: none;
+  width: 100%;
+}
+
+/* Fit the under-album controller to its contents without entering the lyrics
+   region. Include background padding in the bound and wrap, never shrink, the
+   configured buttons. Bottom, portrait and TV controls keep their own layout. */
+.fullscreen-left-controls > .fullscreen-player-controls {
+  box-sizing: border-box;
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  flex-shrink: 0;
+  padding-inline: clamp(4px, 4%, 20px);
+}
+
+.fullscreen-left-controls > .fullscreen-progress-container,
+.fullscreen-left-controls > .fullscreen-progress-standalone {
+  flex-shrink: 0;
+}
+
+.fullscreen-left-controls .fullscreen-control-main-row {
+  flex-wrap: wrap;
+}
+
+.fullscreen-left-controls .fullscreen-control-btn,
+.fullscreen-left-controls .fullscreen-playlist-control {
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.fullscreen-left-controls .fullscreen-volume-wrapper {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+@media (pointer: coarse) {
+  .fullscreen-left-controls .fullscreen-control-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* Lyrics progress indicator */
+.fullscreen-lyrics-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 20px;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    background var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    border-radius var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-lyrics-progress-bar {
+  width: 120px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.fullscreen-lyrics-progress-fill {
+  width: 100%;
+  height: 100%;
+  background: var(--spice-text);
+  border-radius: 2px;
+  transform-origin: left center;
+  transition: transform var(--iv-motion-duration-medium) var(--iv-motion-ease-emphasis);
+}
+
+.fullscreen-bottom-left.hidden .fullscreen-context-info {
+  transform: translateY(var(--iv-motion-distance-sm)) scale(0.985);
+  opacity: 0;
+}
+
+.fullscreen-bottom-left.hidden .fullscreen-context-image {
+  transform: scale(0.92);
+}
+
+.fullscreen-bottom-left.hidden .fullscreen-context-text {
+  transform: translateY(6px);
+  opacity: 0;
+}
+
+.fullscreen-top-right>* {
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-top-right.hidden .fullscreen-next-track {
+  transform: translateY(calc(var(--iv-motion-distance-sm) * -1)) scale(0.985);
+  opacity: 0;
+}
+
+.fullscreen-top-right.hidden .fullscreen-next-track-image {
+  transform: scale(0.92);
+}
+
+.fullscreen-top-right.hidden .fullscreen-next-track-info,
+.fullscreen-top-right.hidden .fullscreen-next-track-label {
+  transform: translateY(-6px);
+  opacity: 0;
+}
+
+.fullscreen-lyrics-progress-text {
+  font-size: 12px;
+  color: var(--spice-subtext);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Left panel controls hidden state */
+.lyrics-fullscreen-left-panel.controls-hidden .fullscreen-left-controls {
+  opacity: 0;
+  transform: translateY(var(--iv-motion-distance-md)) scale(0.985);
+  margin-top: 0;
+  max-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* Fade out slower than it fades in - read from the target state. `max-height`
+     collapses with `overflow: hidden`, so it has to track the opacity: clipping
+     the panel away early makes a long fade look instantaneous. */
+  transition:
+    opacity 1000ms var(--iv-motion-ease-standard),
+    transform 1000ms var(--iv-motion-ease-emphasis),
+    margin-top 1000ms var(--iv-motion-ease-emphasis),
+    max-height 1000ms var(--iv-motion-ease-emphasis);
+}
+
+/* Fade in faster than it fades out. */
+.lyrics-fullscreen-left-panel:not(.controls-hidden) .fullscreen-left-controls {
+  transition:
+    opacity 150ms var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    margin-top var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    max-height var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis);
+}
+
+.lyrics-fullscreen-left-panel.controls-hidden .lyrics-fullscreen-left-content {
+  transform: translateY(18px);
+}
+
+.lyrics-fullscreen-left-panel.controls-hidden .lyrics-fullscreen-album-container {
+  transform: translateY(14px) scale(0.99);
+}
+
+.lyrics-fullscreen-left-panel.controls-hidden .lyrics-fullscreen-track-info {
+  transform: translateY(12px);
+  opacity: 0.975;
+}
+
+.lyrics-fullscreen-left-panel.controls-hidden .lyrics-fullscreen-title {
+  transform: translateY(10px);
+  letter-spacing: 0.01em;
+}
+
+.lyrics-fullscreen-left-panel.controls-hidden .lyrics-fullscreen-artist,
+.lyrics-fullscreen-left-panel.controls-hidden .lyrics-fullscreen-album-name {
+  transform: translateY(8px);
+  opacity: 0.88;
+}
+
+/* Hover gating is a plain show/hide, so drop the motion when it is unwelcome.
+   Touch devices never reach this rule - they skip hover gating entirely in JS. */
+@media (prefers-reduced-motion: reduce) {
+  .lyrics-fullscreen-left-panel .fullscreen-left-controls,
+  .lyrics-fullscreen-left-panel.controls-hidden .fullscreen-left-controls,
+  .lyrics-fullscreen-left-panel:not(.controls-hidden) .fullscreen-left-controls {
+    transition-duration: 1ms !important;
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  .lyrics-fullscreen-title {
+    font-size: 36px;
+  }
+
+  .fullscreen-clock {
+    font-size: 36px;
+  }
+
+  .fullscreen-control-row {
+    gap: 8px;
+  }
+
+  .fullscreen-control-main-row {
+    gap: 10px;
+  }
+}
+
+@media (max-width: 768px) {
+  .fullscreen-clock {
+    font-size: 28px;
+  }
+
+  .fullscreen-control-row {
+    gap: 6px;
+  }
+
+  .fullscreen-control-main-row {
+    gap: 8px;
+  }
+
+  .fullscreen-volume-slider {
+    width: 60px;
+  }
+
+  .fullscreen-volume-wrapper:hover .fullscreen-volume-slider {
+    width: 80px;
+  }
+}
+

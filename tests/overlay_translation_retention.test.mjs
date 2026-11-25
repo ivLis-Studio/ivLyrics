@@ -1,10 +1,22 @@
+import { fixtureFullLyricsRequest } from "./fixtures/full-lyrics-request.mjs";
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
+import { readOverlaySendersFixture } from "./fixtures/legacy-page-source.mjs";
+import { installLyricsPresentationPublisher, publishLyricsReady } from "#ivlyrics/lyrics/lyricsReadyPublisher.mjs";
+import { getTranslationSourceCacheHash } from "#ivlyrics/lyrics/translationPresentation.mjs";
+import { getMountedLyricsPage } from "#ivlyrics/spicetify/lyricsPageEffects.mjs";
+import { getRuntimeService } from "#ivlyrics/spicetify/runtimeServices.mjs";
+import { getTrackSyncOffsetStore } from "#ivlyrics/core/trackSyncOffsetRuntime.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { createLyricsPresentationStore } from "#ivlyrics/lyrics/lyricsPresentationStore.mjs";
+import { installLyricsReadySnapshotListener } from "#ivlyrics/lyrics/installLyricsReadySnapshotListener.mjs";
+import { createLyricsProviderRequests } from "#ivlyrics/lyrics/lyricsProviderRequests.mjs";
+import { createLrcRedTimingDelivery } from "#ivlyrics/providers/lyrics/lrcRedTimingDelivery.mjs";
+import { createOverlayOffsetResolver } from '../src/features/overlay/overlayOffsets.mjs';
 
-const source = readFileSync(new URL('../LyricsService.js', import.meta.url), 'utf8');
-const publisherSource = readFileSync(new URL('../LyricsPresentationPublisher.js', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../src/lyrics/LyricsService.js', import.meta.url), 'utf8');
 const section = (from, to) => {
 	const start = source.indexOf(from), end = source.indexOf(to, start + from.length);
 	assert.ok(start >= 0 && end > start, `missing production section: ${from}`);
@@ -18,12 +30,32 @@ const richContext = () => ({ provider: 'lrclib', lyricsType: 'synced', displayMo
 const rawLyrics = () => [{ text: 'Hello', startTime: 1000, endTime: 2000 }, { text: 'World', startTime: 2000, endTime: 3000 }];
 const richLyrics = () => rawLyrics().map((line, index) => ({ ...line, phoneticText: ['herro', 'warudo'][index], text2: ['안녕', '세상'][index] }));
 
+test('an older shared raw response cannot discard compatible word timing and completed display rows', () => {
+	const store = createLyricsPresentationStore({ onPublish() {} });
+	const base = { provider: 'lrcred', uri, cacheVersion: 'fixture', synced: rawLyrics(), lrcred: { isrc: 'JPAAA2600001' } };
+	const timing = rawLyrics().map(line => ({ ...line, syllables: [{ text: line.text, startTime: line.startTime }] }));
+	const display = richLyrics().map((line, index) => ({ ...line, syllables: timing[index].syllables }));
+	store.publish({ trackUri: uri, rawResult: { ...base, karaoke: timing, karaokeSource: 'lrcred' },
+		displayLyrics: display, lyricsType: 'karaoke', karaokeSource: 'lrcred', presentationComplete: true });
+	const stale = store.publish({ trackUri: uri, rawResult: { ...base, attribution: 'Keep latest metadata' }, karaokeSource: null });
+	assert.strictEqual(stale.rawResult.karaoke, timing);
+	assert.equal(stale.rawResult.attribution, 'Keep latest metadata');
+	assert.strictEqual(stale.displayLyrics, display);
+	assert.equal(stale.presentationComplete, true);
+	assert.equal(stale.karaokeSource, 'lrcred');
+	const different = store.publish({ trackUri: uri, rawResult: { ...base, lrcred: { isrc: 'JPAAA2600002' } } });
+	assert.equal(different.rawResult.karaoke, undefined);
+	assert.equal(different.displayLyrics, undefined);
+});
+
 // Exercise the actual sender, preservation and mapper. Capture the complete
 // payload at the transport queue boundary; transport retry policy has its own tests.
-const load = ({ globalFallback = false } = {}) => {
+const load = ({ globalFallback = false, holdTranslation = null } = {}) => {
 	const packets = [];
 	const timers = new Map(), values = new Map();
 	let timerId = 0, translationCalls = 0;
+	let translationStyle = 'natural';
+	const styleListeners = new Set();
 	const surface = () => {
 		const listeners = new Map();
 		return {
@@ -33,6 +65,15 @@ const load = ({ globalFallback = false } = {}) => {
 		};
 	};
 	const window = surface(), document = surface(), player = surface();
+	window.AIAddonManager = {
+		getTranslationStyle: () => translationStyle,
+		on(name, listener) {
+			assert.equal(name, 'translation:style:changed');
+			styleListeners.add(listener);
+			return () => styleListeners.delete(listener);
+		},
+	};
+	window.TrackSyncDB = { getOffset: async () => 0 };
 	const CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options?.detail; } };
 	window.CustomEvent = CustomEvent;
 	player.data = { item: { uri, name: 'Title', metadata: { artist_name: 'Artist' } } };
@@ -40,7 +81,10 @@ const load = ({ globalFallback = false } = {}) => {
 	const history = { location: { pathname: '/ivLyrics' } };
 	document.body = { classList: { contains: () => false } };
 	const context = vm.createContext({
-		window, document, CustomEvent,
+        getMountedLyricsPage, getRuntimeService, getTrackSyncOffsetStore, getTranslationSourceCacheHash, installLyricsPresentationPublisher, installLyricsReadySnapshotListener,
+    createOverlayOffsetResolver,
+		window, document, CustomEvent, createLyricsPresentationStore,
+		providerRequests: createLyricsProviderRequests(() => window.LyricsAddonManager),
 		Spicetify: { Player: player, Platform: { History: history }, LocalStorage: { get: key => values.get(key), set() {} } },
 		Utils: { getPlayerPlaybackSnapshot: () => ({ uri: player.data.item.uri }),
 			resolveStablePlaybackTrack: () => player.data.item, detectLanguage: () => 'en',
@@ -54,28 +98,28 @@ const load = ({ globalFallback = false } = {}) => {
 		clearTimeout: id => timers.delete(id), setInterval: () => 1, clearInterval() {},
 	});
 	vm.runInContext([
-		section('    const getLyricsTextCacheHash =', '    const isCachedTranslationStructurallyValid ='),
-		section('    const cleanupWorker =', '    serviceDebug("[LyricsService] Initializing'),
-		section('    const scheduleSenderBootstrap =', '    window.LyricsService = LyricsService;'),
-		'globalThis.senders = [OverlaySender, lyricsHelperSender];',
-		'globalThis.getKey = getOverlayPresentationKey;',
+		section('    const getOverlaySyncOffset =', '    const { OverlaySender, lyricsHelperSender }'),
+		'globalThis.getOverlaySyncOffset = getOverlaySyncOffset;',
+		'globalThis.scheduleSenderBootstrap = (delay = 1200, previousUri = null) => getRuntimeService("ivLyricsOverlayService", window)?.schedule(delay, previousUri);',
+		readOverlaySendersFixture(),
 	].join('\n'), context);
 	const [overlay, helper] = context.senders;
 	window.OverlaySender = overlay;
 	window.lyricsHelperSender = helper;
 	vm.runInContext([
-		section('    const lyricsPresentationSnapshots =', '    const openTrackOverrideDatabase ='),
+		section('    const lyricsPresentations =', '    const providerRequests ='),
 		section('    const sendLyricsToConsumers =', '    const LyricsService ='),
-		`const LyricsService = { ${section('        publishLyricsSnapshot(update = {})', '        clearLyricsPresentationSnapshot(trackUri)')} };`,
+		`const LyricsService = { ${section('        publishLyricsSnapshot:', '        clearLyricsPresentationSnapshot:')} };`,
 		'window.LyricsService = LyricsService;',
-		section('    if (window.__ivLyricsSnapshotReadyListener)', '    // OverlayService extension이 초기화 중 sender를 즉시 찾을 수 있도록'),
-		publisherSource,
+		'installLyricsReadySnapshotListener(window, snapshot => LyricsService.publishLyricsSnapshot(snapshot));',
+		'installLyricsPresentationPublisher(window);',
 	].join('\n'), context);
 	for (const [name, sender] of [['overlay', overlay], ['helper', helper]]) {
 		Object.defineProperty(sender, 'queueLyricsSend', { value: async (endpoint, trackUri, payload) => {
 			packets.push({ name, endpoint, trackUri, payload: clone(payload) });
 			if (globalFallback) sender.lastDeliveredUri = trackUri;
 		} });
+		sender.setupRuntimeListener();
 		sender.setupOffsetListener();
 	}
 	// Both receivers are running; their sends are captured above.
@@ -87,28 +131,38 @@ const load = ({ globalFallback = false } = {}) => {
 			LyricsAddonManager: { getLyrics: async () => ({ uri, provider: 'lrclib', synced: rawLyrics() }) },
 			Translator: { callGemini: async ({ wantSmartPhonetic }) => {
 				translationCalls++;
-				return wantSmartPhonetic ? { phonetic: 'herro\nwarudo' } : { translation: '안녕\n세상' };
+				if (wantSmartPhonetic) return { phonetic: 'herro\nwarudo' };
+				if (translationStyle === 'natural') {
+					if (holdTranslation) await holdTranslation;
+					return { translation: '안녕\n세상' };
+				}
+				return { translation: '안녕하세요\n세계' };
 			} },
 		});
+		window.LyricsService.getFullLyrics = fixtureFullLyricsRequest({
+			...context,
+			sendLyricsToConsumers: vm.runInContext('sendLyricsToConsumers', context),
+		});
 		vm.runInContext([
-			readFileSync(new URL('../TranslationModeHelper.js', import.meta.url), 'utf8'),
-			section('    const getTranslationPartText =', '    const getLyricsTextCacheHash ='),
 			`Object.assign(LyricsService, {
 				${section('        async getLyricsFromProviders(', '\n        /**\n         * 싱크 데이터 서비스 접근')}
-				${section('        async getFullLyrics(', '\n        /**\n         * 커뮤니티 싱크 데이터 가져오기')}
 				emit() {}
 			});`,
-			readFileSync(new URL('../OverlayService.js', import.meta.url), 'utf8'),
+			bundleInitializer(new URL('../src/features/overlay/OverlayService.js', import.meta.url)),
 		].join('\n'), context);
 		overlay._isConnected = helper._isConnected = true;
 	}
 	return {
-		overlay, helper, packets, window, player, getKey: context.getKey,
+		overlay, helper, packets, window, player,
 		publisher: window.ivLyricsPresentationPublisher, service: window.LyricsService,
 		send: (sender, lines, presentationContext, reason = 'normal', trackUri = uri) => sender.sendLyrics(
 			{ uri: trackUri, title: 'Title', artist: 'Artist' }, lines, true, reason, presentationContext),
 		last: name => packets.filter(packet => packet.name === name).at(-1).payload.lyrics,
 		translationCalls: () => translationCalls,
+		setStyle(style) {
+			translationStyle = style;
+			for (const listener of styleListeners) listener({ style });
+		},
 		runScheduled: async () => {
 			const entry = [...timers].sort((a, b) => a[1].delay - b[1].delay)[0];
 			assert.ok(entry, 'expected scheduled overlay work');
@@ -147,6 +201,20 @@ test('page departure finishes translation and reversed pronunciation slots throu
 	h.window.ivLyricsOverlayService.destroy();
 });
 
+test('ownerless overlay delivery clears manually emptied supplements even if the source already has text', async () => {
+	const h = load({ globalFallback: true });
+	h.window.LyricsAddonManager.getLyrics = async () => ({ uri, provider: 'lrclib', synced: richLyrics() });
+	h.window.Translator.callGemini = async ({ wantSmartPhonetic }) => wantSmartPhonetic
+		? { phonetic: ['', 'edited'], userEdited: true }
+		: { translation: ['', ''], userEdited: true };
+	const result = await h.service.getFullLyrics({ uri, title: 'Title', artist: 'Artist' });
+	assert.equal(result.lyrics.length, 2);
+	assert.equal(result.lyrics[0].originalText, 'Hello');
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), [null, 'edited'], [null, null]);
+	assert.equal(h.service.getLyricsSnapshot(uri).presentationComplete, true);
+	h.window.ivLyricsOverlayService.destroy();
+});
+
 test('same presentation preserves completed translation through a subsequent raw pending update', async () => {
 	for (const name of ['overlay', 'helper']) {
 		const h = load(), input = richLyrics(), context = richContext(), before = clone(input);
@@ -154,6 +222,86 @@ test('same presentation preserves completed translation through a subsequent raw
 		await h.send(h[name], rawLyrics(), { ...context, presentationComplete: false }, 'translation-pending');
 		assertSupplements(h.last(name));
 		assert.deepEqual(input, before, 'retention must not mutate the completed producer snapshot');
+	}
+});
+
+test('shared late word timing reaches both senders with the completed supplements', async () => {
+	const h = load({ globalFallback: true });
+	const trackInfo = { uri, title: 'Title', artist: 'Artist' };
+	h.publisher.publishLyricsReady({ ...richContext(), trackInfo, lyrics: richLyrics(), provider: 'lrcred' });
+	await flush();
+	const previous = h.service.getLyricsSnapshot(uri);
+	const karaoke = rawLyrics().map(line => ({ ...line, syllables: [
+		{ text: line.text.slice(0, 2), startTime: line.startTime, endTime: line.startTime + 400 },
+		{ text: line.text.slice(2), startTime: line.startTime + 400, endTime: line.endTime },
+	] }));
+	const timing = { ...previous, source: 'lrcred-word-sync', timingUpgradeFromRevision: previous.revision,
+		rawResult: { provider: 'lrcred', karaoke, karaokeSource: 'lrcred' } };
+	const packetCount = h.packets.length;
+	h.service.publishLyricsSnapshot({ ...timing, timingUpgradeApplied: false });
+	await flush();
+	assert.equal(h.packets.length, packetCount, 'a cache-only update never sends a presentation');
+	const applied = h.service.publishLyricsSnapshot({ ...timing, lyricsType: 'karaoke', karaokeSource: 'lrcred', timingUpgradeApplied: true,
+		displayLyrics: richLyrics().map((line, index) => ({ ...line, syllables: karaoke[index].syllables })) });
+	let pageEvent;
+	h.window.addEventListener('ivLyrics:lyrics-ready', event => { pageEvent = event.detail; });
+	publishLyricsReady({ ...richContext(), trackInfo, provider: 'lrcred', lyricsType: 'karaoke',
+		lyrics: karaoke.map(line => ({ ...line, text2: 'Older page translation' })) }, h.window, { sharedSnapshotHandled: true });
+	await flush();
+	assert.equal(pageEvent.lyrics[0].text2, 'Older page translation');
+	assert.strictEqual(h.service.getLyricsSnapshot(uri), applied);
+	assert.equal(h.packets.length - packetCount, 2, 'each receiver gets the timed snapshot once');
+	for (const name of ['overlay', 'helper']) {
+		assertSupplements(h.last(name));
+		assert.deepEqual(h.last(name).map(line => line.syllables?.length), [2, 2]);
+	}
+	assert.equal(h.translationCalls(), 0);
+	h.window.ivLyricsOverlayService.destroy();
+});
+
+test('ownerless overlay and helper receive word timing before their pending translation completes', async () => {
+	const translation = Promise.withResolvers();
+	const h = load({ globalFallback: true, holdTranslation: translation.promise });
+	const base = { uri, provider: 'lrcred', synced: rawLyrics(), cacheVersion: 'fixture', lrcred: { isrc: 'JPAAA2600001' } };
+	const karaoke = base.synced.map(line => ({ ...line, startTime: line.startTime + 10, syllables: [
+		{ text: line.text.slice(0, 2), startTime: line.startTime + 10, endTime: line.startTime + 400 },
+		{ text: line.text.slice(2), startTime: line.startTime + 400, endTime: line.endTime },
+	] }));
+	h.window.LyricsAddonManager.getLyrics = async () => base;
+	h.window.dispatchEvent({ type: 'ivLyrics:presentation-owner-released' });
+	try {
+		await h.runScheduled();
+		assert.equal(h.translationCalls(), 1);
+		for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), [null, null], [null, null]);
+
+		const deliver = createLrcRedTimingDelivery({
+			isEnabled: () => true, isKaraokeEnabled: () => true, isCurrentPlayback: value => value === uri,
+			getPage: () => null, getService: () => h.service, getPageCache: () => null,
+			isPseudoSource: () => false, getCacheId: () => null,
+		});
+		assert.equal(await deliver({ uri }, { ...base, karaoke, karaokeSource: 'lrcred' }, () => true), true);
+		await flush();
+		const timed = h.service.getLyricsSnapshot(uri);
+		assert.equal(timed.presentationComplete, false);
+		assert.strictEqual(timed.rawResult.karaoke, karaoke);
+		for (const name of ['overlay', 'helper']) {
+			assert.deepEqual(h.last(name).map(line => line.syllables?.length), [2, 2]);
+			assertSupplements(h.last(name), [null, null], [null, null]);
+		}
+
+		await h.runScheduled();
+		assert.equal(h.translationCalls(), 1, 'timing delivery must not start a duplicate fallback');
+		translation.resolve();
+		await flush();
+		assert.equal(h.translationCalls(), 2, 'one request for each configured slot');
+		assert.equal(h.service.getLyricsSnapshot(uri).presentationComplete, true);
+		for (const name of ['overlay', 'helper']) {
+			assert.deepEqual(h.last(name).map(line => line.syllables?.length), [2, 2]);
+			assertSupplements(h.last(name));
+		}
+	} finally {
+		translation.resolve();
+		h.window.ivLyricsOverlayService.destroy();
 	}
 });
 
@@ -245,6 +393,65 @@ test('explicitly disabling translation clears it and later incomplete updates do
 		await h.send(h[name], rawLyrics(), null, 'normal');
 		assertSupplements(h.last(name), [null, null], [null, null]);
 	}
+});
+
+test('a new style never retains the previous translation through events, snapshots or replay', async () => {
+	const h = load();
+	const trackInfo = { uri, title: 'Title', artist: 'Artist' };
+	const context = { ...richContext(), trackInfo, displayMode2: 'gemini_ko' };
+	h.publisher.publishLyricsReady({ ...context, lyrics: richLyrics(), translationStyle: 'natural' });
+	await flush();
+	h.publisher.publishLyricsReady({
+		...context, lyrics: rawLyrics(), translationStyle: 'literal', presentationComplete: false,
+	});
+	await flush();
+	const snapshot = h.service.getLyricsSnapshot(uri);
+	assert.equal(snapshot.translationStyle, 'literal');
+	assert.ok(snapshot.displayLyrics.every(line => line.phoneticText && !line.text2));
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), ['herro', 'warudo'], [null, null]);
+	await h.service.sendLyricsSnapshotToConsumers(trackInfo, snapshot, { forceResend: true });
+	for (const name of ['overlay', 'helper']) {
+		assert.equal(h[name]._lastPresentationContext.translationStyle, 'literal');
+		assertSupplements(h.last(name), ['herro', 'warudo'], [null, null]);
+	}
+});
+
+test('ownerless overlay refreshes a delivered translation when the style changes', async () => {
+	const h = load({ globalFallback: true });
+	const trackInfo = { uri, title: 'Title', artist: 'Artist' };
+	h.publisher.publishLyricsReady({
+		...richContext(), trackInfo, lyrics: richLyrics(), displayMode1: 'gemini_ko',
+		displayMode2: 'gemini_romaji', translationStyle: 'natural',
+	});
+	await flush();
+	h.window.dispatchEvent({ type: 'ivLyrics:presentation-owner-released', detail: { source: 'ivlyrics-page', trackUri: uri } });
+	await h.runScheduled();
+	assert.equal(h.translationCalls(), 0);
+	h.setStyle('literal');
+	await h.runScheduled();
+	assert.equal(h.translationCalls(), 2);
+	assert.equal(h.service.getLyricsSnapshot(uri).translationStyle, 'literal');
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), ['herro', 'warudo'], ['안녕하세요', '세계']);
+	h.window.ivLyricsOverlayService.destroy();
+});
+
+test('a pending fallback for the previous style cannot block or overwrite current delivery', async () => {
+	let finishPrevious;
+	const holdTranslation = new Promise(resolve => { finishPrevious = resolve; });
+	const h = load({ globalFallback: true, holdTranslation });
+	h.window.dispatchEvent({ type: 'ivLyrics:presentation-owner-released', detail: { source: 'ivlyrics-page', trackUri: uri } });
+	await h.runScheduled();
+	assert.equal(h.translationCalls(), 1);
+	h.setStyle('literal');
+	await h.runScheduled();
+	const current = h.service.getLyricsSnapshot(uri);
+	assert.equal(current.translationStyle, 'literal');
+	assert.equal(h.translationCalls(), 3);
+	finishPrevious();
+	await flush();
+	assert.equal(h.service.getLyricsSnapshot(uri), current);
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), ['herro', 'warudo'], ['안녕하세요', '세계']);
+	h.window.ivLyricsOverlayService.destroy();
 });
 
 test('explicit provider, source, language or pronunciation changes do not retain stale supplements', async () => {

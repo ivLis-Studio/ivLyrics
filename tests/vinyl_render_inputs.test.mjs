@@ -1,57 +1,41 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
-
-const harnessUrl = new URL("./vinyl_lyric_overflow.test.mjs", import.meta.url);
-const harnessSource = readFileSync(harnessUrl, "utf8");
-const harnessBody = harnessSource.slice(harnessSource.indexOf("const source ="), harnessSource.indexOf("const assertWrapped ="))
-  .replaceAll("import.meta.url", JSON.stringify(harnessUrl.href));
-const pages = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
-const section = (start, end) => {
-  const from = pages.indexOf(start), to = pages.indexOf(end, from);
-  assert.ok(from >= 0 && to > from, start);
-  return pages.slice(from, to);
-};
+import { createLyricDisplayResolver, getEmbeddedAuxiliaryDisplayValues } from "../src/lyrics/lyricDisplayText.mjs";
+import { createHarness as createOverflowHarness } from "./fixtures/vinyl-render-harness.mjs";
 
 const createHarness = (props = {}) => {
   const counts = { inputs: 0, display: 0, furigana: 0 };
   const config = { visual: { "translate:display-mode": "below", "furigana-enabled": false } };
   const state = { ready: false, locale: "ja" };
-  const context = vm.createContext({
-    CONFIG: config,
-    safeRenderText: value => value ?? "",
-    Utils: { applyFuriganaIfEnabled: text => {
+  const { buildLyricDisplayState } = createLyricDisplayResolver({
+    readDisplayMode: () => config.visual["translate:display-mode"],
+    applyFurigana: (text) => {
       counts.furigana++;
       return config.visual["furigana-enabled"] && state.ready && state.locale === "ja"
         ? text.replace("漢", "<ruby>漢<rt>かん</rt></ruby>") : text;
-    } },
-  });
-  vm.runInContext([
-    section("const getLyricsDisplayMode =", "function renderLyricsUnavailable"),
-    section("const buildLyricDisplayState =", "const getCopyableText ="),
-    "globalThis.inputs = { getEmbeddedAuxiliaryDisplayValues, buildLyricDisplayState };",
-  ].join("\n"), context);
-  const { createHarness: createOverflowHarness } = new Function("assert", "readFileSync", "vm", `${harnessBody}
-    return { createHarness };`)(assert, readFileSync, {
-    ...vm,
-    createContext(globals) {
-      const primitives = globals.window.ivLyricsLyricRendererPrimitives;
-      primitives.getEmbeddedAuxiliaryDisplayValues = (...args) => {
-        counts.inputs++;
-        return context.inputs.getEmbeddedAuxiliaryDisplayValues(...args);
-      };
-      primitives.buildLyricDisplayState = (...args) => {
-        counts.display++;
-        return context.inputs.buildLyricDisplayState(...args);
-      };
-      globals.CONFIG = config;
-      globals.window.Utils = { getDetectedLanguage: () => state.locale };
-      globals.window.FuriganaConverter = { isAvailable: () => state.ready };
-      return vm.createContext(globals);
     },
   });
-  const h = createOverflowHarness({ rows: [], ...props });
+  const h = createOverflowHarness({
+    rows: [],
+    ...props,
+    adaptRenderer: (options) => ({
+      ...options,
+      primitives: {
+        ...options.primitives,
+        getEmbeddedAuxiliaryDisplayValues(...args) {
+          counts.inputs++;
+          return getEmbeddedAuxiliaryDisplayValues(...args);
+        },
+        buildLyricDisplayState(...args) {
+          counts.display++;
+          return buildLyricDisplayState(...args);
+        },
+      },
+      getVisualSettings: () => config.visual,
+      getLyricsLocale: () => state.locale,
+      isFuriganaReady: () => state.ready,
+    }),
+  });
   return { ...h, counts, config, state, line: next => h.render(next)?.props.children[0]?.props };
 };
 const line = { text: "漢字の歌", phoneticText: "kanji no uta", translationText: "A song", startTime: 1000, endTime: 11000 };
@@ -109,6 +93,29 @@ test("karaoke retains vocal identity and live render positions across bidirectio
     assert.equal(rendered.isActive, true);
   }
   assert.equal(h.counts.display, 1);
+  h.unmount();
+});
+
+test("the focused renderer uses the selected karaoke granularity and its own track offset", () => {
+  const referencedTracks = [];
+  const h = createOverflowHarness({
+    rows: [], lyrics: [{ ...line, karaokeGranularity: "word" }], isKara: true,
+    positionOverride: null,
+    adaptRenderer: options => ({
+      ...options,
+      primitives: {
+        ...options.primitives,
+        useLyricsPlaybackPosition(uri) { referencedTracks.push(uri); return 6500; },
+      },
+    }),
+  });
+  const uri = "spotify:track:focused";
+  const character = h.render({ trackUri: uri, karaokeRenderGranularity: "character" }).props.children[0].props;
+  assert.equal(character.position, 6500);
+  assert.equal(character.karaokeRenderGranularity, "character");
+  const word = h.render({ trackUri: uri, karaokeRenderGranularity: "word" }).props.children[0].props;
+  assert.equal(word.karaokeRenderGranularity, "word");
+  assert.deepEqual(referencedTracks.slice(-2), [uri, uri]);
   h.unmount();
 });
 

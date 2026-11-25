@@ -1,16 +1,19 @@
+import { isLyricFuriganaReady, readLyricRenderingLocale } from "#ivlyrics/lyrics/lyricsTextRuntime.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { syncCompactLyricsViewport } from "../src/lyrics/syncedLyricsViewport.mjs";
+import { createLyricsTrackRevealHook, playLyricsTrackReveal } from "../src/lyrics/lyricsTrackReveal.mjs";
+import { createSyncedLyricsPages } from "../src/lyrics/createSyncedLyricsPages.mjs";
 
-const source = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
+const source = readFileSync(new URL("../src/lyrics/Pages.js", import.meta.url), "utf8");
 const section = (start, end) => {
   const from = source.indexOf(start);
   const to = source.indexOf(end, from + start.length);
   assert.ok(from >= 0 && to > from, `missing source section: ${start}`);
   return source.slice(from, to);
 };
-const revealSource = section("const playLyricsTrackReveal", "const SyncedLyricsPage");
 const serial = value => JSON.parse(JSON.stringify(value));
 
 function eventSurface() {
@@ -78,13 +81,9 @@ function createRevealHarness(page = makePage()) {
   const motionQuery = eventSurface();
   const window = { ...eventSurface(), matchMedia: () => motionQuery };
   let refIndex = 0, effectIndex = 0, nextFrame = 0, reduced = false;
-  const context = vm.createContext({
-    window, Spicetify: { Player: player },
-    prefersReducedLyricsMotion: () => reduced,
-    requestAnimationFrame(callback) { const id = ++nextFrame; frames.set(id, callback); return id; },
-    cancelAnimationFrame(id) { frames.delete(id); },
+  const react = {
     useRef(initial) { return refs[refIndex++] ??= { current: initial }; },
-    useSyncedLayoutEffect(callback, dependencies) {
+    useLayoutEffect(callback, dependencies) {
       const index = effectIndex++;
       const previous = effects[index];
       if (previous && dependencies.every((value, i) => Object.is(value, previous.dependencies[i]))) return;
@@ -93,15 +92,19 @@ function createRevealHarness(page = makePage()) {
         effects[index] = { dependencies, cleanup: callback() };
       });
     },
+  };
+  const useLyricsTrackReveal = createLyricsTrackRevealHook({
+    react, host: window, readPlayer: () => player, prefersReducedMotion: () => reduced,
+    requestFrame(callback) { const id = ++nextFrame; frames.set(id, callback); return id; },
+    cancelFrame(id) { frames.delete(id); },
   });
-  vm.runInContext(`${revealSource}\nglobalThis.reveal = { playLyricsTrackReveal, useLyricsTrackReveal };`, context);
   const pageRef = { current: page };
   return {
     page, pageRef, player, window, motionQuery, frames,
-    play: context.reveal.playLyricsTrackReveal,
+    play: playLyricsTrackReveal,
     render(key, hasLyrics = true) {
       refIndex = effectIndex = 0;
-      context.reveal.useLyricsTrackReveal(pageRef, key, hasLyrics);
+      useLyricsTrackReveal(pageRef, key, hasLyrics);
       while (pendingEffects.length) pendingEffects.shift()();
     },
     flushFrame() {
@@ -155,14 +158,13 @@ test("track reveal bounds animation work to twelve visible rows and preserves ex
 test("hidden or reduced-motion pages do not start reveal animations", () => {
   const h = createRevealHarness();
   h.reduceMotion(true);
-  h.play(h.page)();
   h.render("reduced");
   h.flushFrame();
   assert.equal(h.animations().length, 0);
   assert.equal(h.player.listenerCount(), 0);
   h.reduceMotion(false);
   h.page.getBoundingClientRect = () => ({ top: 0, bottom: 0, height: 0, width: 800 });
-  h.play(h.page)();
+  assert.equal(h.play(h.page), null);
   assert.equal(h.animations().length, 0);
 });
 
@@ -204,6 +206,21 @@ test("new track cancels the previous reveal and unmount removes every listener",
   for (const target of [h.page, h.player, h.window, h.motionQuery]) assert.equal(target.listenerCount(), 0);
 });
 
+test("a finished reveal releases every cancellation listener without waiting for another track", () => {
+  const h = createRevealHarness();
+  h.render("A");
+  h.flushFrame();
+  const [first, second] = h.animations();
+  first.dispatch("finish");
+  assert.equal(h.player.listenerCount(), 1);
+  second.dispatch("finish");
+  for (const target of [h.page, h.player, h.window, h.motionQuery]) assert.equal(target.listenerCount(), 0);
+  assert.equal(first.cancelled && second.cancelled, true);
+  h.render("A");
+  assert.equal(h.frames.size, 0);
+  h.unmount();
+});
+
 for (const [surface, event] of [["player", "onseek"], ["page", "pointerdown"], ["page", "wheel"],
   ["window", "ivLyrics"], ["motionQuery", "change"]]) {
   for (const beforeFrame of [true, false]) {
@@ -217,6 +234,7 @@ for (const [surface, event] of [["player", "onseek"], ["page", "pointerdown"], [
       assert.equal(h.frames.size, 0);
       assert.equal(h.animations().length, startedCount, "cancelled work must not start on a later frame");
       assert.ok(h.animations().every(animation => animation.cancelled));
+      for (const target of [h.page, h.player, h.window, h.motionQuery]) assert.equal(target.listenerCount(), 0);
       h.render("A");
       h.flushFrame();
       assert.equal(h.animations().length, startedCount, "ordinary playback must not replay a cancelled entrance");
@@ -243,12 +261,11 @@ function createCompactOffsetHarness({ isScrolling = false, compact = true, heigh
   const activeLine = {};
   const trace = [];
   let offset = 240;
-  const context = vm.createContext({
+  const options = {
     compact, isScrolling,
     containerRef: { current: container },
     activeLineRef: { current: activeLine },
     layoutObserverRef: { current: { cancelPending() { trace.push(["cancel-observer"]); } } },
-    useCallback: callback => callback,
     setCompactOffset(next) {
       offset = typeof next === "function" ? next(offset) : next;
       trace.push(["offset", offset]);
@@ -259,10 +276,8 @@ function createCompactOffsetHarness({ isScrolling = false, compact = true, heigh
       trace.push(["measure", measuredContainer.scrollTop, manual]);
       return manual ? 0 : 280;
     },
-  });
-  vm.runInContext(section("const syncCompactOffset =", "// Streaming translation/pronunciation")
-    + "\nglobalThis.sync = syncCompactOffset;", context);
-  return { container, trace, sync: context.sync, get offset() { return offset; } };
+  };
+  return { container, trace, sync: () => syncCompactLyricsViewport(options), get offset() { return offset; } };
 }
 
 test("compact auto-follow clears native scroll before measuring its transform offset", () => {
@@ -307,14 +322,20 @@ test("expanded page offset synchronization leaves native scrolling untouched", (
 function loadPageRenderers() {
   const createElement = (type, props, ...children) => ({ type, props: props || {}, children });
   const context = vm.createContext({
-    react: { memo: component => component, createElement },
+    react: {
+      memo: component => component, createElement,
+      useRef: initial => ({ current: initial }),
+      useState: initial => [initial, () => {}],
+      useCallback: callback => callback,
+      useMemo: callback => callback(),
+      useEffect() {},
+    },
     useRef: initial => ({ current: initial }),
-    useState: initial => [initial, () => {}],
-    useCallback: callback => callback,
     useMemo: callback => callback(),
-    useEffect() {}, useLyricsTrackReveal() {},
+    useLyricsTrackReveal() {},
     useLyricsPlaybackPosition: () => 3000,
     getPseudoKaraokeRenderAdvance: () => 0,
+    isLyricFuriganaReady, readLyricRenderingLocale,
     useSyncedLyricsEngine: () => ({
       isScrolling: false, handleContainerClick() {}, renderItems: [], compactOffset: 320,
     }),
@@ -322,19 +343,24 @@ function loadPageRenderers() {
     CONFIG: { visual: {} },
     window: {},
     I18n: { t: value => value },
-    SearchBar() {}, LyricsLineBlock() {},
+    SearchBar() {}, LyricsLineBlock() {}, LyricsBackdropLayer() {},
     normalizeUnsyncedLyrics: lyrics => lyrics,
     getEmbeddedAuxiliaryDisplayValues: line => ({ originalText: line.text }),
     getUnsyncedLineRenderData: (_lyrics, _text, originalText) => ({ lineText: originalText }),
-    Utils: { formatLyricLineToCopy: line => line },
+    getUtils: () => ({ formatLyricLineToCopy: line => line }),
   });
   vm.runInContext(
-    section("const SyncedLyricsPage", "// Global SearchBar manager")
-    + section("const SyncedExpandedLyricsPage", "const LoadingIcon")
-    + "\nglobalThis.pages = { SyncedLyricsPage, SyncedExpandedLyricsPage, UnsyncedLyricsPage };",
+    section("const UnsyncedLyricsPage", "const { renderLyricsUnavailable")
+    + "\nglobalThis.UnsyncedLyricsPage = UnsyncedLyricsPage;",
     context,
   );
-  return context.pages;
+  return {
+    ...createSyncedLyricsPages({
+      ...context, translate: key => key, prefersReducedLyricsMotion: () => false,
+      readKaraokeLineTransition: () => false,
+    }),
+    UnsyncedLyricsPage: context.UnsyncedLyricsPage,
+  };
 }
 
 for (const name of ["SyncedLyricsPage", "SyncedExpandedLyricsPage", "UnsyncedLyricsPage"]) {

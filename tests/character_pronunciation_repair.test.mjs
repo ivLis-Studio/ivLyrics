@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const source = readFileSync(new URL("../AIAddonManager.js", import.meta.url), "utf8");
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
+const source = bundleInitializer(new URL("../src/providers/ai/AIAddonManager.js", import.meta.url));
 
 const loadManager = async () => {
 	const window = {};

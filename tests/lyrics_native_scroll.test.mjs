@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
 
-const source = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
-const controller = source.slice(source.indexOf('const createSyncedLyricsScroller ='), source.indexOf('const useScrollActivity ='));
+import { createSyncedLyricsScroller } from '../src/lyrics/lyricsScrollActivity.mjs';
+
 function harness({ anchorRatio = 0.5, centers = [-700, -370, -110, 300, 650, 980] } = {}) {
   const listeners = new Map(), windowListeners = new Map(), playerListeners = new Map();
   const timers = new Map(), frames = new Map(), changes = [];
-  let nextId = 0, reads = 0;
-  const style = () => ({ setProperty(key, value) { this[key] = String(value); }, removeProperty(key) { delete this[key]; } });
+  let nextId = 0, reads = 0, blurWrites = 0;
+  const style = () => ({
+    setProperty(key, value) { this[key] = String(value); if (key === '--manual-blur-index') blurWrites++; },
+    removeProperty(key) { delete this[key]; },
+  });
   const classes = new Set();
   const root = { style: style(), children: [] };
   const container = {
@@ -30,23 +31,23 @@ function harness({ anchorRatio = 0.5, centers = [-700, -370, -110, 300, 650, 980
     },
   }));
   const returns = new WeakMap();
-  const context = vm.createContext({
-    document: { createElement: () => ({ style: style(), setAttribute() {}, remove() { container.spacer = null; } }) },
-    window: { addEventListener: (key, cb) => windowListeners.set(key, cb), removeEventListener: key => windowListeners.delete(key) },
-    Spicetify: { Player: { addEventListener: (key, cb) => playerListeners.set(key, cb), removeEventListener: key => playerListeners.delete(key) } },
-    syncedManualScrollReturns: returns, getLyricsAnchorRatio: () => anchorRatio,
-    setTimeout: cb => { timers.set(++nextId, cb); return nextId; }, clearTimeout: id => timers.delete(id),
-    requestAnimationFrame: cb => { frames.set(++nextId, cb); return nextId; }, cancelAnimationFrame: id => frames.delete(id),
+  const scroller = createSyncedLyricsScroller({
+    container, onActiveChange: active => changes.push(active),
+    createSpacer: () => ({ style: style(), setAttribute() {}, remove() { container.spacer = null; } }),
+    hostEvents: { addEventListener: (key, cb) => windowListeners.set(key, cb), removeEventListener: key => windowListeners.delete(key) },
+    player: { addEventListener: (key, cb) => playerListeners.set(key, cb), removeEventListener: key => playerListeners.delete(key) },
+    returnPositions: returns, getAnchorRatio: () => anchorRatio,
+    scheduleTimer: cb => { timers.set(++nextId, cb); return nextId; }, cancelTimer: id => timers.delete(id),
+    scheduleFrame: cb => { frames.set(++nextId, cb); return nextId; }, cancelFrame: id => frames.delete(id),
+    now: () => 9000,
   });
-  vm.runInContext(controller + '\nglobalThis.create = createSyncedLyricsScroller;', context);
-  const scroller = context.create(container, active => changes.push(active));
   const emit = (type, data = {}, capture = false) => {
     const event = { type, deltaX: 0, deltaY: 0, deltaMode: 0, target: container,
       preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.propagationStopped = true; }, ...data };
     listeners.get(`${type}:${capture}`)?.(event); return event;
   };
   return { container, root, changes, timers, returns, scroller, listeners, windowListeners, playerListeners, emit,
-    readCount: () => reads,
+    readCount: () => reads, blurWrites: () => blurWrites,
     flush() { emit('scroll'); for (const [id, callback] of frames) { frames.delete(id); callback(); } },
     idle() { const pending = [...timers.values()]; timers.clear(); pending.forEach(cb => cb()); },
   };
@@ -69,6 +70,28 @@ test('first wheel delta moves every existing row by that delta without a recente
     const reads = h.readCount();
     h.emit('wheel', { deltaY: 18 }); h.flush();
     assert.equal(h.readCount(), reads, 'scroll frames do not repeatedly measure all rows');
+  }
+});
+
+test('scrolling preserves every row blur while skipping writes outside the changing focus bands', () => {
+  const h = harness({ centers: Array.from({ length: 100 }, (_, index) => 100 * (index - 30)) });
+  const checkFocus = () => {
+    const distances = h.root.children.map(row => Math.abs(row.getBoundingClientRect().top + 40 - 400));
+    const nearest = distances.indexOf(Math.min(...distances));
+    h.root.children.forEach((row, index) => {
+      assert.equal(Number(row.style['--manual-blur-index']), Math.min(Math.abs(nearest - index), 3));
+    });
+  };
+  h.emit('wheel', { deltaY: 1 }); h.flush();
+  assert.equal(h.blurWrites(), 100);
+  checkFocus();
+  h.emit('wheel', { deltaY: 1 }); h.flush();
+  assert.equal(h.blurWrites(), 100);
+  for (const delta of [100, -1000, 1985, 5130, -5000]) {
+    const before = h.blurWrites();
+    h.emit('wheel', { deltaY: delta }); h.flush();
+    checkFocus();
+    assert.ok(h.blurWrites() - before <= 10);
   }
 });
 

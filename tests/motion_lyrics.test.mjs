@@ -1,22 +1,31 @@
+import { sourceUrl } from "./fixtures/source-paths.mjs";
+import { readMotionScript } from "../.github/scripts/build_motion_mobile.mjs";
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { createDefaultVisualSettings } from "../src/spicetify/createAppConfig.mjs";
+import { normalizeFullscreenPresentation } from "../src/features/fullscreen/fullscreenPresentation.mjs";
+import { collectVisibleBoards, createBoardWindowIndex } from "../src/features/motion/motionBoardWindows.mjs";
+import { createEngine as createMotionEngine } from "../src/features/motion/motionEngine.mjs";
+import { getFullscreenVinylSettings } from "../src/features/fullscreen/fullscreenOverlaySettings.mjs";
+import { renderLyricsGenerationStatus } from "../src/lyrics/lyricsPageGenerationStatus.mjs";
+import { getOrderedAddonCapabilities, getSettingsAiCapabilityLabel } from "../src/features/settings/settingsProviderCapabilities.mjs";
+import { startPageMotion } from "../src/spicetify/composePageMotion.js";
+import { publishRuntimeService } from "../src/spicetify/runtimeServices.mjs";
 
-const read = (name) => readFileSync(new URL("../" + name, import.meta.url), "utf8");
+const read = (name) => readFileSync(sourceUrl(name), "utf8");
+const readMotionModule = (name) => read("src/features/motion/" + name + ".mjs");
+const motionScript = readMotionScript("MotionLyrics.js");
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
 const load = () => {
 	const window = { navigator: { language: "ko" } };
 	const context = vm.createContext({ window, Intl, console, navigator: window.navigator, setTimeout, clearTimeout });
 	context.globalThis = context;
-	vm.runInContext(read("TinySegmenter.js"), context);
-	vm.runInContext(read("LyricsWordSegmenter.js"), context);
-	window.LyricsWordSegmenter = context.LyricsWordSegmenter;
-	vm.runInContext(read("MotionLyricsShapes.js"), context);
-	vm.runInContext(read("MotionLyricsType.js"), context);
-	vm.runInContext(read("MotionLyricsDirector.js"), context);
-	vm.runInContext(read("MotionLyrics.js"), context);
+	vm.runInContext(motionScript, context);
 	return { motion: window.ivLyricsMotionLyrics, director: window.ivLyricsMotionDirector, shapes: window.ivLyricsMotionShapes, type: window.ivLyricsMotionType, window };
 };
 
@@ -538,9 +547,9 @@ test("the plan reports the slams and cuts the camera reacts to", () => {
 
 test("the AI manager asks providers for a motion direction and rejects answers without shots", async () => {
 	const window = { addEventListener() {}, setTimeout, clearTimeout, localStorage: { getItem: () => null, setItem() {} } };
-	const context = vm.createContext({ window, console, setTimeout, clearTimeout, Intl, localStorage: window.localStorage, Spicetify: { LocalStorage: { get: () => null, set() {} } } });
+	const context = vm.createContext({ window, AbortController, console, setTimeout, clearTimeout, Intl, localStorage: window.localStorage, Spicetify: { LocalStorage: { get: () => null, set() {} } } });
 	context.globalThis = context;
-	vm.runInContext(read("AIAddonManager.js"), context);
+	vm.runInContext(bundleInitializer(sourceUrl("AIAddonManager.js")), context);
 	// The director writes the prompt the manager sends.
 	window.ivLyricsMotionDirector = load().director;
 	const manager = window.AIAddonManager;
@@ -568,28 +577,129 @@ test("the AI manager asks providers for a motion direction and rejects answers w
 	await assert.rejects(() => manager.generateMotionDirection({ lines: [] }));
 });
 
+test("desktop motion uses the live startup services even when the legacy aliases change", async () => {
+	const host = {};
+	startPageMotion(host, null);
+	const motion = host.ivLyricsMotionLyrics;
+	const model = motion.buildModel(song());
+	const raw = { shots: [{ from: 0, to: model.length - 1, layout: "hero" }] };
+	const reads = [];
+	publishRuntimeService("Utils", { extractTrackId: () => "track-from-runtime" }, host);
+	publishRuntimeService("LyricsCache", {
+		async getMotionDirection(trackId) {
+			reads.push(trackId);
+			return { raw, judged: true };
+		},
+	}, host);
+	publishRuntimeService("AIAddonManager", {
+		getEnabledProvidersFor(capability) {
+			reads.push(capability);
+			return [];
+		},
+	}, host);
+	host.Utils = { extractTrackId: () => "legacy-track" };
+	host.LyricsCache = { getMotionDirection: async () => null };
+	host.AIAddonManager = { getEnabledProvidersFor: () => [] };
+
+	assert.deepEqual(await motion.requestDirection({ trackUri: "spotify:track:test", model }), {
+		status: "ready", raw, cached: true, revised: null,
+	});
+	assert.deepEqual(reads, ["motionDirection", "track-from-runtime"]);
+});
+
+test("desktop motion clears the previous song during same-URI narration and a confirmed absent track", () => {
+	const uri = "spotify:track:0123456789ABCDEFGHIJKL";
+	const cases = [{ uri, djNarration: true }, { uri: "", djNarration: false }];
+	for (const snapshot of cases) {
+		const player = { data: { item: { uri } }, getProgress: () => 0 };
+		const host = { document: {}, Spicetify: { Player: player }, setTimeout: () => 1, clearTimeout() {} };
+		publishRuntimeService("ivLyricsPlaybackPosition", { getPlayerPlaybackSnapshot: () => snapshot }, host);
+		publishRuntimeService("Utils", { getPlayerPlaybackSnapshot: () => ({ uri }) }, host);
+		startPageMotion(host, null);
+		const classList = new Set(["has-text"]);
+		const subtitle = { textContent: "Previous translation", classList: { remove: token => classList.delete(token) } };
+		const live = { textContent: "Previous lyric" };
+		const engine = host.ivLyricsMotionLyrics.createEngine({ subtitle, live });
+		engine.setPlan({ lines: [{}] }, uri);
+		assert.equal(subtitle.textContent, "");
+		assert.equal(live.textContent, "");
+		assert.equal(classList.has("has-text"), false);
+		engine.destroy();
+	}
+});
+
+test("desktop motion uses the whole local URI for the cache and keeps catalog keys compatible", async () => {
+	const host = {};
+	startPageMotion(host, null);
+	const motion = host.ivLyricsMotionLyrics;
+	const model = motion.buildModel(song());
+	const catalogId = "0123456789ABCDEFGHIJKL";
+	const riverUri = "spotify:local:Artist:Album:River:180";
+	const roadUri = "spotify:local:Artist:Album:Road:180";
+	const catalogDirection = { mood: "calm", shots: [{ from: 0, to: 9, layout: "column" }] };
+	const directions = new Map([
+		[catalogId, { raw: catalogDirection, judged: true }],
+		["180", { raw: { ...catalogDirection, mood: "legacy" }, judged: true }],
+	]);
+	const reads = [];
+	const writes = [];
+	publishRuntimeService("LyricsCache", {
+		async getMotionDirection(trackId) {
+			reads.push(trackId);
+			return directions.get(trackId);
+		},
+		async setMotionDirection(trackId, sourceHash, data) {
+			writes.push(trackId);
+			directions.set(trackId, data);
+		},
+	}, host);
+	publishRuntimeService("AIAddonManager", {
+		getEnabledProvidersFor: () => [{ id: "test" }],
+		async generateMotionDirection({ title }) {
+			return { ...catalogDirection, mood: title };
+		},
+	}, host);
+
+	const catalog = await motion.requestDirection({ trackUri: `spotify:track:${catalogId}`, model });
+	assert.equal(catalog.raw, catalogDirection);
+	assert.equal(catalog.cached, true);
+	const river = await motion.requestDirection({ trackUri: riverUri, model, title: "warm" });
+	const road = await motion.requestDirection({ trackUri: roadUri, model, title: "cool" });
+	assert.equal(river.raw.mood, "warm");
+	assert.equal(road.raw.mood, "cool");
+	const replay = await motion.requestDirection({ trackUri: riverUri, model });
+	assert.equal(replay.cached, true);
+	assert.equal(replay.raw.mood, "warm");
+	assert.deepEqual(reads, [catalogId, `local-uri:${riverUri}`, `local-uri:${roadUri}`, `local-uri:${riverUri}`]);
+	assert.deepEqual(writes, [`local-uri:${riverUri}`, `local-uri:${roadUri}`]);
+});
+
 test("motion is a fullscreen presentation next to the video stage, wired to AI, cache and settings", () => {
 	const vinyl = read("VinylPlayerMode.js");
 	const overlay = read("FullscreenOverlay.js");
-	const index = read("index.js");
+	const lifecycle = readFileSync(new URL("../src/spicetify/lyricsPageLifecycle.mjs", import.meta.url), "utf8");
 	const settings = read("Settings.js");
-	const shortcuts = read("GlobalShortcuts.js");
-	const service = read("LyricsService.js");
-	const background = read("VideoBackground.js");
-	const manifest = JSON.parse(read("manifest.json"));
-	const order = ["MotionLyricsShapes.js", "MotionLyricsType.js", "MotionLyricsDirector.js", "MotionLyrics.js", "VinylPlayerMode.js"].map((name) => manifest.subfiles.indexOf(name));
-	assert.ok(order.every((position, at) => position >= 0 && (at === 0 || position > order[at - 1])), "loaded in order: " + order);
-	assert.match(vinyl, /const PRESENTATION_MODES = Object\.freeze\(\[[^\]]*"motion"/);
-	assert.match(vinyl, /MotionLyrics\.hasRealTiming\(activeLyrics, activeLyricsKaraoke, karaokeSource\)/);
+	const picker = readFileSync(new URL("../src/features/settings/settingsFullscreenPresentationPicker.mjs", import.meta.url), "utf8");
+	const shortcuts = readFileSync(new URL("../src/features/player/fullscreenShortcutActions.mjs", import.meta.url), "utf8");
+	const cache = readFileSync(new URL("../src/lyrics/createLyricsCache.mjs", import.meta.url), "utf8");
+	const background = readFileSync(new URL("../src/features/video/videoBackgroundView.mjs", import.meta.url), "utf8");
+	const page = read("index.js");
+	assert.match(page, /import \{ lyricsWordSegmenter \} from "#ivlyrics\/lyrics\/LyricsWordSegmenter.js"/);
+	assert.match(readMotionModule("motionLyricModel"), /import \{ segmentGraphemes, segmentRanges \} from "#ivlyrics\/lyrics\/LyricsWordSegmenter.js"/);
+	assert.ok(page.indexOf(" = startPageMotion(") >= 0 && page.indexOf(" = startPageFullscreen(") > page.indexOf(" = startPageMotion("));
+	assert.match(vinyl, /normalizeFullscreenPresentation\(presentationMode, "vinyl"\)/);
+	assert.match(vinyl, /MotionLyrics\.hasRealTiming\(trackLyrics, activeLyricsKaraoke, karaokeSource\)/);
 	assert.match(vinyl, /react\.createElement\(MotionLyrics\.Stage, \{[^}]*title: liveTrack\.title,\s*artist: liveTrack\.artist/);
-	assert.match(overlay, /const FOCUSED_PRESENTATION_IDS = new Set\(\[[^\]]*"motion"/);
-	assert.match(index, /const IVLYRICS_FULLSCREEN_PRESENTATION_IDS = Object\.freeze\(\[[^\]]*"motion"/);
-	assert.match(settings, /id: "motion",\s*labelKey: "vinyl\.presentation\.motionLabel"/);
-	assert.match(settings, /"wordSupplements", "motionDirection",/);
-	assert.match(settings, /motionDirection: \["settings\.aiProviders\.supports\.motionDirection", "Motion direction"\]/);
+	assert.match(overlay, /const normalizedPresentationMode = normalizeFullscreenPresentation\(/);
+	assert.equal(normalizeFullscreenPresentation("motion"), "motion");
+	assert.match(settings, /createFullscreenPresentationPicker\(\{ react, getSettingsText \}\)/);
+	assert.match(picker, /id: "motion",\s*labelKey: "vinyl\.presentation\.motionLabel"/);
+	assert.deepEqual(getOrderedAddonCapabilities({ motionDirection: true, wordSupplements: true }), ["wordSupplements", "motionDirection"]);
+	assert.equal(getSettingsAiCapabilityLabel(key => key, "motionDirection"), "settings.aiProviders.supports.motionDirection");
+	assert.equal(getSettingsAiCapabilityLabel(() => "", "motionDirection"), "Motion direction");
 	assert.match(shortcuts, /"5": "motion"/);
-	assert.match(service, /async getMotionDirection\(trackId, sourceHash\)/);
-	assert.match(service, /async setMotionDirection\(trackId, sourceHash, data\)/);
+	assert.match(cache, /async getMotionDirection\(trackId, sourceHash\)/);
+	assert.match(cache, /async setMotionDirection\(trackId, sourceHash, data, canWrite/);
 	assert.match(background, /className: "ivlyrics-video-background-camera"/);
 	for (const name of ["ChatGPT", "Gemini", "Claude", "OpenRouter", "Groq", "Perplexity", "Paxsenix", "Pollinations"]) {
 		const source = read("Addon_AI_" + name + ".js");
@@ -605,10 +715,15 @@ test("motion is a fullscreen presentation next to the video stage, wired to AI, 
 	assert.match(vinyl, /onStatus: reportMotionDirectionStatus/);
 	assert.match(vinyl, /new CustomEvent\(MOTION_DIRECTION_STATUS_EVENT, \{ detail \}\)/);
 	assert.match(vinyl, /const MOTION_DIRECTION_STATUS_EVENT = "ivLyrics:motion-direction:status";/);
-	assert.match(index, /window\.addEventListener\("ivLyrics:motion-direction:status", this\.handleMotionDirectionStatus\)/);
-	assert.match(index, /window\.removeEventListener\("ivLyrics:motion-direction:status", this\.handleMotionDirectionStatus\)/);
-	assert.match(index, /key: "motion-direction",\s*label: I18n\.t\("generationStatus\.motionDirection"\)/);
-	assert.match(read("MotionLyrics.js"), /status && !reports \? e\("div", \{ className: "ivlyrics-motion-status is-"/);
+	assert.match(lifecycle, /effects\.listen\(browser, "ivLyrics:motion-direction:status", page\.handleMotionDirectionStatus\)/);
+	const status = renderLyricsGenerationStatus({
+		react: { createElement: (type, props, ...children) => ({ type, props, children }) },
+		translate: key => key,
+		generationPills: { "motion-direction": { phase: "loading" } },
+	});
+	assert.equal(status.children[0][0].props["data-kind"], "motion-direction");
+	assert.equal(status.children[0][0].children[1].children[0].children[0], "generationStatus.motionDirection");
+	assert.match(readMotionModule("motionStage"), /status && !reports \? e\("div", \{ className: "ivlyrics-motion-status is-"/);
 });
 
 test("the marks round an emphasised word keep clear of the words beside it", () => {
@@ -979,7 +1094,7 @@ test("the local director moves through many compositions and accents", () => {
 
 test("every accent has its look, and the AI is told about every composition and accent", () => {
 	const { motion, director } = load();
-	const css = read("style.css");
+	const css = readPcStylesheet();
 	const looks = {
 		color: ".accent-color ", outline: ".accent-outline ", underline: ".ivlyrics-motion-box.is-underline", mark: ".ivlyrics-motion-box.is-mark",
 		spark: ".ivlyrics-motion-spark", glow: ".accent-glow ", gradient: ".accent-gradient ", stamp: ".ivlyrics-motion-box.is-stamp", circle: ".ivlyrics-motion-loop path",
@@ -996,7 +1111,7 @@ test("every accent has its look, and the AI is told about every composition and 
 	// A gradient word animated letter by letter paints its letters, not the word as well (the letters would show twice).
 	assert.ok(css.includes(".accent-gradient .ivlyrics-motion-word.is-emph .ivlyrics-motion-solid:not(.has-letters),"));
 	assert.ok(css.includes(".ivlyrics-motion-stroke"));
-	const source = read("MotionLyrics.js");
+	const source = readMotionModule("motionDomEffects") + "\n" + readMotionModule("motionBoardDom");
 	assert.match(source, /BOX_ACCENTS = new Set\(\["underline", "mark", "stamp", "bracket"\]\)/);
 	assert.match(source, /solid\.classList\.add\("has-letters"\)/);
 	assert.match(source, /board\.accent === "scribble"/);
@@ -1012,7 +1127,7 @@ test("every accent has its look, and the AI is told about every composition and 
 	const window = { addEventListener() {}, setTimeout, clearTimeout, localStorage: { getItem: () => null, setItem() {} } };
 	const context = vm.createContext({ window, console, setTimeout, clearTimeout, Intl, localStorage: window.localStorage, Spicetify: { LocalStorage: { get: () => null, set() {} } } });
 	context.globalThis = context;
-	vm.runInContext(read("AIAddonManager.js"), context);
+	vm.runInContext(bundleInitializer(sourceUrl("AIAddonManager.js")), context);
 	// The director writes the prompt from its own vocabulary (the mobile apps use it too); the manager passes it on.
 	assert.throws(() => window.AIAddonManager.buildMotionDirectionPrompt({ lines: [] }), /director is unavailable/);
 	window.ivLyricsMotionDirector = director;
@@ -1958,6 +2073,146 @@ test("a chorus of long lines the AI set line by line keeps its look shot after s
 	assert.ok(chorus.every((shot) => shot.layout === "lockup" && shot.fx === "assemble" && shot.accent === "trail"), chorus.map((shot) => shot.layout + "/" + shot.fx + "/" + shot.accent).join(" "));
 });
 
+test("the board window index preserves mount order through overlaps and discontinuous seeks", () => {
+	const boards = [
+		{ appear: -100, fadeEnd: 2700 },
+		{ appear: 1450, fadeEnd: 2200 },
+		{ appear: 1010, fadeEnd: 1900 },
+		{ appear: 3700, fadeEnd: 2940 },
+		{ appear: NaN, fadeEnd: 2400 },
+		{ appear: 4200, fadeEnd: Infinity },
+		{ appear: 2600, fadeEnd: 5100 },
+	];
+	const windows = createBoardWindowIndex(boards);
+	const visible = new Set();
+	const samples = boards.flatMap(board => [board.appear - 60, board.fadeEnd + 60])
+		.filter(Number.isFinite)
+		.flatMap(boundary => [boundary - 1, boundary, boundary + 1]);
+	for (const time of [Infinity, -Infinity, NaN, ...samples, ...samples.reverse()]) {
+		collectVisibleBoards(windows, time, visible);
+		const expected = boards.flatMap((board, index) => time >= board.appear - 60 && time <= board.fadeEnd + 60 ? [index] : []);
+		assert.deepEqual([...visible], expected, "visible boards at " + time);
+	}
+	collectVisibleBoards([], 4300, visible);
+	assert.equal(visible.size, 0);
+});
+
+
+const makeEngineNode = () => {
+	const classes = new Set();
+	return {
+		children: [],
+		style: {
+			setProperty(name, value) { this[name] = value; },
+			removeProperty(name) { delete this[name]; },
+		},
+		classList: {
+			add: name => classes.add(name),
+			remove: name => classes.delete(name),
+			contains: name => classes.has(name),
+			toggle: (name, shown) => shown ? classes.add(name) : classes.delete(name),
+		},
+		setAttribute() {},
+		appendChild(child) { this.children.push(child); child.parent = this; },
+		remove() { this.parent.children.splice(this.parent.children.indexOf(this), 1); },
+	};
+};
+
+test("the renderer recomputes visible scene windows when a paused direction is replaced", () => {
+	const makeNode = makeEngineNode;
+	const { motion, director, type } = load();
+	const lyrics = [line(["One", "morning"], 2000), line(["Another", "morning"], 5300)];
+	const model = motion.buildModel(lyrics);
+	const direction = director.normalizeDirection({ shots: [
+		{ from: 0, to: 0, layout: "column", accent: "gradient", fx: "rise" },
+		{ from: 1, to: 1, layout: "stack", accent: "glow", fx: "rise" },
+	] }, model);
+	const plan = compose(motion, type, model, direction, 33, "en");
+	assert.equal(plan.boards.length, 2);
+	let time = 2200;
+	let pausedTick;
+	const camera = makeNode();
+	const subtitle = makeNode();
+	const engine = createMotionEngine({ stage: makeNode(), viewport: makeNode(), camera, flash: makeNode(), wash: makeNode(), subtitle }, {
+		document: { createElement: makeNode, createElementNS: makeNode },
+		readTime: () => time,
+		now: () => time,
+		isTrackCurrent: () => true,
+		scheduleTimer(tick) { pausedTick = tick; return 1; },
+		cancelTimer() { pausedTick = null; },
+	});
+	engine.setLyrics(lyrics);
+	engine.setPlan(plan, "track");
+	assert.equal(camera.children.length, 1);
+	assert.match(camera.children[0].className, /accent-gradient/);
+	const revised = { ...plan, boards: [plan.boards[0], { ...plan.boards[1], appear: time }] };
+	engine.setPlan(revised, "track", { soft: true });
+	assert.equal(camera.children.length, 1);
+	pausedTick();
+	assert.equal(camera.children.length, 2);
+	assert.match(camera.children[1].className, /accent-glow/);
+	time = 2000;
+	pausedTick();
+	assert.equal(camera.children.length, 1);
+	assert.match(camera.children[0].className, /accent-gradient/);
+	engine.destroy();
+	assert.equal(camera.children.length, 0);
+	assert.equal(pausedTick, null);
+});
+
+test("the motion engine clears previous-track subtitles and camera effects while the new plan is unavailable", () => {
+	const makeNode = makeEngineNode;
+	const { motion, director, type } = load();
+	const lyrics = [line(["One", "morning"], 2000, { translation: "Previous translation" })];
+	const model = motion.buildModel(lyrics);
+	const plan = compose(motion, type, model, director.normalizeDirection(null, model), 33, "en");
+	const firstStyle = "brightness(0.55) blur(17px)";
+	const background = makeNode();
+	background.style.filter = firstStyle;
+	background.style.rotate = "4deg";
+	background.isConnected = true;
+	const stage = makeNode(), camera = makeNode(), subtitle = makeNode(), live = makeNode();
+	const time = 2200;
+	let pausedTick;
+	let currentTrack = "first";
+	const engine = createMotionEngine({ stage, camera, subtitle, live, viewport: makeNode(), flash: makeNode(), wash: makeNode() }, {
+		document: { createElement: makeNode, createElementNS: makeNode, querySelector: () => background },
+		readTime: () => time,
+		now: () => time,
+		isTrackCurrent: uri => uri === currentTrack,
+		readComputedStyle: () => ({}),
+		scheduleTimer(tick) { pausedTick = tick; return 1; },
+		cancelTimer() { pausedTick = null; },
+	});
+	engine.setPlaying(false);
+	engine.setLyrics(lyrics);
+	engine.setPlan(plan, "first");
+	assert.equal(subtitle.textContent, "Previous translation");
+	assert.equal(live.textContent, "One morning");
+	assert.equal(background.classList.contains("is-motion-camera"), true);
+
+	currentTrack = "second";
+	pausedTick();
+	assert.equal(camera.children.length, 0);
+	assert.equal(subtitle.textContent, "");
+	assert.equal(live.textContent, "");
+	assert.equal(background.classList.contains("is-motion-camera"), false);
+	assert.equal(background.style.rotate, "4deg");
+	assert.equal(background.style.filter, firstStyle);
+
+	engine.setPlan(null, "second");
+	assert.equal(pausedTick, null);
+	engine.setLyrics([{ ...lyrics[0], text2: "New translation" }]);
+	engine.setPlan(plan, "second");
+	assert.equal(background.classList.contains("is-motion-camera"), true);
+	assert.equal(subtitle.textContent, "New translation");
+	engine.setPlan(null, "third");
+	assert.equal(subtitle.textContent, "");
+	assert.equal(background.classList.contains("is-motion-camera"), false);
+	assert.equal(pausedTick, null);
+	engine.destroy();
+});
+
 test("the motion camera keeps the background's own dimming and blur and gives them back", () => {
 	const { motion } = load();
 	const cover = "brightness(0.5) blur(20px)";
@@ -1973,7 +2228,7 @@ test("the motion camera keeps the background's own dimming and blur and gives th
 	assert.equal(state.base, "brightness(0.8) blur(10px)");
 	assert.equal(state.written, "brightness(0.8) blur(10px) blur(2px)");
 	assert.equal(motion.cameraFilter({ base: "", written: null }, "", 0).written, "", "a background without a filter of its own keeps none");
-	const source = read("MotionLyrics.js");
+	const source = readMotionModule("motionEngine");
 	assert.ok(!/background\.style\.filter = "";/.test(source), "leaving motion never wipes the background's filter");
 	assert.match(source, /background\.style\.filter = backgroundFilter\.base/);
 });
@@ -2077,6 +2332,25 @@ test("comfort: rotation off keeps the screen level, gentle drops the big turns, 
 	const wild = planWith({ intensity: "wild" });
 	assert.ok(wild.feel.shake > full.feel.shake);
 	assert.deepEqual(plain(motion.comfortOf({ intensity: "loud", rotation: "sideways", safe: "yes" })), { intensity: "normal", rotation: "full", safe: false }, "unknown values fall back");
+});
+
+test("invalid cached motion presets fall back before they affect the camera or the shot geometry", () => {
+	const { motion, director, type } = load();
+	const model = motion.buildModel(song());
+	const normal = director.normalizeDirection({ shots: [{ from: 0, to: 3, layout: "column" }] }, model, { seed: 5 });
+	const direction = { ...normal, mood: "warm", tempo: { ...normal.tempo, tempo: "mid" } };
+	const options = { width: 1440, height: 900, seed: 5, measure, typography: type.typographyOf(model, ""), pieces: false };
+	const expected = motion.compose(model, direction, options);
+	const restored = motion.compose(model, { ...direction, mood: "toString", tempo: { ...direction.tempo, tempo: "constructor" } }, {
+		...options, motion: { intensity: "constructor", rotation: "__proto__" },
+	});
+	assert.deepEqual(restored.comfort, expected.comfort);
+	assert.deepEqual(restored.feel, expected.feel);
+	assert.equal(restored.mood, expected.mood);
+	assert.equal(restored.tempo, expected.tempo);
+	for (const time of [250, 2450, 4800, model.at(-1).end + 5000]) {
+		assert.deepEqual(motion.cameraPose(restored, time), motion.cameraPose(expected, time));
+	}
 });
 
 test("an edit is watched for what a viewer would notice", () => {
@@ -2196,18 +2470,98 @@ test("the AI's direction is watched, sent back with notes when it falls short, a
 	assert.match(director.buildPrompt(asked[0]), /Take 3: the viewer has seen this song directed before and asked for a new edit/);
 });
 
+test("a cache clear retires an in-flight direction without retiring its replacement", async () => {
+	const { motion, window } = load();
+	const model = motion.buildModel(song());
+	const calls = [];
+	const saved = [];
+	let revision = 0;
+	window.AIAddonManager = {
+		getEnabledProvidersFor: () => [{ id: "test" }],
+		generateMotionDirection: () => {
+			const answer = Promise.withResolvers();
+			calls.push(answer);
+			return answer.promise;
+		},
+	};
+	window.LyricsCache = {
+		getRevision: () => revision,
+		async getMotionDirection() { return null; },
+		async setMotionDirection(trackId, hash, { raw }) { saved.push(raw); },
+	};
+	const info = { trackUri: "spotify:track:abc", model,
+		judge: () => ({ score: 50, stats: {}, issues: [{ kind: "clip", layout: "column", lines: [1] }] }),
+	};
+	const old = motion.requestDirection(info);
+	await new Promise(setImmediate);
+	assert.equal(calls.length, 1);
+	revision++;
+	const fresh = motion.requestDirection({ ...info, judge: null });
+	await new Promise(setImmediate);
+	assert.equal(calls.length, 2);
+	const oldDirection = { mood: "warm", shots: [{ from: 0, to: 9, layout: "column" }] };
+	calls[0].resolve(oldDirection);
+	assert.equal((await old).status, "off");
+	assert.equal(calls.length, 2);
+	assert.equal(motion.requestDirection(info), fresh);
+	assert.deepEqual(saved, []);
+	const newDirection = { mood: "cool", shots: [{ from: 0, to: 9, layout: "column" }] };
+	calls[1].resolve(newDirection);
+	assert.equal((await fresh).status, "ready");
+	assert.deepEqual(saved, [newDirection]);
+});
+
+test("a new take keeps its cache slot when an older critique finishes later", async () => {
+	const { motion, window } = load();
+	const model = motion.buildModel(song());
+	const original = { mood: "warm", shots: [{ from: 0, to: 9, layout: "column" }] };
+	const retake = { mood: "cool", shots: [{ from: 0, to: 9, layout: "column" }] };
+	const revision = Promise.withResolvers();
+	const asked = [];
+	const saved = [];
+	window.AIAddonManager = {
+		getEnabledProvidersFor: () => [{ id: "test" }],
+		generateMotionDirection(params) {
+			asked.push(params);
+			return params.revision ? revision.promise : params.retake ? retake : original;
+		},
+	};
+	window.LyricsCache = {
+		async getMotionDirection() { return null; },
+		async setMotionDirection(trackId, hash, data) { saved.push(data.raw); },
+	};
+	const info = { trackUri: "spotify:track:abc", model };
+	const scores = [50, 95];
+	const first = motion.requestDirection({ ...info, judge: () => ({
+		score: scores.shift(), stats: {}, issues: [{ kind: "clip", layout: "column", lines: [1] }],
+	}) });
+	const direction = await first;
+	assert.equal(motion.requestDirection(info), first);
+	const latest = motion.requestDirection({ ...info, retake: 1 });
+	assert.equal(motion.requestDirection(info), latest);
+	assert.equal((await latest).raw, retake);
+	revision.resolve({ ...original, mood: "tense" });
+	assert.equal(await direction.revised, null);
+	assert.deepEqual(saved, [original, retake]);
+	assert.equal(asked.length, 3);
+});
+
 test("comfort settings, the cover and \"direct again\" reach the motion stage", () => {
 	const vinyl = read("VinylPlayerMode.js");
 	const overlay = read("FullscreenOverlay.js");
-	const settings = read("Settings.js");
-	const index = read("index.js");
+	const settings = readFileSync(new URL("../src/features/settings/settingsFullscreenTab.mjs", import.meta.url), "utf8");
+	const defaults = createDefaultVisualSettings();
 	assert.match(vinyl, /react\.createElement\(MotionLyrics\.Stage, \{[^}]*motion: motionComfort,\s*retake: motionTake,\s*cover: liveTrack\.coverUrl/);
 	assert.match(vinyl, /onRedirect: motionPlayable \? redirectMotion : null/);
-	assert.match(vinyl, /activeMode === "motion" && typeof onRedirect === "function"/);
-	assert.match(overlay, /motion: \{\s*intensity: CONFIG\?\.visual\?\.\["fullscreen-motion-intensity"\]/);
+	const stageControls = readFileSync(new URL("../src/features/player/vinylStageControls.mjs", import.meta.url), "utf8");
+	assert.match(stageControls, /activeMode === "motion" && typeof onRedirect === "function"/);
+	assert.match(overlay, /getFullscreenVinylSettings\(CONFIG\?\.visual\)/);
+	assert.deepEqual(getFullscreenVinylSettings({
+		"fullscreen-motion-intensity": "calm", "fullscreen-motion-rotation": "off", "fullscreen-motion-safe": true,
+	}).motion, { intensity: "calm", rotation: "off", safe: true });
 	for (const key of ["fullscreen-motion-intensity", "fullscreen-motion-rotation", "fullscreen-motion-safe"]) {
 		assert.ok(settings.includes('key: "' + key + '"'), "a setting for " + key);
-		assert.ok(index.includes('"' + key + '"'), "a default for " + key);
+		assert.ok(Object.hasOwn(defaults, key), "a default for " + key);
 	}
 	const languages = ["Ar", "Bn", "Cs", "De", "En", "Es", "Fa", "Fr", "Hi", "Id", "It", "Ja", "Ko", "Ms", "Pt", "Ru", "Sv", "Th", "Tr", "Vi", "ZhCN", "ZhTW"];
 	for (const code of languages) {

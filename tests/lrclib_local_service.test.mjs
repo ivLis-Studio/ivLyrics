@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { webcrypto } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import test from 'node:test';
 import vm from 'node:vm';
+import { bundleFixtureImports } from './fixtures/legacy-page-source.mjs';
 
-const source = readFileSync(new URL('../LrclibLocalDatabase.js', import.meta.url), 'utf8');
+const source = bundleFixtureImports(
+    'import { installLocalLrclibDatabase } from "#ivlyrics/providers/lyrics/LrclibLocalDatabase.js";\n'
+    + 'installLocalLrclibDatabase(window, "/* offline bundled SQL fixture */");',
+    'fixtureLocalDatabaseModules',
+);
 const sqlite = Buffer.concat([Buffer.from('SQLite format 3\0'), Buffer.alloc(4096 - 16)]);
 const candidate = { id: 1, trackName: 'Song', artistName: 'Artist', albumName: 'Album', duration: 180,
     instrumental: false, plainLyrics: 'private lyrics', syncedLyrics: '[00:01]private lyrics', lyricsfile: null };
@@ -232,7 +236,6 @@ function setup(options = {}) {
     const root = {
         indexedDB: idb, navigator: { storage, ...(options.locks ? { locks: options.locks } : {}) }, Worker, File, Blob, crypto: webcrypto,
         AbortController, DecompressionStream, TransformStream,
-        IvLyricsLocalLrclibWorkerSource: '/* offline bundled SQL fixture */',
         URL: {
             createObjectURL() { events.push(['blob']); return `blob:fixture-${events.length}`; },
             revokeObjectURL(url) { events.push(['revoke', url]); }
@@ -350,8 +353,81 @@ test('schema validation failure preserves the previous worker, revision, metadat
     assert.ok(h.persisted.files.has(previous.opfsName));
     assert.equal(h.workers[0].terminated, false);
     assert.equal(h.workers[1].terminated, true);
-    await h.api.connect();
+    assert.equal(h.api.getState().available, true);
+    assert.equal(h.api.getState().name, 'official.sqlite3.gz');
+    assert.equal(h.api.getState().errorCode, 'invalidDatabase');
     assert.equal(await h.api.lookup({}), candidate);
+});
+
+test('last-good local reads continue while a replacement is validating and after cancel', async () => {
+    const validating = latch();
+    const h = setup({
+        onPost(message) {
+            if (message.action !== 'open' || message.file.name !== 'replacement.sqlite3') return false;
+            validating.resolve();
+            return true;
+        },
+    });
+    await h.api.importFile(file('original.sqlite3'));
+    const revision = h.api.getCacheVersion();
+    const replacing = assert.rejects(h.api.importFile(file('replacement.sqlite3')), { code: 'canceled' });
+    await validating.promise;
+    assert.equal(h.api.getState().phase, 'opening');
+    assert.equal(h.api.getState().available, true);
+    assert.equal(h.api.getCacheVersion(), revision);
+    assert.equal(await h.api.lookup({}), candidate);
+    assert.equal(h.workers[0].messages.filter(message => message.action === 'lookup').length, 1);
+
+    h.api.cancelImport();
+    await replacing;
+    assert.equal(h.api.getState().name, 'original.sqlite3');
+    assert.equal(h.api.getState().errorCode, 'canceled');
+    assert.equal(h.api.getCacheVersion(), revision);
+    assert.equal(await h.api.lookup({}), candidate);
+    assert.equal(h.workers[0].terminated, false);
+});
+
+test('the committed replacement serves reads before cleanup and drops older pending results', async () => {
+    const querying = latch();
+    const removing = latch();
+    const finishCleanup = latch();
+    let originalWorker, previousFile;
+    const nextCandidate = { ...candidate, id: 2 };
+    const h = setup({
+        onPost(message, worker) {
+            if (message.action !== 'lookup') return false;
+            if (worker === originalWorker) {
+                querying.resolve();
+                return true;
+            }
+            worker.reply(message.id, nextCandidate);
+            return true;
+        },
+        async onRemove(name) {
+            if (name !== previousFile) return;
+            removing.resolve();
+            await finishCleanup.promise;
+        },
+    });
+    await h.api.importFile(compressed());
+    previousFile = h.persisted.record.opfsName;
+    originalWorker = h.workers[0];
+    const previousLookup = h.api.lookup({});
+    await querying.promise;
+    const installing = h.api.importFile(compressed());
+    await removing.promise;
+    try {
+        assert.equal(await previousLookup, null);
+        assert.equal(originalWorker.terminated, true);
+        assert.notEqual(h.persisted.record.opfsName, previousFile);
+        assert.equal(h.api.getCacheVersion(), h.persisted.record.revision);
+        assert.equal(await h.api.lookup({}), nextCandidate);
+        assert.equal(h.api.getState().phase, 'ready');
+    } finally {
+        finishCleanup.resolve();
+        await installing;
+    }
+    assert.equal(h.persisted.files.has(previousFile), false);
 });
 
 test('transaction abort after request success cleans only the new OPFS file', async () => {
@@ -398,7 +474,7 @@ test('external abort during a backpressured write keeps the original DB and remo
     assert.equal(h.api.getState().errorCode, 'canceled');
 });
 
-test('cancelImport cancels open validation, including restoration, and lookups skip controls', async () => {
+test('cancelImport terminates candidate validation or restoration without exposing an uncommitted database', async () => {
     const opened = latch();
     const h = setup({ onPost: message => { if (message.action === 'open') { opened.resolve(); return true; } } });
     const importing = assert.rejects(h.api.importFile(compressed()), { code: 'canceled' });
@@ -748,6 +824,22 @@ test('an aborted pending-journal commit creates no OPFS output and preserves the
     assert.deepEqual([...h.persisted.files.keys()], [previous.opfsName]);
     assert.equal(h.persisted.pending.length, 0);
     assert.equal(h.workers[0].terminated, false);
+});
+
+test('a failed import from the file picker reports its error once', async () => {
+    const h = setup();
+    await h.api.importFile(compressed());
+    h.root.showOpenFilePicker = async () => [{ kind: 'file', getFile: async () => file('broken.sqlite3', Buffer.alloc(32)) }];
+    const states = [];
+    const unsubscribe = h.api.subscribe(state => states.push(state));
+    try {
+        await assert.rejects(h.api.pickFile(), { code: 'invalidFile' });
+        assert.equal(states.filter(state => state.errorCode === 'invalidFile').length, 1);
+        assert.equal(h.api.getState().name, 'official.sqlite3.gz');
+        assert.equal(await h.api.lookup({}), candidate);
+    } finally {
+        unsubscribe();
+    }
 });
 
 test('a stale handle restore without Web Locks cannot overwrite a newer committed source', async () => {

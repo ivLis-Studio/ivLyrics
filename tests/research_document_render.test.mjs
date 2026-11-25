@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { createSongResearch } from "../src/app/SongResearch.js";
 import test from "node:test";
-import vm from "node:vm";
 
-const source = readFileSync(new URL("../SongInfoTicker.js", import.meta.url), "utf8");
 const createHarness = () => {
   const slots = [];
   let cursor = 0;
@@ -38,18 +36,12 @@ const createHarness = () => {
     useCallback: (callback, deps) => useMemo(() => callback, deps),
     useEffect: () => { cursor++; },
   };
-  const context = vm.createContext({
-    Spicetify: { React: react },
-    CONFIG: { visual: {} },
-    window: {
-      I18n: { t: (key) => `${language}:${key}`, getCurrentLanguage: () => language },
-      dispatchEvent() {},
-    },
-    CustomEvent: class {}, URL,
+  const { ResearchFullView } = createSongResearch({
+    react, spicetify: { React: react }, config: { visual: {} },
+    host: { dispatchEvent() {} },
+    i18n: { t: (key) => `${language}:${key}`, getCurrentLanguage: () => language },
+    getAiManager: () => null,
   });
-  vm.runInContext(source.replace("    return {\n        ResearchFullView,", "    globalThis.components = { ResearchFullView, ResearchDocument };\n    return {\n        ResearchFullView,"), context);
-  const components = context.components;
-  assert.ok(components);
   const expand = (node) => {
     if (Array.isArray(node)) return node.map(expand);
     if (!node || typeof node !== "object" || !("type" in node)) return node;
@@ -59,8 +51,8 @@ const createHarness = () => {
   return {
     render(props) {
       cursor = 0;
-      const view = components.ResearchFullView.type(props);
-      const body = elements(view).find((element) => element.type === components.ResearchDocument);
+      const view = ResearchFullView.type(props);
+      const body = elements(view).find((element) => typeof element.props.register === "function" && Boolean(element.props.info));
       return { view, body };
     },
     renderBody(body) {
@@ -70,7 +62,7 @@ const createHarness = () => {
       const previous = previousBody?.props;
       const unchanged = previous && Object.keys(next).length === Object.keys(previous).length
         && Object.keys(next).every((key) => Object.is(next[key], previous[key]));
-      if (!unchanged) renderedBody = expand(components.ResearchDocument.type(next));
+      if (!unchanged) renderedBody = expand(body.type.type(next));
       previousBody = body;
       return { tree: renderedBody, elementCreations };
     },

@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { LYRICS_CENTERING_LEAD_MS } from "../src/lyrics/lyricsLineMotion.mjs";
+import { createVinylActiveLyricRenderer } from "../src/features/player/createVinylActiveLyricRenderer.mjs";
 
-const pages = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
-const vinyl = readFileSync(new URL("../VinylActiveLyricRenderer.js", import.meta.url), "utf8");
+const pages = readFileSync(new URL("../src/lyrics/Pages.js", import.meta.url), "utf8");
 const slice = (source, start, end) => {
   const from = source.indexOf(start), to = source.indexOf(end, from);
   assert.ok(from >= 0 && to > from);
@@ -14,10 +15,9 @@ const slice = (source, start, end) => {
 const createHarness = () => {
   const CONFIG = { visual: { "karaoke-line-transition": true } };
   const media = { matches: false };
-  const context = vm.createContext({ CONFIG, window: { matchMedia: () => media } });
+  const context = vm.createContext({ CONFIG, LYRICS_CENTERING_LEAD_MS, window: { matchMedia: () => media } });
   vm.runInContext([
-    pages.match(/const LYRICS_CENTERING_LEAD_MS = \d+;/)[0],
-    slice(pages, "const prefersReducedLyricsMotion =", "const animateSyncedLyricsScroll ="),
+    slice(pages, "const prefersReducedLyricsMotion =", "const { getLyricsAnchorRatio"),
     slice(pages, "const getInterludeHandoffState =", "const getLyricsLineDetailClass ="),
     "globalThis.handoff = getInterludeHandoffState; globalThis.motion = isInterludeMotionEnabled;",
   ].join("\n"), context);
@@ -35,12 +35,10 @@ const createHarness = () => {
     useLayoutEffect: () => {},
     createElement: (type, props, ...children) => ({ type, props, children }),
   };
-  context.Spicetify = { React: react };
-  context.window.ivLyricsLyricRendererPrimitives = {
+  const primitives = {
     LyricsLineBlock: "line", IdlingIndicator: "prelude",
     useLyricsPlaybackPosition: () => 0, getPseudoKaraokeRenderAdvance: () => 0,
     prepareGlobalCharTimeline: () => null,
-    EMPTY_GLOBAL_CHAR_STATE: { globalCharOffsets: [], activeGlobalCharIndex: -1 },
     getInterludeInfo: line => line.interludeInfo || { isInterlude: false },
     createActiveTrailingKaraokeInterludeLine: () => null,
     getEmbeddedAuxiliaryDisplayValues: line => line,
@@ -49,12 +47,16 @@ const createHarness = () => {
     getInterludeHandoffState: context.handoff,
     isInterludeMotionEnabled: context.motion,
   };
-  vm.runInContext(vinyl, context);
+  const renderVinyl = createVinylActiveLyricRenderer({
+    react, primitives, browser: context.window,
+    getFonts: () => undefined, getVisualSettings: () => CONFIG.visual,
+    isFuriganaReady: () => false, getLyricsLocale: () => "auto",
+  });
   return {
     CONFIG, media, handoff: context.handoff,
     render(props) {
       cursor = 0;
-      return context.window.ivLyricsActiveLyricLineRenderer({ singleLineScroll: false, ...props })?.children[0];
+      return renderVinyl({ singleLineScroll: false, ...props })?.children[0];
     },
   };
 };

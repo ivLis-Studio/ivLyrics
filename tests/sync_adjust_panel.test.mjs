@@ -1,30 +1,9 @@
+import { computeSyncAdjustPanelPosition as compute } from "../src/app/toolbar/sync/syncAdjustPanelPosition.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
 
-const source = readFileSync(new URL('../OptionsMenu.js', import.meta.url), 'utf8');
-
-const section = (text, startMarker, endMarker) => {
-    const start = text.indexOf(startMarker);
-    const end = text.indexOf(endMarker, start + startMarker.length);
-    assert.ok(start >= 0 && end > start, `missing source section: ${startMarker}`);
-    return text.slice(start, end);
-};
-
-// Evaluate only the pure positioning helper (no Spicetify/React needed).
-const helperSource = section(
-    source,
-    'const SYNC_ADJUST_PANEL_GAP = 10;',
-    '\nconst SyncAdjustButtonFluent'
-);
-const context = vm.createContext({});
-vm.runInContext(
-    `${helperSource}\nglobalThis.computeSyncAdjustPanelPosition = computeSyncAdjustPanelPosition;`,
-    context
-);
-const compute = context.computeSyncAdjustPanelPosition;
-assert.equal(typeof compute, 'function', 'helper must be defined');
+const source = readFileSync(new URL('../src/app/toolbar/toolbarFlyout.mjs', import.meta.url), 'utf8');
 
 test('returns null while rects are not measurable yet', () => {
     assert.equal(compute(null, { width: 410, height: 500 }, 1920, 1080), null);
@@ -88,7 +67,7 @@ test('the sync overlay is never rendered hidden while unpositioned', () => {
     // the overlay used `visibility: "hidden"` until the first measurement,
     // so any missed measurement left the panel stuck invisible.
     assert.ok(
-        !source.includes('window.innerWidth > 840 ? { visibility: "hidden" }'),
+        !source.includes('host.innerWidth > 840 ? { visibility: "hidden" }'),
         'overlay must not hide itself while waiting for measurement'
     );
     assert.ok(

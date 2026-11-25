@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const source = readFileSync(new URL("../NowPlayingPanelLyrics.js", import.meta.url), "utf8");
+const source = readFileSync(new URL("../src/lyrics/panelLyricLines.mjs", import.meta.url), "utf8");
 const start = source.indexOf("    const KaraokeTextRunSegment = memo(");
 const end = source.indexOf("    // ============================================", start);
 assert.ok(start >= 0 && end > start);

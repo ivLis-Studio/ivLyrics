@@ -1,0 +1,199 @@
+/* Shared compact glass styling for secondary dialogs and editors */
+.community-video-header {
+  min-height: 64px;
+  padding: 14px 16px 12px 20px;
+  border-bottom-color: var(--iv-surface-divider);
+}
+
+.community-video-header h3 {
+  font-size: 18px;
+  letter-spacing: -0.025em;
+}
+
+.community-video-close,
+.ivlyrics-cache-edit-close {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--iv-radius-pill);
+  border-color: var(--iv-surface-border);
+  background: var(--iv-surface-fill);
+}
+
+.community-video-content {
+  padding: 14px 20px 20px;
+}
+
+.community-video-content::-webkit-scrollbar,
+.ivlyrics-cache-edit-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.community-video-content::-webkit-scrollbar-thumb,
+.ivlyrics-cache-edit-list::-webkit-scrollbar-thumb {
+  border-radius: var(--iv-radius-pill);
+  background: rgba(var(--spice-rgb-text, 255, 255, 255), 0.18);
+}
+
+.community-video-list {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--iv-surface-divider);
+  border-radius: var(--iv-radius-card);
+  background: var(--iv-surface-fill);
+}
+
+.community-video-item {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  transform: none;
+}
+
+.community-video-item + .community-video-item {
+  border-top: 1px solid var(--iv-surface-divider);
+}
+
+.community-video-item:hover {
+  transform: none;
+  background: var(--iv-surface-fill-hover);
+}
+
+.community-video-item.active {
+  box-shadow: inset 3px 0 0 rgba(var(--spice-rgb-accent, 30, 215, 96), 0.72);
+  background: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.1);
+}
+
+.community-video-rank,
+.community-video-title .auto-badge {
+  border-radius: var(--iv-radius-pill);
+}
+
+.community-video-actions .action-btn,
+.community-video-actions .vote-btn,
+.community-video-submit-btn,
+.community-video-add-btn,
+.confirm-dialog-btn {
+  border-radius: var(--iv-radius-pill);
+}
+
+.community-video-embed,
+.community-video-embed iframe,
+.video-title-preview .video-title-text,
+.community-video-submit-form {
+  border-radius: 14px;
+}
+
+.community-video-submit-form input {
+  border-radius: var(--iv-radius-input);
+}
+
+.community-video-submit-form input:focus-visible,
+.community-video-skip-edit:focus-visible,
+.community-video-skip-remove:focus-visible,
+.community-video-skip-add:focus-visible,
+.community-video-skip-cancel:focus-visible,
+.community-video-close:focus-visible,
+.community-video-actions button:focus-visible,
+.community-video-submit-btn:focus-visible,
+.community-video-add-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(var(--spice-rgb-accent, 30, 215, 96), 0.24);
+}
+
+.confirm-dialog-overlay,
+.ivlyrics-cache-edit-overlay,
+.ivlyrics-marketplace-confirm-overlay {
+  background: rgba(0, 0, 0, 0.46);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.confirm-dialog,
+.ivlyrics-marketplace-confirm-modal {
+  border: 1px solid var(--iv-surface-border);
+  border-radius: 20px;
+  background: var(--iv-surface-shell-strong);
+  box-shadow: var(--iv-surface-shadow);
+  backdrop-filter: var(--iv-surface-blur);
+  -webkit-backdrop-filter: var(--iv-surface-blur);
+}
+
+.ivlyrics-cache-edit-modal {
+  border-radius: var(--iv-radius-shell);
+  background: var(--iv-surface-shell-strong);
+  border-color: var(--iv-surface-border);
+  box-shadow: var(--iv-surface-shadow);
+  backdrop-filter: var(--iv-surface-blur);
+  -webkit-backdrop-filter: var(--iv-surface-blur);
+}
+
+.ivlyrics-cache-edit-header,
+.ivlyrics-cache-edit-footer {
+  padding: 14px 18px;
+  background: var(--iv-surface-fill);
+}
+
+.ivlyrics-cache-edit-status-item,
+.ivlyrics-cache-edit-badge {
+  border-radius: var(--iv-radius-pill);
+}
+
+.ivlyrics-cache-edit-item {
+  border-radius: var(--iv-radius-card);
+  background: var(--iv-surface-fill);
+  border-color: var(--iv-surface-divider);
+}
+
+.ivlyrics-cache-edit-original-line,
+.ivlyrics-cache-edit-line-input,
+.ivlyrics-cache-edit-units {
+  border-radius: var(--iv-radius-input);
+}
+
+.ivlyrics-cache-edit-shift-button,
+.ivlyrics-cache-edit-button,
+.ivlyrics-cache-edit-text-button {
+  border-radius: var(--iv-radius-pill);
+}
+
+.ivlyrics-cache-edit-close:focus-visible,
+.ivlyrics-cache-edit-button:focus-visible,
+.ivlyrics-cache-edit-shift-button:focus-visible,
+.ivlyrics-cache-edit-text-button:focus-visible,
+.ivlyrics-cache-edit-line-input:focus-visible,
+.ivlyrics-marketplace-confirm-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(var(--spice-rgb-accent, 30, 215, 96), 0.24);
+}
+
+.ivlyrics-marketplace-confirm-modal {
+  padding: 22px 24px 20px;
+}
+
+.ivlyrics-marketplace-confirm-btn {
+  min-height: 34px;
+  border-radius: var(--iv-radius-pill);
+}
+
+@media (max-width: 650px) {
+  .ivlyrics-cache-edit-modal {
+    border-radius: 18px;
+  }
+
+  .community-video-content,
+  .ivlyrics-cache-edit-body {
+    padding-inline: 14px;
+  }
+
+  .community-video-random-row {
+    align-items: flex-start;
+  }
+
+  .community-video-random-switch {
+    margin-top: 2px;
+  }
+}
+
+/* Configurable outside-only text outlines. Each variable contains hard shadow
+   copies of the completed glyph silhouette, so the visible fill is never made
+   thinner as it is with a centered WebKit text stroke. */

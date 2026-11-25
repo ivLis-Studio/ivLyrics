@@ -1,8 +1,8 @@
+import { createCdVisualizerApi } from "../src/features/player/CdVisualizer.js";
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
 import test from "node:test";
 
-const api = createRequire(import.meta.url)("../CdVisualizer.js");
+const api = createCdVisualizerApi(globalThis);
 const palette = Object.freeze(["#ed3434", "#36cb69", "#345aed", "#e8c731"]);
 const url = index => `https://i.scdn.co/image/album-${index}`;
 const uri = index => `spotify:track:${String(index).padStart(22, "0")}`;

@@ -1,13 +1,7 @@
+import { createSyncCreatorLastCharEnd } from "#ivlyrics/features/sync/syncCreatorLastCharEnd.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
 import { createLockedEditor } from './sync_creator_lock_harness.mjs';
-
-const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
-const start = source.indexOf('\tconst getCurrentLastCharEndInfo =');
-const end = source.indexOf('\tconst renderLastCharEndControls =', start);
-assert.ok(start >= 0 && end > start);
 
 // Exercise both the shipping document listener and its real state updater.
 function createEditor(t, mode) {
@@ -15,7 +9,17 @@ function createEditor(t, mode) {
     t.after(() => h.dispose());
     let claims = 0;
     Object.assign(h.context, { mode, claimSessionForLocalEditing() { claims++; } });
-    vm.runInContext(source.slice(start, end), h.context);
+    h.context.lastCharEndShortcutRef.current = () => {
+        const editor = createSyncCreatorLastCharEnd({
+            currentExistingLineData: h.context.currentExistingLineData,
+            currentLineStart: h.context.currentLineStart,
+            activeParallelPart: h.context.activeParallelPart,
+            getSyncCreatorRejoinedLineChars: h.api.getSyncCreatorRejoinedLineChars,
+            claimSessionForLocalEditing: h.context.claimSessionForLocalEditing,
+            setSyncData: h.context.setSyncData, toast: h.context.Toast, i18n: h.context.I18n,
+        });
+        editor.setCurrentLastCharEnd(h.context.Spicetify.Player.getProgress() / 1000);
+    };
     h.refreshKeyboard();
     return { h, claims: () => claims };
 }

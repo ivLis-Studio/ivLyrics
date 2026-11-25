@@ -1,4 +1,5 @@
 // Read-only browser acceptance of the shipping extension's fallback transport.
+// Supply Addon_Lyrics_Lrclib.js bundled with tests/fixtures/initializer-bundle.mjs.
 // Force only the direct request to fail; the Spicetify proxy is a real request.
 async (page) => {
   const target = "https://lrclib.net/api/get/18694795";

@@ -1,28 +1,26 @@
+import { createCdSettingsCatalog } from "#ivlyrics/features/settings/settingsCdCatalog.mjs";
+import { createCdVisualizerApi } from "../src/features/player/CdVisualizer.js";
+import { readI18nFixture } from "./fixtures/legacy-page-source.mjs";
+import { readLanguageTable } from "./fixtures/language-source.mjs";
+import { SETTINGS_CD_STYLE_ORDER } from "#ivlyrics/features/settings/createSettingsFullscreenPreview.mjs";
+import { sourceUrl } from "./fixtures/source-paths.mjs";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
 const root = new URL("../", import.meta.url);
-const localeDirectory = new URL("langs/", root);
+const localeDirectory = new URL("src/i18n/langs/", root);
 const localeFiles = readdirSync(localeDirectory).filter((name) => /^Lang.*\.js$/.test(name)).sort();
-const read = (path) => readFileSync(new URL(path, root), "utf8");
+const read = (path) => readFileSync(sourceUrl(path), "utf8");
 const runtime = vm.createContext({
   window: {},
   localStorage: { getItem: () => "en", setItem() {} },
 });
-const locales = new Map();
-for (const file of localeFiles) {
-  vm.runInContext(read(`langs/${file}`), runtime, { filename: file });
-  const isolated = { window: {} };
-  vm.runInNewContext(read(`langs/${file}`), isolated, { filename: file });
-  locales.set(file, Object.values(isolated.window)[0]);
-}
-vm.runInContext(read("I18n.js"), runtime, { filename: "I18n.js" });
+const locales = new Map(localeFiles.map(file => [file, readLanguageTable(file)]));
+vm.runInContext(readI18nFixture(), runtime, { filename: "I18n.js" });
 const i18n = runtime.window.I18n;
-const visualizer = { window: {} };
-vm.runInNewContext(read("CdVisualizer.js"), visualizer, { filename: "CdVisualizer.js" });
-const { STYLES, COLOR_MODES } = visualizer.window.ivLyricsCdVisualizer;
+const { STYLES, COLOR_MODES } = createCdVisualizerApi({});
 const settingNames = [
   "discSize", "rotation", "rotationSpeed", "enabled", "style", "mirror",
   "colorMode", "albumGradient", "color", "sensitivity", "density", "thickness",
@@ -75,26 +73,18 @@ test("CD localization covers 22 locales, 12 settings, nine shapes and four color
 });
 
 test("CD settings catalog and literal UI lookups only request existing translations", () => {
-  const source = read("Settings.js");
-  const start = source.indexOf("const getCdSettingsSections =");
-  const end = source.indexOf("\nconst getCanonicalSettingsDestination", start);
-  const styleOrder = source.match(/const SETTINGS_CD_STYLE_ORDER = \[[^\]]+\];/);
-  assert.ok(start >= 0 && end > start && styleOrder, "CD settings catalog is available");
   const requested = new Set();
-  const sections = vm.runInNewContext(
-    `${styleOrder[0]}\n${source.slice(start, end)}\ngetCdSettingsSections({ controls: false });`,
-    {
-      CONFIG: { visual: {} },
-      I18n: { t: (key) => { requested.add(key); return key; } },
-      getSettingsPreviewFlag: (_key, fallback) => fallback,
-      react: { createElement: () => null },
-    },
-  );
+  const sections = createCdSettingsCatalog({
+    readVisualSettings: () => ({}),
+    translate: key => { requested.add(key); return key; },
+    getSettingsPreviewFlag: (_key, fallback) => fallback,
+    components: {},
+  })({ controls: false });
   for (const section of sections) {
     requested.add(section.titleKey);
     requested.add(section.subtitleKey);
   }
-  for (const file of ["Settings.js", "FullscreenOverlay.js", "VinylPlayerMode.js", "CdVisualizer.js"]) {
+  for (const file of ["Settings.js", "FullscreenOverlay.js", "VinylPlayerMode.js", "CdVisualizer.js", "src/features/player/vinylCompactDisc.mjs", "src/features/player/vinylStageControls.mjs"]) {
     for (const [, key] of read(file).matchAll(/["'](vinyl\.cd\.[A-Za-z0-9_.]+)["']/g)) requested.add(key);
   }
   assert.deepEqual([...requested].sort(), cdKeys.map((key) => `vinyl.cd.${key}`), "all CD strings are wired to the UI");

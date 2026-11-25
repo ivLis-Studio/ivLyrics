@@ -1,4 +1,4 @@
-<img width="2208" height="512" alt="ivLyrics — Enjoy music in your language" src="https://github.com/ivLis-Studio/ivLyrics/blob/main/preview_readme_en.png?raw=true" />
+![ivLyrics — Enjoy music in your language](docs/assets/preview_readme_en.png)
 
 [한국어](README.md) · [English](README_EN.md)
 
@@ -80,6 +80,8 @@ spicetify apply
 ```
 
 For future manual updates, download and replace the app from a new release. See [Spicetify's custom app guide](https://spicetify.app/docs/customization/custom-apps) for folder details.
+
+The GitHub-generated `Source code.zip` contains build inputs. Follow the [development setup](https://github.com/ivLis-Studio/ivLyrics/blob/main/CONTRIBUTING.md#development-setup) to build it locally.
 
 </details>
 
@@ -214,10 +216,39 @@ The ivLyrics source code is licensed under the [GNU LGPL v2.1](LICENSE). Bundled
 
 To manage server load, ivLis Studio permits automated requests to the services it operates at `ivlis.kr`, `ivl.is`, and their subdomains only from official ivLyrics builds and clients that ivLis Studio has approved in advance. If you maintain a fork or another app without that approval, disable requests to those addresses or point them at a service you operate. This policy governs access to services operated by ivLis Studio. Use, modification, and redistribution of the source code are governed by the LGPL v2.1.
 
-See [NOTICE.md](NOTICE.md) for the Spicetify lyrics-plus attribution, contributor credits, and component licenses.
+Copyright (c) 2025–2026 ivLis Studio and contributors.
 
-- **TinySegmenter** — Copyright (c) 2008, Taku Kudo. [Copyright and license notice](TinySegmenter.LICENSE.txt)
-- **wa-sqlite 1.0.0** — Copyright (c) 2023 Roy T. Hashimoto. MIT License; the full notice is also preserved in the distributed `LrclibLocalDatabaseRuntime.js`.
+<details>
+<summary>LGPL-2.1 files and contributors</summary>
+
+[LGPL-2.1](third_party/lyrics-plus.LGPL-2.1.txt) governs these files and the portions of the bundles generated from them, including the rights to use, modify, and redistribute them. Releases through v7.1.17 (commit `3c251f7`) remain available under their original terms.
+
+**Files derived from Spicetify lyrics-plus**
+
+`src/spicetify/index.js`, `src/styles/`, `src/core/Utils.js`, `src/lyrics/speakerColors.mjs`, `src/lyrics/LyricsService.js`, `src/lyrics/Pages.js`, `src/features/settings/Settings.js`, `src/app/OptionsMenu.js`, `src/features/player/PlaybarButton.js`, `manifest.json`, `src/lyrics/NowPlayingPanelLyrics.js`, `src/lyrics/TranslationModeHelper.js`
+
+The same license covers the extracted `.mjs` modules in `src/lyrics/creator-profile/` and `src/features/settings/`, along with `furigana.mjs`, `translation*.mjs`, `lyricsBackgroundStyles.mjs`, `lyricsLanguage*.mjs`, `karaokeWordTiming.mjs`, `karaokeFill.mjs`, `karaokeMotion.mjs`, `karaokeGlyphUpdates.mjs`, `karaokeLivePainter.mjs`, `karaokeWordSupplementHook.mjs`, `createWordSupplementPrefetcher.mjs`, `lyricsTextOutline.mjs`, `lyricsTypography.mjs`, `lyricInterludePresentation.mjs`, `lyricTextMarkup.mjs`, `lyricCulturalAnnotations.mjs`, `createLyricSubLineRenderer.mjs`, `createLyricLineActions.mjs`, `lyricsLineComponents.mjs`, `createSyncedLyricRows.mjs`, and `syncDataSourceCompatibility.mjs` in `src/lyrics/`.
+
+It also covers `src/core/trackIdentity.mjs`, `src/lyrics/panelLyricPresentation.mjs`, `src/features/overlay/overlayLyricPayload.mjs`, and `src/features/overlay/overlayOffsets.mjs`.
+
+**Files containing contributions submitted under the LGPL**
+
+- Runtime: `src/providers/ai/AIAddonManager.js`, `src/providers/ai/AIRequest.js`, `src/providers/ai/Addon_AI_ChatGPT.js`, `src/providers/lyrics/Addon_Lyrics_LrcRed.js`, `src/providers/lyrics/Addon_Lyrics_Lrclib.js`, `src/providers/lyrics/Addon_Lyrics_OpenLyrics.js`, `src/features/fullscreen/FullscreenOverlay.js`, `src/features/share/LyricsShareImage.js`, `src/lyrics/LyricsWordSegmenter.js`, `src/features/player/PlaylistPicker.js`, `src/lyrics/PronunciationFirst.js`, `src/features/sync/SyncDataCreator.js`, `src/features/sync/syncCreatorVocalStyles.mjs`, `src/features/video/VideoBackground.js`, `src/features/video/VideoBackgroundDepend.js`, `src/features/video/VideoMatch.js`, `src/lyrics/WordLevelSupplements.js`, `src/lyrics/createWordSupplementService.mjs`, `src/lyrics/createWordSupplementBatcher.mjs`
+- Language files: every file in `src/i18n/langs/`
+- Extracted modules: the `.mjs` files in `src/providers/ai/` and `src/features/sync/`
+- Tests: `tests/capability_master_switch.test.mjs`, `tests/cdn_script_integrity.test.mjs`, `tests/character_pronunciation_repair.test.mjs`, `tests/chatgpt_capability_seeding.test.mjs`, `tests/chinese_pronunciation_tones.test.mjs`, `tests/creator_profile_playlist.test.mjs`, `tests/creator_profile_row_layout.test.mjs`, `tests/fixtures/fullscreen_controller_background_browser.js`, `tests/fixtures/playlist_picker_browser.js`, `tests/fixtures/sync_creator_preview_browser.js`, `tests/fullscreen_controller_background.test.mjs`, `tests/fullscreen_playback_updates.test.mjs`, `tests/interlude_padding_collapse.test.mjs`, `tests/karaoke_adaptive_motion.test.mjs`, `tests/karaoke_expressive_long_words.test.mjs`, `tests/karaoke_expressive_motion.test.mjs`, `tests/karaoke_static_render_cache.test.mjs`, `tests/karaoke_style_invalidation.test.mjs`, `tests/karaoke_vocal_render_cache.test.mjs`, `tests/language_detection.test.mjs`, `tests/lyrics_provider_same_song.test.mjs`, `tests/lyrics_seek_fade_compensation.test.mjs`, `tests/lyrics_text_shadow.test.mjs`, `tests/lyrics_word_segmenter_quoted_words.test.mjs`, `tests/openai_connections.test.mjs`, `tests/openai_connections_unified.test.mjs`, `tests/openai_primary_presentation.test.mjs`, `tests/panel_lyric_html_escaping.test.mjs`, `tests/playlist_picker_button.test.mjs`, `tests/playlist_picker_panel.test.mjs`, `tests/playlist_picker_placement.test.mjs`, `tests/pronunciation_fill.test.mjs`, `tests/renderer_settings_equivalence.test.mjs`, `tests/settings_fullscreen_preview.test.mjs`, `tests/settings_import_endpoint_guard.test.mjs`, `tests/settings_menu_ownership.test.mjs`, `tests/settings_provider_master_switch.test.mjs`, `tests/share_image_controls_contract.test.mjs`, `tests/share_image_word_level.test.mjs`, `tests/sync_adjust_panel.test.mjs`, `tests/sync_creator_loaded_lrclib_id.test.mjs`, `tests/sync_creator_lock_integration.test.mjs`, `tests/sync_creator_lrclib_transport.test.mjs`, `tests/sync_creator_preview_navigation.test.mjs`, `tests/sync_creator_preview_rules.test.mjs`, `tests/sync_creator_pronunciation_bubble_layout.test.mjs`, `tests/sync_creator_segment_offset.test.mjs`, `tests/sync_creator_selection_effect.test.mjs`, `tests/sync_unsubmitted_draft.test.mjs`, `tests/synced_render_reuse.test.mjs`, `tests/track_sync_migration.test.mjs`, `tests/video_drift_correction.test.mjs`, `tests/video_match_quality.test.mjs`, `tests/video_prefetch_track_identity.test.mjs`, `tests/video_quick_sync.test.mjs`, `tests/word_supplement_han_mixed_line.test.mjs`, `tests/word_supplement_pending_dedup.test.mjs`, `tests/word_supplement_persistence_fallback.test.mjs`, `tests/word_supplement_prefetch_track_id.test.mjs`, `tests/word_supplement_quoted_units.test.mjs`, `tests/word_supplement_regenerate.test.mjs`, `tests/youtube_ad_suppression.test.mjs`
+
+Contributors: PixelAxolotl, Ahmedxsaad, Oein, hohofught, kpnkpn1324, twoeater, karma-skz, Junsu Park, alixti, moxuun. Git records the complete history of contributions.
+
+</details>
+
+<details>
+<summary>Third-party components and licenses</summary>
+
+- **Preact** — MIT. [License](third_party/preact/LICENSE) for the mobile motion-lyrics build.
+- **Bootstrap** — MIT. Portions are included in `src/styles/`.
+- **TinySegmenter** — Copyright (c) 2008, Taku Kudo. [Copyright and license notice](third_party/TinySegmenter.LICENSE.txt)
+- **wa-sqlite 1.0.0** — Copyright (c) 2023 Roy T. Hashimoto. MIT License; the full notice is preserved in the installed `startup.js`.
 - **spicetify-visualizer** — Copyright (c) 2026 Konsl. MIT License. Parts of the CD visualizer's loudness and pitch interpolation are adapted from the [original commit](https://github.com/Konsl/spicetify-visualizer/tree/12cb2a9066690b4e023bccc9466ae784ebb62364). The radial renderer and lifecycle are specific to ivLyrics.
 
 <details>
@@ -246,5 +277,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+</details>
 
 </details>

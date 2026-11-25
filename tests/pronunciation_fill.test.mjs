@@ -1,15 +1,19 @@
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
+import { getRuntimeService as getPageRuntimeService } from "#ivlyrics/spicetify/runtimeServices.mjs";
+import { readKaraokePageHarnessSource } from "./fixtures/karaoke-page-modules.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { getSettingDefaultValue } from "../src/features/settings/settingsDefaults.mjs";
 
 // Pronunciation fill: with pronunciation-first off, karaoke lines carry the
 // timed units of their pronunciation row and the singing row fills along them.
-const source = readFileSync(new URL("../PronunciationFirst.js", import.meta.url), "utf8");
-const pages = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
-const styles = readFileSync(new URL("../style.css", import.meta.url), "utf8");
-const settings = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
-const index = readFileSync(new URL("../index.js", import.meta.url), "utf8");
+const source = bundleInitializer(new URL("../src/lyrics/PronunciationFirst.js", import.meta.url));
+const pages = readKaraokePageHarnessSource();
+const styles = readPcStylesheet();
+const pagePresentation = readFileSync(new URL("../src/lyrics/createPagePronunciationPresentation.mjs", import.meta.url), "utf8");
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const syllable = (text, startTime, endTime) => ({ text, startTime, endTime });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -30,6 +34,7 @@ const load = ({ first = false, fill = true, synced = true, manager = null } = {}
 		CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
 		localStorage: { getItem: () => null, setItem: () => {} },
 		console: { warn: () => {}, log: () => {} },
+		AbortController,
 		setTimeout,
 	});
 	vm.runInContext(source, context);
@@ -170,8 +175,9 @@ const extract = (name) => {
 const renderHarness = () => {
 	const effects = [];
 	const attached = [];
-	const block = pages.slice(pages.indexOf("const PHONETIC_FILL_ATTRIBUTE"), pages.indexOf("const playLyricsTrackReveal = "));
+	const block = pages.slice(pages.indexOf("const PHONETIC_FILL_ATTRIBUTE"), pages.indexOf("const useLyricsTrackReveal = "));
 	const context = vm.createContext({
+		getPageRuntimeService,
 		react: {
 			createElement: (tag, props, ...children) => ({ tag, props: props || {}, children: children.flat() }),
 			memo: (component) => component,
@@ -286,11 +292,11 @@ test("styles, settings, defaults and wiring are present", () => {
 	assert.match(styles, /\.lyrics-phonetic-fill-unit--active::after \{[^}]*content: attr\(data-text\);[^}]*text-shadow: none;[^}]*mask-image/s);
 	assert.match(styles, /\.lyrics-phonetic-fill-unit--done \{\s*color: var\(--lyrics-color-active\);/);
 	assert.match(styles, /\.lyrics-phonetic-fill-unit\.ivlyrics-karaoke-range-style \{\s*display: inline;/);
-	assert.match(settings, /"pronunciation-karaoke-fill": false/);
-	assert.match(settings, /key: "pronunciation-karaoke-fill",\s*type: ConfigSlider/);
-	assert.match(index, /"pronunciation-karaoke-fill": StorageManager\.get\(\s*"ivLyrics:visual:pronunciation-karaoke-fill",\s*false/);
-	assert.match(index, /api\.applyFillToLines\(lyrics, \{ timed \}\)/);
-	assert.match(pages, /phoneticUnits: part\.phoneticUnits \|\| null/);
+	assert.equal(getSettingDefaultValue("pronunciation-karaoke-fill"), false);
+	const playback = readFileSync(new URL("../src/features/settings/settingsPlaybackTabs.mjs", import.meta.url), "utf8");
+	assert.match(playback, /key: "pronunciation-karaoke-fill",\s*type: ConfigSlider/);
+	assert.match(pagePresentation, /api\.applyFillToLines\(lyrics, \{ timed \}\)/);
+	assert.match(pages, /phoneticUnits: voice\.phoneticUnits \|\| null/);
 	assert.doesNotMatch(pages.slice(pages.indexOf("const PhoneticFillText"), pages.indexOf("const renderPhoneticFillSubLine")),
 		/bounce|glow|expressive/i, "the fill applies no other karaoke effect");
 });

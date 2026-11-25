@@ -1,5 +1,12 @@
+import { readKaraokeRendererDeclarations } from "./fixtures/karaoke-renderer-declarations.mjs";
+import { readLyricRenderingLocale } from "#ivlyrics/lyrics/lyricsTextRuntime.mjs";
+import { getLastTimedSyllableEndTime } from "#ivlyrics/lyrics/lyricPlaybackTimeline.mjs";
+import { getCopyableText } from "#ivlyrics/lyrics/lyricDisplayText.mjs";
+import { toFiniteTime } from "#ivlyrics/lyrics/lyricInterludeTiming.mjs";
+import { lyricsWordSegmenter } from "#ivlyrics/lyrics/LyricsWordSegmenter.js";
+import { createKaraokeGraphemes } from "#ivlyrics/lyrics/karaokeGraphemes.mjs";
+import { getRuntimeService as getPageRuntimeService } from "#ivlyrics/spicetify/runtimeServices.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
@@ -7,8 +14,7 @@ import vm from "node:vm";
 // karaoke line's fill end. Both must return exactly what the uncached
 // computation returns, for every input change that can reach them.
 
-const pageSource = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
-const segmenterSource = readFileSync(new URL("../LyricsWordSegmenter.js", import.meta.url), "utf8");
+const pageSource = readKaraokeRendererDeclarations();
 const slice = (start, end) => {
 	const from = pageSource.indexOf(start);
 	const to = pageSource.indexOf(end, from);
@@ -19,25 +25,17 @@ const quiet = { log: () => {}, warn: () => {}, error: () => {} };
 // Arrays created inside a vm context have that context's prototype.
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
-const loadSegmenter = () => {
-	const module = { exports: {} };
-	vm.runInContext(segmenterSource, vm.createContext({ module, console: quiet }));
-	return module.exports;
-};
-
 const loadFillEnd = (segmenter) => {
 	const state = { locale: "ja" };
 	const context = vm.createContext({
-		console: quiet,
+		console: quiet, createKaraokeGraphemes, readLyricRenderingLocale, getPageRuntimeService, getCopyableText, toFiniteTime, getLastTimedSyllableEndTime,
 		window: { Utils: { getDetectedLanguage: () => state.locale }, LyricsWordSegmenter: segmenter },
 	});
 	vm.runInContext([
 		...pageSource.match(/const KARAOKE_PRE_SPACE_[A-Z_]+ = [\d.]+;/g),
-		slice("const getCopyableText", "const INTERLUDE_MIN_DURATION_MS"),
-		slice("const toFiniteTime", "const getFiniteLyricsStyleNumber"),
 		slice("const getTimedSyllablesFromLine", "const getKaraokeSpeakerPresentation"),
-		slice("const KARAOKE_COMBINING_MARK_REGEX", "const getKaraokeSyllableCharCount"),
-		slice("const getLastSyllableEndTime", "const getInterludeInfo"),
+		slice("const { splitKaraokeGraphemes,", "const getKaraokeSyllableCharCount"),
+		slice("const getLastSyllableEndTime", "const { getInterludeInfo"),
 		slice("const getKaraokeLineBounds", "const buildKaraokeFuriganaMap"),
 		slice("const buildKaraokeTimedChars", "const getActiveKaraokeTimedCharIndex"),
 		"globalThis.api = { computeKaraokeLineFillEndTime, getKaraokeLineFillEndTime };",
@@ -48,6 +46,7 @@ const loadFillEnd = (segmenter) => {
 const loadFillEndCacheWithSpy = () => {
 	const state = { locale: "en", calls: 0 };
 	const context = vm.createContext({
+		readLyricRenderingLocale,
 		window: { Utils: { getDetectedLanguage: () => state.locale } },
 		computeKaraokeLineFillEndTime: (line) => {
 			state.calls++;
@@ -55,7 +54,7 @@ const loadFillEndCacheWithSpy = () => {
 		},
 	});
 	vm.runInContext([
-		slice("const karaokeLineFillEndTimeCache", "const getInterludeInfo"),
+		slice("const karaokeLineFillEndTimeCache", "const { getInterludeInfo"),
 		"globalThis.getKaraokeLineFillEndTime = getKaraokeLineFillEndTime;",
 	].join("\n"), context);
 	return { get: context.getKaraokeLineFillEndTime, state };
@@ -78,7 +77,7 @@ const sampleLines = () => [
 ];
 
 test("cached grapheme segmentation matches uncached segmentation and returns independent copies", () => {
-	const segmenter = loadSegmenter();
+	const segmenter = lyricsWordSegmenter;
 	const uncached = (text, locale) => [...new Intl.Segmenter(locale, { granularity: "grapheme" }).segment(text)].map((item) => item.segment);
 	for (const [text, locale] of [["こんにちは世界", "ja"], ["👩‍👩‍👧 é", "auto"], ["สวัสดีครับ", "th"], ["नमस्ते", "hi"], ["가나다", "ko"]]) {
 		const first = segmenter.segmentGraphemes(text, locale);
@@ -93,7 +92,7 @@ test("cached grapheme segmentation matches uncached segmentation and returns ind
 });
 
 test("grapheme cache stays correct beyond its size limit", () => {
-	const segmenter = loadSegmenter();
+	const segmenter = lyricsWordSegmenter;
 	for (let index = 0; index < 5000; index++) {
 		const text = "line " + index + " é";
 		assert.equal(segmenter.segmentGraphemes(text, "en").join(""), text);
@@ -102,7 +101,7 @@ test("grapheme cache stays correct beyond its size limit", () => {
 });
 
 test("cached karaoke fill ends equal the uncached computation for originals, display copies and edits", () => {
-	const { computeKaraokeLineFillEndTime, getKaraokeLineFillEndTime, state } = loadFillEnd(loadSegmenter());
+	const { computeKaraokeLineFillEndTime, getKaraokeLineFillEndTime, state } = loadFillEnd(lyricsWordSegmenter);
 	for (const locale of ["ja", "en", "auto"]) {
 		state.locale = locale;
 		for (const line of sampleLines()) {

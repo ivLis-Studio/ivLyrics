@@ -1,21 +1,33 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import vm from "node:vm";
 
-const source = readFileSync(new URL("../AIAddonManager.js", import.meta.url), "utf8");
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
+import { buildResearchPrompt, buildTMIPrompt } from "../src/providers/ai/researchPrompt.mjs";
+const source = bundleInitializer(new URL("../src/providers/ai/AIAddonManager.js", import.meta.url));
 const revision = process.env.IVLYRICS_REFACTOR_TEST_REVISION;
 const baseline = revision ? execFileSync("git", ["show", `${revision}:AIAddonManager.js`], {
 	cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8",
 }) : null;
-const normalize = value => JSON.parse(JSON.stringify(value, (_key, item) => typeof item === "function" ? "[callback]" : item));
+const normalize = value => JSON.parse(JSON.stringify(value, (key, item) => {
+	if (key === "signal" && item instanceof AbortSignal) return undefined;
+	return typeof item === "function" ? "[callback]" : item;
+}));
 const requests = [
 	{ method: "translateMetadata", type: "metadata", builder: "buildMetadataTranslationPrompt", prompt: "metadataPrompt" },
 	{ method: "generateLyricsStudy", type: "lyricsStudy", builder: "buildLyricsStudyPrompt", prompt: "lyricsStudyPrompt" },
 	{ method: "generateCulturalAnnotations", type: "culturalAnnotations", builder: "buildCulturalAnnotationsPrompt", prompt: "culturalAnnotationsPrompt" },
 ];
+
+test("the research prompt and its compatibility alias resolve localized instructions", () => {
+	const params = { lang: "ja-JP", title: "Fixture song", lyrics: [{ text: "Opening line" }] };
+	const prompt = buildResearchPrompt(params);
+	assert.match(prompt, /Japanese \(日本語\)/);
+	assert.match(prompt, /Opening line/);
+	assert.equal(buildTMIPrompt(params), prompt);
+});
 
 // Run the complete manager with invented, independently registered addons. No
 // provider modules, page CONFIG/Utils, credentials, real storage or fetch exist.
@@ -34,6 +46,7 @@ const run = async (script, request, scenario) => {
 	};
 	vm.runInNewContext(script, {
 		window,
+		AbortController,
 		Spicetify: { LocalStorage: { get: key => storage.get(key), set: (key, value) => storage.set(key, value) } },
 		console: Object.fromEntries(["log", "warn", "error"].map(name => [name, (...values) => record(name, ...values)])),
 		setTimeout(callback, milliseconds) { timers.set(++timerId, callback); record("timer:start", timerId, milliseconds); return timerId; },

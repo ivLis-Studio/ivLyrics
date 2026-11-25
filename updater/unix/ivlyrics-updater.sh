@@ -62,12 +62,12 @@ download_installer() {
         rm -f -- "$destination"
         if command -v curl >/dev/null 2>&1; then
             set +e
-            curl -fsSLo "$destination" --connect-timeout 20 "$installer_url" 2>&1 | log_stream
+            curl -fsSLo "$destination" --connect-timeout 20 --max-time 40 "$installer_url" 2>&1 | log_stream
             download_status=${PIPESTATUS[0]}
             set -e
         elif command -v wget >/dev/null 2>&1; then
             set +e
-            wget --timeout=20 -O "$destination" "$installer_url" 2>&1 | log_stream
+            wget --timeout=20 --tries=1 -O "$destination" "$installer_url" 2>&1 | log_stream
             download_status=${PIPESTATUS[0]}
             set -e
         else
@@ -108,7 +108,7 @@ get_action() {
             action="$raw"
             ;;
         *)
-            action=""
+            return 1
             ;;
     esac
 
@@ -132,7 +132,47 @@ open_log() {
     fi
 }
 
+restore_spicetify_state() {
+    local saved_environment="$1/.spicetify-state"
+    local state_path xdg_state_path
+    [[ -f "$saved_environment" ]] || return 0
+    if ! { IFS= read -r -d '' state_path && IFS= read -r -d '' xdg_state_path; } < "$saved_environment"; then
+        log "Could not read the configured Spicetify state. Install ivLyrics again to repair the updater."
+        return 1
+    fi
+
+    if [[ -n "$state_path" ]]; then
+        export SPICETIFY_STATE="$state_path"
+    else
+        unset SPICETIFY_STATE
+    fi
+    if [[ -n "$xdg_state_path" ]]; then
+        export XDG_STATE_HOME="$xdg_state_path"
+    else
+        unset XDG_STATE_HOME
+    fi
+}
+
+restore_spicetify_profile() {
+    local script_dir profile
+    # The launcher path identifies the profile even when CustomApps or ivLyrics is a link.
+    script_dir="$(CDPATH= cd -L -- "$(dirname "${BASH_SOURCE[0]}")" && pwd -L)" || return 1
+    case "$script_dir" in
+        */CustomApps/ivLyrics/updater/unix)
+            profile="${script_dir%/CustomApps/ivLyrics/updater/unix}"
+            if [[ ! -f "$profile/config-xpui.ini" ]]; then
+                log "The registered Spicetify config is missing: $profile/config-xpui.ini"
+                return 1
+            fi
+            export SPICETIFY_CONFIG="$profile"
+            restore_spicetify_state "$script_dir"
+            ;;
+    esac
+}
+
 run_update() {
+    restore_spicetify_profile || return 1
+
     log "Starting ivLyrics update."
     if command -v spicetify >/dev/null 2>&1; then
         log "Using spicetify: $(command -v spicetify)"

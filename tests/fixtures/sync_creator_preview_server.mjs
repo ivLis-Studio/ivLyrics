@@ -1,11 +1,11 @@
+import { readPcStylesheet } from "../../.github/scripts/pc_stylesheet.mjs";
+import { readInstrumentedKaraokeFixture, readWordSegmenterFixture } from "./legacy-page-source.mjs";
 // Offline preview fixture using the production karaoke renderer and preview CSS.
 // node tests/fixtures/sync_creator_preview_server.mjs /path/to/react18/node_modules [port]
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
-const root = fileURLToPath(new URL('../../', import.meta.url));
 const modules = process.argv[2];
 if (!modules) throw new Error('Pass a React 18 node_modules directory');
 const section = (source, start, end) => {
@@ -14,12 +14,14 @@ const section = (source, start, end) => {
   return source.slice(from, to);
 };
 function renderer() {
-  const source = readFileSync(resolve(root, 'Pages.js'), 'utf8');
+  const source = readInstrumentedKaraokeFixture();
   return [
+    source.slice(0, source.indexOf('const CREATOR_PROFILE_THEME_KEY =')),
+    section(source, 'const getTrackPositionFPS =', 'const readLyricsGlobalOffset ='),
     section(source, 'const prefersReducedLyricsMotion =', '\nconst '),
-    section(source, 'const getTimedSyllablesFromLine', 'const getInterludeInfo'),
-    section(source, 'const KARAOKE_PRE_SPACE_MIN_DURATION_MS', 'const getSyncedAnimationIndex'),
-    section(source, 'const getKaraokeLineBounds', 'const SyncedLyricsPage = react.memo'),
+    section(source, 'const getTimedSyllablesFromLine', 'const { getInterludeInfo'),
+    section(source, 'const KARAOKE_PRE_SPACE_MIN_DURATION_MS', 'const shouldHideSyncedLine'),
+    section(source, 'const getKaraokeLineBounds', 'const useLyricsTrackReveal ='),
     'window.PreviewKaraokeLine = KaraokeLine;',
   ].join('\n');
 }
@@ -30,9 +32,6 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewp
 const react=React;const {useState,useRef,useEffect,useMemo,useCallback}=React;
 const CONFIG={visual:{'karaoke-bounce':false,'karaoke-text-effects':false,'furigana-enabled':false}};window.CONFIG=CONFIG;
 const Utils={getDetectedLanguage:()=>window.previewLocale||'ja',applyFuriganaIfEnabled:text=>text};window.Utils=Utils;
-const getCopyableText=value=>Array.isArray(value)?value.join(''):String(value??'');
-const toFiniteTime=value=>Number.isFinite(Number(value))?Number(value):null;
-const KARAOKE_RELEASE_WINDOW_MS=820,KARAOKE_COMPLETION_POSITION_OFFSET_MS=900;
 window.FuriganaConverter={isAvailable:()=>false};
 </script><script src="/LyricsWordSegmenter.js"></script><script src="/renderer.js"></script></head><body>
 <main class="sync-creator-live-preview-exact" style="--lyrics-color-active:#fff;--lyrics-color-inactive:rgba(255,255,255,.5)"><div id="rows"></div><p id="interlude" class="lyrics-lyricsContainer-LyricsLine-interludeMain"><span>♫</span><span>Interlude</span></p></main>
@@ -48,14 +47,14 @@ return react.createElement('section',{className:'preview-row',key:row,'data-loca
 const files = new Map([
   ['/react.js', resolve(modules, 'react/umd/react.development.js')],
   ['/react-dom.js', resolve(modules, 'react-dom/umd/react-dom.development.js')],
-  ['/style.css', resolve(root, 'style.css')], ['/LyricsWordSegmenter.js', resolve(root, 'LyricsWordSegmenter.js')],
 ]);
 const server = createServer((request, response) => {
   const path = new URL(request.url, 'http://127.0.0.1').pathname;
   try {
     if (path === '/favicon.ico') { response.writeHead(204); response.end(); return; }
-    if (path !== '/' && path !== '/renderer.js' && !files.has(path)) { response.writeHead(404); response.end(); return; }
-    const body = path === '/' ? html : path === '/renderer.js' ? renderer() : readFileSync(files.get(path));
+    if (path !== '/' && path !== '/renderer.js' && path !== '/LyricsWordSegmenter.js' && path !== '/style.css' && !files.has(path)) { response.writeHead(404); response.end(); return; }
+    const body = path === '/' ? html : path === '/renderer.js' ? renderer()
+      : path === '/LyricsWordSegmenter.js' ? readWordSegmenterFixture() : (path === '/style.css' ? readPcStylesheet() : readFileSync(files.get(path)));
     response.writeHead(200, {'Content-Type': path === '/' ? 'text/html; charset=utf-8' : path.endsWith('.css') ? 'text/css' : 'application/javascript', 'Cache-Control':'no-store'});
     response.end(body);
   } catch (error) { response.writeHead(500); response.end(error.message); }

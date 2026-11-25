@@ -1,0 +1,182 @@
+/* AI Addon Settings Styles */
+.ai-addon-settings {
+  padding: 16px;
+  background-color: rgba(var(--spice-rgb-card), 0.3);
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+
+.ai-addon-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.ai-addon-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.ai-addon-description {
+  font-size: 14px;
+  opacity: 0.8;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.ai-addon-input-group {
+  margin-bottom: 16px;
+}
+
+.ai-addon-input-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.ai-addon-input-group input[type="text"],
+.ai-addon-input-group input[type="password"],
+.ai-addon-input-group select {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 4px !important;
+  background-color: rgba(var(--spice-rgb-selected-row), 0.1) !important;
+  border: 1px solid transparent !important;
+  color: var(--spice-text) !important;
+  transition: all 0.2s ease;
+}
+
+.ai-addon-input-group input:focus,
+.ai-addon-input-group select:focus {
+  background-color: rgba(var(--spice-rgb-selected-row), 0.2) !important;
+  border-color: var(--spice-button) !important;
+  outline: none;
+}
+
+.ai-addon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.ai-addon-btn-primary {
+  background-color: var(--spice-button);
+  color: var(--spice-text);
+}
+
+.ai-addon-btn-primary:hover {
+  background-color: var(--spice-button-active);
+}
+
+.ai-addon-btn-secondary {
+  background-color: transparent;
+  border: 1px solid var(--spice-button);
+  color: var(--spice-text);
+}
+
+.ai-addon-btn-secondary:hover {
+  background-color: rgba(var(--spice-rgb-button), 0.1);
+}
+
+.ai-addon-checkbox {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.ai-addon-checkbox input[type="checkbox"] {
+  margin-right: 12px;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--spice-button);
+  cursor: pointer;
+}
+
+.ai-addon-checkbox span {
+  font-size: 14px;
+}
+
+.ai-addon-checkbox:hover span {
+  text-decoration: underline;
+}
+
+.ai-addon-capabilities-group {
+  margin-top: 20px;
+  padding: 16px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.ai-addon-capabilities-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  opacity: 0.9;
+}
+
+/* AI Addon Capabilities Chips (Toggle Buttons) */
+.ai-addon-caps-container {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 5px;
+}
+
+.ai-addon-cap-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--spice-text);
+  opacity: 0.7;
+  user-select: none;
+}
+
+.ai-addon-cap-chip:hover {
+  background: rgba(255, 255, 255, 0.1);
+  opacity: 0.9;
+}
+
+/* Pronunciation / Translate - Green */
+.ai-addon-cap-chip.active.cap-pronunciation,
+.ai-addon-cap-chip.active.cap-translate {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.5);
+  color: #4ade80;
+  opacity: 1;
+}
+
+/* Metadata - Neutral */
+.ai-addon-cap-chip.active.cap-metadata {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #e5e7eb;
+  opacity: 1;
+}
+
+/* TMI - Indigo/Purple */
+.ai-addon-cap-chip.active.cap-tmi {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.5);
+  color: #818cf8;
+  opacity: 1;
+}
+

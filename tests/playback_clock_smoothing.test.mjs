@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import test from "node:test";
 
 const require = createRequire(import.meta.url);
-const { createPlaybackClock } = require("../PlaybackClock.js");
+const { createPlaybackClock } = require("../src/core/PlaybackClock.js");
 
 // Anti's report: the karaoke fill froze for a moment and then jumped ahead.
 // Spotify re-anchors its player state now and then with a reading a few

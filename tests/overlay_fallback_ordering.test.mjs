@@ -1,10 +1,16 @@
+import { fixtureFullLyricsRequest } from "./fixtures/full-lyrics-request.mjs";
+import { getRuntimeService } from "#ivlyrics/spicetify/runtimeServices.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { createLyricsProviderRequests } from "#ivlyrics/lyrics/lyricsProviderRequests.mjs";
+import { createLyricsPresentationStore } from "#ivlyrics/lyrics/lyricsPresentationStore.mjs";
+import { createPageLyricsTimingUpgrade } from "#ivlyrics/lyrics/pageLyricsTimingUpgrade.mjs";
+import { installLyricsReadySnapshotListener } from "#ivlyrics/lyrics/installLyricsReadySnapshotListener.mjs";
+import { publishLyricsReady } from "#ivlyrics/lyrics/lyricsReadyPublisher.mjs";
 
-const source = readFileSync(new URL('../LyricsService.js', import.meta.url), 'utf8');
-const helperSource = readFileSync(new URL('../TranslationModeHelper.js', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../src/lyrics/LyricsService.js', import.meta.url), 'utf8');
 const section = (start, end) => {
     const from = source.indexOf(start), to = source.indexOf(end, from + start.length);
     assert.ok(from >= 0 && to > from);
@@ -22,37 +28,34 @@ const result = () => ({ uri: track.uri, provider: 'fixture', synced: [{ text: 'O
 
 // Execute both production request methods. Only providers, translation transport,
 // settings and the snapshot store are deterministic in-memory collaborators.
-function load() {
+function load(readSavedLocalLyrics) {
     const snapshots = new Map(), published = [], sent = [], loaded = [];
     const values = new Map([['ivLyrics:visual:translation-mode-2:english', 'gemini_ko']]);
     let provider = async () => result(), translator = async () => ({ translation: 'Translated' });
-    let target = 'ko', notation = 'translation', currentUri = track.uri;
+    let target = 'ko', notation = 'translation', currentUri = track.uri, djNarration = false;
     const context = vm.createContext({
+        getRuntimeService,
+        readSavedLocalLyrics,
         window: {
             LyricsAddonManager: { getLyrics: (...args) => provider(...args) },
             Translator: { callGemini: (...args) => translator(...args) },
         },
         Spicetify: { Player: { data: { item: track } }, LocalStorage: { get: key => values.get(key) } },
-        Utils: { getPlayerPlaybackSnapshot: () => ({ uri: currentUri }), detectLanguage: () => 'en',
+        Utils: { getPlayerPlaybackSnapshot: () => ({ uri: currentUri, djNarration }), detectLanguage: () => 'en',
             extractTrackId: uri => uri.split(':').at(-1),
             getTranslationCacheId: uri => uri.startsWith('spotify:local:') ? `local-uri:${uri}` : uri.split(':').at(-1),
             isSectionHeader: () => false },
         getTranslationTargetLanguage: () => target,
         getServicePronunciationNotation: () => notation,
-        getDisplayedVocalParts: () => null,
-        getTranslationRequestLineText: line => line.originalText || line.text || '',
         serviceDebug() {}, console: { warn() {}, error() {} },
         sendLyricsToConsumers: async payload => { sent.push(payload); },
     });
-    vm.runInContext(helperSource, context);
-    vm.runInContext(`let lyricsProviderRequestGeneration = 0;
-        const lyricsProviderInflightRequests = new Map();
-        globalThis.bumpGeneration = () => ++lyricsProviderRequestGeneration;
-        globalThis.service = {
+    context.providerRequests = createLyricsProviderRequests(() => context.window.LyricsAddonManager);
+    vm.runInContext(`globalThis.service = {
             ${method('        async getLyricsFromProviders(', '\n        /**\n         * 싱크 데이터 서비스 접근')},
-            ${method('        async getFullLyrics(', '\n        /**\n         * 커뮤니티 싱크 데이터 가져오기')}
         };`, context);
     const service = context.service;
+    service.getFullLyrics = fixtureFullLyricsRequest(context);
     service.getLyricsSnapshot = uri => snapshots.get(uri) || null;
     service.publishLyricsSnapshot = update => {
         const prior = snapshots.get(update.trackUri);
@@ -65,7 +68,8 @@ function load() {
     return { service, snapshots, published, sent, loaded, values,
         setProvider: fn => { provider = fn; }, setTranslator: fn => { translator = fn; },
         setTarget: value => { target = value; }, setNotation: value => { notation = value; },
-        setCurrentUri: value => { currentUri = value; }, bumpGeneration: context.bumpGeneration,
+        setCurrentUri: value => { currentUri = value; }, bumpGeneration: uri => context.providerRequests.invalidate(uri),
+        setNarration: value => { djNarration = value; },
         publishPage: () => service.publishLyricsSnapshot({ trackUri: track.uri, provider: 'page-provider',
             source: 'ivlyrics-page', displayLyrics: [{ text: 'Original', text2: 'Page translation' }], presentationComplete: true }),
     };
@@ -75,16 +79,64 @@ test('fallback accepts its own raw snapshot and publishes captured target and no
     const h = load(); h.setNotation('ipa');
     const output = await h.service.getFullLyrics(track);
     assert.equal(output.error, null);
-    assert.equal(h.published.length, 2);
+    assert.equal(h.published.length, 3);
     assert.equal(h.sent.length, 2);
     assert.equal(h.sent[0].sendReason, 'translation-pending');
     assert.equal(h.sent[1].lyrics[0].text2, 'Translated');
+    assert.strictEqual(h.published[1].displayLyrics, h.sent[0].lyrics);
+    assert.equal(h.published[1].presentationComplete, false);
     for (const packet of h.sent) {
         assert.equal(packet.presentationContext.translationTargetLanguage, 'ko');
         assert.equal(packet.presentationContext.pronunciationNotation, 'ipa');
     }
     assert.equal(h.published.at(-1).translationTargetLanguage, 'ko');
     assert.equal(h.published.at(-1).presentationComplete, true);
+});
+
+test('fallback presents retained word timing when the provider refreshes the same recording with line timing', async () => {
+    const h = load();
+    const store = createLyricsPresentationStore({
+        getPresentationKey: () => 'recording',
+        preserveAuxiliaryLyrics: (_previous, lyrics) => ({ lyrics }),
+        onPublish: snapshot => h.published.push(snapshot),
+    });
+    h.service.getLyricsSnapshot = store.get;
+    h.service.publishLyricsSnapshot = store.publish;
+    const base = { ...result(), provider: 'lrcred', lrcred: { isrc: 'JPAAA2600001' } };
+    const karaoke = base.synced.map(line => ({ ...line, startTime: 1200,
+        syllables: [{ text: line.text, startTime: 1200, endTime: line.endTime }] }));
+    store.publish({ trackUri: track.uri, rawResult: { ...base, karaoke, karaokeSource: 'lrcred' } });
+    h.setProvider(async () => base);
+
+    const output = await h.service.getFullLyrics(track);
+    assert.equal(output.error, null);
+    assert.equal(output.lyrics[0]?.startTime, 1200);
+    assert.equal(output.lyrics[0]?.text2, 'Translated');
+    assert.strictEqual(store.get(track.uri).rawResult.karaoke, karaoke);
+    assert.equal(h.sent.at(-1)?.presentationContext.lyricsType, 'karaoke');
+});
+
+test('word timing received during language lookup is used in the initial overlay packet', async () => {
+    const h = load(), language = deferred(), lookup = deferred();
+    const base = { ...result(), provider: 'lrcred', lrcred: { isrc: 'JPAAA2600001' } };
+    const karaoke = base.synced.map(line => ({ ...line, startTime: 1200,
+        syllables: [{ text: line.text, startTime: 1200, endTime: line.endTime }] }));
+    h.setProvider(async () => base);
+    h.service.getTrackLanguageOverride = () => { lookup.resolve(); return language.promise; };
+    const work = h.service.getFullLyrics(track);
+    await lookup.promise;
+    const original = h.snapshots.get(track.uri);
+    h.service.publishLyricsSnapshot({ trackUri: track.uri, source: 'lrcred-word-sync',
+        rawResult: { ...base, karaoke, karaokeSource: 'lrcred' },
+        timingUpgradeFromRevision: original.revision, timingUpgradeApplied: false });
+    language.resolve('en');
+    const output = await work;
+    assert.equal(output.lyrics[0].text2, 'Translated');
+    assert.equal(h.sent.length, 2);
+    for (const entry of h.sent) {
+        assert.equal(entry.presentationContext.lyricsType, 'karaoke');
+        assert.strictEqual(entry.lyrics[0].syllables, karaoke[0].syllables);
+    }
 });
 
 test('new page presentation during provider lookup wins over raw, missing and empty fallback results', async () => {
@@ -117,6 +169,65 @@ test('provider generation change and track switch suppress stale empty deliverie
     }
 });
 
+test('clearing a different song leaves the active fallback and its provider lookup intact', async () => {
+    const h = load(), pending = deferred();
+    let calls = 0;
+    h.setProvider(() => { calls++; return pending.promise; });
+    const active = h.service.getFullLyrics(track, { skipTranslation: true });
+    h.bumpGeneration('spotify:track:elsewhere');
+    const joined = h.service.getLyricsFromProviders(track);
+    pending.resolve(result());
+    assert.equal((await active).lyrics[0].text, 'Original');
+    assert.equal((await joined).provider, 'fixture');
+    assert.equal(calls, 1);
+    assert.equal(h.sent.length, 1);
+});
+
+test('fallback follows the selected track provider and the karaoke setting', async () => {
+    const h = load();
+    h.service.getTrackLyricsProviderOverride = async () => 'forced';
+    h.values.set('ivLyrics:visual:karaoke-mode-enabled', 'false');
+    h.setProvider(async (_info, provider) => {
+        assert.equal(provider, 'forced');
+        return { ...result(), provider, karaoke: [{ text: 'Karaoke alternative', startTime: 1000 }] };
+    });
+    const output = await h.service.getFullLyrics(track, { skipTranslation: true });
+    assert.equal(output.provider, 'forced');
+    assert.equal(output.lyrics[0].text, 'Original');
+    assert.equal(h.published.at(-1).trackLyricsProviderOverride, 'forced');
+    assert.equal(h.sent[0].presentationContext.lyricsType, 'synced');
+});
+
+test('fallback can present a saved local lyric without contacting providers', async () => {
+    const localTrack = { ...track, uri: 'spotify:local:Artist:Album:Song:215' };
+    const saved = { uri: localTrack.uri, provider: 'local', synced: [{ text: 'Imported lyric', startTime: 1000 }] };
+    const h = load(() => saved);
+    h.setCurrentUri(localTrack.uri);
+    h.setProvider(() => { assert.fail('the saved local result takes priority'); });
+    const output = await h.service.getFullLyrics(localTrack, { skipTranslation: true });
+    assert.equal(output.provider, 'local');
+    assert.equal(output.lyrics[0].text, 'Imported lyric');
+    assert.equal(h.published.at(-1).rawResult, saved);
+    assert.equal(h.sent[0].trackInfo.uri, localTrack.uri);
+});
+
+test('same-URI narration prevents new provider requests and discards pending song translations', async () => {
+    const h = load(), translation = deferred();
+    let providerCalls = 0;
+    h.setProvider(async () => { providerCalls++; return result(); });
+    h.setTranslator(() => translation.promise);
+    const pending = h.service.getFullLyrics(track);
+    await flush();
+    assert.equal(h.sent.length, 1);
+    h.setNarration(true);
+    assert.equal((await h.service.getFullLyrics(track)).stale, true);
+    assert.equal(providerCalls, 1);
+    translation.resolve({ translation: 'Late song translation' });
+    assert.equal((await pending).stale, true);
+    assert.equal(h.sent.length, 1);
+    assert.equal(h.loaded.length, 0);
+});
+
 test('completed page presentation supersedes an already running translation fallback', async () => {
     const h = load(), pending = deferred(); h.setTranslator(() => pending.promise);
     const work = h.service.getFullLyrics(track); await flush();
@@ -127,11 +238,61 @@ test('completed page presentation supersedes an already running translation fall
     assert.equal(h.loaded.length, 0);
 });
 
+for (const scenario of ['cache only', 'page commit', 'different recording']) {
+    test(`an overlay translation follows timing only from its own recording (${scenario})`, async () => {
+        const sameRecording = scenario !== 'different recording';
+        const h = load(), pending = deferred();
+        const base = { ...result(), provider: 'lrcred', lrcred: { isrc: 'JPAAA2600001' } };
+        h.setProvider(async () => base);
+        h.setTranslator(() => pending.promise);
+        const work = h.service.getFullLyrics(track);
+        await flush();
+        const original = h.snapshots.get(track.uri);
+        const karaoke = base.synced.map(line => ({ ...line, startTime: 1200, syllables: [{ text: line.text }] }));
+        const rawResult = { ...base, karaoke, karaokeSource: 'lrcred',
+            lrcred: { isrc: sameRecording ? 'JPAAA2600001' : 'JPAAA2600002' } };
+        h.service.publishLyricsSnapshot({ trackUri: track.uri, rawResult,
+            source: 'lrcred-word-sync', timingUpgradeFromRevision: original.revision, timingUpgradeApplied: false });
+        if (scenario === 'page commit') {
+            const host = Object.assign(new EventTarget(), { CustomEvent });
+            installLyricsReadySnapshotListener(host, h.service.publishLyricsSnapshot);
+            const page = {
+                state: { ...base, currentLyrics: base.synced },
+                isCurrentLyricsState: () => true,
+                getCurrentMode: () => 0,
+                setState(update, commit) {
+                    this.state = { ...this.state, ...update(this.state) };
+                    commit();
+                },
+                publishLyricsPresentation(lyrics, options, deliveryOptions) {
+                    publishLyricsReady({ ...options, trackInfo: track, lyrics }, host, deliveryOptions);
+                },
+            };
+            const timing = createPageLyricsTimingUpgrade({
+                cache: {}, getLyricsService: () => h.service, getLyricsModeTypeKey: () => 'karaoke',
+            });
+            assert.equal(await timing.applyLyricsTimingUpgrade(page, rawResult), true);
+            assert.equal(h.snapshots.get(track.uri).timingUpgradeApplied, true);
+        }
+        pending.resolve({ translation: 'Retained translation' });
+        const output = await work;
+        if (sameRecording) {
+            assert.equal(output.lyrics[0].text2, 'Retained translation');
+            assert.equal(output.lyrics[0].startTime, 1200);
+            assert.equal(h.sent.at(-1).presentationContext.lyricsType, 'karaoke');
+        } else {
+            assert.equal(output.stale, true);
+            assert.equal(h.sent.length, 1);
+        }
+    });
+}
+
 test('clearing and recreating a snapshot with the same revision does not revive an old request', async () => {
     const h = load(), pending = deferred(); h.setTranslator(() => pending.promise);
     const work = h.service.getFullLyrics(track); await flush();
     const oldRevision = h.snapshots.get(track.uri).revision;
     h.snapshots.delete(track.uri);
+    h.service.publishLyricsSnapshot({ trackUri: track.uri, rawResult: result(), source: 'lyrics-service' });
     const page = h.publishPage();
     assert.equal(page.revision, oldRevision);
     pending.resolve({ translation: 'Obsolete translation' });
@@ -139,14 +300,18 @@ test('clearing and recreating a snapshot with the same revision does not revive 
     assert.equal(h.sent.length, 1); assert.equal(h.snapshots.get(track.uri), page);
 });
 
-test('mode, target language and notation changes invalidate pending translation without a new snapshot', async () => {
+test('mode, target language and notation changes invalidate pending translation without publishing a completion', async () => {
     for (const invalidate of [h => h.values.set('ivLyrics:visual:translation-mode-2:english', 'none'),
-        h => h.setTarget('ja'), h => h.setNotation('latin'), h => h.bumpGeneration()]) {
+        h => h.setTarget('ja'), h => h.setNotation('latin'), h => h.bumpGeneration(),
+        h => h.values.set('ivLyrics:visual:karaoke-mode-enabled', 'false')]) {
         const h = load(), pending = deferred(); h.setTranslator(() => pending.promise);
         const work = h.service.getFullLyrics(track); await flush();
+        const original = h.snapshots.get(track.uri);
         invalidate(h); pending.resolve({ translation: 'Obsolete translation' });
         assert.equal((await work).stale, true);
-        assert.equal(h.sent.length, 1); assert.equal(h.published.length, 1);
+        assert.equal(h.sent.length, 1);
+        assert.strictEqual(h.snapshots.get(track.uri), original);
+        assert.equal(original.presentationComplete, false);
     }
 });
 

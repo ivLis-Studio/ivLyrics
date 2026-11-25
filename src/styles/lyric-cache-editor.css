@@ -1,0 +1,426 @@
+.lyrics-cache-edit-button[data-active="true"] {
+  background: rgba(96, 165, 250, 0.18) !important;
+  border-color: rgba(96, 165, 250, 0.36) !important;
+}
+
+.ivlyrics-cache-edit-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--iv-layer-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(7, 10, 14, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.ivlyrics-cache-edit-modal {
+  width: min(1180px, calc(100vw - 48px));
+  max-height: min(880px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: rgba(18, 22, 28, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+}
+
+.ivlyrics-cache-edit-header,
+.ivlyrics-cache-edit-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.ivlyrics-cache-edit-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ivlyrics-cache-edit-footer {
+  justify-content: flex-end;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ivlyrics-cache-edit-header-copy {
+  min-width: 0;
+}
+
+.ivlyrics-cache-edit-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--spice-text);
+}
+
+.ivlyrics-cache-edit-subtitle,
+.ivlyrics-cache-edit-meta {
+  margin: 6px 0 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+}
+
+.ivlyrics-cache-edit-body {
+  flex: 1;
+  min-height: 0;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.ivlyrics-cache-edit-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.ivlyrics-cache-edit-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.ivlyrics-cache-edit-status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ivlyrics-cache-edit-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 4px;
+}
+
+.ivlyrics-cache-edit-item {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ivlyrics-cache-edit-item-index {
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.ivlyrics-cache-edit-item-fields {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Pronunciation (by unit or as a line) beside the translation. */
+.ivlyrics-cache-edit-item-pair {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.ivlyrics-cache-edit-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ivlyrics-cache-edit-field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 30px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--spice-text);
+}
+
+.ivlyrics-cache-edit-badge {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ivlyrics-cache-edit-field-title,
+.ivlyrics-cache-edit-field-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ivlyrics-cache-edit-field-actions {
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ivlyrics-cache-edit-text-button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ivlyrics-cache-edit-text-button:hover:not(:disabled) {
+  color: var(--spice-text);
+  border-color: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.42);
+  background: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.12);
+}
+
+.ivlyrics-cache-edit-text-button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+/* One cell per sung unit: the original unit above its pronunciation. */
+.ivlyrics-cache-edit-units {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 4px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ivlyrics-cache-edit-unit {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ivlyrics-cache-edit-unit.has-gap {
+  margin-left: 10px;
+}
+
+.ivlyrics-cache-edit-unit-source {
+  padding: 0 2px;
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: pre;
+  color: rgba(255, 255, 255, 0.64);
+}
+
+.ivlyrics-cache-edit-unit-input {
+  box-sizing: border-box;
+  min-width: 3ch;
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  color: var(--spice-text);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  text-align: center;
+}
+
+.ivlyrics-cache-edit-unit-input:focus {
+  outline: none;
+  border-color: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.52);
+  box-shadow: 0 0 0 2px rgba(var(--spice-rgb-accent, 30, 215, 96), 0.14);
+}
+
+.ivlyrics-cache-edit-unit-preview {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.ivlyrics-cache-edit-unit-preview-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.ivlyrics-cache-edit-unit-preview-text {
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ivlyrics-cache-edit-shift-button {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.ivlyrics-cache-edit-shift-button:hover:not(:disabled) {
+  border-color: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.42);
+  background: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.14);
+}
+
+.ivlyrics-cache-edit-shift-button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.ivlyrics-cache-edit-original-line,
+.ivlyrics-cache-edit-line-input {
+  padding: 14px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--spice-text);
+  font: 13px/1.65 "Cascadia Code", Consolas, "Courier New", monospace;
+}
+
+.ivlyrics-cache-edit-original-line {
+  min-height: 74px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ivlyrics-cache-edit-field--original .ivlyrics-cache-edit-original-line {
+  min-height: 0;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+.ivlyrics-cache-edit-line-input {
+  min-height: 74px;
+  resize: vertical;
+}
+
+.ivlyrics-cache-edit-line-input:focus {
+  outline: none;
+  border-color: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.52);
+  box-shadow: 0 0 0 2px rgba(var(--spice-rgb-accent, 30, 215, 96), 0.14);
+}
+
+.ivlyrics-cache-edit-close,
+.ivlyrics-cache-edit-button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--spice-text);
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.ivlyrics-cache-edit-close {
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.ivlyrics-cache-edit-button {
+  min-width: 112px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ivlyrics-cache-edit-button.primary {
+  background: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.18);
+  border-color: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.36);
+}
+
+.ivlyrics-cache-edit-close:disabled,
+.ivlyrics-cache-edit-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ivlyrics-cache-edit-error {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 13px;
+}
+
+.ivlyrics-cache-edit-loading {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 14px;
+}
+
+@media (max-width: 980px) {
+  .ivlyrics-cache-edit-overlay {
+    padding: 14px;
+  }
+
+  .ivlyrics-cache-edit-modal {
+    width: calc(100vw - 28px);
+    max-height: calc(100vh - 28px);
+  }
+
+  .ivlyrics-cache-edit-body {
+    padding: 16px;
+  }
+
+  .ivlyrics-cache-edit-item {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .ivlyrics-cache-edit-item-index {
+    justify-content: flex-start;
+    padding-top: 0;
+  }
+
+  .ivlyrics-cache-edit-item-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ivlyrics-cache-edit-item-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+

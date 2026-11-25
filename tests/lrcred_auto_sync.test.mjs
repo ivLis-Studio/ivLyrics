@@ -1,21 +1,26 @@
+import { publishRuntimeService } from "#ivlyrics/spicetify/runtimeServices.mjs";
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
+import { createLyricsProviderCandidateLoader } from "#ivlyrics/providers/lyrics/loadLyricsProviderCandidate.mjs";
+import { LYRICS_TYPES, SYNC_DATA_RENDERER_VERSION } from "#ivlyrics/providers/lyrics/lyricsProviderTypes.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../Addon_Lyrics_LrcRed.js', import.meta.url), 'utf8');
+const source = bundleInitializer(new URL('../src/providers/lyrics/Addon_Lyrics_LrcRed.js', import.meta.url));
 const ISRC = 'JPAAA2600001';
+const CACHE_ID = 'AAAAAAAAAAAAAAAAAAAAAA';
 const info = { uri: 'spotify:track:AAAAAAAAAAAAAAAAAAAAAA', title: 'Fixture', artist: 'Artist', isrc: ISRC, durationMs: 200000 };
 const flush = async () => { for (let i = 0; i < 3; i++) await new Promise(setImmediate); };
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 
-function createProvider({ word = false, hold = false, holdBody = false, status = 200, generatedWord = true, lrcOnly = false, syncResponse, text = 'Fixture lyric' } = {}) {
+function createProvider({ word = false, hold = false, holdBody = false, holdFresh = false, status = 200, generatedWord = true, lrcOnly = false, syncResponse, text = 'Fixture lyric' } = {}) {
     let addon, timerId = 0;
     const generated = new Set(word ? [ISRC] : []), requests = [], writes = [], refreshes = [], cleared = [], gates = [];
     const cache = new Map(), timers = new Map(), notices = [], statuses = [];
     const state = { uri: info.uri, provider: 'lrcred', isLoading: false };
     const player = { data: { item: { uri: info.uri } } };
-    const h = { enabled: true, requests, writes, refreshes, cleared, cache, state, player, gates, notices, statuses, bodyReads: 0 };
+    const h = { enabled: true, requests, writes, refreshes, cleared, cache, state, player, gates, notices, statuses, bodyReads: 0,
+        revisions: new Map(), pendingFresh: [] };
     const line = { startTime: 1000, endTime: 2000, text };
     const parsed = text => ({
         synced: [line],
@@ -29,9 +34,14 @@ function createProvider({ word = false, hold = false, holdBody = false, status =
             emit: (event, detail) => { if (event === 'lyrics:word-sync:status') statuses.push(detail); },
         },
         LyricsService: {
+            getLyricsRequestRevision: uri => h.revisions.get(uri) || 0,
             extractTrackId: uri => /^spotify:track:([A-Za-z0-9]{22})$/.exec(uri || '')?.[1] || '',
             getCachedLyrics: async key => cache.get(key),
             cacheLyrics: async (key, provider, value) => { cache.set(key, value); writes.push({ key, provider, value }); },
+            async updateCachedLyrics(key, provider, update) {
+                const value = update(cache.get(key) ?? null);
+                if (value != null) await this.cacheLyrics(key, provider, value);
+            },
             clearLyricsPresentationSnapshot: uri => cleared.push(uri),
         },
         lyricContainer: {
@@ -77,6 +87,11 @@ function createProvider({ word = false, hold = false, holdBody = false, status =
         }
         if (url.pathname.endsWith('.json')) return Response.json({ ...info, isrc, duration: 200 });
         if (url.pathname.endsWith('.ttml')) {
+            if (holdFresh && url.searchParams.has('t')) {
+                const gate = deferred();
+                h.pendingFresh.push(gate);
+                await gate.promise;
+            }
             if (lrcOnly && !generated.has(isrc)) return new Response(null, { status: 404 });
             return new Response(generated.has(isrc) ? 'word' : 'line');
         }
@@ -149,6 +164,72 @@ test('concurrent requests for the same recording share one generation and one de
     await flush();
     assert.equal(h.writes.length, 1);
     assert.equal(h.refreshes.length, 1);
+});
+
+test('a failed display can reuse the generated timing without starting another POST', async () => {
+    const h = createProvider();
+    const apply = h.window.lyricContainer.applyLyricsTimingUpgrade;
+    h.window.lyricContainer.applyLyricsTimingUpgrade = () => false;
+    const base = await h.lookup(info);
+    await flush();
+    assert.equal(h.posts().length, 1);
+    assert.equal(h.refreshes.length, 0);
+    assert.deepEqual(h.statuses.map(({ phase }) => phase), ['generating', 'failed']);
+
+    h.window.lyricContainer.applyLyricsTimingUpgrade = apply;
+    h.addon.requestWordSync(info, base);
+    await flush();
+    assert.equal(h.posts().length, 1);
+    assert.equal(h.refreshes.length, 1);
+    assert.equal(h.refreshes[0].karaoke[0].syllables.length, 2);
+    h.addon.requestWordSync(info, base);
+    await flush();
+    assert.equal(h.refreshes.length, 1, 'a delivered upgrade remains deduplicated');
+});
+
+test('an invalidated word-sync request cannot refill a cleared cache even inside the pending write transaction', async () => {
+    const h = createProvider({ hold: true });
+    const transaction = deferred();
+    const service = h.window.LyricsService;
+    const update = service.updateCachedLyrics.bind(service);
+    let entered = false;
+    service.updateCachedLyrics = async (...args) => {
+        entered = true;
+        await transaction.promise;
+        return update(...args);
+    };
+    await h.lookup(info); await flush();
+    h.gates[0].resolve(); await flush();
+    assert.equal(entered, true);
+    h.revisions.set(info.uri, 1);
+    transaction.resolve(); await flush();
+    assert.equal(h.cache.has(CACHE_ID), false);
+    assert.equal(h.refreshes.length, 0);
+    assert.deepEqual(h.statuses.map(({ phase }) => phase), ['generating', 'cancelled']);
+});
+
+test('a new revision can adopt an ongoing word-sync response without starting another generation', async () => {
+    const h = createProvider({ hold: true });
+    const base = await h.lookup(info); await flush();
+    h.revisions.set(info.uri, 1);
+    assert.equal(h.addon.getWordSyncStatuses(info.uri).length, 0);
+    h.addon.requestWordSync(info, base);
+    assert.equal(h.addon.getWordSyncStatuses(info.uri).length, 1);
+    h.gates[0].resolve(); await flush();
+    assert.equal(h.posts().length, 1);
+    assert.equal(h.writes.length, 1);
+    assert.equal(h.refreshes.length, 1);
+    assert.deepEqual(h.statuses.map(({ phase }) => phase), ['generating', 'complete']);
+});
+
+test('disabling word sync during the fresh TTML check prevents the queued POST', async () => {
+    const h = createProvider({ holdFresh: true });
+    await h.lookup(info); await flush();
+    assert.equal(h.pendingFresh.length, 1);
+    h.enabled = false;
+    h.pendingFresh[0].resolve(); await flush();
+    assert.equal(h.posts().length, 0);
+    assert.deepEqual(h.statuses, []);
 });
 
 for (const status of [429, 503]) {
@@ -235,40 +316,127 @@ for (const applied of [true, false]) {
     });
 }
 
-test('generation with no mounted page updates raw memory and snapshots without discarding translations', async () => {
+test('late word timing is delivered to the registered page even if the compatibility alias is stale', async () => {
+    const h = createProvider({ hold: true });
+    publishRuntimeService("lyricContainer", h.window.lyricContainer, h.window);
+    await h.lookup(info);
+    await flush();
+    h.window.lyricContainer = {
+        state: h.state,
+        applyLyricsTimingUpgrade() { assert.fail('Late timing must not reach the stale page'); },
+    };
+    h.gates[0].resolve();
+    await flush();
+    assert.equal(h.refreshes.length, 1);
+    assert.deepEqual(h.statuses.map(status => status.phase), ['generating', 'complete']);
+});
+
+test('generation without a mounted page upgrades the visible snapshot and retains supplements', async () => {
     const h = createProvider({ hold: true });
     const result = await h.lookup(info); await flush();
     h.window.CACHE[info.uri] = result;
-    const translated = [{ ...result.synced[0], text2: 'existing translation' }];
+    const translated = [{ ...result.synced[0], text2: 'existing translation', phoneticText: 'existing pronunciation' }];
     let snapshot = { trackUri: info.uri, rawResult: result, displayLyrics: translated,
-        displayMode1: 'existing-mode', presentationComplete: true };
+        displayMode1: 'existing-mode', presentationComplete: true, revision: 3 };
     h.window.LyricsService.getLyricsSnapshot = () => snapshot;
     h.window.LyricsService.publishLyricsSnapshot = value => { snapshot = value; };
     delete h.window.lyricContainer;
     h.gates[0].resolve(); await flush();
     assert.equal(h.window.CACHE[info.uri].karaoke.length, 1);
     assert.equal(snapshot.rawResult.karaoke.length, 1);
-    assert.strictEqual(snapshot.displayLyrics, translated);
+    assert.equal(snapshot.displayLyrics[0].text2, 'existing translation');
+    assert.equal(snapshot.displayLyrics[0].phoneticText, 'existing pronunciation');
+    assert.equal(snapshot.displayLyrics[0].syllables.length, 2);
+    assert.equal(translated[0].syllables, undefined);
+    assert.equal(snapshot.lyricsType, 'karaoke');
+    assert.equal(snapshot.timingUpgradeFromRevision, 3);
+    assert.equal(snapshot.timingUpgradeApplied, true);
     assert.equal(snapshot.displayMode1, 'existing-mode');
     assert.equal(snapshot.presentationComplete, true);
     assert.equal(h.refreshes.length, 0);
-    assert.ok(!h.statuses.some(status => status.phase === 'complete'), 'no page commit cannot be acknowledged as applied');
+    assert.deepEqual(h.statuses.map(status => status.phase), ['generating', 'complete']);
 });
 
-for (const newer of ['other provider', 'community sync', 'native timing']) {
+test('generation respects the saved karaoke preference before the lyrics page has loaded', async () => {
+    const h = createProvider({ hold: true });
+    const result = await h.lookup(info); await flush();
+    delete h.window.lyricContainer;
+    h.window.Spicetify = { LocalStorage: { get: key => key === 'ivLyrics:visual:karaoke-mode-enabled' ? 'false' : null } };
+    let snapshot = { trackUri: info.uri, rawResult: result, displayLyrics: result.synced, lyricsType: 'synced' };
+    h.window.LyricsService.getLyricsSnapshot = () => snapshot;
+    h.window.LyricsService.publishLyricsSnapshot = value => { snapshot = value; };
+    h.gates[0].resolve(); await flush();
+
+    assert.equal(snapshot.rawResult.karaoke.length, 1);
+    assert.strictEqual(snapshot.displayLyrics, result.synced);
+    assert.equal(snapshot.timingUpgradeApplied, false);
+    assert.equal(snapshot.lyricsType, 'synced');
+});
+
+for (const phase of ['initial load', 'React commit']) {
+    test(`closing the page during ${phase} delivers the same timing to the shared presentation`, async () => {
+        const h = createProvider({ hold: true }), commit = deferred();
+        h.state.isLoading = phase === 'initial load';
+        h.window.lyricContainer.applyLyricsTimingUpgrade = () => commit.promise;
+        const result = await h.lookup(info); await flush();
+        let snapshot = { trackUri: info.uri, provider: 'lrcred', rawResult: result, lyricsType: 'synced', revision: 3,
+            displayLyrics: result.synced.map(line => ({ ...line, text2: 'existing translation' })) };
+        h.window.LyricsService.getLyricsSnapshot = () => snapshot;
+        h.window.LyricsService.publishLyricsSnapshot = value => { snapshot = { ...value, revision: snapshot.revision + 1 }; };
+        h.gates[0].resolve(); await flush();
+        assert.equal(snapshot.timingUpgradeApplied, false);
+        assert.deepEqual(h.statuses.map(status => status.phase), ['generating']);
+
+        delete h.window.lyricContainer;
+        if (h.state.isLoading) h.runTimers(100);
+        else commit.resolve(false);
+        await flush();
+        assert.equal(snapshot.timingUpgradeFromRevision, 3);
+        assert.equal(snapshot.timingUpgradeApplied, true);
+        assert.equal(snapshot.displayLyrics[0].syllables.length, 2);
+        assert.equal(snapshot.displayLyrics[0].text2, 'existing translation');
+        assert.deepEqual(h.statuses.map(status => status.phase), ['generating', 'complete']);
+    });
+}
+
+for (const newer of ['other provider', 'different recording', 'changed text', 'cache version', 'community sync', 'native timing']) {
     test(`generation cannot overwrite newer raw caches with ${newer}`, async () => {
         const h = createProvider({ hold: true });
         const result = await h.lookup(info); await flush();
         const cached = { ...result };
         if (newer === 'other provider') cached.provider = 'spotify';
+        else if (newer === 'different recording') cached.lrcred = { isrc: 'JPAAA2600002' };
+        else if (newer === 'changed text') cached.synced = [{ ...result.synced[0], text: 'Edited lyric' }];
+        else if (newer === 'cache version') cached.cacheVersion = 'newer-cache-version';
         else if (newer === 'community sync') cached.syncDataApplied = true;
         else { cached.karaoke = [result.synced[0]]; cached.karaokeSource = 'lrcred'; }
         h.window.CACHE[info.uri] = cached;
+        h.cache.set(CACHE_ID, cached);
         delete h.window.lyricContainer;
         h.gates[0].resolve(); await flush();
         assert.strictEqual(h.window.CACHE[info.uri], cached);
+        assert.strictEqual(h.cache.get(CACHE_ID), cached);
+        assert.equal(h.writes.length, 0);
     });
 }
+
+test('a word upgrade for the same URI during DJ narration warms only raw timing', async () => {
+    const h = createProvider({ hold: true });
+    const result = await h.lookup(info); await flush();
+    publishRuntimeService("ivLyricsPlaybackPosition", {
+        getPlayerPlaybackSnapshot: () => ({ uri: info.uri, djNarration: true }),
+    }, h.window);
+    const lyrics = [{ ...result.synced[0], text2: 'prior translation' }];
+    let snapshot = { trackUri: info.uri, rawResult: result, displayLyrics: lyrics, lyricsType: 'synced' };
+    h.window.LyricsService.getLyricsSnapshot = () => snapshot;
+    h.window.LyricsService.publishLyricsSnapshot = value => { snapshot = value; };
+    h.gates[0].resolve(); await flush();
+    assert.equal(snapshot.rawResult.karaoke.length, 1);
+    assert.strictEqual(snapshot.displayLyrics, lyrics);
+    assert.equal(snapshot.lyricsType, 'synced');
+    assert.equal(snapshot.timingUpgradeApplied, false);
+    assert.equal(h.refreshes.length, 0);
+});
 
 test('cached line lyrics check fresh TTML and reuse timing generated by another client', async () => {
     const h = createProvider();
@@ -296,6 +464,69 @@ test('a late initial cache write is corrected before the next cached lookup', as
     assert.equal(h.posts().length, 1);
 });
 
+test('cache repair checks the latest record before applying prepared timing', async () => {
+    const h = createProvider();
+    const lineResult = await h.lookup(info);
+    await flush();
+    h.cache.set(CACHE_ID, lineResult);
+    const service = h.window.LyricsService;
+    const community = { ...lineResult, syncDataApplied: true, karaoke: lineResult.synced };
+    service.getCachedLyrics = async () => {
+        h.cache.set(CACHE_ID, community);
+        return lineResult;
+    };
+
+    await h.addon.prepareLyricsLookup(info);
+    assert.strictEqual(h.cache.get(CACHE_ID), community);
+    assert.equal(h.writes.length, 1, 'only the initial generation wrote to the cache');
+});
+
+for (const timing of ['word', 'community', 'different recording']) {
+    test(`a slow line lyrics lookup respects cache ownership after ${timing}`, async () => {
+        const h = createProvider();
+        const lineResult = await h.addon.getLyrics(info);
+        const syncRequestStarted = deferred();
+        const syncResponse = deferred();
+        const loadCandidate = createLyricsProviderCandidateLoader({
+            readLyricsService: () => h.window.LyricsService,
+            readSyncDataService: () => ({
+                getSyncData() {
+                    syncRequestStarted.resolve();
+                    return syncResponse.promise;
+                },
+            }),
+            readPseudoKaraoke: () => null,
+            normalizeProviderInstrumentalBreaks: result => ({ result, changed: false }),
+            readAddonDebug: () => null,
+            debug() {},
+        });
+        const loading = loadCandidate(h.addon, info, {
+            lyricsCacheId: CACHE_ID, trackId: CACHE_ID, trackIsrc: ISRC,
+        }, {
+            [LYRICS_TYPES.SYNCED]: true, [LYRICS_TYPES.CHARACTER]: true, [LYRICS_TYPES.WORD]: true,
+        }, () => false);
+        await syncRequestStarted.promise;
+        const updated = { ...lineResult, karaoke: lineResult.synced, karaokeSource: 'lrcred' };
+        if (timing === 'community') {
+            updated.syncDataApplied = true;
+            updated.syncDataRendererVersion = SYNC_DATA_RENDERER_VERSION;
+        } else if (timing === 'different recording') {
+            updated.lrcred = { ...updated.lrcred, isrc: 'JPAAA2600002' };
+        }
+        h.cache.set(CACHE_ID, updated);
+        syncResponse.resolve(null);
+        await loading;
+        const final = h.cache.get(CACHE_ID);
+        if (timing === 'different recording') {
+            assert.equal(final.lrcred.isrc, ISRC);
+            assert.equal(final.karaoke, null);
+        } else {
+            assert.strictEqual(final, updated);
+            assert.equal(h.writes.length, 0);
+        }
+    });
+}
+
 test('LRC-only results also trigger the word timing upgrade', async () => {
     const h = createProvider({ lrcOnly: true });
     const result = await h.lookup(info);
@@ -312,14 +543,16 @@ test('disabling word lyrics disables automatic generation', async () => {
     assert.equal(h.posts().length, 0);
 });
 
-for (const change of ['track', 'provider', 'community timing']) {
+for (const change of ['track', 'provider', 'community timing', 'cache version', 'error']) {
     test(`completion cannot replace a changed ${change}`, async () => {
         const h = createProvider({ hold: true });
         await h.lookup(info);
         await flush();
         if (change === 'track') h.player.data.item = { uri: 'spotify:track:BBBBBBBBBBBBBBBBBBBBBB' };
         else if (change === 'provider') h.state.provider = 'spotify';
-        else h.state.syncDataApplied = true;
+        else if (change === 'community timing') h.state.syncDataApplied = true;
+        else if (change === 'cache version') h.state.cacheVersion = 'newly selected result';
+        else h.state.error = 'New result unavailable';
         h.gates[0].resolve();
         await flush();
         assert.equal(h.writes[0].value.uri, info.uri);

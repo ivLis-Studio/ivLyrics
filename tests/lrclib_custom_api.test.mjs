@@ -1,5 +1,6 @@
+import { setUpSyncCreatorLrclibActions } from "./fixtures/sync-creator-lrclib.mjs";
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
@@ -9,9 +10,8 @@ const PROXY = 'https://cors-proxy.spicetify.app/';
 const SETTING = 'custom_api_endpoint';
 const STORAGE_KEY = `ivLyrics:lyrics:addon:lrclib:${SETTING}`;
 const INPUT_ID = 'ivlyrics-lrclib-custom-api';
-const addonSource = readFileSync(new URL('../Addon_Lyrics_Lrclib.js', import.meta.url), 'utf8');
-const managerSource = readFileSync(new URL('../LyricsAddonManager.js', import.meta.url), 'utf8');
-const editorSource = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
+const addonSource = bundleInitializer(new URL('../src/providers/lyrics/Addon_Lyrics_Lrclib.js', import.meta.url));
+const managerSource = bundleInitializer(new URL('../src/providers/lyrics/LyricsAddonManager.js', import.meta.url));
 const track = {
     uri: 'spotify:track:fixture', title: 'Café & Rain?', artist: 'Fixture Artist',
     album: 'Album / 雨', duration: 180000
@@ -353,6 +353,45 @@ test('unavailable ISRC lookup cannot skip both lyric hosts', async () => {
     assert.equal(h.timers.size, 0);
 });
 
+test('word timing from Lyricsfile preserves the LRCLIB source lines and identity', async () => {
+    const lyricsfile = [
+        'version: "1.0"',
+        'metadata:',
+        '  duration_ms: 180000',
+        'lines:',
+        '  - text: "Official first line"',
+        '    start_ms: 1000',
+        '    end_ms: 1900',
+        '    words:',
+        '      - text: "Official "',
+        '        start_ms: 1000',
+        '      - text: "first line"',
+        '        start_ms: 1450',
+        '  - text: "Official second line"',
+        '    start_ms: 2000',
+        '    end_ms: 2600',
+    ].join('\n');
+    const load = async yaml => {
+        const h = setup({ official: () => Response.json([{ ...officialRecord, lyricsfile: yaml }]) });
+        const result = await h.addon.getLyrics(track);
+        assertOfficial(result);
+        return result;
+    };
+    const result = await load(lyricsfile);
+    assert.equal(result.karaokeSource, 'lrclib-lyricsfile');
+    assert.equal(result.karaokeGranularity, 'word');
+    assert.deepEqual(plain(result.karaoke.map(line => line.syllables)), [
+        [
+            { text: 'Official ', startTime: 1000, endTime: 1450 },
+            { text: 'first line', startTime: 1450, endTime: 1900 },
+        ],
+        [{ text: 'Official second line', startTime: 2000, endTime: 2600 }],
+    ]);
+    const invalid = await load(lyricsfile + '\nversion: "1.0"');
+    assert.equal(invalid.karaoke, null);
+    assert.deepEqual(plain(invalid.lrclibSource), plain(result.lrclibSource));
+});
+
 test('unset endpoint defaults to blank and keeps official playback unchanged', async () => {
     const h = setup();
     assert.equal(h.manager.getAddonSetting('lrclib', SETTING, ''), '');
@@ -449,6 +488,19 @@ test('an active import or restore never blocks cached playback or online fallbac
         assertOfficial(await online.addon.getLyrics(track));
         assert.equal(online.requests.length, 1, 'the normal official fallback remains available');
         assert.equal(online.timers.size, 0);
+    }
+});
+
+test('a validated local database remains first in playback during a replacement or after its failure', async () => {
+    for (const phase of ['opening', 'importing', 'error']) {
+        const local = {
+            getState: () => ({ phase, available: true }), getCacheVersion: () => 'last-good',
+            connect() { assert.fail('Do not reconnect a database that remains usable'); },
+            lookup: async () => record,
+        };
+        const h = setup({ local, endpoint: CUSTOM });
+        assert.equal((await h.manager.getLyrics(track, 'lrclib')).lrclibApiSource, 'local');
+        assert.equal(h.requests.length, 0);
     }
 });
 
@@ -792,9 +844,21 @@ test('both complete host ladders share one lazy English metadata lookup', async 
     const candidate = { ...officialRecord, trackName: english.title, artistName: english.artist };
     const h = setup({ endpoint: CUSTOM, englishMetadata: english, custom: noMatch, official: url =>
         canonicalUrl(url) === canonicalUrl(officialQueries.at(-1)) ? Response.json([candidate]) : noMatch(url) });
+    const legacyRequest = h.Spicetify.GraphQL.Request;
+    const graphQLHeaders = [];
+    const loader = (definition, variables, _queryParameters, headers) => {
+        const requestHeaders = { 'Accept-Language': 'ko-KR' };
+        for (const { key, value } of headers) requestHeaders[key] = value;
+        graphQLHeaders.push(new Headers(requestHeaders).get('Accept-Language'));
+        return legacyRequest(definition, variables);
+    };
+    h.Spicetify.Platform = { GraphQLLoader: loader };
+    h.Spicetify.GraphQL.Request = loader;
+    Object.defineProperty(h.window, 'fetch', { writable: false });
     assertOfficial(await h.addon.getLyrics(track));
     assertRequests(h, [...customSequence(track, { english }), ...officialQueries]);
     assert.equal(h.metadataReads.length, 1, 'the second host reuses the first host stage\'s metadata');
+    assert.deepEqual(graphQLHeaders, ['en-US,en;q=0.9']);
     assert.equal(h.syncReads.length, 1);
     assertPrivateSafety(h);
     assert.equal(h.timers.size, 0);
@@ -927,10 +991,6 @@ test('structured and manual candidate searches always query official LRCLIB', as
 });
 
 test('the actual creator fallback passes official-only metadata through the manager and legacy provider paths', async () => {
-    const start = editorSource.indexOf('const loadLyrics = useCallback(');
-    const end = editorSource.indexOf('// 제작기에 진입하면', start);
-    assert.ok(start >= 0 && end > start, 'the production creator load callback exists');
-    const callback = editorSource.slice(start, end);
     for (const path of ['manager', 'legacy']) {
         const h = setup({ endpoint: CUSTOM });
         const calls = [], applied = [], errors = [];
@@ -940,8 +1000,8 @@ test('the actual creator fallback passes official-only metadata through the mana
                 ? h.manager.getLyricsFrom('lrclib', info)
                 : h.addon.getLyrics(info);
         };
-        const context = vm.createContext({
-            window: { ...h.window, LyricsAddonManager: path === 'manager' ? { getLyricsFrom: (id, info) => {
+        const context = {
+            window: { LyricsAddonManager: path === 'manager' ? { getLyricsFrom: (id, info) => {
                 assert.equal(id, 'lrclib');
                 return load(info);
             } } : undefined },
@@ -954,12 +1014,10 @@ test('the actual creator fallback passes official-only metadata through the mana
             lrclibIdInputEditedRef: { current: false }, resolveSyncCreatorLoadedLyricsLrclibId: () => '',
             trackName: track.title, artistName: track.artist, albumName: track.album,
             beginSyncCreatorSourceChange: () => 1, isCurrentSyncCreatorSourceChange: () => true,
-            clearLrclibCandidateState() {}, buildSyntheticLrclibResult() { assert.fail('candidate branch was not selected'); },
+            clearLrclibCandidateState() {}, resetSyncCreatorLyricsLoadingState() {},
             applyLoadedLyricsResult: async result => { applied.push(result); }
-        });
-        for (const [, setter] of callback.matchAll(/\b(set[A-Z]\w*)\b/g)) context[setter] = () => {};
-        vm.runInContext(`${callback}\nglobalThis.loadCreatorLyrics = loadLyrics;`, context);
-        await context.loadCreatorLyrics();
+        };
+        await setUpSyncCreatorLrclibActions(context, () => {}).loadLyrics();
         assert.equal(errors.length, 0, path);
         assert.equal(calls.length, 1, path);
         assert.equal(calls[0].lrclibOfficialOnly, true, path);

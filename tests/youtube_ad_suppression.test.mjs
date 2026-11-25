@@ -1,17 +1,22 @@
+import { createYouTubeBackgroundTimeline } from "../src/features/video/youTubeBackgroundTimeline.mjs";
+import { isYouTubeBackgroundAdPlaying } from "../src/features/video/youTubeBackgroundRuntime.mjs";
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
+import { sourceNames, sourceUrl } from "./fixtures/source-paths.mjs";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const source = readFileSync(new URL("../VideoBackgroundDepend.js", import.meta.url), "utf8");
-const videoSource = readFileSync(new URL("../VideoBackground.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const source = bundleInitializer(new URL("../src/features/video/VideoBackgroundDepend.js", import.meta.url));
 
-function createEnvironment({ delayedMethods = false, preExisting = false, apiUnavailable = false } = {}) {
+function createEnvironment({ delayedMethods = false, preExisting = false, apiUnavailable = false, startupUnavailable = false } = {}) {
     let nextTimer = 0;
     const timeouts = new Map();
     const intervals = new Map();
     const players = [];
     const fetches = [];
+    const observers = [];
+    const xhrCalls = [];
     class Style {
         values = new Map();
         getPropertyValue(name) { return this.values.get(name)?.value || ""; }
@@ -31,9 +36,25 @@ function createEnvironment({ delayedMethods = false, preExisting = false, apiUna
         createElement() { return new Element(); }
         querySelectorAll() { return []; }
     }
-    class XHR {
-        open() { }
-        send() { }
+    class Frame extends Element {
+        get src() { return this.getAttribute("src"); }
+        set src(value) { this.setAttribute("src", value); }
+    }
+    class ScriptElement extends Element {
+        get src() { return this.getAttribute("src"); }
+        set src(value) { this.setAttribute("src", value); }
+    }
+    class XHR extends EventTarget {
+        open(...args) { xhrCalls.push(["open", ...args]); }
+        send(...args) { xhrCalls.push(["send", ...args]); }
+    }
+    class ServiceWorkerContainer {
+        register(...args) { return Promise.resolve(args); }
+    }
+    class MutationObserver {
+        constructor(callback) { this.callback = callback; observers.push(this); }
+        observe() { this.connected = true; }
+        disconnect() { this.connected = false; }
     }
     function Player(element, config) {
         this.config = config;
@@ -78,10 +99,15 @@ function createEnvironment({ delayedMethods = false, preExisting = false, apiUna
         players.push(this);
     }
     const window = {
-        Spicetify: { Player: {} },
+        Spicetify: startupUnavailable ? {} : { Player: {} },
         location: { origin: "https://xpui.app.spotify.com" },
         YT: { Player, PlayerState: { PLAYING: 1, CUED: 5 }, get: id => players.find(p => p.iframe.id === id) },
         fetch: async (...args) => { fetches.push(args); return new Response("content"); },
+        Document, Event, Response, DOMException, URL, MutationObserver,
+        Node: { ELEMENT_NODE: 1 }, XMLHttpRequest: XHR, HTMLScriptElement: ScriptElement, HTMLIFrameElement: Frame,
+        navigator: { language: "ko", serviceWorker: new ServiceWorkerContainer() },
+        setTimeout(callback, delay) { const id = ++nextTimer; timeouts.set(id, { callback, delay }); return id; },
+        clearTimeout: id => timeouts.delete(id),
     };
     const document = new Document();
     if (preExisting) {
@@ -91,21 +117,24 @@ function createEnvironment({ delayedMethods = false, preExisting = false, apiUna
         document.querySelectorAll = () => [existing.iframe];
     }
     const context = vm.createContext({
-        window, Spicetify: window.Spicetify, document, Document,
-        XMLHttpRequest: XHR, navigator: { language: "ko" }, URL, Response, Event,
-        Node: { ELEMENT_NODE: 1 },
-        MutationObserver: class { observe() {} disconnect() {} },
+        window, Spicetify: window.Spicetify, document, URL, Response, Event,
         console: { info() {}, error() {} },
-        setTimeout(callback, delay) { const id = ++nextTimer; timeouts.set(id, { callback, delay }); return id; },
-        clearTimeout: id => timeouts.delete(id),
+        setTimeout: window.setTimeout, clearTimeout: window.clearTimeout,
         setInterval(callback, delay) { const id = ++nextTimer; intervals.set(id, { callback, delay }); return id; },
         clearInterval: id => intervals.delete(id),
     });
     const originalYt = window.YT;
+    const originalDescriptors = {
+        iframeSrc: Object.getOwnPropertyDescriptor(Frame.prototype, "src"),
+        scriptSrc: Object.getOwnPropertyDescriptor(ScriptElement.prototype, "src"),
+        fetch: Object.getOwnPropertyDescriptor(window, "fetch"),
+        create: Object.getOwnPropertyDescriptor(Document.prototype, "createElement"),
+    };
     if (apiUnavailable) delete window.YT;
     vm.runInContext(source, context);
     return {
-        window, context, players, timeouts, intervals, fetches, originalYt,
+        window, context, players, timeouts, intervals, fetches, originalYt, observers, xhrCalls, document, originalDescriptors,
+        restart() { vm.runInContext(source, context); },
         player(config = {}) { return new window.YT.Player(null, config); },
         tickRestore() {
             for (const [id, timer] of [...timeouts]) {
@@ -283,23 +312,160 @@ test("blocked fetch returns a valid empty 204 response and ordinary fetch is unc
     assert.equal(env.fetches.length, 1);
 });
 
+test("restoring browser hooks reinstates own and inherited properties", () => {
+    const env = createEnvironment();
+    const { window, originalDescriptors } = env;
+    const scriptPrototype = window.HTMLScriptElement.prototype;
+    const workerScope = window.navigator.serviceWorker;
+    assert.equal(Object.hasOwn(scriptPrototype, "setAttribute"), true);
+    assert.equal(Object.hasOwn(workerScope, "register"), true);
+    assert.notStrictEqual(window.fetch, originalDescriptors.fetch.value);
+    window.VideoBackgroundDepend.restore();
+
+    assert.deepEqual(Object.getOwnPropertyDescriptor(window, "fetch"), originalDescriptors.fetch);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(window.Document.prototype, "createElement"), originalDescriptors.create);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(scriptPrototype, "src"), originalDescriptors.scriptSrc);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(window.HTMLIFrameElement.prototype, "src"), originalDescriptors.iframeSrc);
+    assert.equal(Object.hasOwn(scriptPrototype, "setAttribute"), false);
+    assert.equal(Object.hasOwn(workerScope, "register"), false);
+    assert.equal(env.observers[0].connected, false);
+});
+
+test("a locked browser property leaves the remaining hooks usable", async () => {
+    const env = createEnvironment();
+    env.window.VideoBackgroundDepend.restore();
+    const xhrPrototype = env.window.XMLHttpRequest.prototype;
+    const original = xhrPrototype.open;
+    Object.defineProperty(xhrPrototype, "open", { value: original, configurable: false, writable: false });
+    env.restart();
+    assert.strictEqual(xhrPrototype.open, original);
+    assert.equal((await env.window.fetch("https://googleads.g.doubleclick.net/pagead/ads")).status, 204);
+    assert.equal(env.observers.at(-1).connected, true);
+    env.window.VideoBackgroundDepend.restore();
+    assert.strictEqual(xhrPrototype.open, original);
+    assert.strictEqual(env.window.fetch, env.originalDescriptors.fetch.value);
+});
+
+test("restoring ivLyrics preserves later browser hooks and deactivates captured wrappers", async () => {
+    const env = createEnvironment();
+    const { window } = env;
+    const capturedFetch = window.fetch;
+    const capturedOpen = window.XMLHttpRequest.prototype.open;
+    const capturedSend = window.XMLHttpRequest.prototype.send;
+    const capturedSetter = Object.getOwnPropertyDescriptor(window.HTMLScriptElement.prototype, "src");
+    const replacementFetch = (...args) => capturedFetch(...args);
+    const replacementOpen = function (...args) { return capturedOpen.apply(this, args); };
+    const replacementSend = function (...args) { return capturedSend.apply(this, args); };
+    const replacementSetter = function (value) { return capturedSetter.set.call(this, value); };
+    const adUrl = "https://googleads.g.doubleclick.net/pagead/ads";
+    window.fetch = replacementFetch;
+    window.XMLHttpRequest.prototype.open = replacementOpen;
+    window.XMLHttpRequest.prototype.send = replacementSend;
+    Object.defineProperty(window.HTMLScriptElement.prototype, "src", { ...capturedSetter, set: replacementSetter });
+
+    assert.equal((await window.fetch(adUrl)).status, 204, "a later wrapper can still delegate to active ivLyrics");
+    window.VideoBackgroundDepend.restore();
+    assert.strictEqual(window.fetch, replacementFetch);
+    assert.strictEqual(window.XMLHttpRequest.prototype.open, replacementOpen);
+    assert.strictEqual(window.XMLHttpRequest.prototype.send, replacementSend);
+    assert.strictEqual(Object.getOwnPropertyDescriptor(window.HTMLScriptElement.prototype, "src").set, replacementSetter);
+    assert.equal(await (await window.fetch(adUrl)).text(), "content");
+    const xhr = new window.XMLHttpRequest();
+    xhr.open("GET", adUrl);
+    xhr.send("body");
+    assert.deepEqual(env.xhrCalls, [["open", "GET", adUrl], ["send", "body"]]);
+    const script = new window.HTMLScriptElement();
+    script.src = adUrl;
+    assert.equal(script.src, adUrl);
+});
+
+test("restoring the browser hooks cancels late iframe checks and observer callbacks", () => {
+    const env = createEnvironment();
+    const iframe = env.document.createElement("iframe");
+    const src = "https://www.youtube.com/embed/abcdefghijk";
+    iframe.setAttribute("src", src);
+    const [queued] = env.timeouts.values();
+    const [observer] = env.observers;
+    env.window.VideoBackgroundDepend.restore();
+    assert.equal(env.timeouts.size, 0);
+    queued.callback();
+    observer.callback([{ type: "attributes", target: iframe }]);
+    assert.equal(iframe.getAttribute("src"), src);
+});
+
+test("a restored startup callback cannot install hooks over a replacement runtime", () => {
+    const env = createEnvironment({ startupUnavailable: true });
+    const oldService = env.window.VideoBackgroundDepend;
+    const [oldWaiter] = env.timeouts.values();
+    env.restart();
+    assert.strictEqual(env.window.VideoBackgroundDepend, oldService);
+    assert.equal(env.timeouts.size, 1);
+    oldService.restore();
+    env.window.Spicetify.Player = {};
+    env.restart();
+    const newService = env.window.VideoBackgroundDepend;
+    const activeFetch = env.window.fetch;
+    oldWaiter.callback();
+    oldService.restore();
+    assert.notStrictEqual(newService, oldService);
+    assert.strictEqual(env.window.VideoBackgroundDepend, newService);
+    assert.strictEqual(env.window.fetch, activeFetch);
+    assert.equal(env.observers.length, 1);
+    newService.restore();
+});
+
+test("a restored constructor and retained player method forward calls without ivLyrics side effects", () => {
+    const env = createEnvironment();
+    const player = env.player();
+    const retainedPlayer = env.window.YT.Player;
+    const retainedLoad = player.loadVideoById;
+    const laterLoad = function (...args) { return retainedLoad.apply(this, args); };
+    player.loadVideoById = laterLoad;
+    env.window.YT.Player = function LaterPlayer(...args) { return new retainedPlayer(...args); };
+    const laterConstructor = env.window.YT.Player;
+    env.window.VideoBackgroundDepend.restore();
+    assert.strictEqual(player.loadVideoById, laterLoad);
+    assert.strictEqual(env.window.YT.Player, laterConstructor);
+    player.calls.length = 0;
+    player.loadVideoById("abcdefghijk");
+    assert.deepEqual(player.calls, [["loadVideoById", "abcdefghijk"]]);
+    const config = { videoId: "abcdefghijk" };
+    const laterPlayer = env.player(config);
+    assert.strictEqual(laterPlayer.config, config);
+    assert.equal(laterPlayer.__ytAdSkipperAttached, undefined);
+});
+
+test("a fresh runtime can attach to a previously restored player", () => {
+    const env = createEnvironment({ preExisting: true });
+    const player = env.players[0];
+    const firstState = player.__ytAdControlState;
+    env.window.VideoBackgroundDepend.restore();
+    assert.equal(firstState.disposed, true);
+    env.restart();
+    assert.notStrictEqual(player.__ytAdControlState, firstState);
+    assert.equal(player.__ytAdSkipperAttached, true);
+    player.emit("onAdStart", "next");
+    assert.equal(env.window.VideoBackgroundDepend.isAdPlayback(player), true);
+    env.window.VideoBackgroundDepend.restore();
+});
+
 test("ad playback bypasses content seeks and pre-roll holds, then resyncs to Spotify", () => {
     const env = createEnvironment();
     const player = env.player();
-    env.context.VideoBackgroundDepend = env.window.VideoBackgroundDepend;
-    vm.runInContext(videoSource.slice(0, videoSource.indexOf("const disableYouTubeCaptions")) +
-        "\nglobalThis.sync = syncYouTubePlayerTimeline; globalThis.settle = settleYouTubeHoldPrime;", env.context);
+    const { syncYouTubePlayerTimeline, settleYouTubeHoldPrime } = createYouTubeBackgroundTimeline({
+        isYouTubeAdPlaying: (target) => isYouTubeBackgroundAdPlaying(env.window, target),
+    });
     const holdState = { isHolding: false, primePending: false };
     player.emit("onAdStart", "ad-a");
-    env.context.sync({ player, targetVideoTime: 0, shouldHoldAtStart: true, shouldPlay: true, holdState });
+    syncYouTubePlayerTimeline({ player, targetVideoTime: 0, shouldHoldAtStart: true, shouldPlay: true, holdState });
     assert.deepEqual(holdState, { isHolding: false, primePending: false });
     assert.equal(player.calls.some(c => c[0] === "seekTo"), false);
     assert.equal(player.calls.at(-1)[0], "playVideo");
-    env.context.sync({ player, targetVideoTime: 30, shouldPlay: false, holdState });
+    syncYouTubePlayerTimeline({ player, targetVideoTime: 30, shouldPlay: false, holdState });
     assert.equal(player.calls.at(-1)[0], "pauseVideo");
-    assert.equal(env.context.settle({ player, playerState: 1, holdState: { isHolding: true, primePending: true } }), false);
+    assert.equal(settleYouTubeHoldPrime({ player, playerState: 1, holdState: { isHolding: true, primePending: true } }), false);
     player.emit("onAdEnd", "ad-a");
-    env.context.sync({ player, targetVideoTime: 42, shouldPlay: true, holdState });
+    syncYouTubePlayerTimeline({ player, targetVideoTime: 42, shouldPlay: true, holdState });
     assert.deepEqual(player.calls.filter(c => c[0] === "seekTo"), [["seekTo", 42, true]]);
 });
 
@@ -516,9 +682,12 @@ test("no YouTube player or background video in the app is created or left audibl
     // The song is Spotify's; every video ivLyrics shows is only a picture. The
     // video picker's previews used to start unmuted (mute: 0, a <video> with
     // muted: false), playing over the song.
-    const sources = readdirSync(new URL("..", import.meta.url))
-        .filter(name => name.endsWith(".js") && !name.startsWith("Lang"))
-        .map(name => [name, readFileSync(new URL(`../${name}`, import.meta.url), "utf8")]);
+    const sources = sourceNames
+        .filter(name => name.endsWith(".js") && !name.startsWith("langs/"))
+        .map(name => [name, readFileSync(sourceUrl(name), "utf8")]);
+    for (const name of ["app/setupWizardVideoSteps.mjs", "features/video/communityVideoPreview.mjs"]) {
+        sources.push([name, readFileSync(new URL("../src/" + name, import.meta.url), "utf8")]);
+    }
     assert.ok(sources.length > 50, "scanned the app's source files");
     const audible = [];
     for (const [name, text] of sources) {

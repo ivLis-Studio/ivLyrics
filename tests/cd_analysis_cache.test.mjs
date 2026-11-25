@@ -1,11 +1,8 @@
+import { createCdVisualizerApi } from "../src/features/player/CdVisualizer.js";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import test from "node:test";
-import vm from "node:vm";
 
-const api = createRequire(import.meta.url)("../CdVisualizer.js");
-const source = readFileSync(new URL("../CdVisualizer.js", import.meta.url), "utf8");
+const api = createCdVisualizerApi(globalThis);
 const uri = index => `spotify:track:${String(index).padStart(22, "0")}`;
 const raw = (count = 2) => ({
   track: { duration: count },
@@ -158,8 +155,7 @@ test("a fresh script/renderer reload reads durable analysis and beats before con
   function reload() {
     const window = { indexedDB: idb, setTimeout, clearTimeout,
       Spicetify: { getAudioData() { requests++; return raw(); } } };
-    vm.runInNewContext(source, { window });
-    return window.ivLyricsCdVisualizer;
+    return createCdVisualizerApi(window);
   }
   const first = reload(), original = await first.loadAnalysis(uri(1));
   assert.equal(requests, 1);

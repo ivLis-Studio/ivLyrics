@@ -1,15 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
+import { isToolbarSurfaceEvent as inside } from "#ivlyrics/app/toolbar/toolbarSurfaceEvent.mjs";
 
-const source = readFileSync(new URL("../OptionsMenu.js", import.meta.url), "utf8");
-const start = source.indexOf("const isToolbarSurfaceEvent =");
-const end = source.indexOf("const TOOLBAR_HOTKEY_LABELS", start);
-assert.ok(start > 0 && end > start);
-const context = vm.createContext({});
-vm.runInContext(`${source.slice(start, end)}\nglobalThis.isInside = isToolbarSurfaceEvent;`, context);
-const inside = context.isInside;
+const source = readFileSync(new URL("../src/app/toolbar/createToolbarInteraction.mjs", import.meta.url), "utf8");
 const selectors = ".companion";
 const root = { contains: target => target?.connectedToRoot === true };
 

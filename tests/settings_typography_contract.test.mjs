@@ -1,19 +1,37 @@
-import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { createSettingsInterludeControls } from "#ivlyrics/features/settings/settingsInterludeControls.mjs";
+import { createSettingsTypographyControls } from "#ivlyrics/features/settings/settingsTypographyControls.mjs";
+import { createSettingsMultiVocalColors } from "#ivlyrics/features/settings/settingsMultiVocalColors.mjs";
 import { readFileSync } from "node:fs";
+import { readSettingsSource, readSettingsStylesFixture } from "./fixtures/legacy-page-source.mjs";
+import { createSettingsFullscreenPreview, SETTINGS_CD_RAINBOW_HUES, SETTINGS_CD_STYLE_ORDER } from "#ivlyrics/features/settings/createSettingsFullscreenPreview.mjs";
+import { readSettingFlag, readSettingNumber } from "#ivlyrics/features/settings/settingsPreviewValues.mjs";
+import assert from "node:assert/strict";
+import inputs from "../src/spicetify/inputs.json" with { type: "json" };
+import { sourcePath } from "./fixtures/source-paths.mjs";
+import { execFileSync } from "node:child_process";
 import test from "node:test";
 import vm from "node:vm";
+import { createSettingsUiTheme } from "../src/features/settings/settingsUiTheme.mjs";
+import { loadSettingsFontFamily } from "../src/features/settings/settingsFontLoading.mjs";
+import { handleSettingsRadioKeys } from "../src/features/settings/settingsChoiceControls.mjs";
+import { normalizeSettingsHexColor } from "../src/features/settings/settingsColorControls.mjs";
+import { GOOGLE_FONTS } from "../src/core/lyricsFontCatalog.mjs";
+import { settingsTabModules, installSettingsFixtureBindings } from "./fixtures/settings-tab-modules.mjs";
 
-const currentSource = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
+const currentSource = readSettingsSource();
 // The released implementation is an independent oracle for the refactored controls.
 const releasedSource = execFileSync("git", ["show", "98e6a4167c72f80b422ec77461852d9da12f97e9:Settings.js"], {
   cwd: new URL("..", import.meta.url), encoding: "utf8", maxBuffer: 2 * 1024 * 1024,
 });
 
-test("settings styles are bundled before their consumer", () => {
-  const { subfiles } = JSON.parse(readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
-  assert.equal(subfiles.filter(file => file === "SettingsStyles.js").length, 1);
-  assert.ok(subfiles.indexOf("SettingsStyles.js") < subfiles.indexOf("Settings.js"));
+test("settings loads its styles on the lyrics route", () => {
+  const settings = sourcePath("Settings.js");
+  const styles = sourcePath("SettingsStyles.js");
+  assert.ok(!inputs.startup.includes(settings) && !inputs.startup.includes(styles));
+  const menus = readFileSync(new URL("../src/spicetify/composePageMenus.js", import.meta.url), "utf8");
+  assert.match(menus, /import \{ createSettingsPage \} from "#ivlyrics\/features\/settings\/Settings\.js"/);
+  const source = readFileSync(new URL("../" + settings, import.meta.url), "utf8");
+  assert.match(source, /import \{ createSettingsModalCss \} from "\.\/SettingsStyles\.js";/);
 });
 
 const section = (source, start, end) => {
@@ -27,6 +45,9 @@ const createHarness = (source, config = {}, initialLanguage = "ko") => {
   const slots = [];
   const calls = [];
   const links = new Map();
+  const preview = { dataset: {}, style: {
+    setProperty(name) { if (name === "--lyrics-align-text") calls.push(["preview"]); },
+  } };
   let cursor = 0;
   let language = initialLanguage;
   const useState = (initial) => {
@@ -46,17 +67,25 @@ const createHarness = (source, config = {}, initialLanguage = "ko") => {
   };
   const react = {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
-    Fragment: Symbol.for("Fragment"), useState, useMemo,
+    Fragment: Symbol.for("Fragment"), memo: component => component, useState, useMemo,
     useCallback: (callback, deps) => useMemo(() => callback, deps),
     useRef: (current) => useMemo(() => ({ current }), []),
     useEffect: () => { cursor++; }, useLayoutEffect: () => { cursor++; },
   };
-  const placeholders = Object.fromEntries([...source.matchAll(/^const (\w+) =/gm)].map(([, name]) => {
+  const controlNames = [...source.matchAll(/^const (\w+) =/gm)].map(([, name]) => name);
+  if (source === currentSource) {
+    controlNames.push("ConfigSlider", "ConfigSliderRange", "ConfigFontWeightSlider", "ConfigSelection",
+      "ConfigFontSelector", "ConfigColorPicker", "ColorPresetSelector", "SettingsSegmented", "SettingsChoiceCards",
+      "ConfigWarning", "ConfigInfo", "ConfigButton", "ConfigInput", "ConfigHotkey", "SettingsHotkeyTable", "SettingsTiles");
+  }
+  const placeholders = Object.fromEntries(controlNames.map((name) => {
     const component = () => null;
     Object.defineProperty(component, "name", { value: name });
     return [name, component];
   }));
   const context = vm.createContext({
+    createSettingsUiTheme,
+    ...settingsTabModules,
     ...placeholders, react, ...react, APP_NAME: "ivLyrics",
     CONFIG: { visual: { "line-spacing": 8, ...config } },
     I18n: { t: (key) => `${language}:${key}`, getAvailableLanguages: () => [] },
@@ -64,7 +93,7 @@ const createHarness = (source, config = {}, initialLanguage = "ko") => {
     KaraokeLine: function KaraokeLine() {},
     window: { dispatchEvent: (event) => calls.push(["event", event.type, event.detail]) },
     document: {
-      getElementById: (id) => links.get(id) || null,
+      getElementById: (id) => id === "settings-live-lyrics-preview" ? preview : links.get(id) || null,
       createElement: (type) => ({ type }),
       head: { appendChild: (link) => { links.set(link.id, link); calls.push(["appendFont", link.id]); } },
     },
@@ -78,15 +107,45 @@ const createHarness = (source, config = {}, initialLanguage = "ko") => {
     syncSettingsLyricsPreviewStyles: () => calls.push(["preview"]),
     lyricContainerUpdate: () => calls.push(["lyrics"]),
     reloadLyrics: () => calls.push(["reload"]),
-    getLyricsTypographyStyleVariables: () => ({}),
-    GOOGLE_FONTS: ["Pretendard Variable", "Noto Sans", "Roboto"],
+    getSettingsLyricsTypography: () => ({}),
+    createSettingsFullscreenPreview, SETTINGS_CD_RAINBOW_HUES, SETTINGS_CD_STYLE_ORDER,
+    readSettingFlag, readSettingNumber,
+    GOOGLE_FONTS,
   });
-  vm.runInContext(readFileSync(new URL("../SettingsStyles.js", import.meta.url), "utf8"), context);
+  if (source === currentSource) {
+    context.VideoHelperToggle = function VideoHelperToggle() {};
+    context.openSettingsHelperDownload = () => {};
+    context.refreshPageFromSettings = () => calls.push(["lyrics"]);
+    context.reloadPageFromSettings = () => calls.push(["reload"]);
+    context.loadGoogleFontFamily = (value) => loadSettingsFontFamily(context.document, value);
+    context.handleSettingsRadioKeys = handleSettingsRadioKeys;
+    context.normalizeSettingsHexColor = normalizeSettingsHexColor;
+    Object.assign(context, {
+      createSettingsTypographyControls, createSettingsInterludeControls, createSettingsMultiVocalColors,
+    });
+    installSettingsFixtureBindings(context);
+  }
+  vm.runInContext(readSettingsStylesFixture(), context);
   vm.runInContext([
-    section(source, "const createTextOutlineSettingItems =", "const MULTI_VOCAL_COLOR_GROUPS ="),
-    // Plain data the speaker-colour section reads while rendering.
-    section(source, "const MULTI_VOCAL_COLOR_GROUPS =", "const getMultiVocalColorHelper ="),
-    section(source, "const loadGoogleFontFamily =", "const SETTINGS_LYRICS_PREVIEW_TEXT ="),
+    source === currentSource
+      ? `const { createTextOutlineSettingItems, buildLyricsTypographyColumns, getLyricsTypographyRows } =
+          createSettingsTypographyControls({
+            readVisualSettings: () => CONFIG.visual, translate: (...args) => I18n.t(...args),
+            getSettingsText: (...args) => getSettingsText(...args),
+            controls: { ConfigSliderRange, ConfigColorPicker, ConfigFontSelector, ConfigFontWeightSlider, ConfigSelection },
+          });
+          const { getInstrumentalBreakLabelStyleDefault, ConfigInstrumentalBreakIconPicker } = createSettingsInterludeControls({
+            react, readVisualSettings: () => CONFIG.visual, translate: key => I18n.t(key),
+            isSettingChanged: key => isSettingChanged(key),
+          });
+          const { getMultiVocalRegistryItems, ConfigMultiVocalColorSettings } = createSettingsMultiVocalColors({
+            react, ConfigColorPicker, translate: key => I18n.t(key),
+            readSpeakerColors: () => undefined, readVisualSettings: () => CONFIG.visual,
+          });`
+      : section(source, "const createTextOutlineSettingItems =", "const MULTI_VOCAL_COLOR_GROUPS =")
+        + section(source, "const MULTI_VOCAL_COLOR_GROUPS =", "const getMultiVocalColorHelper =")
+        + section(source, "const GOOGLE_FONTS =", "const ConfigFontSelector =")
+        + section(source, "const loadGoogleFontFamily =", "const SETTINGS_LYRICS_PREVIEW_TEXT ="),
     section(source, "const getEffectiveReducedMotionPreference =", "function openConfig("),
     "globalThis.ConfigModalUnderTest = ConfigModal;",
   ].join("\n"), context);
@@ -253,7 +312,7 @@ for (const tab of ["appearance", "fullscreen"]) {
       const newControl = newControls.get(key);
       assert.ok(newControl, key + " is still rendered");
       const values = key.endsWith("font-family")
-        ? ["'Noto Sans', Pretendard Variable, unknown", "Roboto", "Roboto", ""]
+        ? ["'Noto Sans KR', Pretendard Variable, unknown", "Roboto", "Roboto", ""]
         : key === "phonetic-hyphen-replace" ? ["keep", "space", "remove"] : [0, 2, false];
       for (const value of values) {
         oldControl.onChange(key, value);

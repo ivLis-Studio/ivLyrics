@@ -3,10 +3,11 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { buildLocalDatabaseWorker } from '../.github/scripts/build_lrclib_local_runtime.mjs';
 
 const workerSource = readFileSync(new URL('../.github/scripts/lrclib_local_database_worker.mjs', import.meta.url), 'utf8');
 const buildSource = readFileSync(new URL('../.github/scripts/build_lrclib_local_runtime.mjs', import.meta.url), 'utf8');
-const runtimeSource = readFileSync(new URL('../LrclibLocalDatabaseRuntime.js', import.meta.url), 'utf8');
+const { source: bundled, licenseNotice } = await buildLocalDatabaseWorker();
 const DATABASE_NAME = 'lrclib.sqlite3';
 const MAX_READ_BYTES = 2 * 1024 * 1024;
 const WASM_SHA256 = '5384bc7d80d7981c2516f3ad6b02d886629985d178e5037e765d655f440bbf9f';
@@ -297,13 +298,10 @@ test('runtime builder pins wa-sqlite and its WASM and inlines the dependency gra
     assert.equal(/format:\s*['"]iife['"]/.test(buildSource), true);
     assert.equal(/platform:\s*['"]browser['"]/.test(buildSource), true);
     assert.equal(buildSource.includes("wasm.toString('base64')"), true);
-    assert.equal(runtimeSource.includes(`wa-sqlite 1.0.0; WASM SHA-256 ${WASM_SHA256}`), true);
+    assert.equal(licenseNotice.includes(`wa-sqlite 1.0.0; WASM SHA-256 ${WASM_SHA256}`), true);
 });
 
 test('bundled worker supplies the pinned WASM without network loading before engine startup', { timeout: 5000 }, async () => {
-    const wrapper = vm.createContext({ window: {} }, { codeGeneration: { strings: false, wasm: false } });
-    evaluate(runtimeSource, wrapper, 'LrclibLocalDatabaseRuntime.js');
-    const bundled = wrapper.window.IvLyricsLocalLrclibWorkerSource;
     assert.equal(typeof bundled, 'string');
     assert.equal(/\bimport\s*(?:\(|['"{*])/.test(bundled), false, 'no unresolved or remote imports');
     assert.equal(/\bimportScripts\s*\(/.test(bundled), false, 'no runtime library loading');

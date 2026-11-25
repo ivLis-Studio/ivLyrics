@@ -1,14 +1,18 @@
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
+import { createKaraokeHarnessFactory } from "./fixtures/karaoke-page-modules.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { KaraokeWordTiming } from '../src/lyrics/karaokeWordTiming.mjs';
+import { createLyricsViewClock } from '../src/lyrics/lyricsPlaybackView.mjs';
 
 // Reuse the source-extracted KaraokeLine harness, exporting the live painter
 // alongside it. The harness never runs effects, so the painter is exercised
 // directly with minimal element doubles below.
-const pagesSource = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
-const styles = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
+const pagesSource = readFileSync(new URL('../src/lyrics/Pages.js', import.meta.url), 'utf8');
+const styles = readPcStylesheet();
 const harnessUrl = new URL('./karaoke_static_render_cache.test.mjs', import.meta.url);
 const fixtureSource = readFileSync(harnessUrl, 'utf8');
 const fixtureStart = fixtureSource.indexOf('const currentSource =');
@@ -26,8 +30,8 @@ harnessSource = harnessSource
     if (String(props?.key || '').startsWith('karaoke-char-')) counts.glyphElements++;
     return { tag, props: props || {}, children };
   }`);
-const { createHarness, makeLine } = new Function('assert', 'execFileSync', 'readFileSync', 'vm',
-  harnessSource + '\nreturn { createHarness, makeLine };')(assert, execFileSync, readFileSync, vm);
+const { createHarness, makeLine } = createKaraokeHarnessFactory('assert', 'execFileSync', 'readFileSync', 'vm', 'KaraokeWordTiming',
+  harnessSource + '\nreturn { createHarness, makeLine };')(assert, execFileSync, readFileSync, vm, KaraokeWordTiming);
 
 const nodes = (tree, out = []) => {
   if (Array.isArray(tree)) tree.forEach(child => nodes(child, out));
@@ -173,24 +177,25 @@ test('the painter loop follows display frames and idles while playback is paused
 });
 
 test('the live clock samples playback at the display frame timestamp', () => {
-  const start = pagesSource.indexOf('const lyricsPlaybackOffsets');
-  const end = pagesSource.indexOf('const useLyricsPlaybackPosition');
-  assert.ok(start >= 0 && end > start);
   let snapshot = { position: 5000, isPlaying: true, sampledAt: 1012 };
-  const context = vm.createContext({
-    CONFIG: { visual: { delay: 0 } },
-    window: { Utils: { getPlayerPlaybackSnapshot: () => snapshot } },
-    Spicetify: { Player: { getProgress: () => 0 } },
+  let delay = 0;
+  const clock = createLyricsViewClock({
+    getSnapshot: () => snapshot,
+    getDelay: () => delay,
+    getPronunciationLead: () => 0,
+    getSafePlayerProgress: () => null,
+    getPublicProgress: () => 4200.4,
+    readGlobalOffset: () => -15,
   });
-  vm.runInContext(`${pagesSource.slice(start, end)}\nglobalThis.api = { lyricsPlaybackOffsets, getFrameAlignedLyricsPlaybackPosition };`, context);
-  const { lyricsPlaybackOffsets, getFrameAlignedLyricsPlaybackPosition } = context.api;
-  assert.equal(getFrameAlignedLyricsPlaybackPosition(1000), 4988);
-  lyricsPlaybackOffsets.trackOffset = 40;
-  lyricsPlaybackOffsets.globalOffset = -15;
-  context.CONFIG.visual.delay = 5;
-  assert.equal(getFrameAlignedLyricsPlaybackPosition(1000), 5018);
+  assert.equal(clock.getFrameAlignedLyricsPlaybackPosition(1000), 4988);
+  clock.updateOffsets(40, -15);
+  delay = 5;
+  assert.equal(clock.getFrameAlignedLyricsPlaybackPosition(1000), 5018);
   snapshot = { position: 5000, isPlaying: false, sampledAt: 1012 };
-  assert.equal(getFrameAlignedLyricsPlaybackPosition(1000), 5030, 'a paused clock does not move backwards');
+  assert.equal(clock.getFrameAlignedLyricsPlaybackPosition(1000), 5030, 'a paused clock does not move backwards');
+  snapshot = null;
+  assert.equal(clock.getFrameAlignedLyricsPlaybackPosition(1000), 4230.4, 'no guarded sample falls back to the public player');
+  assert.equal(clock.getDiscretePosition(), 4190, 'React state rounds the initial position with the stored global offset');
 });
 
 test('rows outside the visible window stop painting after their fade-out', () => {

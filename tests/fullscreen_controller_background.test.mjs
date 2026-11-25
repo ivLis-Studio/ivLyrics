@@ -1,10 +1,15 @@
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { observeFullscreenControllerHeight } from "../src/features/fullscreen/fullscreenLayout.mjs";
+import { createFullscreenPlaybackControls } from "../src/features/fullscreen/fullscreenPlaybackControls.mjs";
 
-const source = readFileSync(new URL("../FullscreenOverlay.js", import.meta.url), "utf8");
-const styles = readFileSync(new URL("../style.css", import.meta.url), "utf8");
+import { useFullscreenControlReveal } from "../src/features/fullscreen/fullscreenControlReveal.mjs";
+
+const source = readFileSync(new URL("../src/features/fullscreen/FullscreenOverlay.js", import.meta.url), "utf8");
+const styles = readPcStylesheet();
 const normalize = value => value.trim().replace(/\s+/g, " ");
 const rules = [...styles.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)]
   .map(([, selectors, body]) => ({
@@ -113,10 +118,6 @@ test("volume, progress, background and 28-48px button preferences still reach th
   assert.equal(elements(progressOnly).some(node => node.type === "PlayerControls"), false);
 });
 
-const controlsFrom = source.indexOf("    // Progress Bar Component");
-const controlsTo = source.indexOf("    // Lyrics Progress Indicator", controlsFrom);
-assert.ok(controlsFrom >= 0 && controlsTo > controlsFrom, "exercise the production timeline and control surface");
-
 // Render the real components so their own hooks decide what they start.
 // Effects write into the slot store, so the returned tree carries their state.
 function renderComponent(component, props, extra = {}) {
@@ -135,7 +136,9 @@ function renderComponent(component, props, extra = {}) {
     useMemo: (factory) => factory(),
     useCallback: (callback) => callback,
     useEffect: (effect) => { effect(); },
-    createElement: (type, elementProps, ...children) => ({ type, props: { ...elementProps, children } }),
+    createElement: (type, elementProps, ...children) => (type === context.window.PlaylistPicker.PlaylistPickerButton
+      ? type(elementProps)
+      : { type, props: { ...elementProps, children } }),
   };
   const context = {
     react, console,
@@ -151,7 +154,7 @@ function renderComponent(component, props, extra = {}) {
       }
     },
     document: { addEventListener() {}, removeEventListener() {} },
-    formatTime: () => "0:00", I18n: { t: (key) => key }, Toast: { success() {}, error() {} },
+    I18n: { t: (key) => key },
     Spicetify: {
       Player: { data: { item: { uri: "spotify:track:one" } }, getVolume: () => 1, getShuffle: () => false,
         getRepeat: () => 0, getProgress: () => 90000, getDuration: () => 180000,
@@ -162,12 +165,14 @@ function renderComponent(component, props, extra = {}) {
     clearInterval() {}, setTimeout: () => 0, clearTimeout() {},
     ...extra,
   };
+  const controls = createFullscreenPlaybackControls({
+    react: context.react, spotify: context.Spicetify, translate: (key) => context.I18n.t(key),
+    getPlaybackPosition: () => context.window.Utils, getPlaylistPicker: () => context.window.PlaylistPicker,
+    getDocument: () => context.document, timers: context,
+  });
   const run = () => {
     cursor = 0;
-    const scope = vm.createContext({ ...context });
-    return vm.runInContext(`const { useState, useEffect, useCallback, useMemo, useRef } = react;\n` +
-      `${source.slice(controlsFrom, controlsTo)}\n` +
-      `${component}(${JSON.stringify({ show: true, ...props })})`, scope);
+    return controls[component]({ show: true, ...props });
   };
   intervals.length = 0;
   run();
@@ -280,15 +285,12 @@ test("only the album column gates the left-panel controller, and only for hover-
 });
 
 test("hover gating ignores the (hover: none) media query Spotify's CEF gets wrong", () => {
-  // Regression guard: CEF reports "(hover: none)" with a mouse attached, so gating
-  // must not be derived from matchMedia - only from an actually observed pointer.
-  const block = source.slice(source.indexOf("const [pointerCanHover"),
-    source.indexOf("const tmiOpeningRef"));
-  assert.ok(!/matchMedia/.test(block),
-    "pointer capability must not come from a media query");
-  assert.match(block, /pointerType === "touch"/, "a real touch pointer disables gating");
-  assert.match(block, /pointerType === "mouse"/, "a real mouse pointer re-enables gating");
-  assert.match(block, /useState\(true\)/, "gating starts on until a touch pointer is seen");
+  const { pointer, fire } = gateRuntime();
+  assert.equal(pointer.value, true, "gating starts on until a touch pointer is seen");
+  fire("pointerdown", { pointerType: "touch" });
+  assert.equal(pointer.value, false);
+  fire("pointerdown", { pointerType: "mouse" });
+  assert.equal(pointer.value, true);
 });
 
 test("the album art and metadata re-arm the reveal the hover strip drops", () => {
@@ -303,61 +305,42 @@ test("the album art and metadata re-arm the reveal the hover strip drops", () =>
 });
 
 test("running a hover handler actually flips the reveal (catches a misspelled setter)", () => {
-  // Rendering the tree is not enough: a handler that throws on entry leaves the
-  // panel permanently hidden. Execute the real state block and drive it for real.
-  const start = source.indexOf("const CONTROLS_HIDE_HOLD_MS");
-  const end = source.indexOf("const tmiOpeningRef");
-  assert.ok(start >= 0 && end > start, "locate the hover-gate state block");
-  const block = source.slice(start, end);
-
-  const setters = new Map();
-  const context = {
-    useRef: initial => ({ current: initial }),
-    useState: initial => [initial, next => setters.set(next, typeof next === "function" ? next(initial) : next)],
-    useCallback: fn => fn,
-    useEffect: () => {},
-  };
-  const run = new Function(...Object.keys(context), `${block}
-    return { setControlsHoverSource, syncLeftControlsReveal };`);
-  const api = run(...Object.values(context));
-
-  assert.equal(typeof api.setControlsHoverSource, "function");
-  assert.equal(api.syncLeftControlsReveal(), undefined, "sync must not throw");
-  assert.equal(api.setControlsHoverSource("zone", true), undefined, "enter must not throw");
-  assert.equal(api.syncLeftControlsReveal(), undefined);
-  assert.equal(api.setControlsHoverSource("zone", false), undefined, "leave must not throw");
-  assert.equal(api.syncLeftControlsReveal(), undefined);
+  const { api, revealed, timers } = gateRuntime();
+  api.setControlsHoverSource("zone", true);
+  assert.equal(revealed.value, true);
+  api.setControlsHoverSource("zone", false);
+  assert.equal(timers.size, 1);
 });
 
 function gateRuntime() {
-  const start = source.indexOf("const CONTROLS_HIDE_HOLD_MS");
-  const end = source.indexOf("const tmiOpeningRef");
-  const block = source.slice(start, end);
   const revealed = { value: false };
+  const pointer = { value: true };
+  const states = [revealed, pointer];
   const timers = new Map();
   let nextTimer = 0;
+  let nextState = 0;
   const listeners = new Map();
   const listenersOf = type => listeners.get(type) || [];
-  const context = {
-    useRef: initial => ({ current: initial }),
-    useState: initial => [initial, next => {
-      revealed.value = typeof next === "function" ? next(revealed.value) : next;
-    }],
-    useCallback: fn => fn,
-    useEffect: fn => { if (typeof fn === "function") fn(() => {}); },
-    setTimeout: (fn, ms) => { const id = ++nextTimer; timers.set(id, { fn, ms }); return id; },
-    clearTimeout: id => timers.delete(id),
-    document: { addEventListener() {}, removeEventListener() {} },
-    window: {
+  const api = useFullscreenControlReveal({
+    react: {
+      useRef: initial => ({ current: initial }),
+      useState: initial => {
+        const state = states[nextState++];
+        state.value = initial;
+        return [initial, value => { state.value = value; }];
+      },
+      useCallback: fn => fn,
+      useEffect: fn => fn(),
+    },
+    schedule: (fn, ms) => { const id = ++nextTimer; timers.set(id, { fn, ms }); return id; },
+    cancel: id => timers.delete(id),
+    host: {
       addEventListener: (type, fn) => listeners.set(type, [...listenersOf(type), fn]),
       removeEventListener: (type, fn) => listeners.set(type, listenersOf(type).filter(entry => entry !== fn)),
     },
-  };
-  const run = new Function(...Object.keys(context), `${block}
-    return { setControlsHoverSource, syncLeftControlsReveal, controlsHoverSourcesRef,
-      beginControlsDragHold, setControlsFocusHold, controlsDragHeldRef, controlsFocusHeldRef };`);
-  const fire = type => [...listenersOf(type)].forEach(fn => fn());
-  return { api: run(...Object.values(context)), revealed, timers, listenersOf, fire };
+  });
+  const fire = (type, event) => [...listenersOf(type)].forEach(fn => fn(event));
+  return { api, revealed, pointer, timers, listenersOf, fire };
 }
 
 test("a press inside the controls holds them only until that button is released", () => {
@@ -367,7 +350,6 @@ test("a press inside the controls holds them only until that button is released"
   const { api, revealed, timers, listenersOf, fire } = gateRuntime();
   api.setControlsHoverSource("controls", true);
   api.beginControlsDragHold();
-  assert.equal(api.controlsDragHeldRef.current, true);
   assert.equal(listenersOf("mouseup").length, 1, "the press registers its own release");
   api.beginControlsDragHold();
   assert.equal(listenersOf("mouseup").length, 1, "a second press does not stack listeners");
@@ -375,14 +357,13 @@ test("a press inside the controls holds them only until that button is released"
   assert.equal(timers.size, 0, "no hide while the press is held, even outside the column");
   assert.equal(revealed.value, true);
   fire("mouseup");
-  assert.equal(api.controlsDragHeldRef.current, false, "the release drops the hold");
   assert.equal(listenersOf("mouseup").length + listenersOf("blur").length, 0, "and removes its listeners");
   assert.equal(timers.size, 1, "then the normal hide hold runs");
   [...timers.values()][0].fn();
   assert.equal(revealed.value, false, "the controller hides after a click and a leave");
   api.beginControlsDragHold();
   fire("blur");
-  assert.equal(api.controlsDragHeldRef.current, false, "losing the window also releases the press");
+  assert.equal(listenersOf("mouseup").length, 0, "losing the window also releases the press");
 });
 
 test("only keyboard focus pins the controls; the focus a click leaves behind does not", () => {
@@ -392,20 +373,22 @@ test("only keyboard focus pins the controls; the focus a click leaves behind doe
   api.setControlsHoverSource("controls", true);
   api.beginControlsDragHold();
   api.setControlsFocusHold(button, true);
-  assert.equal(api.controlsFocusHeldRef.current, false, "focus taken during a press is pointer focus");
   fire("mouseup");
   api.setControlsHoverSource("controls", false);
-  [...timers.values()][0].fn();
+  const [timer] = timers.keys();
+  const hide = timers.get(timer).fn;
+  timers.delete(timer);
+  hide();
   assert.equal(revealed.value, false, "the clicked button keeps focus, but the controller still hides");
   focusVisible = true;
   api.setControlsFocusHold(button, true);
-  assert.equal(api.controlsFocusHeldRef.current, true, "keyboard focus pins the controller");
+  assert.equal(timers.size, 0, "keyboard focus cancels the hide timer");
   assert.equal(revealed.value, true, "and reveals it without hover");
   api.setControlsFocusHold(null, false);
-  assert.equal(api.controlsFocusHeldRef.current, false, "focus leaving the controls releases the pin");
+  assert.equal(timers.size, 1, "focus leaving the controls releases the pin");
   focusVisible = false;
   api.setControlsFocusHold(button, true);
-  assert.equal(api.controlsFocusHeldRef.current, false, "programmatic focus after a pointer interaction does not pin");
+  assert.equal(timers.size, 1, "programmatic focus after a pointer interaction does not pin");
 });
 
 test("the controls linger briefly before the hide is committed", () => {
@@ -430,13 +413,15 @@ test("the controls linger briefly before the hide is committed", () => {
   assert.equal(revealed.value, false, "the hide lands once the hold expires");
 });
 
-test("the focus and drag releases also wait out the hold", () => {
-  const { api, revealed, timers } = gateRuntime();
+test("the drag release also waits out the hold", () => {
+  const { api, revealed, timers, fire } = gateRuntime();
   api.setControlsHoverSource("zone", true);
-  api.controlsHoverSourcesRef.current.delete("zone");
-  api.syncLeftControlsReveal(); // what a blur / mouseup release does
+  api.beginControlsDragHold();
+  api.setControlsHoverSource("zone", false);
+  assert.equal(timers.size, 0, "drag still holds the controls open");
+  fire("mouseup");
   assert.equal(revealed.value, true, "still revealed before the hold expires");
-  assert.equal(timers.size, 1, "a bare sync with no sources arms the hold too");
+  assert.equal(timers.size, 1, "after the release, the last hold is cleared");
 });
 
 test("an oversized album stack scrolls from its top instead of hiding its first or last controls", () => {
@@ -484,11 +469,7 @@ function heightHarness({ resizeObserver = true } = {}) {
     observe(node) { this.targets.add(node); }
     disconnect() { this.targets.clear(); }
   };
-  const from = source.indexOf("    const observeFullscreenControllerHeight =");
-  const to = source.indexOf("    // Center standard fullscreen lyrics", from);
-  assert.ok(from >= 0 && to > from);
-  const context = vm.createContext({ window: view, container });
-  const stop = vm.runInContext(`${source.slice(from, to)}\nobserveFullscreenControllerHeight(container);`, context);
+  const stop = observeFullscreenControllerHeight(container, view);
   return {
     frames, resizes, mutations, listeners, properties, writes, cancelled, progress, controls, container, stop,
     height: () => properties.get("--iv-fullscreen-controls-height"),

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const settingsSource = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
+const settingsSource = readFileSync(new URL("../src/features/settings/settingsPlaybackTabs.mjs", import.meta.url), "utf8");
 
 // The behavior ("lyrics") tab is assembled from several section renderers.
 // A merge once left two copies of the playback and Sync Creator renderers in
@@ -10,8 +10,8 @@ const settingsSource = readFileSync(new URL("../Settings.js", import.meta.url), 
 const lyricsTabSource = () => {
 	const start = settingsSource.indexOf("const renderLyricsTab = () => {");
 	assert.notEqual(start, -1, "renderLyricsTab not found");
-	const end = settingsSource.indexOf("const renderLyricsProvidersTab = () =>", start);
-	assert.notEqual(end, -1, "renderLyricsProvidersTab not found");
+	const end = settingsSource.indexOf("return { renderGeneralTab", start);
+	assert.notEqual(end, -1, "playback tab exports not found");
 	return settingsSource.slice(start, end);
 };
 

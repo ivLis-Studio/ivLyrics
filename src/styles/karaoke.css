@@ -1,0 +1,976 @@
+/* 새로운 노래방 스타일 - synced 모드 기반 */
+@property --ivlyrics-effect-strength {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+.lyrics-karaoke-line {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  --ivlyrics-effect-strength: 0;
+  --karaoke-glyph-bleed-x: 0.16em;
+  letter-spacing: var(--lyrics-original-letter-spacing, 0);
+  line-height: 1.38;
+  color: var(--lyrics-color-inactive);
+  overflow: visible;
+  /* Keep one paint-order boundary for the complete lyric row. Creating a
+     separate isolated stacking context for every glyph can make Chromium's
+     video compositor punch rectangular holes through translated effect rows. */
+  isolation: isolate;
+  /* Apply the configured shadow once per line instead of once per karaoke char. */
+  filter: var(--lyrics-text-drop-shadow, none);
+  text-shadow: none !important;
+  /* Force grayscale antialiasing so active (background-clip:text, transparent fill)
+     and done (solid color) chars share the same AA mode. Without this, done chars
+     pick up sub-pixel AA and visibly thicken at the active→done transition. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.lyrics-karaoke-line.is-effect-focused {
+  --ivlyrics-effect-strength: 1;
+}
+
+/* Strength is inherited by every glyph. Animate it only when an effect uses
+   it, otherwise each plain lyric hand-off restyles all descendants for 300ms.
+   Whole-line, vocal-part and inline-range effects keep the same fade curve.
+   The :has() is on the affected line itself and watches static metadata. */
+:is(.lyrics-lyricsContainer-LyricsLine, .lyrics-karaoke-part):is(.effect, .adlib, .pulse, .wave, .sparkle, .echo, .whisper, .bounce, .sway, .glow, .glitch, .flicker, .float, .blur, .pop):not(.text-effects-disabled) .lyrics-karaoke-line,
+.lyrics-karaoke-line:has(.ivlyrics-karaoke-range-style:is(.effect, .adlib, .pulse, .wave, .sparkle, .echo, .whisper, .bounce, .sway, .glow, .glitch, .flicker, .float, .blur, .pop):not(.text-effects-disabled)) {
+  --ivlyrics-effect-transition-duration: var(--iv-lyrics-centering-duration, 300ms);
+}
+
+.lyrics-karaoke-line.is-text-run {
+  --karaoke-glyph-bleed-x: 0.28em;
+  --karaoke-glyph-bleed-y: 0.3em;
+  --iv-karaoke-unfilled-opacity: 0.5;
+  letter-spacing: 0;
+  unicode-bidi: plaintext;
+}
+
+/* Arabic harakat, Thai tone marks, Indic vowel signs, and other combining
+   marks can extend outside the font's ordinary inline paint box. The karaoke
+   fill is background-clipped to the text, so give complex text runs extra
+   paint area without changing their measured line height or advance width. */
+.lyrics-karaoke-line.is-text-run .lyrics-karaoke-glyph-fill {
+  padding-block: var(--karaoke-glyph-bleed-y, 0.3em);
+  margin-block: calc(var(--karaoke-glyph-bleed-y, 0.3em) * -1);
+  overflow: visible;
+}
+
+.lyrics-karaoke-line.is-rtl {
+  direction: ltr;
+}
+
+.lyrics-karaoke-line.has-word-wrap {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.lyrics-karaoke-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.24em;
+  width: 100%;
+  overflow: visible;
+  padding-block: 0.08em;
+}
+
+/* Set by KaraokeLine while a multi-vocal row anchors the page; a
+   :has(.active-vocal-row) rule restyled every element whenever the row changed. */
+.lyrics-lyricsContainer-SyncedLyricsPage.is-karaoke
+  .lyrics-lyricsContainer-SyncedLyrics[data-active-vocal-row]
+  > .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-paddingLine) {
+  transition-property: transform, color, opacity;
+  transition-duration:
+    var(--line-shift-duration, var(--iv-lyrics-centering-duration, 300ms)),
+    var(--lyrics-detail-transition-duration, 300ms),
+    var(--lyrics-detail-transition-duration, 360ms),
+    400ms !important;
+  transition-timing-function:
+    var(--iv-lyrics-centering-ease, cubic-bezier(0.42, 0, 0.58, 1)),
+    var(--lyrics-detail-transition-ease, cubic-bezier(0.16, 1, 0.3, 1)),
+    var(--lyrics-detail-transition-ease, cubic-bezier(0.16, 1, 0.3, 1)),
+    ease !important;
+  transition-delay: var(--line-shift-delay, 0s), var(--lyrics-detail-exit-delay, 0ms),
+    var(--lyrics-detail-exit-delay, 0ms), var(--lyrics-detail-exit-delay, 0ms) !important;
+}
+
+.lyrics-lyricsContainer-SyncedLyricsPage
+  .lyrics-lyricsContainer-SyncedLyrics
+  > .lyrics-lyricsContainer-LyricsLine-paddingLine {
+  transition-property: transform, color, opacity, visibility !important;
+  transition-duration:
+    var(--line-shift-duration, var(--iv-lyrics-centering-duration, 300ms)),
+    300ms,
+    420ms,
+    0s !important;
+  transition-timing-function:
+    var(--iv-lyrics-centering-ease, cubic-bezier(0.42, 0, 0.58, 1)),
+    cubic-bezier(0.16, 1, 0.3, 1),
+    cubic-bezier(0.16, 1, 0.3, 1),
+    linear !important;
+  transition-delay:
+    var(--line-shift-delay, 0s),
+    0s,
+    0s,
+    420ms !important;
+}
+
+.lyrics-karaoke-part {
+  display: block;
+  width: 100%;
+  overflow: visible;
+  padding-block: 0.03em;
+}
+
+/* Lead/background describe timing tracks, including equal duet singers. */
+
+.lyrics-karaoke-part.effect,
+.lyrics-karaoke-part.speaker-sfx {
+  font-style: italic;
+}
+
+.lyrics-karaoke-part-subline {
+  display: block;
+  width: 100%;
+  margin-top: 0.12em;
+}
+
+.lyrics-karaoke-part .lyrics-karaoke-part-subline {
+  color: var(--lyrics-color-active);
+}
+
+.lyrics-lyricsContainer-LyricsLine-active .lyrics-karaoke-part-subline {
+  transform: none;
+}
+
+.lyrics-karaoke-part.speaker-b {
+  --lyrics-color-active: #8bd3ff;
+  --lyrics-color-inactive: rgba(139, 211, 255, 0.46);
+}
+
+.lyrics-karaoke-part.speaker-c {
+  --lyrics-color-active: #ffd166;
+  --lyrics-color-inactive: rgba(255, 209, 102, 0.48);
+}
+
+.lyrics-karaoke-part.speaker-d {
+  --lyrics-color-active: #c4a7ff;
+  --lyrics-color-inactive: rgba(196, 167, 255, 0.48);
+}
+
+.lyrics-karaoke-part.speaker-sfx {
+  --lyrics-color-active: #f4a6c8;
+  --lyrics-color-inactive: rgba(244, 166, 200, 0.46);
+}
+
+.lyrics-karaoke-part.speaker-male-1,
+.lyrics-lyricsContainer-LyricsLine.speaker-male-1 {
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-male-1, #a8ccff);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-male-1, #a8ccff) 52%, transparent);
+}
+
+.lyrics-karaoke-part.speaker-male-2,
+.lyrics-lyricsContainer-LyricsLine.speaker-male-2 {
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-male-2, #9ae8d4);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-male-2, #9ae8d4) 50%, transparent);
+}
+
+.lyrics-karaoke-part.speaker-male-3,
+.lyrics-lyricsContainer-LyricsLine.speaker-male-3 {
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-male-3, #bfe8ff);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-male-3, #bfe8ff) 50%, transparent);
+}
+
+.lyrics-karaoke-part.speaker-male-4,
+.lyrics-lyricsContainer-LyricsLine.speaker-male-4 {
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-male-4, #7fb5e6);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-male-4, #7fb5e6) 50%, transparent);
+}
+
+.lyrics-karaoke-part.speaker-male-5,
+.lyrics-lyricsContainer-LyricsLine.speaker-male-5 {
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-male-5, #6cb8b8);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-male-5, #6cb8b8) 50%, transparent);
+}
+
+.lyrics-karaoke-part.speaker-female-1,
+.lyrics-lyricsContainer-LyricsLine.speaker-female-1 {
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-female-1, #ffb8c7);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-female-1, #ffb8c7) 52%, transparent);
+}
+
+.lyrics-karaoke-part.speaker-female-2,
+.lyrics-lyricsContainer-LyricsLine.speaker-female-2 {
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-female-2, #ffd6b3);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-female-2, #ffd6b3) 50%, transparent);
+}
+
+.lyrics-karaoke-part.speaker-female-3,
+.lyrics-lyricsContainer-LyricsLine.speaker-female-3 {
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-female-3, #f6c8ff);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-female-3, #f6c8ff) 50%, transparent);
+}
+
+.lyrics-karaoke-part.speaker-female-4,
+.lyrics-lyricsContainer-LyricsLine.speaker-female-4 {
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-female-4, #e6b4d4);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-female-4, #e6b4d4) 50%, transparent);
+}
+
+.lyrics-karaoke-part.speaker-female-5,
+.lyrics-lyricsContainer-LyricsLine.speaker-female-5 {
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-female-5, #f6e5a5);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-female-5, #f6e5a5) 50%, transparent);
+}
+
+.lyrics-karaoke-part.speaker-duet-1,
+.lyrics-lyricsContainer-LyricsLine.speaker-duet-1 {
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-duet-1, #e4d8ff);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-duet-1, #e4d8ff) 52%, transparent);
+}
+
+.lyrics-karaoke-part.speaker-duet-2,
+.lyrics-lyricsContainer-LyricsLine.speaker-duet-2 {
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-duet-2, #d6e4ff);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-duet-2, #d6e4ff) 50%, transparent);
+}
+
+.lyrics-karaoke-part.speaker-duet-3,
+.lyrics-lyricsContainer-LyricsLine.speaker-duet-3 {
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-duet-3, #ffddf2);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-duet-3, #ffddf2) 50%, transparent);
+}
+
+.lyrics-karaoke-part.speaker-duet-4,
+.lyrics-lyricsContainer-LyricsLine.speaker-duet-4 {
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-duet-4, #bfaeff);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-duet-4, #bfaeff) 50%, transparent);
+}
+
+.lyrics-karaoke-part.speaker-duet-5,
+.lyrics-lyricsContainer-LyricsLine.speaker-duet-5 {
+  --lyrics-color-active: var(--ivlyrics-multi-vocal-speaker-color-duet-5, #9d8cf2);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-multi-vocal-speaker-color-duet-5, #9d8cf2) 50%, transparent);
+}
+
+.ivlyrics-karaoke-range-style.speaker-male-1 { --ivlyrics-range-speaker-color: var(--ivlyrics-multi-vocal-speaker-color-male-1, #a8ccff); }
+.ivlyrics-karaoke-range-style.speaker-male-2 { --ivlyrics-range-speaker-color: var(--ivlyrics-multi-vocal-speaker-color-male-2, #9ae8d4); }
+.ivlyrics-karaoke-range-style.speaker-male-3 { --ivlyrics-range-speaker-color: var(--ivlyrics-multi-vocal-speaker-color-male-3, #bfe8ff); }
+.ivlyrics-karaoke-range-style.speaker-male-4 { --ivlyrics-range-speaker-color: var(--ivlyrics-multi-vocal-speaker-color-male-4, #7fb5e6); }
+.ivlyrics-karaoke-range-style.speaker-male-5 { --ivlyrics-range-speaker-color: var(--ivlyrics-multi-vocal-speaker-color-male-5, #6cb8b8); }
+.ivlyrics-karaoke-range-style.speaker-female-1 { --ivlyrics-range-speaker-color: var(--ivlyrics-multi-vocal-speaker-color-female-1, #ffb8c7); }
+.ivlyrics-karaoke-range-style.speaker-female-2 { --ivlyrics-range-speaker-color: var(--ivlyrics-multi-vocal-speaker-color-female-2, #ffd6b3); }
+.ivlyrics-karaoke-range-style.speaker-female-3 { --ivlyrics-range-speaker-color: var(--ivlyrics-multi-vocal-speaker-color-female-3, #f6c8ff); }
+.ivlyrics-karaoke-range-style.speaker-female-4 { --ivlyrics-range-speaker-color: var(--ivlyrics-multi-vocal-speaker-color-female-4, #e6b4d4); }
+.ivlyrics-karaoke-range-style.speaker-female-5 { --ivlyrics-range-speaker-color: var(--ivlyrics-multi-vocal-speaker-color-female-5, #f6e5a5); }
+.ivlyrics-karaoke-range-style.speaker-duet-1 { --ivlyrics-range-speaker-color: var(--ivlyrics-multi-vocal-speaker-color-duet-1, #e4d8ff); }
+.ivlyrics-karaoke-range-style.speaker-duet-2 { --ivlyrics-range-speaker-color: var(--ivlyrics-multi-vocal-speaker-color-duet-2, #d6e4ff); }
+.ivlyrics-karaoke-range-style.speaker-duet-3 { --ivlyrics-range-speaker-color: var(--ivlyrics-multi-vocal-speaker-color-duet-3, #ffddf2); }
+.ivlyrics-karaoke-range-style.speaker-duet-4 { --ivlyrics-range-speaker-color: var(--ivlyrics-multi-vocal-speaker-color-duet-4, #bfaeff); }
+.ivlyrics-karaoke-range-style.speaker-duet-5 { --ivlyrics-range-speaker-color: var(--ivlyrics-multi-vocal-speaker-color-duet-5, #9d8cf2); }
+
+.ivlyrics-karaoke-range-style[class*="speaker-male-"],
+.ivlyrics-karaoke-range-style[class*="speaker-female-"],
+.ivlyrics-karaoke-range-style[class*="speaker-duet-"] {
+  --lyrics-color-active: var(--ivlyrics-range-speaker-color);
+  --lyrics-color-inactive: color-mix(in srgb, var(--ivlyrics-range-speaker-color) 50%, transparent);
+}
+
+/* A range that explicitly selects NORMAL falls back to the page's lyric
+   colours. The row carries the line speaker's colour (e.g. DUET 4), and without
+   this reset the NORMAL range would silently inherit it, so the editor and the
+   rendered lyrics would disagree. */
+.ivlyrics-karaoke-range-style.speaker-normal {
+  --lyrics-color-active: var(--iv-page-lyrics-color-active);
+  --lyrics-color-inactive: var(--iv-page-lyrics-color-inactive);
+}
+
+@keyframes ivlyrics-kind-effect-tremble {
+  0%, 100% { translate: 0 0; }
+  25% { translate: calc(-0.5px * var(--ivlyrics-effect-strength)) calc(0.25px * var(--ivlyrics-effect-strength)); }
+  50% { translate: calc(0.45px * var(--ivlyrics-effect-strength)) calc(-0.25px * var(--ivlyrics-effect-strength)); }
+  75% { translate: calc(-0.25px * var(--ivlyrics-effect-strength)) calc(-0.35px * var(--ivlyrics-effect-strength)); }
+}
+
+@keyframes ivlyrics-kind-adlib-float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 calc(-1.5px * var(--ivlyrics-effect-strength)); }
+}
+
+@keyframes ivlyrics-kind-pulse {
+  0%, 100% {
+    scale: 1;
+    filter: brightness(1);
+  }
+  45% {
+    scale: calc(1 + (0.025 * var(--ivlyrics-effect-strength)));
+    filter: brightness(calc(1 + (0.12 * var(--ivlyrics-effect-strength))));
+  }
+}
+
+@keyframes ivlyrics-kind-wave {
+  0%, 100% { translate: 0 0; }
+  35% { translate: 0 calc(-0.11em * var(--ivlyrics-effect-strength)); }
+  70% { translate: 0 calc(0.03em * var(--ivlyrics-effect-strength)); }
+}
+
+@keyframes ivlyrics-kind-sparkle {
+  0%, 100% {
+    filter: brightness(1);
+    text-shadow: var(--lyrics-current-original-outline-shadow, 0 0 0 transparent), 0 0 0 rgba(255, 255, 255, 0);
+  }
+  42% {
+    filter: brightness(calc(1 + (0.22 * var(--ivlyrics-effect-strength))));
+    text-shadow:
+      var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
+      0 0 0.18em rgb(255 255 255 / calc(0.34 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0))),
+      0 0 0.42em color-mix(in srgb, currentColor calc(100% * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)), transparent);
+  }
+  58% {
+    filter: brightness(calc(1 - (0.04 * var(--ivlyrics-effect-strength))));
+    text-shadow:
+      var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
+      0 0 0.08em rgb(255 255 255 / calc(0.16 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)));
+  }
+}
+
+@keyframes ivlyrics-kind-echo {
+  0%, 100% {
+    text-shadow: var(--lyrics-current-original-outline-shadow, 0 0 0 transparent), 0 0 0 rgba(255, 255, 255, 0);
+  }
+  50% {
+    text-shadow:
+      var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
+      0.07em 0.04em 0 rgb(255 255 255 / calc(0.18 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0))),
+      0.14em 0.08em 0.22em color-mix(
+        in srgb,
+        var(--lyrics-color-active, #fff) calc(36% * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)),
+        transparent
+      );
+  }
+}
+
+@keyframes ivlyrics-kind-whisper {
+  0%, 100% {
+    opacity: calc(1 - (0.14 * var(--ivlyrics-effect-strength)));
+    filter: blur(0);
+    translate: 0 0;
+  }
+  45% {
+    opacity: calc(1 - (0.28 * var(--ivlyrics-effect-strength)));
+    filter: blur(calc(0.55px * var(--ivlyrics-effect-strength)));
+    translate:
+      calc(0.04em * var(--ivlyrics-effect-strength))
+      calc(-0.02em * var(--ivlyrics-effect-strength));
+  }
+}
+
+@keyframes ivlyrics-kind-bounce {
+  0%, 100% { translate: 0 0; }
+  32% { translate: 0 calc(-0.16em * var(--ivlyrics-effect-strength)); }
+  58% { translate: 0 calc(0.035em * var(--ivlyrics-effect-strength)); }
+  76% { translate: 0 calc(-0.045em * var(--ivlyrics-effect-strength)); }
+}
+
+@keyframes ivlyrics-kind-sway {
+  0%, 100% {
+    translate: 0 0;
+    rotate: 0deg;
+  }
+  30% {
+    translate: calc(-0.0245em * var(--ivlyrics-effect-strength)) 0;
+    rotate: calc(-0.84deg * var(--ivlyrics-effect-strength));
+  }
+  70% {
+    translate: calc(0.0245em * var(--ivlyrics-effect-strength)) 0;
+    rotate: calc(0.84deg * var(--ivlyrics-effect-strength));
+  }
+}
+
+@keyframes ivlyrics-kind-glow {
+  0%, 100% {
+    filter: brightness(calc(1 + (0.08 * var(--ivlyrics-effect-strength))));
+    text-shadow:
+      var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
+      0 0 0.12em rgb(255 255 255 / calc(0.3 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0))),
+      0 0 0.48em color-mix(in srgb, var(--lyrics-color-active, #fff) calc(42% * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)), transparent),
+      0 0 0.76em color-mix(in srgb, var(--lyrics-color-active, #fff) calc(20% * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)), transparent);
+  }
+  50% {
+    filter: brightness(calc(1 + (0.03 * var(--ivlyrics-effect-strength))));
+    text-shadow:
+      var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
+      0 0 0.1em rgb(255 255 255 / calc(0.24 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0))),
+      0 0 0.4em color-mix(in srgb, var(--lyrics-color-active, #fff) calc(36% * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)), transparent),
+      0 0 0.68em color-mix(in srgb, var(--lyrics-color-active, #fff) calc(16% * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)), transparent);
+  }
+}
+
+@keyframes ivlyrics-kind-glitch {
+  0%, 100% {
+    translate: 0 0;
+    text-shadow: var(--lyrics-current-original-outline-shadow, 0 0 0 transparent), 0 0 0 transparent;
+  }
+  16% {
+    translate: calc(-0.035em * var(--ivlyrics-effect-strength)) calc(0.01em * var(--ivlyrics-effect-strength));
+    text-shadow:
+      var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
+      0.045em 0 rgb(111 211 255 / calc(0.34 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0))),
+      -0.045em 0 rgb(255 116 172 / calc(0.3 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)));
+  }
+  18% {
+    translate: calc(0.03em * var(--ivlyrics-effect-strength)) calc(-0.01em * var(--ivlyrics-effect-strength));
+    text-shadow:
+      var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
+      -0.04em 0 rgb(111 211 255 / calc(0.26 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0))),
+      0.04em 0 rgb(255 116 172 / calc(0.28 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)));
+  }
+  20%, 64% {
+    translate: 0 0;
+    text-shadow: var(--lyrics-current-original-outline-shadow, 0 0 0 transparent), 0 0 0 transparent;
+  }
+  66% {
+    translate: calc(0.025em * var(--ivlyrics-effect-strength)) 0;
+    text-shadow:
+      var(--lyrics-current-original-outline-shadow, 0 0 0 transparent),
+      0.035em 0 rgb(111 211 255 / calc(0.24 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0))),
+      -0.035em 0 rgb(255 116 172 / calc(0.24 * var(--ivlyrics-effect-strength) * var(--lyrics-shadow-enabled, 0)));
+  }
+  68% {
+    translate: 0 0;
+    text-shadow: var(--lyrics-current-original-outline-shadow, 0 0 0 transparent), 0 0 0 transparent;
+  }
+}
+
+@keyframes ivlyrics-kind-flicker {
+  0%, 100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  12% {
+    opacity: calc(1 - (0.24 * var(--ivlyrics-effect-strength)));
+    filter: brightness(calc(1 - (0.08 * var(--ivlyrics-effect-strength))));
+  }
+  15%, 48% {
+    opacity: 1;
+    filter: brightness(calc(1 + (0.08 * var(--ivlyrics-effect-strength))));
+  }
+  52% {
+    opacity: calc(1 - (0.18 * var(--ivlyrics-effect-strength)));
+    filter: brightness(calc(1 - (0.04 * var(--ivlyrics-effect-strength))));
+  }
+  56% {
+    opacity: 1;
+    filter: brightness(calc(1 + (0.06 * var(--ivlyrics-effect-strength))));
+  }
+}
+
+@keyframes ivlyrics-kind-float {
+  0%, 100% {
+    translate: 0 0;
+    rotate: 0deg;
+  }
+  50% {
+    translate: 0 calc(-0.09em * var(--ivlyrics-effect-strength));
+    rotate: calc(0.45deg * var(--ivlyrics-effect-strength));
+  }
+}
+
+@keyframes ivlyrics-kind-blur {
+  0%, 100% {
+    filter: blur(0) brightness(1);
+    opacity: calc(1 - (0.02 * var(--ivlyrics-effect-strength)));
+  }
+  50% {
+    filter:
+      blur(calc(0.65px * var(--ivlyrics-effect-strength)))
+      brightness(calc(1 + (0.08 * var(--ivlyrics-effect-strength))));
+    opacity: calc(1 - (0.1 * var(--ivlyrics-effect-strength)));
+  }
+}
+
+@keyframes ivlyrics-kind-pop {
+  0%, 100% {
+    scale: 1;
+    filter: brightness(1);
+  }
+  18% {
+    scale: calc(1 + (0.035 * var(--ivlyrics-effect-strength)));
+    filter: brightness(calc(1 + (0.09 * var(--ivlyrics-effect-strength))));
+  }
+  34% {
+    scale: calc(1 - (0.004 * var(--ivlyrics-effect-strength)));
+    filter: brightness(1);
+  }
+}
+
+.lyrics-karaoke-part.effect .lyrics-karaoke-line.is-effect-live,
+.lyrics-lyricsContainer-LyricsLine.effect .lyrics-karaoke-line.is-effect-live {
+  animation: ivlyrics-kind-effect-tremble 180ms steps(2, end) infinite;
+  will-change: translate;
+}
+
+.lyrics-karaoke-part.adlib .lyrics-karaoke-line.is-effect-live,
+.lyrics-lyricsContainer-LyricsLine.adlib .lyrics-karaoke-line.is-effect-live {
+  animation: ivlyrics-kind-adlib-float 1.05s ease-in-out infinite;
+  will-change: translate;
+}
+
+.lyrics-karaoke-part.pulse .lyrics-karaoke-line.is-effect-live,
+.lyrics-lyricsContainer-LyricsLine.pulse .lyrics-karaoke-line.is-effect-live {
+  animation: ivlyrics-kind-pulse 940ms ease-in-out infinite;
+  transform-origin: center;
+  will-change: scale, filter;
+}
+
+.lyrics-karaoke-part.wave .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-char,
+.lyrics-karaoke-part.wave .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-text-run-segment,
+.lyrics-lyricsContainer-LyricsLine.wave .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-char,
+.lyrics-lyricsContainer-LyricsLine.wave .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-text-run-segment {
+  animation: ivlyrics-kind-wave 920ms ease-in-out infinite;
+  will-change: translate;
+}
+
+.lyrics-karaoke-part.wave .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-char:nth-child(2n),
+.lyrics-karaoke-part.wave .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-text-run-segment:nth-child(2n),
+.lyrics-lyricsContainer-LyricsLine.wave .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-char:nth-child(2n),
+.lyrics-lyricsContainer-LyricsLine.wave .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-text-run-segment:nth-child(2n) {
+  animation-delay: -120ms;
+}
+
+.lyrics-karaoke-part.wave .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-char:nth-child(3n),
+.lyrics-karaoke-part.wave .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-text-run-segment:nth-child(3n),
+.lyrics-lyricsContainer-LyricsLine.wave .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-char:nth-child(3n),
+.lyrics-lyricsContainer-LyricsLine.wave .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-text-run-segment:nth-child(3n) {
+  animation-delay: -240ms;
+}
+
+.lyrics-karaoke-part.sparkle .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-char,
+.lyrics-karaoke-part.sparkle .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-text-run-segment,
+.lyrics-lyricsContainer-LyricsLine.sparkle .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-char,
+.lyrics-lyricsContainer-LyricsLine.sparkle .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-text-run-segment {
+  animation: ivlyrics-kind-sparkle 1.18s ease-in-out infinite;
+  will-change: filter, text-shadow;
+}
+
+.lyrics-karaoke-part.echo .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-char,
+.lyrics-karaoke-part.echo .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-text-run-segment,
+.lyrics-lyricsContainer-LyricsLine.echo .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-char,
+.lyrics-lyricsContainer-LyricsLine.echo .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-text-run-segment {
+  animation: ivlyrics-kind-echo 1.28s ease-in-out infinite;
+  will-change: text-shadow;
+}
+
+.lyrics-karaoke-part.whisper .lyrics-karaoke-line.is-effect-live,
+.lyrics-lyricsContainer-LyricsLine.whisper .lyrics-karaoke-line.is-effect-live {
+  animation: ivlyrics-kind-whisper 1.45s ease-in-out infinite;
+  will-change: opacity, filter, translate;
+}
+
+.lyrics-karaoke-part.bounce .lyrics-karaoke-line.is-effect-live,
+.lyrics-lyricsContainer-LyricsLine.bounce .lyrics-karaoke-line.is-effect-live {
+  animation: ivlyrics-kind-bounce 780ms cubic-bezier(0.2, 0.85, 0.24, 1) infinite;
+  will-change: translate;
+}
+
+.lyrics-karaoke-part.sway .lyrics-karaoke-line.is-effect-live,
+.lyrics-lyricsContainer-LyricsLine.sway .lyrics-karaoke-line.is-effect-live {
+  animation: ivlyrics-kind-sway 1.35s ease-in-out infinite;
+  transform-origin: center bottom;
+  will-change: translate, rotate;
+}
+
+.lyrics-karaoke-part.float .lyrics-karaoke-line.is-effect-live,
+.lyrics-lyricsContainer-LyricsLine.float .lyrics-karaoke-line.is-effect-live {
+  animation: ivlyrics-kind-float 1.65s ease-in-out infinite;
+  transform-origin: center;
+  will-change: translate, rotate;
+}
+
+.lyrics-karaoke-part.blur .lyrics-karaoke-line.is-effect-live,
+.lyrics-lyricsContainer-LyricsLine.blur .lyrics-karaoke-line.is-effect-live {
+  animation: ivlyrics-kind-blur 1.5s ease-in-out infinite;
+  will-change: filter, opacity;
+}
+
+.lyrics-karaoke-part.pop .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-char,
+.lyrics-karaoke-part.pop .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-text-run-segment,
+.lyrics-lyricsContainer-LyricsLine.pop .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-char,
+.lyrics-lyricsContainer-LyricsLine.pop .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-text-run-segment {
+  animation: ivlyrics-kind-pop 1.08s cubic-bezier(0.18, 0.9, 0.36, 1) infinite;
+  transform-origin: center;
+  will-change: scale, filter;
+}
+
+.lyrics-karaoke-part.glow .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-char,
+.lyrics-karaoke-part.glow .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-text-run-segment,
+.lyrics-lyricsContainer-LyricsLine.glow .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-char,
+.lyrics-lyricsContainer-LyricsLine.glow .lyrics-karaoke-line.is-effect-live .lyrics-karaoke-text-run-segment {
+  animation: ivlyrics-kind-glow 2.8s ease-in-out infinite;
+  will-change: filter, text-shadow;
+}
+
+.lyrics-karaoke-part.glitch .lyrics-karaoke-line.is-effect-live,
+.lyrics-lyricsContainer-LyricsLine.glitch .lyrics-karaoke-line.is-effect-live {
+  animation: ivlyrics-kind-glitch 1.12s steps(1, end) infinite;
+  will-change: translate, text-shadow;
+}
+
+.lyrics-karaoke-part.flicker .lyrics-karaoke-line.is-effect-live,
+.lyrics-lyricsContainer-LyricsLine.flicker .lyrics-karaoke-line.is-effect-live {
+  animation: ivlyrics-kind-flicker 1.22s steps(1, end) infinite;
+  will-change: opacity, filter;
+}
+
+.ivlyrics-karaoke-range-style {
+  display: inline-block;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  word-spacing: inherit;
+  vertical-align: baseline;
+  transform-origin: center bottom;
+}
+
+.lyrics-karaoke-line.is-effect-live .ivlyrics-karaoke-range-style.effect { animation: ivlyrics-kind-effect-tremble 180ms steps(2, end) infinite; }
+.lyrics-karaoke-line.is-effect-live .ivlyrics-karaoke-range-style.adlib { animation: ivlyrics-kind-adlib-float 1.05s ease-in-out infinite; }
+.lyrics-karaoke-line.is-effect-live .ivlyrics-karaoke-range-style.pulse { animation: ivlyrics-kind-pulse 940ms ease-in-out infinite; }
+.lyrics-karaoke-line.is-effect-live .ivlyrics-karaoke-range-style.wave { animation: ivlyrics-kind-wave 920ms ease-in-out infinite; }
+.lyrics-karaoke-line.is-effect-live .ivlyrics-karaoke-range-style.sparkle { animation: ivlyrics-kind-sparkle 1.18s ease-in-out infinite; }
+.lyrics-karaoke-line.is-effect-live .ivlyrics-karaoke-range-style.echo { animation: ivlyrics-kind-echo 1.28s ease-in-out infinite; }
+.lyrics-karaoke-line.is-effect-live .ivlyrics-karaoke-range-style.whisper { animation: ivlyrics-kind-whisper 1.45s ease-in-out infinite; }
+.lyrics-karaoke-line.is-effect-live .ivlyrics-karaoke-range-style.bounce { animation: ivlyrics-kind-bounce 780ms cubic-bezier(0.2, 0.85, 0.24, 1) infinite; }
+.lyrics-karaoke-line.is-effect-live .ivlyrics-karaoke-range-style.sway { animation: ivlyrics-kind-sway 1.35s ease-in-out infinite; }
+.lyrics-karaoke-line.is-effect-live .ivlyrics-karaoke-range-style.glow { animation: ivlyrics-kind-glow 2.8s ease-in-out infinite; }
+.lyrics-karaoke-line.is-effect-live .ivlyrics-karaoke-range-style.glitch { animation: ivlyrics-kind-glitch 1.12s steps(1, end) infinite; }
+.lyrics-karaoke-line.is-effect-live .ivlyrics-karaoke-range-style.flicker { animation: ivlyrics-kind-flicker 1.22s steps(1, end) infinite; }
+.lyrics-karaoke-line.is-effect-live .ivlyrics-karaoke-range-style.float { animation: ivlyrics-kind-float 1.65s ease-in-out infinite; }
+.lyrics-karaoke-line.is-effect-live .ivlyrics-karaoke-range-style.blur { animation: ivlyrics-kind-blur 1.5s ease-in-out infinite; }
+.lyrics-karaoke-line.is-effect-live .ivlyrics-karaoke-range-style.pop { animation: ivlyrics-kind-pop 1.08s cubic-bezier(0.18, 0.9, 0.36, 1) infinite; }
+
+.ivlyrics-karaoke-range-style.wave,
+.ivlyrics-karaoke-range-style.sparkle,
+.ivlyrics-karaoke-range-style.echo,
+.ivlyrics-karaoke-range-style.pop {
+  animation-delay: calc(var(--ivlyrics-range-index, 0) * -70ms);
+}
+
+/* Shadow-based word effects animate text-shadow on the range wrapper, but the
+   glyphs inside it reset text-shadow to none (they normally inherit the row's
+   shadow through a filter instead). Without this hand-off the effect's glow
+   only shows where the range class sits directly on a glyph, as in the sync
+   editor's own stage, and never in the app or the sync preview. Motion,
+   filter and opacity effects do not need it. */
+.lyrics-karaoke-line .ivlyrics-karaoke-range-style:not(.text-effects-disabled):is(.sparkle, .echo, .glow, .glitch) .lyrics-karaoke-char,
+.lyrics-karaoke-line .ivlyrics-karaoke-range-style:not(.text-effects-disabled):is(.sparkle, .echo, .glow, .glitch) .lyrics-karaoke-text-run-segment {
+  text-shadow: inherit;
+}
+
+.lyrics-karaoke-part.text-effects-disabled,
+.lyrics-karaoke-part.text-effects-disabled *,
+.lyrics-lyricsContainer-LyricsLine.text-effects-disabled,
+.lyrics-lyricsContainer-LyricsLine.text-effects-disabled *,
+.ivlyrics-karaoke-range-style.text-effects-disabled,
+.ivlyrics-karaoke-range-style.text-effects-disabled * {
+  animation: none !important;
+}
+
+.ivlyrics-sync-kind-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.01em;
+  transform-origin: center;
+  color: var(--lyrics-color-active, currentColor);
+  overflow: visible;
+  pointer-events: none;
+  will-change: transform, opacity, filter, text-shadow;
+}
+
+.ivlyrics-sync-kind-preview .lyrics-karaoke-line {
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  overflow: visible;
+}
+
+.ivlyrics-sync-effect-card,
+.ivlyrics-sync-effect-card:focus,
+.ivlyrics-sync-effect-card:focus-visible {
+  outline: none;
+}
+
+.ivlyrics-sync-kind-preview-char {
+  display: inline-block;
+  transform-origin: center;
+  will-change: transform, opacity, filter, text-shadow;
+}
+
+.lyrics-karaoke-wrap-group,
+.lyrics-karaoke-word {
+  display: inline-block;
+  max-width: 100%;
+  white-space: normal;
+  vertical-align: baseline;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
+
+/* Keep idle glyphs and words in 2D. A zero-depth translate3d promotes thousands
+   of offscreen glyphs; bounce distance, scale and transition timing stay the same. */
+.lyrics-karaoke-word.is-word-timed {
+  transform-origin: center bottom;
+  transform: translateY(var(--karaoke-bounce-y, 0)) scale(var(--karaoke-bounce-scale, 1));
+  transition: transform 75ms linear;
+}
+
+.lyrics-karaoke-word.is-word-timed.is-bouncing {
+  will-change: transform;
+}
+
+/* The word wrapper owns motion in word mode; inherited motion variables must
+   not apply the same transform a second time to its individual glyphs. */
+.lyrics-karaoke-word.is-word-timed .lyrics-karaoke-char {
+  transform: none;
+}
+
+.lyrics-karaoke-text-run-segment {
+  display: inline-block;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding-inline: var(--karaoke-glyph-bleed-x, 0.16em);
+  margin-inline: calc(var(--karaoke-glyph-bleed-x, 0.16em) * -1);
+  color: var(--lyrics-color-inactive);
+  filter: none;
+  text-shadow: none;
+  vertical-align: baseline;
+  unicode-bidi: isolate;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transform-origin: center bottom;
+  transform: translateY(var(--karaoke-bounce-y, 0)) scale(var(--karaoke-bounce-scale, 1));
+  transition: transform 75ms linear;
+}
+
+.lyrics-karaoke-text-run-segment.is-word-timed {
+  transform-origin: center bottom;
+}
+
+.lyrics-karaoke-text-run-segment.is-bouncing {
+  will-change: transform;
+}
+
+/* Semi-transparent glyph colors are composited once per shaped glyph. In
+   joined scripts their overlap can therefore become brighter than the rest of
+   an unfilled word. Paint the pending run opaquely and lower the opacity of the
+   complete shaped run instead, so every connection keeps one uniform tone. */
+.lyrics-karaoke-line.is-text-run .lyrics-karaoke-text-run-segment--pending {
+  color: var(--lyrics-color-active);
+  color: rgb(from var(--lyrics-color-inactive) r g b / 1);
+  opacity: var(--iv-karaoke-unfilled-opacity, 0.5);
+}
+
+/* The outer run owns shaping, motion, and the outline pseudo-element. The nested
+   glyph-fill is the only color layer; painting both layers makes joined scripts
+   brighter where glyphs overlap and gives their progress edges different origins. */
+.lyrics-karaoke-text-run-segment--done {
+  color: transparent;
+  background: none;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.lyrics-karaoke-text-run-segment--active {
+  color: transparent;
+  background: none;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.lyrics-karaoke-text-run-space {
+  white-space: pre-wrap;
+}
+
+.lyrics-karaoke-line.is-active .lyrics-karaoke-text-run-segment--active {
+  filter: none;
+}
+
+.lyrics-karaoke-char {
+  display: inline-block;
+  white-space: pre-wrap;
+  padding-inline: var(--karaoke-glyph-bleed-x, 0.16em);
+  margin-inline: calc(var(--karaoke-glyph-bleed-x, 0.16em) * -1);
+  color: var(--lyrics-color-inactive);
+  filter: none;
+  text-shadow: none;
+  vertical-align: baseline;
+  overflow: visible;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transform-origin: center bottom;
+  transform: translateY(var(--karaoke-bounce-y, 0)) scale(var(--karaoke-bounce-scale, 1));
+  transition: transform 75ms linear;
+}
+
+/* The lyric pages render thousands of glyphs. An identity transform still
+   gives every idle glyph its own paint-property node, which split each row
+   into thousands of paint chunks that Chromium re-layerized on every frame, so
+   idle glyphs there drop it. Moving glyphs keep their bounce transform. With
+   an outline (has-glyph-outline), every glyph keeps its own stacking context
+   so each outline copy stays directly under its own glyph, exactly as before.
+   The LP view and Sync Creator keep the base rules. */
+.lyrics-lyricsContainer-SyncedLyrics .lyrics-karaoke-line:not(.has-glyph-outline) .lyrics-karaoke-char:not(.is-bouncing),
+.lyrics-lyricsContainer-SyncedLyrics .lyrics-karaoke-line:not(.has-glyph-outline) .lyrics-karaoke-text-run-segment:not(.is-bouncing),
+.lyrics-lyricsContainer-SyncedLyrics .lyrics-karaoke-line:not(.has-glyph-outline) .lyrics-karaoke-word.is-word-timed:not(.is-bouncing),
+.lyrics-lyricsContainer-UnsyncedLyricsPage .lyrics-karaoke-line:not(.has-glyph-outline) .lyrics-karaoke-char:not(.is-bouncing),
+.lyrics-lyricsContainer-UnsyncedLyricsPage .lyrics-karaoke-line:not(.has-glyph-outline) .lyrics-karaoke-text-run-segment:not(.is-bouncing),
+.lyrics-lyricsContainer-UnsyncedLyricsPage .lyrics-karaoke-line:not(.has-glyph-outline) .lyrics-karaoke-word.is-word-timed:not(.is-bouncing) {
+  transform: none;
+}
+
+/* Live rows receive their bounce values on every display frame from
+   KaraokeLivePainter, so the 75 ms smoothing transition would only trail the
+   painted motion and restart a transition per frame. */
+.lyrics-karaoke-char[data-karaoke-live],
+.lyrics-karaoke-text-run-segment[data-karaoke-live],
+.lyrics-karaoke-word.is-word-timed[data-karaoke-live] {
+  transition: none;
+}
+
+.lyrics-karaoke-char.is-bouncing[data-karaoke-live] {
+  will-change: transform;
+}
+
+/* As with text runs, the wrapper stays transparent and the nested glyph-fill
+   provides the single stable color layer. */
+.lyrics-karaoke-char--done {
+  color: transparent;
+  background: none;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.lyrics-karaoke-char--active {
+  color: transparent;
+  background: none;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.lyrics-karaoke-line.is-active .lyrics-karaoke-char--active {
+  filter: none;
+}
+
+/* Stay on the transparent + background-clip:text paint path even after the line
+   completes. Falling back to a solid color here would re-rasterize every glyph
+   in the line at once when is-complete is added, making the whole line visibly
+   thicken/snap. background-color is solid so there's no gradient cost. */
+.lyrics-karaoke-line.is-complete .lyrics-karaoke-char,
+.lyrics-karaoke-line.is-complete .lyrics-karaoke-text-run-segment {
+  color: transparent;
+  background: none;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.lyrics-lyricsContainer-SyncedLyricsPage.is-karaoke
+  .lyrics-lyricsContainer-LyricsLine.lyrics-lyricsContainer-LyricsLine-complete:not(.lyrics-lyricsContainer-LyricsLine-active) {
+  opacity: var(--iv-lyrics-past-line-opacity, 0.52);
+}
+
+.lyrics-lyricsContainer-SyncedLyricsPage.is-karaoke
+  .lyrics-lyricsContainer-LyricsLine.lyrics-lyricsContainer-LyricsLine-complete:not(.lyrics-lyricsContainer-LyricsLine-active) {
+  /* Set on the row by the renderer: a :has(.is-complete) rule here restyled
+     the whole page whenever a line finished. Resolve the endpoint on each
+     glyph so nested vocal rows retain their own speaker colors. */
+  --iv-karaoke-past-color-share: 100%;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.highlight-mode-enabled
+  .lyrics-lyricsContainer-SyncedLyricsPage.is-karaoke
+  .lyrics-lyricsContainer-LyricsLine.lyrics-lyricsContainer-LyricsLine-complete:not(.lyrics-lyricsContainer-LyricsLine-active) {
+  opacity: var(--highlight-inactive-opacity, 0.3);
+}
+
+.lyrics-karaoke-ruby {
+  ruby-position: over;
+  overflow: visible;
+  padding-inline: var(--karaoke-glyph-bleed-x, 0.16em);
+  margin-inline: calc(var(--karaoke-glyph-bleed-x, 0.16em) * -1);
+}
+
+/* Keep pending rt on the same transparent + background-clip:text path the active
+   and done rt rules use. Without this, the rt switches paint paths on first activation
+   (solid color → text-masked) and the glyph briefly re-rasterizes — visible as the
+   furigana suddenly darkening / sharpening right when the char starts being sung.
+   No opacity fade here: background-clip:text already softens the glyph (no sub-pixel
+   AA on transparent fill), so adding 0.8 on top read as semi-transparent gray. The
+   inactive color's own alpha applies as the user configures it. */
+.lyrics-karaoke-ruby rt {
+  color: transparent;
+  background-color: var(--lyrics-color-inactive);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  user-select: none;
+  white-space: nowrap;
+  text-shadow: none;
+}
+
+/* Same trick on furigana rt: keep transparent + background-clip:text so the
+   ruby text doesn't thicken when crossing into done state. */
+.lyrics-karaoke-ruby--done rt {
+  color: transparent;
+  background-color: var(--lyrics-color-active);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.lyrics-karaoke-ruby--active rt {
+  color: transparent;
+  background-image: linear-gradient(to right,
+      var(--lyrics-color-active) 0,
+      var(--lyrics-color-active) var(--karaoke-char-fill-soft-start, var(--karaoke-char-fill, 0%)),
+      var(--lyrics-color-inactive) var(--karaoke-char-fill-soft-end, var(--karaoke-char-fill, 0%)),
+      var(--lyrics-color-inactive) 100%);
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.lyrics-lyricsContainer-LyricsLine a {
+  background-color: transparent;
+  transition: background-color 0.25s cubic-bezier(0, 0, 0, 1);
+}
+
+.lyrics-lyricsContainer-LyricsLine a.fetched {
+  background-color: var(--lyrics-highlight-background);
+}
+
+.lyrics-lyricsContainer-LyricsLine a,
+.lyrics-lyricsContainer-LyricsLine a:hover {
+  text-decoration: none !important;
+}
+
+.lyrics-lyricsContainer-LyricsLine a:hover {
+  border-bottom: 2px solid var(--lyrics-color-active);
+}
+

@@ -1,3 +1,8 @@
+import { createLyricLineActions } from "#ivlyrics/lyrics/createLyricLineActions.mjs";
+import { createLyricsLineBlock } from "#ivlyrics/lyrics/lyricsLineComponents.mjs";
+import { normalizeDisplayedCulturalAnnotations, partitionLyricAnnotations, renderAnnotatedLyricHTML } from "#ivlyrics/lyrics/lyricCulturalAnnotations.mjs";
+import { createLyricSubLineRenderer } from "#ivlyrics/lyrics/createLyricSubLineRenderer.mjs";
+import { rubyTextToHTML } from "#ivlyrics/lyrics/lyricTextMarkup.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -5,7 +10,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const repo = new URL('../', import.meta.url);
-const current = readFileSync(new URL('Pages.js', repo), 'utf8');
+const current = readFileSync(new URL('src/lyrics/Pages.js', repo), 'utf8');
 const baseline = execFileSync('git', ['show', '3353a5d:Pages.js'], { cwd: repo, encoding: 'utf8' });
 // The seek tooltip text changed on purpose (localized "m:ss" label); it is
 // covered by its own test below, so the baseline comparison ignores it.
@@ -32,10 +37,10 @@ function renderer(source) {
       return { type, props, children };
     } },
     useMemo: memo, useCallback: (fn, deps) => memo(() => fn, deps),
-    normalizeDisplayedCulturalAnnotations: notes => notes || [],
+    normalizeDisplayedCulturalAnnotations, partitionLyricAnnotations,
     getRubySourceText: text => text,
     getCulturalMarkerRawOffset: text => text.length,
-    getCulturalMarkerHTML: marker => `<sup>${marker}</sup>`,
+    getCulturalMarkerHTML: marker => `<sup class="lyrics-cultural-marker">[${marker}]</sup>`,
     hasKaraokeVocalRows: line => !!line.vocals?.background?.length,
     getInterludeInfo: () => ({ isInterlude: false }),
     InterludeIndicator: 'InterludeIndicator',
@@ -43,12 +48,32 @@ function renderer(source) {
     createCopyHandler: (...args) => Object.assign(() => {}, { copyArguments: args }),
     Utils: {
       formatLyricLineToCopy: (...args) => { counts.copy++; return JSON.stringify(args); },
-      rubyTextToHTML: text => { counts.html++; return text; },
+      rubyTextToHTML: text => { counts.html++; return rubyTextToHTML(text); },
     },
   });
   const part = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
-  vm.runInContext(part('const renderAnnotatedLyricHTML', 'const renderLyricMainContent') +
-    part('const LyricsLineBlock =', 'const renderLyricsItems') + ';globalThis.render=LyricsLineBlock;', context);
+  if (source === current) {
+    const renderMainHtml = (...args) => { counts.html++; return renderAnnotatedLyricHTML(...args); };
+    const renderLyricSubLine = createLyricSubLineRenderer({
+      react: context.react,
+      getInactiveColor: () => context.CONFIG.visual['inactive-color'],
+      renderHtml: renderMainHtml,
+    });
+    const actions = createLyricLineActions({
+      translateSeekTitle: (key, params) => context.I18n?.t?.(key, params),
+    });
+    context.render = createLyricsLineBlock({
+      react: { ...context.react, useMemo: context.useMemo, useCallback: context.useCallback },
+      renderLyricSubLine, renderMainHtml, renderLyricMainContent: context.renderLyricMainContent,
+      getInterludeInfo: context.getInterludeInfo, InterludeIndicator: context.InterludeIndicator,
+      hasKaraokeVocalRows: context.hasKaraokeVocalRows,
+      formatLyricLineToCopy: context.Utils.formatLyricLineToCopy,
+      actions: { ...actions, createCopyHandler: context.createCopyHandler },
+    });
+  } else {
+    vm.runInContext(part('const renderAnnotatedLyricHTML', 'const renderLyricMainContent') +
+      part('const LyricsLineBlock =', 'const renderLyricsItems') + ';globalThis.render=LyricsLineBlock;', context);
+  }
   return { context, counts, render(props) { cursor = 0; return context.render(props); } };
 }
 

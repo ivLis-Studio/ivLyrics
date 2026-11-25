@@ -1,11 +1,13 @@
+import { sourceUrl } from "./fixtures/source-paths.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const slotsSource = readFileSync(new URL("../PronunciationSlots.js", import.meta.url), "utf8");
-const firstSource = readFileSync(new URL("../PronunciationFirst.js", import.meta.url), "utf8");
-const managerSource = readFileSync(new URL("../AIAddonManager.js", import.meta.url), "utf8");
+const slotsSource = bundleInitializer(new URL("../src/lyrics/PronunciationSlots.js", import.meta.url));
+const firstSource = bundleInitializer(new URL("../src/lyrics/PronunciationFirst.js", import.meta.url));
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
+const managerSource = bundleInitializer(new URL("../src/providers/ai/AIAddonManager.js", import.meta.url));
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
 const load = ({ manager = null, enabled = true, synced = true } = {}) => {
@@ -27,6 +29,7 @@ const load = ({ manager = null, enabled = true, synced = true } = {}) => {
 		CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
 		localStorage: { getItem: () => null, setItem: () => {} },
 		console: { warn: () => {}, log: () => {} },
+		AbortController,
 		setTimeout,
 	});
 	vm.runInContext(slotsSource, context);
@@ -101,6 +104,21 @@ test("pronunciation-first uses the slots without asking AI", async () => {
 	assert.equal(first.getTimed("spotify:track:abc", edited), null);
 });
 
+test("each vocal keeps its own slots when the same source has different readings", () => {
+	const { slots, first } = load();
+	const uri = "spotify:track:abc";
+	const source = "明日";
+	slots.remember("abc", `${source}\n${source}`, {
+		slots: slots.buildRecordSlots(2, [["あした", ""], ["あす", ""]]),
+	});
+	const syllables = [syllable("明", 0, 1), syllable("日", 1, 2)];
+	const part = reading => ({ text: source, phonetic: reading, syllables });
+	const lines = [{ vocals: { lead: part("あした"), background: [part("あす")] } }];
+	const timed = first.getTimed(uri, lines);
+	assert.deepEqual(plain([...timed]), [["0:lead", ["あした", ""]], ["0:bg:0", ["あす", ""]]]);
+	assert.equal(first.ensureTimed({ trackUri: uri, lines, consumer: "panel" }), null);
+});
+
 test("only lines without slots are sent for AI timing", async () => {
 	const requests = [];
 	const manager = {
@@ -161,10 +179,35 @@ test("without unit pronunciation the whole song uses the line request", async ()
 	assert.deepEqual(plain(result), { phonetic: ["a!", "b!"] });
 });
 
+test("a line fallback retry clears obsolete reading previews and replays the successful slots", async () => {
+	const { slots } = load();
+	const visible = new Map();
+	const resets = [];
+	const result = await slots.requestPronunciation({
+		async generatePronunciationSlots() { return new Map([[0, ["yume"]]]); },
+		async translateLyrics(params) {
+			params.onLine(0, "obsolete");
+			assert.equal(visible.get(1), "obsolete");
+			params.onStreamReset({ reason: "provider retry" });
+			assert.deepEqual([...visible], [[0, "yume"]]);
+			params.onLine(0, "kyou");
+			return { phonetic: ["kyou"] };
+		},
+	}, {
+		text: "夢\n今日",
+		onLine: (index, value) => visible.set(index, value),
+		onStreamReset: (detail) => { resets.push(detail.reason); visible.clear(); },
+	});
+	assert.deepEqual(resets, ["provider retry"]);
+	assert.deepEqual([...visible], [[0, "yume"], [1, "kyou"]]);
+	assert.deepEqual(plain(result.phonetic), ["yume", "kyou"]);
+});
+
 const loadManager = async () => {
 	const window = {};
 	vm.runInNewContext(managerSource, {
 		window,
+		AbortController,
 		Spicetify: { LocalStorage: { get: () => null, set: () => {} } },
 		console: { log: () => {}, warn: () => {}, error: () => {} },
 		setTimeout, clearTimeout,
@@ -239,9 +282,10 @@ test("unit pronunciation is requested only with synced pronunciation and real ti
 	assert.equal(load({ synced: false }).slots.isRequested(karaoke), false, "plain pronunciation by default");
 	assert.equal(load({ synced: true }).slots.isRequested([{ text: "a" }]), false);
 	assert.equal(load({ synced: true }).slots.isRequested(karaoke, "line-timing-pseudo"), false);
-	for (const name of ["index.js", "LyricsService.js", "NowPlayingPanelLyrics.js"]) {
-		const source = readFileSync(new URL("../" + name, import.meta.url), "utf8");
+	for (const name of ["index.js", "LyricsService.js", "../src/lyrics/panelTrackEffects.mjs"]) {
+		const path = name.startsWith("../") ? new URL(name, import.meta.url) : sourceUrl(name);
+		const source = readFileSync(path, "utf8");
 		assert.doesNotMatch(source, /ivLyricsPronunciationSlots\?\.hasRealTiming/, name + " asks isRequested");
-		assert.match(source, /ivLyricsPronunciationSlots\?\.isRequested\?\./, name);
+		assert.match(source, /readPronunciationSlots\((?:window|host)\)\?\.isRequested\?\./, name);
 	}
 });

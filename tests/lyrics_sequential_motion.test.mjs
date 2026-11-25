@@ -1,31 +1,19 @@
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import vm from 'node:vm';
+import * as lineMotion from '../src/lyrics/lyricsLineMotion.mjs';
+import { createCompactLyricsLineController } from '../src/lyrics/lyricsCompactLineController.mjs';
 
-const source = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
-const stylesheet = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
-const helpers = source.slice(source.indexOf('const LYRICS_CENTERING_DURATION_MS'), source.indexOf('const cubicBezierCoordinate'));
-const effectStart = source.indexOf('\t// Position-index and anchor-offset still commit together.');
-const effectEnd = source.indexOf('\n\tuseEffect(() => () => {\n\t\tcompactLineShiftAnimationsRef', effectStart);
-const helperNames = [
-  'LYRICS_CENTERING_LEAD_MS', 'LYRICS_LINE_MOTION_DURATION_MS', 'LYRICS_LINE_MOTION_STIFFNESS',
-  'LYRICS_LINE_MOTION_MAX_SLOPE', 'LYRICS_LINE_MOTION_SEGMENTS',
-  'getAdaptiveLyricsCenteringTiming', 'getLyricsLineStaggerDelay', 'getLyricsLineMotionPlan',
-  'getLyricsLineMotionStyle', 'getLyricsLineRenderedMotionTiming', 'getLyricsLineMotionProgress',
-  'getLyricsLineMotionCurve', 'getLyricsLineMotionEasing', 'createLyricsLineShiftMotion',
-  'getLyricsLineShiftOffset', 'getLyricsLineShiftVelocity',
-];
-const createMotionHelpers = (linearSupport) => {
-  const context = vm.createContext(linearSupport === undefined ? {} : {
-    CSS: { supports: (property, value) => linearSupport
-      && property === 'animation-timing-function' && value === 'linear(0, 1)' },
-  });
-  vm.runInContext(`${helpers}\nglobalThis.motion = { ${helperNames.join(', ')} };`, context);
-  return context.motion;
-};
+const stylesheet = readPcStylesheet();
+const createMotionHelpers = (linearSupport, readMatrix) => ({
+  ...lineMotion,
+  ...lineMotion.createLyricsLineMotion({
+    supportsLinearEasing: () => linearSupport === true,
+    readMatrix,
+  }),
+});
 const motion = createMotionHelpers();
 const native = createMotionHelpers(true);
 const FRAME_MS = 1000 / 120;
@@ -324,33 +312,35 @@ const makeEffectHarness = (linearSupport, { vocalWindowMs = null } = {}) => {
   }
   const rows=Array.from({length:7},(_,i)=>new Row(i));
   const vocalStack = vocalWindowMs === null ? null : { getAttribute: () => String(vocalWindowMs) };
-  context=vm.createContext({
-    ...(linearSupport === undefined ? {} : { CSS: { supports: () => linearSupport } }),
-    DOMMatrix:class {
-      constructor(transform){this.m42=translateY(transform || 'none');}
-      toString(){return matrix(this.m42);}
-    },
+  class Matrix {
+    constructor(transform) { this.m42 = translateY(transform || 'none'); }
+    toString() { return matrix(this.m42); }
+  }
+  context = {
+    motionApi: createMotionHelpers(linearSupport, () => Matrix),
     isScrolling:false, compact:true, syncedManualScrollReturns:new WeakMap(),
     Element:Row, document:{timeline:{currentTime:1000}},
     containerRef:{current:{querySelector:()=>({children:rows})}},
     activeLineRef:{current:{querySelector:()=>vocalStack}},
-    compactLineShiftAnimationsRef:{current:new Map()},
-    compactLineTransformSnapshotsRef:{current:new WeakMap()},
-    compactLineMotionDataRef:{current:new WeakMap()},
-    compactLineMotionContextRef:{current:null},
     compactLinePlaybackPositionRef:{current:1000},
     usesScriptedCompactLineShift:true, suppressLayoutShiftAnimation:false,
-    visualLineIndex:1,settingsRevision:false,compactOffset:0,trailingInterludeKey:'',containerReady:true,lyricsId:'fixture',
+    visualLineIndex:1,settingsRevision:false,compactOffset:0,trailingInterludeKey:'',container:null,lyricsId:'fixture',
     paddedLyrics:Array.from({length:30},(_,i)=>({startTime:i*1500})),shouldPrecenterKaraokeTransitions:true,
-    useSyncedLayoutEffect(effect){cleanup=effect();},queueMicrotask:callback=>queued.push(callback),
     getComputedStyle(row){
       const a=row.animation;
       styleReads.push({ row, animated: !!a && !a.cancelled });
       if (!a || a.cancelled) return {transform:matrix(row.targetY)};
       return {transform:matrix(sampleFrames(a.frames, a.timing, a.currentTime))};
     },
+  };
+  const controller = createCompactLyricsLineController({
+    motion: context.motionApi,
+    manualReturns: context.syncedManualScrollReturns,
+    isElement: (element) => element instanceof Row,
+    readTransform: (element) => context.getComputedStyle(element).transform,
+    readTimelineTime: () => context.document.timeline.currentTime,
+    scheduleUpdate: (callback) => queued.push(callback),
   });
-  vm.runInContext(`${helpers}\nglobalThis.motionApi = { ${helperNames.join(', ')} };`,context);
   // Mirror the engine render: one plan per line transition, written to every
   // row's inline style in the commit that precedes the scheduled shift. Row 2
   // is the anchor of line 1; each advance moves the anchor one row down.
@@ -361,7 +351,7 @@ const makeEffectHarness = (linearSupport, { vocalWindowMs = null } = {}) => {
     if (key !== planKey) {
       planKey = key;
       plan = context.usesScriptedCompactLineShift ? context.motionApi.getLyricsLineMotionPlan({
-        previousContext: context.compactLineMotionContextRef.current,
+        previousContext: controller.readContext(),
         visualLineIndex: context.visualLineIndex,
         settingsRevision: context.settingsRevision,
         nextLineStart: context.paddedLyrics[context.visualLineIndex + 1]?.startTime,
@@ -373,8 +363,22 @@ const makeEffectHarness = (linearSupport, { vocalWindowMs = null } = {}) => {
     rows.forEach(row => { row.inline = plan ? context.motionApi.getLyricsLineMotionStyle(row.index - context.visualLineIndex - 1, plan) : {}; });
   };
   return {rows,context,animationsCreated,styleReads,
-    plan:()=>plan,
-    run(){styleReads.length=0;commit();cleanup?.();vm.runInContext(source.slice(effectStart,effectEnd),context);while(queued.length)queued.shift()();},
+    plan: () => plan,
+    activeAnimations: () => rows.map((row) => row.animation).filter((animation) => animation && !animation.cancelled),
+    run() {
+      styleReads.length = 0;
+      commit();
+      cleanup?.();
+      cleanup = controller.update({
+        ...context,
+        readContainer: () => context.containerRef.current,
+        readActiveLine: () => context.activeLineRef.current,
+        nextLineStart: context.paddedLyrics[context.visualLineIndex + 1]?.startTime,
+        leadMs: context.shouldPrecenterKaraokeTransitions ? context.motionApi.LYRICS_CENTERING_LEAD_MS : 0,
+        readPlaybackPosition: () => context.compactLinePlaybackPositionRef.current,
+      });
+      while (queued.length) queued.shift()();
+    },
     y:row=>translateY(context.getComputedStyle(row).transform),
   };
 };
@@ -546,7 +550,7 @@ for (const linearSupport of [false, true]) {
     const h = makeEffectHarness(linearSupport); h.run();
     h.context.suppressLayoutShiftAnimation = true;
     h.context.visualLineIndex++; h.rows.forEach(row => { row.targetY -= 100; }); h.run();
-    assert.equal(h.context.compactLineShiftAnimationsRef.current.size, 7);
+    assert.equal(h.activeAnimations().length, 7);
     assert.equal(h.rows[0].animation.timing.duration, 560);
     assert.ok(h.rows.at(-1).animation.timing.delay > 0);
   });
@@ -555,9 +559,9 @@ for (const linearSupport of [false, true]) {
 test('reverse seek, motion disable, and settings changes cancel live row movement', () => {
   for (const change of [h=>{h.context.visualLineIndex=1;},h=>{h.context.usesScriptedCompactLineShift=false;},h=>{h.context.settingsRevision=true;}]) {
     const h=makeEffectHarness();h.run();h.context.visualLineIndex=2;h.rows.forEach(row=>row.targetY-=100);h.run();
-    assert.equal(h.context.compactLineShiftAnimationsRef.current.size,7);
+    assert.equal(h.activeAnimations().length,7);
     change(h);h.run();
-    assert.equal(h.context.compactLineShiftAnimationsRef.current.size,0);
+    assert.equal(h.activeAnimations().length,0);
     h.rows.forEach(row=>assert.equal(h.y(row),row.targetY));
     h.rows.forEach(row=>assert.ok([undefined,'0ms'].includes(row.inline['--line-motion-delay']),'snapped rows also present together'));
   }
@@ -601,7 +605,7 @@ for (const linearSupport of [false, true]) {
       ))) + finishLag;
       // The fake does not dispatch finish automatically: reproduce the window
       // where playback has ended but the finish callback has not cleared Map.
-      assert.equal(h.context.compactLineShiftAnimationsRef.current.size, h.rows.length);
+      assert.equal(h.activeAnimations().length, h.rows.length);
       assert.ok(completed.every(animation => animation.currentTime >= animation.timing.delay + animation.timing.duration));
       const before = h.rows.map(h.y);
       h.context.compactOffset = -20;
@@ -656,7 +660,7 @@ test('entering manual scroll pauses an in-flight row handoff instead of snapping
   h.run(); h.rows.forEach(row => row.targetY -= 150); h.context.visualLineIndex++; h.run();
   h.context.isScrolling = true;
   h.context.usesScriptedCompactLineShift = false;
-  const animations = [...h.context.compactLineShiftAnimationsRef.current.values()];
+  const animations = h.activeAnimations();
   h.run();
   assert.ok(animations.length > 0);
   assert.ok(animations.every(animation => animation.paused && !animation.cancelled));

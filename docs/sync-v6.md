@@ -1,6 +1,6 @@
 # 싱크 v6 저장 형식
 
-PC와 서버의 코덱 원본은 `SyncDataCodec.js`다. 백엔드는 동일 파일을 `src/vendor/SyncDataCodec.cjs`에 포함한다. 원본 수정 후 `node .github/scripts/sync_codec.mjs`로 복사하고 `--check`로 일치를 확인한다. PC·백엔드·iOS·Android의 `sync-v6-golden.json`은 동일한 고정 검증 벡터다. `.github/scripts/sync_codec.mjs`가 네 저장소의 벡터를 복사·검사한다.
+PC와 서버의 코덱 원본은 [SyncDataCodec.mjs](../src/features/sync/SyncDataCodec.mjs)다. 백엔드용 CommonJS 코덱은 같은 구현으로 `src/vendor/SyncDataCodec.cjs`에 생성한다. 원본 수정 후 `node .github/scripts/sync_codec.mjs`로 생성하고 `--check`로 일치를 확인한다. PC·백엔드·iOS·Android의 `sync-v6-golden.json`은 동일한 고정 검증 벡터다. `.github/scripts/sync_codec.mjs`가 네 저장소의 벡터를 복사·검사한다.
 
 ## 문서와 시간
 

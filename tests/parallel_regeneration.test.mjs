@@ -1,10 +1,17 @@
+import { readPronunciationSlots } from "#ivlyrics/lyrics/pronunciationRuntime.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { runPageLyricRegeneration } from '../src/lyrics/pageLyricRegeneration.mjs';
+import { regeneratePageTranslation } from '../src/lyrics/pageTranslationRegeneration.mjs';
+import {
+  createToolbarRegeneration, getRegenerateTranslationChoiceItems,
+} from '#ivlyrics/app/toolbar/createToolbarRegeneration.mjs';
+import { getRuntimeService as getAppService } from '../src/spicetify/runtimeServices.mjs';
 
-const source = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
-const options = readFileSync(new URL('../OptionsMenu.js', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../src/spicetify/index.js', import.meta.url), 'utf8');
+
 const section = (text, start, end) => {
   const from = text.indexOf(start), to = text.indexOf(end, from + start.length);
   assert.ok(from >= 0 && to > from, start);
@@ -19,10 +26,7 @@ const plain = value => JSON.parse(JSON.stringify(value));
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 
 function regenerationChoices() {
-  const helper = vm.runInNewContext(
-    section(options, 'const getRegenerateTranslationChoiceItems =', 'const getToolbarRegenerationKinds =') + '\ngetRegenerateTranslationChoiceItems;',
-    { I18n: { t: key => key } },
-  );
+  const helper = input => getRegenerateTranslationChoiceItems(key => key, input);
   const helperCalls = [];
   const context = vm.createContext({
     window: {}, I18n: { t: key => key },
@@ -63,7 +67,7 @@ test('regeneration choices never offer all, with or without the shared helper', 
 
           h.app.getRegenerationTargets = () => targets;
           h.app.isCulturalAnnotationsEnabled = () => includeCulturalAnnotations;
-          h.context.window.ivLyricsWordSupplements = includeWordSupplements ? {} : undefined;
+          h.context.getAppWordSupplementService = () => includeWordSupplements ? {} : undefined;
           assert.deepEqual(plain(h.app.getRegenerateTranslationChoices()), expected, 'current-track choices match the real helper');
           assert.deepEqual(h.helperCalls, [input], 'always delegate to the available helper with every flag');
 
@@ -88,12 +92,22 @@ test('regeneration choice helper defaults omit optional actions and disabled tar
 });
 
 function container() {
-  const calls = [], snapshots = [], errors = [], cacheWrites = [];
+  const calls = [], snapshots = [], errors = [], memoryWrites = [];
   const cacheBarrier = { current: null };
+  let generationOptions = 'stable-options';
   const context = vm.createContext({
+    runPageLyricRegeneration, regeneratePageTranslation, getAppService, readPronunciationSlots,
     window: { Translator: {
       clearInflightRequests() {},
-      callGemini(params) { const call = { params, ...deferred() }; calls.push(call); return call.promise; },
+      callGemini(params) {
+        const call = { params, ...deferred() };
+        calls.push(call);
+        return call.promise.then(async result => {
+          call.resultReady = true;
+          if (cacheBarrier.current) await cacheBarrier.current.promise;
+          return result;
+        });
+      },
     } },
     Utils: { getTranslationCacheId: uri => uri },
     Toast: { show() {}, success() {}, error: message => errors.push(message) },
@@ -101,20 +115,15 @@ function container() {
     SYNCED: 1, UNSYNCED: 2, isKaraokeRenderMode: () => false,
     getNonSectionLyricsText: lines => lines.map(line => line.text).join('\n'),
     getDisplayModeCacheKey: (_state, mode) => mode,
-    getDisplayModeGenerationOptions: () => 'stable-options',
+    getDisplayModeGenerationOptions: () => generationOptions,
     getSyncDataRendererCacheVersion: () => 1,
     getLyricsProcessingShapeSignature: () => 'fixture-shape',
     getCurrentLyricsPronunciationNotation: () => 'latin',
-    normalizeTranslationOutputLines: lines => lines,
     mapTranslationLinesToLyrics: (_lyrics, lines) => lines.map(text => ({ text })),
-    setCachedTranslationForText: async args => {
-      cacheWrites.push(args);
-      if (cacheBarrier.current) await cacheBarrier.current.promise;
-    },
-    CacheManager: { set() {} },
+    CacheManager: { set: (key, value) => memoryWrites.push([key, plain(value)]) },
   });
   vm.runInContext(`class Container {
-    ${section(source, '  async runRegenerateTranslationChoice(', '  async regenerateCulturalAnnotations(')}
+    ${section(source, '  async runRegenerateTranslationChoice(', '  regenerateCulturalAnnotations(')}
     ${section(source, '  async regenerateTranslation(', '  async selectLyricsProviderForCurrentTrack(')}
   }; globalThis.Container = Container;`, context);
   const app = new context.Container();
@@ -131,7 +140,8 @@ function container() {
     startPhoneticLoading() { return 1; }, clearPhoneticLoading() {},
     startTranslationLoading() { return 2; }, clearTranslationLoading() {},
   });
-  return { app, calls, snapshots, errors, cacheWrites, cacheBarrier,
+  return { app, calls, snapshots, errors, cacheBarrier, memoryWrites,
+    setGenerationOptions(value) { generationOptions = value; },
     resolve(call, text) { call.resolve(call.params.wantSmartPhonetic ? { phonetic: [text] } : { translation: [text] }); },
   };
 }
@@ -181,10 +191,11 @@ test('a cache-write await cannot restore an obsolete snapshot of the other field
   const translation = h.app.runRegenerateTranslationChoice('translation');
   h.cacheBarrier.current = barrier;
   h.resolve(h.calls[0], 'pronunciation final'); await flush();
-  assert.equal(h.cacheWrites.length, 1);
+  assert.equal(h.calls[0].resultReady, true);
   h.calls[1].params.onLine(0, 'latest translation');
   barrier.resolve(); await phonetic;
-  assert.deepEqual(plain(h.app._dmResults['track-a'].mode2), [{ text: 'latest translation' }]);
+  assert.equal(h.app._dmResults['track-a'].mode2, null);
+  assert.deepEqual(h.snapshots.at(-1).lyricsMode2, [{ text: 'latest translation' }]);
   h.resolve(h.calls[1], 'translation final'); await translation;
   assert.deepEqual(plain(h.app._dmResults['track-a'].mode1), [{ text: 'pronunciation final' }]);
 });
@@ -203,36 +214,94 @@ test('a failed task unlocks only itself and cannot discard another task', async 
   assert.deepEqual(plain(h.app._dmResults['track-a'].mode2), [{ text: 'translation final' }]);
 });
 
+for (const failure of ['rejected', 'empty']) {
+  test(`combined regeneration keeps the original translation after a ${failure} provider result`, async () => {
+    const h = container();
+    const seed = h.app.runRegenerateTranslationChoice('translation');
+    h.resolve(h.calls[0], 'committed translation');
+    await seed;
+    h.memoryWrites.length = 0;
+
+    const regenerate = h.app.runRegenerateTranslationChoice('all');
+    h.calls[2].params.onLine(0, 'uncommitted translation');
+    assert.deepEqual(h.snapshots.at(-1).lyricsMode2, [{ text: 'uncommitted translation' }]);
+    assert.deepEqual(plain(h.app._dmResults['track-a'].mode2), [{ text: 'committed translation' }]);
+    h.resolve(h.calls[1], 'new pronunciation');
+    if (failure === 'rejected') h.calls[2].reject(new Error('provider disconnected'));
+    else h.calls[2].resolve(null);
+    await regenerate;
+
+    assert.deepEqual(h.snapshots.at(-1).lyricsMode2, [{ text: 'committed translation' }]);
+    assert.deepEqual(h.snapshots.at(-1).lyricsMode1, [{ text: 'new pronunciation' }]);
+    assert.deepEqual(h.memoryWrites, [['gemini_romaji', [{ text: 'new pronunciation' }]]]);
+    assert.equal(h.errors.length, 1);
+    assert.equal(h.app._regenerationRequests.size, 0);
+  });
+}
+
+test('new regeneration settings exclude a sibling preview from a retired generation', async () => {
+  const h = container();
+  const translation = h.app.runRegenerateTranslationChoice('translation');
+  h.calls[0].params.onLine(0, 'old translation style');
+  assert.deepEqual(h.snapshots.at(-1).lyricsMode2, [{ text: 'old translation style' }]);
+
+  h.setGenerationOptions('new options');
+  const phonetic = h.app.runRegenerateTranslationChoice('phonetic');
+  h.calls[1].params.onLine(0, 'new pronunciation');
+  assert.deepEqual(h.snapshots.at(-1).lyricsMode1, [{ text: 'new pronunciation' }]);
+  assert.equal(h.snapshots.at(-1).lyricsMode2, null);
+
+  h.resolve(h.calls[0], 'obsolete');
+  h.resolve(h.calls[1], 'final pronunciation');
+  await Promise.all([translation, phonetic]);
+  assert.equal(h.app._dmResults['track-a'].mode2, null);
+});
+
 test('track changes ignore late streams and completions without unlocking a newer track request', async () => {
   const h = container();
   const old = h.app.runRegenerateTranslationChoice('translation');
   h.app.state = { ...h.app.state, uri: 'track-b' }; h.app.currentTrackUri = 'track-b';
   const next = h.app.runRegenerateTranslationChoice('translation');
   h.calls[0].params.onLine(0, 'obsolete'); h.resolve(h.calls[0], 'obsolete'); await old;
-  assert.equal(h.snapshots.length, 0); assert.equal(h.cacheWrites.length, 0);
+  assert.equal(h.snapshots.length, 0); assert.equal(h.app._dmResults['track-a'].mode2, null);
   assert.equal(h.app._regenerationRequests.size, 1);
   h.resolve(h.calls[1], 'current'); await next;
   assert.deepEqual(plain(h.app._dmResults['track-b'].mode2), [{ text: 'current' }]);
+});
+
+test('an older regeneration cannot stream or overwrite a newer request for the same field', async () => {
+  const h = container();
+  const older = h.app.regenerateTranslation('translation');
+  const newer = h.app.regenerateTranslation('translation');
+  h.calls[0].params.onLine(0, 'obsolete');
+  assert.equal(h.snapshots.length, 0);
+  h.calls[1].params.onLine(0, 'current');
+  h.resolve(h.calls[1], 'latest');
+  await newer;
+  h.calls[0].params.onStreamReset();
+  h.resolve(h.calls[0], 'obsolete');
+  await older;
+  assert.deepEqual(plain(h.app._dmResults['track-a'].mode2), [{ text: 'latest' }]);
+  assert.deepEqual(h.snapshots.at(-1).lyricsMode2, [{ text: 'current' }]);
 });
 
 function buttons() {
   const hooks = []; let cursor;
   const react = {
     memo: value => value, createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
-  };
-  const context = vm.createContext({ react,
     useState(initial) { const i = cursor++; if (!(i in hooks)) hooks[i] = initial; return [hooks[i], value => { hooks[i] = value; }]; },
-    useRef(value) { const i = cursor++; return hooks[i] ||= { current: value }; }, useEffect() {},
-    I18n: { t: key => key }, ToolbarPanelRow: 'row', ToolbarButton: 'button', ToolbarGlyph: 'glyph',
-    joinToolbarClasses: (...items) => items.filter(Boolean).join(' '), console: { warn() {} },
+    useRef(value) { const i = cursor++; return hooks[i] ||= { current: value }; },
+    useEffect() {},
+  };
+  const { RegenerateTranslationButton } = createToolbarRegeneration({
+    react, translate: key => key, ToolbarPanelRow: 'row', ToolbarButton: 'button', ToolbarGlyph: 'glyph',
   });
-  vm.runInContext(section(options, 'const getToolbarRegenerationKinds =', '// 현재 곡 > 개별 배경:') + '\nglobalThis.Component = RegenerateTranslationButton;', context);
   const requests = new Map(), calls = [];
   const props = { isEnabled: true, busyTargets: [],
     choices: ['phonetic', 'translation', 'all', 'cultural-annotations', 'word-supplements'].map(target => ({ key: target, target, label: target })),
     onRegenerate(target) { calls.push(target); const pending = deferred(); requests.set(target, pending); return pending.promise; },
   };
-  const render = () => { cursor = 0; const root = context.Component(props); return Object.fromEntries(root.props.control.children[0].map(node => [node.props.key, node.props])); };
+  const render = () => { cursor = 0; const root = RegenerateTranslationButton(props); return Object.fromEntries(root.props.control.children[0].map(node => [node.props.key, node.props])); };
   return { render, calls, requests, props };
 }
 

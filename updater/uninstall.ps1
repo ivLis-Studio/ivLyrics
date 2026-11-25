@@ -20,11 +20,6 @@ $script:Colors = @{
     White     = "White"
 }
 
-# --- State ---
-$script:CurrentVersion = $null
-$script:InstallDirectories = @()
-$script:UpdaterCleanupFailed = $false
-
 # --- Helper Functions ---
 function Write-Colored {
     param([string]$Text, [string]$Color = "White", [switch]$NoNewLine)
@@ -350,6 +345,97 @@ function Test-IvLyricsInstalled {
     return $false
 }
 
+function Lock-IvLyricsInstallDirectories {
+    # Match install.ps1's exclusive lock for every existing CustomApps directory being cleaned.
+    $locks = [Collections.Generic.List[IO.FileStream]]::new()
+    $lockedPaths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $lockPath = $null
+    try {
+        foreach ($appDirectory in $script:InstallDirectories) {
+            $parent = Split-Path -Parent $appDirectory
+            if (-not $parent -or -not (Test-Path -LiteralPath $parent -PathType Container)) { continue }
+            $lockPath = [IO.Path]::GetFullPath((Join-Path $parent ".ivLyrics-install.lock"))
+            if ($lockedPaths.Add($lockPath)) {
+                $locks.Add([IO.FileStream]::new(
+                    $lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite,
+                    [IO.FileShare]::None, 4096, [IO.FileOptions]::DeleteOnClose
+                ))
+                $recovery = Join-Path $parent ".ivLyrics-install.transaction"
+                if ($null -ne (Get-IvLyricsUninstallerPathEntry -Path $recovery)) {
+                    throw "Run the ivLyrics installer to recover the interrupted installation before removing it."
+                }
+            }
+        }
+        return $locks.ToArray()
+    }
+    catch {
+        foreach ($lock in $locks) { $lock.Dispose() }
+        throw "Could not lock the ivLyrics installation at $lockPath. $($_.Exception.Message)"
+    }
+}
+
+function Invoke-IvLyricsUninstallerSpicetify {
+    param([string[]]$Arguments)
+    $result = Invoke-IvLyricsSpicetifyCommand -Arguments $Arguments
+    $output = $result.Output -join [Environment]::NewLine
+    $appRejected = $Arguments[-1] -eq 'apply' -and (
+        $output.Contains('Spotify version mismatch with Spicetify.') -or
+        $output.Contains('Custom app "' + $FINAL_APP_NAME + '" not found') -or
+        $output.Contains('Custom app "' + $FINAL_APP_NAME + '" does not have index.js')
+    )
+    if ($result.ExitCode -ne 0 -or $appRejected) {
+        throw "spicetify $($Arguments -join ' ') failed: $output"
+    }
+    return $result.Output
+}
+
+function Test-IvLyricsUninstallerRegistered {
+    $configuredApps = @(
+        Invoke-IvLyricsUninstallerSpicetify -Arguments @("config", "custom_apps") |
+            ForEach-Object { ConvertFrom-IvLyricsUninstallerTerminalText -Value $_ }
+    ) -join '|'
+    return ($configuredApps -split '\|') -contains $FINAL_APP_NAME
+}
+
+function Set-IvLyricsUninstallerRegistration {
+    param([bool]$Registered)
+    $argument = if ($Registered) { $FINAL_APP_NAME } else { "$FINAL_APP_NAME-" }
+    $null = Invoke-IvLyricsUninstallerSpicetify -Arguments @("config", "custom_apps", $argument)
+    if ((Test-IvLyricsUninstallerRegistered) -ne $Registered) {
+        throw "The ivLyrics registration change was not saved in the Spicetify config."
+    }
+}
+
+function Remove-IvLyricsSpicetifyConfiguration {
+    if (-not (Get-Command spicetify -ErrorAction SilentlyContinue)) {
+        Write-SubStep "Spicetify not found, skipping..." "warning"
+        return
+    }
+
+    if (-not (Test-IvLyricsUninstallerRegistered)) { return }
+
+    $applyStarted = $false
+    try {
+        Set-IvLyricsUninstallerRegistration -Registered $false
+        $applyStarted = $true
+        $null = Invoke-IvLyricsUninstallerSpicetify -Arguments @("apply")
+        Write-SubStep "Spicetify applied" "success"
+    }
+    catch {
+        $configurationError = $_
+        try {
+            Set-IvLyricsUninstallerRegistration -Registered $true
+            if ($applyStarted) {
+                $null = Invoke-IvLyricsUninstallerSpicetify -Arguments @("apply")
+            }
+        }
+        catch {
+            Write-SubStep "Could not restore Spicetify config: $($_.Exception.Message)" "warning"
+        }
+        throw "Spicetify could not apply removal. The installed files were kept. $($configurationError.Exception.Message)"
+    }
+}
+
 function Unregister-IvLyricsUpdaterProtocol {
     $protocolRoot = "HKCU:\Software\Classes\ivlyrics-updater"
     $pathUtilsScript = Join-Path $UPDATER_ROOT "updater-path-utils.ps1"
@@ -397,134 +483,134 @@ function Unregister-IvLyricsUpdaterProtocol {
     return -not $cleanupFailed
 }
 
+function Remove-IvLyricsInstallation {
+    # Check if ivLyrics is installed
+    if (-not (Test-IvLyricsInstalled)) {
+        Write-Section "REMOVING UPDATER"
+        Write-Step 1 1 "Removing updater protocol..." "running"
+        if (-not (Unregister-IvLyricsUpdaterProtocol)) {
+            Write-Colored "  Cleanup was incomplete. The recovery state was preserved." $Colors.Error
+            exit 1
+        }
+        Write-NotInstalled
+        exit 0
+    }
+
+    # Get current version
+    $currentVersion = Get-CurrentVersion
+    if ($currentVersion) {
+        Write-Colored "              Installed version: $currentVersion" $Colors.Muted
+    }
+    Write-Host ""
+
+    # Confirmation prompt
+    Write-Colored "  Are you sure you want to uninstall ivLyrics? (y/N): " $Colors.Warning -NoNewLine
+    $confirmation = Read-Host
+
+    if ($confirmation -ne 'y' -and $confirmation -ne 'Y') {
+        Write-Host ""
+        Write-Colored "  Uninstallation cancelled." $Colors.Muted
+        Write-Host ""
+        exit 0
+    }
+
+    # Step 1: Close Spotify
+    Write-Section "STOPPING SERVICES"
+    Write-Step 1 4 "Checking Spotify process..." "running"
+
+    $spotifyProcesses = Get-Process -Name "Spotify" -ErrorAction SilentlyContinue
+    if ($spotifyProcesses) {
+        Write-SubStep "Spotify is running, closing..." "warning"
+        Stop-Process -Name "Spotify" -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        if (Get-Process -Name "Spotify" -ErrorAction SilentlyContinue) {
+            throw "Could not close Spotify. Close it and retry."
+        }
+        Write-SubStep "Spotify closed" "success"
+    } else {
+        Write-SubStep "Spotify is not running" "success"
+    }
+
+    # Step 2: Remove from Spicetify config
+    Write-Section "REMOVING CONFIGURATION"
+    Write-Step 2 4 "Updating Spicetify configuration..." "running"
+    Remove-IvLyricsSpicetifyConfiguration
+
+    # Step 3: Remove updater protocol
+    Write-Section "REMOVING UPDATER"
+    Write-Step 3 4 "Removing updater protocol..." "running"
+    $updaterCleanupFailed = -not (Unregister-IvLyricsUpdaterProtocol)
+
+    # Step 4: Delete files
+    Write-Section "REMOVING FILES"
+    Write-Step 4 4 "Deleting ivLyrics files..." "running"
+
+    $removedCount = 0
+    $removalFailed = $false
+    foreach ($dir in $script:InstallDirectories) {
+        $entry = Get-IvLyricsUninstallerPathEntry -Path $dir
+        if ($null -ne $entry -and (Test-IvLyricsDirectoryIdentity -Path $dir)) {
+            try {
+                Remove-IvLyricsUninstallerPath -Path $dir | Out-Null
+                Write-SubStep "Removed: $dir" "success"
+                $removedCount++
+            } catch {
+                $removalFailed = $true
+                Write-SubStep "Failed to remove: $dir. $($_.Exception.Message)" "error"
+            }
+        }
+    }
+
+    if ($removedCount -eq 0) {
+        Write-SubStep "No files to remove" "info"
+    } else {
+        Write-SubStep "Removed $removedCount location(s)" "success"
+    }
+
+    if ($updaterCleanupFailed -and (Test-Path -LiteralPath $APP_DIRECTORY_STATE_PATH -PathType Leaf)) {
+        try {
+            $remainingState = Get-Content -LiteralPath $APP_DIRECTORY_STATE_PATH -Raw | ConvertFrom-Json
+            $remainingPath = [string]$remainingState.ConfiguredPath
+            if (-not [string]::IsNullOrWhiteSpace($remainingPath) -and
+                $null -eq (Get-IvLyricsUninstallerPathEntry -Path $remainingPath)) {
+                Remove-Item -LiteralPath $UPDATER_ROOT -Recurse -Force -ErrorAction Stop
+                $updaterCleanupFailed = $false
+                Write-SubStep "Removed recovery state after app directory cleanup" "success"
+            }
+        }
+        catch {
+            Write-SubStep "Could not finalize updater recovery state cleanup" "warning"
+        }
+    }
+
+    # Done with ivLyrics removal
+    if ($removalFailed) {
+        throw "One or more ivLyrics directories could not be removed. Run the uninstaller again to retry."
+    }
+    if ($updaterCleanupFailed) {
+        Write-Colored "  ivLyrics files were removed, but updater path cleanup was incomplete." $Colors.Error
+        Write-Colored "  Recovery state was preserved in: $APP_DIRECTORY_STATE_PATH" $Colors.Warning
+        exit 1
+    }
+    Write-Complete
+}
+
 # --- Main Script ---
 Clear-Host
 Write-Logo
 $script:InstallDirectories = @(Get-IvLyricsInstallDirectories)
-
-# Check if ivLyrics is installed
-if (-not (Test-IvLyricsInstalled)) {
-    Write-Section "REMOVING UPDATER"
-    Write-Step 1 1 "Removing updater protocol..." "running"
-    if (-not (Unregister-IvLyricsUpdaterProtocol)) {
-        Write-Colored "  Cleanup was incomplete. The recovery state was preserved." $Colors.Error
-        exit 1
-    }
-    Write-NotInstalled
-    exit 0
-}
-
-# Get current version
-$script:CurrentVersion = Get-CurrentVersion
-if ($CurrentVersion) {
-    Write-Colored "              Installed version: $CurrentVersion" $Colors.Muted
-}
-Write-Host ""
-
-# Confirmation prompt
-Write-Colored "  Are you sure you want to uninstall ivLyrics? (y/N): " $Colors.Warning -NoNewLine
-$confirmation = Read-Host
-
-if ($confirmation -ne 'y' -and $confirmation -ne 'Y') {
-    Write-Host ""
-    Write-Colored "  Uninstallation cancelled." $Colors.Muted
-    Write-Host ""
-    exit 0
-}
-
-# Step 1: Close Spotify
-Write-Section "STOPPING SERVICES"
-Write-Step 1 4 "Checking Spotify process..." "running"
-
-$spotifyProcesses = Get-Process -Name "Spotify" -ErrorAction SilentlyContinue
-if ($spotifyProcesses) {
-    Write-SubStep "Spotify is running, closing..." "warning"
-    Stop-Process -Name "Spotify" -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-    Write-SubStep "Spotify closed" "success"
-} else {
-    Write-SubStep "Spotify is not running" "success"
-}
-
-# Step 2: Remove from Spicetify config
-Write-Section "REMOVING CONFIGURATION"
-Write-Step 2 4 "Updating Spicetify configuration..." "running"
-
+$locks = @()
 try {
-    $spicetifyExists = Get-Command spicetify -ErrorAction SilentlyContinue
-    if ($spicetifyExists) {
-        $configResult = Invoke-IvLyricsSpicetifyCommand -Arguments @("config", "custom_apps", "ivLyrics-")
-        $configOutput = @($configResult.Output)
-        if ($configResult.ExitCode -ne 0) {
-            throw "spicetify config failed: $($configOutput -join [Environment]::NewLine)"
-        }
-        Write-SubStep "Removed from custom_apps" "success"
-
-        $applyResult = Invoke-IvLyricsSpicetifyCommand -Arguments @("apply")
-        $applyOutput = @($applyResult.Output)
-        if ($applyResult.ExitCode -ne 0) {
-            throw "spicetify apply failed: $($applyOutput -join [Environment]::NewLine)"
-        }
-        Write-SubStep "Spicetify applied" "success"
-    } else {
-        Write-SubStep "Spicetify not found, skipping..." "warning"
-    }
-} catch {
-    Write-SubStep "Could not update Spicetify config" "warning"
+    $locks = @(Lock-IvLyricsInstallDirectories)
+    Remove-IvLyricsInstallation
 }
-
-# Step 3: Remove updater protocol
-Write-Section "REMOVING UPDATER"
-Write-Step 3 4 "Removing updater protocol..." "running"
-$script:UpdaterCleanupFailed = -not (Unregister-IvLyricsUpdaterProtocol)
-
-# Step 4: Delete files
-Write-Section "REMOVING FILES"
-Write-Step 4 4 "Deleting ivLyrics files..." "running"
-
-$removedCount = 0
-foreach ($dir in $script:InstallDirectories) {
-    $entry = Get-IvLyricsUninstallerPathEntry -Path $dir
-    if ($null -ne $entry -and (Test-IvLyricsDirectoryIdentity -Path $dir)) {
-        try {
-            Remove-IvLyricsUninstallerPath -Path $dir | Out-Null
-            Write-SubStep "Removed: $dir" "success"
-            $removedCount++
-        } catch {
-            Write-SubStep "Failed to remove: $dir" "error"
-        }
-    }
-}
-
-if ($removedCount -eq 0) {
-    Write-SubStep "No files to remove" "info"
-} else {
-    Write-SubStep "Removed $removedCount location(s)" "success"
-}
-
-if ($script:UpdaterCleanupFailed -and (Test-Path -LiteralPath $APP_DIRECTORY_STATE_PATH -PathType Leaf)) {
-    try {
-        $remainingState = Get-Content -LiteralPath $APP_DIRECTORY_STATE_PATH -Raw | ConvertFrom-Json
-        $remainingPath = [string]$remainingState.ConfiguredPath
-        if (-not [string]::IsNullOrWhiteSpace($remainingPath) -and
-            $null -eq (Get-IvLyricsUninstallerPathEntry -Path $remainingPath)) {
-            Remove-Item -LiteralPath $UPDATER_ROOT -Recurse -Force -ErrorAction Stop
-            $script:UpdaterCleanupFailed = $false
-            Write-SubStep "Removed recovery state after app directory cleanup" "success"
-        }
-    }
-    catch {
-        Write-SubStep "Could not finalize updater recovery state cleanup" "warning"
-    }
-}
-
-# Done with ivLyrics removal
-if ($script:UpdaterCleanupFailed) {
-    Write-Colored "  ivLyrics files were removed, but updater path cleanup was incomplete." $Colors.Error
-    Write-Colored "  Recovery state was preserved in: $APP_DIRECTORY_STATE_PATH" $Colors.Warning
+catch {
+    Write-SubStep $_.Exception.Message "error"
     exit 1
 }
-Write-Complete
+finally {
+    foreach ($lock in $locks) { $lock.Dispose() }
+}
 
 # Ask about Spicetify removal
 Write-Host ""

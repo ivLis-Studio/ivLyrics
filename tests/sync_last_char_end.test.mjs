@@ -1,34 +1,26 @@
+import { readSyncCreatorFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { createSyncDataRenderer } from "#ivlyrics/lyrics/createSyncDataRenderer.mjs";
+import { sanitizeSyncCreatorLastCharEnds } from "#ivlyrics/features/sync/timingValidation.mjs";
 import test from 'node:test';
 import vm from 'node:vm';
 
 // A held final note: "lastCharEnd" ends a line's (or vocal part's) last
 // character at an explicit time instead of the natural, capped duration.
-const require = createRequire(import.meta.url);
-const { KaraokeWordTiming, SyncDataSourceCompatibility } = require('../LyricsService.js');
-const readSource = name => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
-const section = (source, startMarker, endMarker) => {
-    const start = source.indexOf(startMarker);
-    const end = source.indexOf(endMarker, start + startMarker.length);
-    assert.ok(start >= 0 && end > start, `missing production section: ${startMarker}`);
-    return source.slice(start, end);
-};
 const editor = vm.createContext({ window: {}, Spicetify: {}, console });
-vm.runInContext(`${section(readSource('SyncDataCreator.js'), 'const SYNC_CREATOR_', 'const SyncDataCreator =')}
+const editorSource = readSyncCreatorFixture();
+vm.runInContext(`${editorSource.slice(0, editorSource.indexOf('const SyncDataCreator ='))}
     globalThis.api = {
-        validate: getSyncCreatorSyncDataValidationError, sanitize: sanitizeSyncCreatorLastCharEnds,
+        validate: getSyncCreatorSyncDataValidationError,
         slice: sliceSyncCreatorLineTiming, clip: clipSyncCreatorLineToBounds,
         runs: preserveSyncCreatorParallelTimingRuns, follow: followSyncCreatorLastCharShift,
     };`, editor);
-const renderer = vm.createContext({ window: {}, Spicetify: {}, console, KaraokeWordTiming, SyncDataSourceCompatibility });
-vm.runInContext(`${section(readSource('LyricsService.js'), 'const SyncDataService = (() => {', 'window.SyncDataService = SyncDataService;')}
-    globalThis.apply = SyncDataService.applySyncDataToLyrics;`, renderer);
+const renderer = createSyncDataRenderer();
 const plain = value => JSON.parse(JSON.stringify(value));
-const { validate, sanitize, slice, clip, runs, follow } = editor.api;
+const { validate, slice, clip, runs, follow } = editor.api;
+const sanitize = sanitizeSyncCreatorLastCharEnds;
 const rows = ['ABC', 'DEFG'];
-const render = (lines) => plain(renderer.apply(rows.map(text => ({ text })), { provider: 'spotify', syncData: { version: 5, lines } }));
+const render = (lines) => plain(renderer.applySyncDataToLyrics(rows.map(text => ({ text })), { provider: 'spotify', syncData: { version: 5, lines } }));
 
 test('a held last character ends at lastCharEnd instead of the 1.5 second cap', () => {
     const base = [{ start: 0, end: 2, chars: [1, 1.2, 1.4] }, { start: 3, end: 6, chars: [10, 10.2, 10.4, 10.6] }];

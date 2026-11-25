@@ -1,20 +1,9 @@
+import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
+import { getLyricsTypographyStyleVariables as typography } from "#ivlyrics/lyrics/lyricsTypography.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
 
-const source = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
-const styles = readFileSync(new URL("../style.css", import.meta.url), "utf8");
-const start = source.indexOf("const getFiniteLyricsStyleNumber =");
-const end = source.indexOf("const getCurrentTrackDurationMs =", start);
-assert.ok(start >= 0 && end > start, "shared typography helpers must remain extractable");
-const context = vm.createContext({ CONFIG: { visual: {} } });
-vm.runInContext(
-	`${source.slice(start, end)}\nglobalThis.typography = getLyricsTypographyStyleVariables;`,
-	context
-);
-const typography = context.typography;
-
+const styles = readPcStylesheet();
 test("turning shadow off removes both text and karaoke filter shadows", () => {
 	for (const visual of [{}, {
 		"text-shadow-enabled": false,

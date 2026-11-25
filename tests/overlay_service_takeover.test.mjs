@@ -1,10 +1,15 @@
+import { publishRuntimeService } from "#ivlyrics/spicetify/runtimeServices.mjs";
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { activateLyricsPage, getMountedLyricsPage, releaseLyricsPage } from "../src/spicetify/lyricsPageEffects.mjs";
+import { LYRICS_PROVIDER_SELECTION_CHANGED } from "#ivlyrics/lyrics/lyricsProviderRequests.mjs";
+import { LOCAL_LYRICS_UPDATED_EVENT } from "#ivlyrics/lyrics/localLyricsStore.mjs";
 
-const source = readFileSync(new URL("../OverlayService.js", import.meta.url), "utf8");
-const indexSource = readFileSync(new URL("../index.js", import.meta.url), "utf8");
+const source = bundleInitializer(new URL("../src/features/overlay/OverlayService.js", import.meta.url));
+const indexSource = readFileSync(new URL("../src/spicetify/index.js", import.meta.url), "utf8");
 
 const flush = async () => {
   for (let i = 0; i < 4; i++) await new Promise((resolve) => setImmediate(resolve));
@@ -81,16 +86,19 @@ const createHarness = ({
   helperDelivered = null,
   snapshot = null,
   getFullLyricsResult = null,
+  failHistoryRegistration = false,
 } = {}) => {
   const trace = [];
   const timers = new Map();
   const snapshots = new Map();
   const fallbackCalls = [];
   const sharedSends = [];
+  const emptySends = [];
   const pendingFallbacks = new Map();
   const clock = {now: 0};
   let nextTimerId = 0;
   let currentTrack = trackFor(initialUri);
+  let djNarration = false;
 
   if (snapshot) snapshots.set(snapshot.trackUri, snapshot);
 
@@ -124,6 +132,10 @@ const createHarness = ({
   const history = {
     location: {pathname},
     listen(callback) {
+      if (failHistoryRegistration) {
+        failHistoryRegistration = false;
+        throw new Error("fixture History not ready");
+      }
       historyListeners.add(callback);
       trace.push(["history-add"]);
       return () => {
@@ -138,8 +150,11 @@ const createHarness = ({
     enabled,
     isConnected,
     lastDeliveredUri,
-    sendLyrics() {
+    sendLyrics(trackInfo, lyrics, force, reason) {
       trace.push(["send", name]);
+      emptySends.push({ name, trackInfo, lyrics, force, reason });
+      this.lastDeliveredUri = trackInfo.uri;
+      this.lastDeliveredIsDjNarration = trackInfo.isDjNarration === true;
       return Promise.resolve();
     },
   });
@@ -174,13 +189,14 @@ const createHarness = ({
           for (const consumer of [overlay, helper]) {
             if (consumer.enabled && consumer.isConnected) {
               consumer.lastDeliveredUri = trackInfo.uri;
+              consumer.lastDeliveredIsDjNarration = trackInfo.isDjNarration === true;
             }
           }
           return true;
         },
       },
       Utils: {
-        getPlayerPlaybackSnapshot: () => ({uri: currentTrack.uri}),
+        getPlayerPlaybackSnapshot: () => ({uri: currentTrack.uri, djNarration}),
         resolveStablePlaybackTrack: () => currentTrack,
       },
     }),
@@ -189,10 +205,11 @@ const createHarness = ({
     Date: {now: () => clock.now},
     setTimeout: setTimeoutInHarness,
     clearTimeout: clearTimeoutInHarness,
-    console,
+    console: { ...console, warn: (...args) => trace.push(["warn", ...args]) },
   });
 
-  vm.runInContext(source, context);
+  const start = () => vm.runInContext(source, context);
+  start();
 
   const runTimer = async (handle) => {
     const entry = timers.get(handle);
@@ -256,6 +273,7 @@ const createHarness = ({
     clock,
     document,
     fallbackCalls,
+    emptySends,
     history,
     historyListeners,
     helper,
@@ -273,13 +291,37 @@ const createHarness = ({
       player.addEventListener = playerAddEventListener;
     },
     service: window.ivLyricsOverlayService,
+    start,
     sharedSends,
+    setNarration(value) { djNarration = value; },
     switchTrack,
     timers,
     trace,
     window,
   };
 };
+
+test("a same-URI narration replaces delivered lyrics and restores the song once without an extra event", async () => {
+  const trackUri = "spotify:track:fixture";
+  const h = createHarness({ overlayDelivered: trackUri, snapshot: completeSnapshot(trackUri) });
+  await h.runNextTimer();
+  h.setNarration(true);
+  h.player.dispatchEvent({ type: "songchange" });
+  await h.runNextTimer();
+  assert.deepEqual(h.emptySends.map(({name, reason}) => [name, reason]), [["overlay", "dj-narration"]]);
+  assert.equal(h.emptySends[0].lyrics.length, 0);
+  assert.equal(h.overlay.lastDeliveredIsDjNarration, true);
+  h.publish({ ...completeSnapshot(trackUri), source: "now-playing-panel" });
+  await h.runNextTimer();
+  assert.equal(h.sharedSends.length, 0);
+  assert.equal(h.emptySends.length, 1);
+  h.setNarration(false);
+  await h.runNextTimer();
+  assert.equal(h.sharedSends.length, 1);
+  assert.equal(h.overlay.lastDeliveredIsDjNarration, false);
+  assert.equal(h.fallbackCalls.length, 0);
+  assert.equal(h.timers.size, 0);
+});
 
 test("dependency gate waits for a callable player event API before wiring the service", async () => {
   const h = createHarness({playerReady: false});
@@ -296,22 +338,70 @@ test("dependency gate waits for a callable player event API before wiring the se
   h.window.ivLyricsOverlayService.destroy();
 });
 
-test("production mount prefix cleans the previous page before marking the replacement active", () => {
-  const mountStart = indexSource.indexOf("  componentDidMount() {");
-  const mountEnd = indexSource.indexOf("    this._unsubscribeLyricsProviderAttempt =", mountStart);
-  const unmountStart = indexSource.indexOf("  componentWillUnmount() {");
-  const unmountEnd = indexSource.indexOf("    // Core cleanup", unmountStart);
-  assert.ok(mountStart >= 0 && mountEnd > mountStart);
-  assert.ok(unmountStart >= 0 && unmountEnd > unmountStart);
+test("partial overlay setup rolls back its subscriptions and one startup retry mounts it", async () => {
+  const h = createHarness({ failHistoryRegistration: true });
+  assert.equal(h.window.ivLyricsOverlayService, undefined);
+  assert.equal(h.player.listenerCount("songchange"), 0);
+  assert.deepEqual(h.window.listenerTypes(), []);
+  assert.deepEqual([...h.timers.values()].map(({ ms }) => ms), [300]);
+  assert.equal(h.trace.filter(([kind]) => kind === "warn").length, 1);
 
-  const mountPrefix = indexSource.slice(
-    mountStart + "  componentDidMount() {".length,
-    mountEnd,
-  );
-  const unmountPrefix = indexSource.slice(
-    unmountStart + "  componentWillUnmount() {".length,
-    unmountEnd,
-  );
+  const queuedRetry = [...h.timers.values()][0].callback;
+  h.start();
+  const service = h.window.ivLyricsOverlayService;
+  assert.ok(service);
+  queuedRetry();
+  assert.equal(h.window.ivLyricsOverlayService, service);
+  assert.equal(h.player.listenerCount("songchange"), 1);
+  assert.equal(h.historyListeners.size, 1);
+  assert.deepEqual([...h.timers.values()].map(({ ms }) => ms), [1200]);
+});
+
+test("overlay destruction removes listeners from their original targets and cannot retire its replacement", () => {
+  const h = createHarness();
+  const replacementPlayer = createEventTarget("new player", h.trace);
+  replacementPlayer.data = h.player.data;
+  h.window.Spicetify.Player = replacementPlayer;
+  const previous = h.service;
+  previous.destroy();
+  assert.equal(h.window.ivLyricsOverlayService, undefined);
+  assert.equal(h.player.listenerCount("songchange"), 0);
+  assert.equal(h.historyListeners.size, 0);
+  assert.deepEqual(h.window.listenerTypes(), []);
+  assert.equal(h.timers.size, 0);
+
+  h.start();
+  const replacement = h.window.ivLyricsOverlayService;
+  assert.notEqual(replacement, previous);
+  previous.destroy();
+  previous.syncNow();
+  h.start();
+  assert.equal(h.window.ivLyricsOverlayService, replacement);
+  assert.equal(previous.getState().initialized, false);
+  assert.equal(replacement.getState().initialized, true);
+  assert.equal(replacementPlayer.listenerCount("songchange"), 1);
+  assert.equal(h.historyListeners.size, 1);
+  assert.deepEqual([...h.timers.values()].map(({ ms }) => ms), [1200]);
+});
+
+test("one broken overlay disposer does not strand the other subscriptions or the next mount", () => {
+  const h = createHarness();
+  h.player.removeEventListener = () => { throw new Error("fixture detached Player"); };
+  h.service.destroy();
+  assert.equal(h.window.ivLyricsOverlayService, undefined);
+  assert.equal(h.historyListeners.size, 0);
+  assert.deepEqual(h.window.listenerTypes(), []);
+  h.player.dispatchEvent({ type: "songchange" });
+  assert.equal(h.timers.size, 0);
+  h.start();
+  assert.ok(h.window.ivLyricsOverlayService);
+  assert.equal(h.historyListeners.size, 1);
+  assert.equal(h.trace.filter(([kind]) => kind === "warn").length, 1);
+});
+
+test("mount cleans the previous page before marking the replacement active", () => {
+  assert.match(indexSource, /componentDidMount\(\) \{\s+this\.lifecycle\.mount\(\)/);
+  assert.match(indexSource, /componentWillUnmount\(\) \{\s+this\.lifecycle\.unmount\(\)/);
   const trace = [];
   const activeClasses = new Set();
   const document = {
@@ -322,26 +412,27 @@ test("production mount prefix cleans the previous page before marking the replac
       },
     },
   };
-  const oldPage = {_isComponentMounted: true, _lyricsEditRequestSeq: 0};
-  const context = vm.createContext({window: {lyricContainer: oldPage}, document});
-  vm.runInContext(`
-    globalThis.mountPrefix = function() {${mountPrefix}\n};
-    globalThis.unmountPrefix = function() {${unmountPrefix}\n};
-  `, context);
-  oldPage.componentWillUnmount = context.unmountPrefix;
-  const newPage = {};
-  context.mountPrefix.call(newPage);
+  const oldPage = { _isComponentMounted: true };
+  const host = { document, lyricContainer: oldPage };
+  oldPage.componentWillUnmount = () => {
+    oldPage._isComponentMounted = false;
+    releaseLyricsPage(host, oldPage);
+  };
+  const newPage = { _isComponentMounted: true };
+  activateLyricsPage(host, newPage);
+  releaseLyricsPage(host, oldPage);
 
   assert.deepEqual(trace, [["remove", "ivlyrics-page-active"], ["add", "ivlyrics-page-active"]]);
   assert.equal(oldPage._isComponentMounted, false);
-  assert.equal(newPage._isComponentMounted, true);
-  assert.equal(context.window.lyricContainer, newPage);
+  assert.equal(getMountedLyricsPage(host), newPage);
+  assert.equal(host.lyricContainer, newPage);
   assert.equal(activeClasses.has("ivlyrics-page-active"), true);
 });
 
-test("home takeover starts translated fallback when the page snapshot is incomplete despite original delivery", async () => {
+test("a similarly named route permits translated overlay fallback for an incomplete snapshot", async () => {
   const trackUri = "spotify:track:fixture";
   const h = createHarness({
+    pathname: "/ivLyrics-test",
     overlayDelivered: trackUri,
     snapshot: incompleteSnapshot(trackUri),
   });
@@ -514,7 +605,8 @@ test("a newly mounted owner on the same route survives the previous owner's rele
   await h.releaseOwner();
 
   const newPage = {_isComponentMounted: true};
-  h.window.lyricContainer = newPage;
+  publishRuntimeService("lyricContainer", newPage, h.window);
+  h.window.lyricContainer = oldPage;
   await h.runNextTimer();
   assert.equal(h.fallbackCalls.length, 0, "the replacement owner must suppress takeover on the same route");
   assert.ok(h.timers.size > 0, "the replacement owner should keep the incomplete snapshot under watch");
@@ -586,6 +678,7 @@ test("destroy removes player, window, history and pending timer listeners", asyn
   assert.equal(h.player.listenerCount("songchange"), 1);
   assert.equal(h.window.listenerCount("ivLyrics:shared-lyrics-updated"), 1);
   assert.equal(h.window.listenerCount("ivLyrics:presentation-owner-released"), 1);
+  assert.equal(h.window.listenerCount(LYRICS_PROVIDER_SELECTION_CHANGED), 1);
   assert.equal(h.historyListeners.size, 1);
 
   h.service.destroy();
@@ -594,10 +687,72 @@ test("destroy removes player, window, history and pending timer listeners", asyn
   assert.equal(h.player.listenerCount("songchange"), 0);
   assert.equal(h.window.listenerCount("ivLyrics:shared-lyrics-updated"), 0);
   assert.equal(h.window.listenerCount("ivLyrics:presentation-owner-released"), 0);
+  assert.equal(h.window.listenerCount(LYRICS_PROVIDER_SELECTION_CHANGED), 0);
   assert.equal(h.historyListeners.size, 0);
 
   h.player.dispatchEvent({type: "songchange"});
   h.window.dispatchEvent({type: "ivLyrics:presentation-owner-released"});
   assert.equal(h.timers.size, 0);
   assert.equal(h.fallbackCalls.length, 0);
+});
+
+test("provider settings replace a delivered result and a pending fallback with the page closed", async () => {
+  const trackUri = "spotify:track:fixture";
+  const h = createHarness({ overlayDelivered: trackUri });
+  const invalidated = [];
+  h.overlay.invalidateLyricsPresentation = () => {
+    h.overlay.lastDeliveredUri = null;
+    invalidated.push(trackUri);
+  };
+  let revision = 0;
+  h.window.LyricsService.getLyricsRequestRevision = () => revision;
+  await h.runNextTimer();
+  assert.equal(h.fallbackCalls.length, 0);
+
+  const change = () => {
+    revision++;
+    h.window.dispatchEvent({ type: LYRICS_PROVIDER_SELECTION_CHANGED });
+  };
+  change();
+  await h.runDueTimers();
+  assert.equal(h.fallbackCalls.length, 1);
+  const obsolete = h.pendingFallbacks.get(trackUri);
+  change();
+  await h.runDueTimers();
+  assert.equal(h.fallbackCalls.length, 2);
+  assert.deepEqual(invalidated, [trackUri, trackUri]);
+  const current = h.pendingFallbacks.get(trackUri);
+  obsolete.resolve();
+  await flush();
+  assert.equal(h.service.getState().inFlight, true);
+  current.resolve();
+  await flush();
+  assert.equal(h.service.getState().inFlight, false);
+});
+
+test("deleting the playing song's saved lyrics refreshes overlay fallback without a presentation owner", async () => {
+  const trackUri = "spotify:local:Artist:Album:Track:180";
+  const h = createHarness({ initialUri: trackUri, overlayDelivered: trackUri });
+  let invalidated = 0;
+  h.overlay.invalidateLyricsPresentation = () => {
+    invalidated++;
+    h.overlay.lastDeliveredUri = null;
+  };
+  await h.runNextTimer();
+  assert.equal(h.fallbackCalls.length, 0);
+
+  const deletion = uri => h.window.dispatchEvent({
+    type: LOCAL_LYRICS_UPDATED_EVENT, detail: { trackUri: uri, deleted: true },
+  });
+  deletion("spotify:local:Artist:Album:Other:45");
+  assert.equal(await h.runDueTimers(), 0);
+  assert.equal(invalidated, 0);
+
+  deletion(trackUri);
+  await h.runDueTimers();
+  assert.equal(invalidated, 1);
+  assert.equal(h.fallbackCalls.length, 1);
+  assert.equal(h.fallbackCalls[0].trackInfo.uri, trackUri);
+  h.pendingFallbacks.get(trackUri).resolve();
+  await flush();
 });

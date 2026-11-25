@@ -1,5 +1,5 @@
+import { readAiProviderFixture } from "./fixtures/ai-provider.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 function harness(responder, key = 'fake-key:fx', localStorage) {
@@ -10,7 +10,7 @@ function harness(responder, key = 'fake-key:fx', localStorage) {
             const request = { url, ...options, body: JSON.parse(options.body) }; requests.push(request);
             return responder ? responder(request) : Response.json({ translations: request.body.text.map(text => ({ text: `T:${text}` })) });
         } };
-    vm.runInNewContext(readFileSync(new URL('../Addon_AI_DeepL.js', import.meta.url), 'utf8'), { window, TextEncoder, setTimeout });
+    vm.runInNewContext(readAiProviderFixture("Addon_AI_DeepL.js"), { window, TextEncoder, setTimeout });
     return { get addon() { return addon; }, requests };
 }
 test('DeepL only exposes translation and preserves blanks, instrumental markers and vocal parts', async () => {
@@ -80,7 +80,7 @@ test('DeepL settings use the shared field row with an associated password label 
         getAddonSetting: () => 'fixture-key',
         setAddonSetting: (...args) => saved.push(args),
     } };
-    vm.runInNewContext(readFileSync(new URL('../Addon_AI_DeepL.js', import.meta.url), 'utf8'), {
+    vm.runInNewContext(readAiProviderFixture("Addon_AI_DeepL.js"), {
         window, Spicetify: { React }, TextEncoder, setTimeout,
     });
     const tree = addon.getSettingsUI()();

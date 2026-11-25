@@ -1,0 +1,450 @@
+/* The video background turns and zooms with the motion camera. */
+.ivlyrics-video-background-camera {
+  position: absolute;
+  inset: 0;
+}
+
+.ivlyrics-video-background-camera.is-motion-camera {
+  will-change: rotate, scale, translate;
+}
+
+.fullscreen-motion-notice {
+  position: absolute;
+  z-index: 2;
+  top: max(24px, calc(env(safe-area-inset-top) + 12px));
+  left: 50%;
+  max-width: min(560px, calc(100vw - 48px));
+  padding: 9px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(14, 14, 18, 0.68);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transform: translateX(-50%);
+  animation: fullscreen-motion-notice 5200ms ease both;
+}
+
+@keyframes fullscreen-motion-notice {
+  0% { opacity: 0; transform: translate(-50%, -8px); }
+  6%, 82% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, 0); }
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-lyric-stage {
+  width: calc(100vw - clamp(48px, 7vw, 96px));
+  max-width: none;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric {
+  right: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding-inline: clamp(6px, 1vw, 16px);
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric > .ivlyrics-active-lyric-renderer,
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  overflow: visible;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine > p,
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-phonetic,
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-translation,
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-culturalNote {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine > p {
+  width: fit-content;
+  margin-inline: auto;
+  padding: 0.08em 0.32em;
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb,
+      var(--iv-video-stage-lyric-background-color, #000000)
+      var(--iv-video-stage-lyric-background-opacity, 46%),
+      transparent);
+  font-family: var(--iv-video-stage-original-font-family,
+      var(--iv-vinyl-original-font-family, 'Pretendard Variable')), Pretendard, sans-serif !important;
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent) !important;
+}
+
+/* A vocal stack's paragraph groups multiple rows, not one visible lyric.
+   Keep its backing clear so the individual subtitle backgrounds stand alone. */
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine > p:has(.lyrics-karaoke-stack) {
+  background: transparent;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-phonetic,
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-translation {
+  position: relative;
+  z-index: 1;
+  width: fit-content;
+  margin-inline: auto;
+  padding: 0.08em 0.32em;
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb,
+      var(--iv-video-stage-lyric-background-color, #000000)
+      var(--iv-video-stage-lyric-background-opacity, 46%),
+      transparent);
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent) !important;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-culturalNote {
+  position: relative;
+  z-index: 1;
+  width: fit-content;
+  margin-inline: auto;
+  padding: 0.08em 0.32em;
+  background: color-mix(in srgb,
+      var(--iv-video-stage-lyric-background-color, #000000)
+      var(--iv-video-stage-lyric-background-opacity, 46%),
+      transparent);
+  font-family: var(--iv-video-stage-cultural-font-family,
+      var(--iv-vinyl-cultural-note-font-family, 'Pretendard Variable')), Pretendard, sans-serif !important;
+  text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent) !important;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-phonetic {
+  font-family: var(--iv-video-stage-phonetic-font-family,
+      var(--iv-vinyl-phonetic-font-family, 'Pretendard Variable')), Pretendard, sans-serif !important;
+  font-size: max(var(--iv-vinyl-phonetic-font-size, 11px), 13px) !important;
+  font-weight: max(var(--iv-vinyl-phonetic-font-weight, 100), 400) !important;
+  margin-top: 3px;
+  opacity: max(var(--iv-vinyl-phonetic-opacity, 0.7), 0.95) !important;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-translation {
+  font-family: var(--iv-video-stage-translation-font-family,
+      var(--iv-vinyl-translation-font-family, 'Pretendard Variable')), Pretendard, sans-serif !important;
+  font-size: max(var(--iv-vinyl-translation-font-size, 15px), 16px) !important;
+  font-weight: max(var(--iv-vinyl-translation-font-weight, 300), 400) !important;
+  margin-top: 3px;
+  opacity: max(var(--iv-vinyl-translation-opacity, 0.85), 0.96) !important;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-culturalNote {
+  font-size: max(var(--iv-vinyl-cultural-note-font-size, 12px), 13px) !important;
+  font-weight: max(var(--iv-vinyl-cultural-note-font-weight, 300), 400) !important;
+  opacity: max(var(--iv-vinyl-cultural-note-opacity, 0.6), 0.9) !important;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine > p:has(.lyrics-karaoke-line),
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine > p:has(.lyrics-karaoke-stack) {
+  text-shadow: none !important;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-karaoke-line {
+  filter: var(--lyrics-text-drop-shadow, none);
+}
+
+.fullscreen-vinyl-overlay.is-presentation-compact-vinyl:not(.has-lyric-slot) {
+  grid-template-columns: 1fr;
+  place-items: center;
+}
+
+.ivlyrics-compact-vinyl-stage {
+  position: relative;
+  display: block;
+  width: min(33vw, 50svh, 420px);
+  aspect-ratio: 1;
+  justify-self: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  container-type: inline-size;
+  -webkit-tap-highlight-color: transparent;
+  animation: fullscreen-compact-vinyl-in 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ivlyrics-compact-vinyl-stage:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--iv-vinyl-accent) 82%, white);
+  outline-offset: 8px;
+}
+
+.ivlyrics-compact-vinyl-stage > .ivlyrics-cd-stage {
+  position: absolute;
+  inset: 0;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-compact-vinyl .fullscreen-vinyl-lyric-stage {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  width: 100%;
+  min-width: 0;
+  min-height: clamp(126px, 20svh, 220px);
+  align-self: center;
+  transform: none;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-compact-vinyl.has-cultural-annotation .fullscreen-vinyl-lyric-stage {
+  min-height: clamp(154px, 24svh, 260px);
+}
+
+.fullscreen-vinyl-overlay.is-closing > .ivlyrics-compact-vinyl-stage {
+  animation: fullscreen-compact-vinyl-out 320ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+@keyframes fullscreen-compact-vinyl-in {
+  from {
+    opacity: 0;
+    transform: translateY(5%) scale(0.88);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fullscreen-compact-vinyl-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(3%) scale(0.92);
+  }
+}
+
+@media (orientation: portrait), (max-width: 760px) {
+  .fullscreen-vinyl-overlay.is-presentation-compact-vinyl {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+    row-gap: clamp(16px, 3svh, 34px);
+    place-items: center;
+    padding:
+      clamp(76px, 10svh, 112px)
+      clamp(18px, 5vw, 42px)
+      clamp(26px, 4svh, 48px);
+  }
+
+  .fullscreen-vinyl-overlay.is-presentation-compact-vinyl.has-lyric-slot {
+    padding-bottom: clamp(26px, 4svh, 48px);
+  }
+
+  .fullscreen-vinyl-overlay.is-presentation-compact-vinyl .ivlyrics-compact-vinyl-stage {
+    width: min(68vw, 43svh, 420px);
+    align-self: end;
+  }
+
+  .fullscreen-vinyl-overlay.is-presentation-compact-vinyl .fullscreen-vinyl-lyric-stage {
+    width: min(92vw, 760px);
+    min-height: clamp(112px, 17svh, 188px);
+    align-self: start;
+  }
+}
+
+@media (max-width: 700px) {
+  .fullscreen-presentation-dock {
+    width: calc(100vw - 24px);
+  }
+
+  .fullscreen-presentation-hotspot {
+    width: min(280px, 100%);
+  }
+
+  .fullscreen-presentation-option {
+    width: 38px;
+    padding-inline: 9px;
+  }
+
+  .fullscreen-presentation-option > span {
+    display: none;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .fullscreen-presentation-switcher {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.fullscreen-vinyl-overlay.is-motion-disabled,
+.fullscreen-vinyl-overlay.is-motion-disabled > .ivlyrics-vinyl-player,
+.fullscreen-vinyl-overlay.is-motion-disabled > .ivlyrics-compact-vinyl-stage,
+.fullscreen-vinyl-overlay.is-motion-disabled .fullscreen-vinyl-active-lyric,
+.fullscreen-vinyl-overlay.is-motion-disabled .ivlyrics-vinyl-incoming-sleeve,
+.fullscreen-vinyl-overlay.is-motion-disabled .ivlyrics-vinyl-incoming-record-shell {
+  animation-duration: 1ms !important;
+  animation-delay: 0ms !important;
+}
+
+.fullscreen-vinyl-overlay.is-motion-disabled .ivlyrics-vinyl-visual-group,
+.fullscreen-vinyl-overlay.is-motion-disabled .ivlyrics-vinyl-outgoing-pair,
+.fullscreen-vinyl-overlay.is-motion-disabled .ivlyrics-vinyl-sleeve,
+.fullscreen-vinyl-overlay.is-motion-disabled .ivlyrics-vinyl-record-shell,
+.fullscreen-vinyl-overlay.is-motion-disabled .ivlyrics-vinyl-tonearm,
+.fullscreen-vinyl-overlay.is-motion-disabled .ivlyrics-vinyl-tonearm-moving {
+  transition-duration: 1ms !important;
+}
+
+.fullscreen-vinyl-overlay.is-motion-disabled .ivlyrics-vinyl-visual-group {
+  animation-play-state: paused !important;
+}
+
+.fullscreen-vinyl-overlay.is-motion-disabled .ivlyrics-vinyl-motion {
+  animation: none !important;
+}
+
+.fullscreen-vinyl-overlay.is-motion-disabled .ivlyrics-vinyl-label {
+  animation: none !important;
+}
+
+.fullscreen-vinyl-overlay.is-motion-disabled > .ivlyrics-compact-vinyl-stage {
+  animation-duration: 1ms !important;
+}
+
+@keyframes fullscreen-vinyl-cover-arrive-portrait {
+  0% {
+    opacity: 0;
+    transform: translate3d(76vw, 54svh, 0) rotate(24deg) scale(0.52);
+  }
+
+  12% {
+    opacity: 1;
+  }
+
+  72% {
+    opacity: 1;
+    transform: translate3d(1%, 5%, 0) rotate(-6deg) scale(0.82);
+  }
+
+  100% {
+    opacity: 1;
+    transform: var(--iv-vinyl-flight-target-transform);
+  }
+}
+
+@keyframes fullscreen-vinyl-record-emerge-portrait {
+  0% {
+    opacity: 0;
+    transform: var(--iv-vinyl-incoming-record-start-transform);
+    clip-path: var(--iv-vinyl-incoming-record-start-clip);
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  38% {
+    opacity: 1;
+    transform: translate3d(0, -17%, 0) scale(0.88);
+    clip-path: inset(48% 0 0 0);
+  }
+
+  78% {
+    opacity: 1;
+    transform: translate3d(0, 42%, 0) scale(1.012);
+    clip-path: inset(0 -16% -16% -16%);
+  }
+
+  100% {
+    opacity: 1;
+    transform: var(--iv-vinyl-incoming-record-clear-transform);
+    clip-path: var(--iv-vinyl-incoming-record-clear-clip);
+  }
+}
+
+@keyframes fullscreen-vinyl-record-raise-portrait {
+  0% {
+    opacity: 1;
+    transform: var(--iv-vinyl-incoming-record-clear-transform);
+    clip-path: var(--iv-vinyl-incoming-record-clear-clip);
+  }
+
+  18% {
+    opacity: 1;
+    transform: translate3d(0, 47.5%, 0) scale(1.014);
+    clip-path: var(--iv-vinyl-incoming-record-clear-clip);
+  }
+
+  100% {
+    opacity: 1;
+    transform: var(--iv-vinyl-incoming-record-target-transform);
+    clip-path: var(--iv-vinyl-incoming-record-clear-clip);
+  }
+}
+
+.lyrics-fullscreen-left-panel.controls-hidden .ivlyrics-vinyl-player {
+  transform: translateY(14px) scale(0.99);
+}
+
+.portrait-mode.fullscreen-no-lyrics .portrait-overlay-top .ivlyrics-vinyl-player--portrait {
+  --iv-vinyl-cover-size: clamp(120px, 28svh, 280px);
+  max-width: 90vw;
+}
+
+@keyframes ivlyrics-vinyl-spin-clock {
+  to {
+    --iv-vinyl-spin-angle: 1turn;
+  }
+}
+
+@media (orientation: portrait) and (min-width: 768px) {
+  .ivlyrics-vinyl-player--portrait {
+    --iv-vinyl-cover-size: clamp(64px, 10svh, 100px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fullscreen-vinyl-overlay,
+  .fullscreen-vinyl-overlay>.ivlyrics-vinyl-player,
+  .fullscreen-vinyl-overlay>.ivlyrics-compact-vinyl-stage,
+  .fullscreen-vinyl-active-lyric {
+    animation-duration: 1ms !important;
+  }
+
+  .ivlyrics-vinyl-visual-group,
+  .ivlyrics-vinyl-sleeve,
+  .ivlyrics-vinyl-record-shell,
+  .ivlyrics-vinyl-tonearm-moving {
+    transition-duration: 1ms !important;
+  }
+
+  .ivlyrics-vinyl-visual-group {
+    animation-play-state: paused !important;
+  }
+
+  .fullscreen-vinyl-overlay > .ivlyrics-compact-vinyl-stage {
+    animation-duration: 1ms !important;
+  }
+
+  .ivlyrics-cd-print-rotor {
+    animation-play-state: paused !important;
+  }
+}
+

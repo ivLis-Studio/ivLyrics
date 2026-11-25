@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { createKaraokeWordSupplementHook } from "#ivlyrics/lyrics/karaokeWordSupplementHook.mjs";
 import test from 'node:test';
-import vm from 'node:vm';
 
-const pages = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
-const hook = pages.slice(pages.indexOf('const WORD_SUPPLEMENT_RETRY_MAX'),
-  pages.indexOf('// Prefetch word supplements for whole karaoke lines'));
 const tick = async () => { await Promise.resolve(); await Promise.resolve(); };
 
 function harness() {
@@ -24,11 +20,13 @@ function harness() {
     getWordReadings: (...args) => request('reading', args),
     getWordGlosses: (...args) => request('gloss', args),
   };
-  const window = { ivLyricsWordSupplements: api,
-    Spicetify: { Player: { data: { get item() { return { uri: settings.uri }; } } } },
-    addEventListener: (type, listener) => listeners.set(type, listener),
-    removeEventListener: type => listeners.delete(type) };
-  const context = vm.createContext({ window,
+  const renderWordStack = createKaraokeWordSupplementHook({
+    getService: () => api, getTrackUri: () => settings.uri, getDetectedLanguage: () => settings.language,
+    subscribeInvalidation(listener) {
+      listeners.set('ivLyrics:word-supplements-invalidated', listener);
+      return () => listeners.delete('ivLyrics:word-supplements-invalidated');
+    },
+    reportDebug() {},
     useMemo(build, deps) {
       const i = cursor++, old = slots[i];
       if (!old || deps.some((value, j) => !Object.is(value, old.deps[j]))) slots[i] = { value: build(), deps };
@@ -45,13 +43,12 @@ function harness() {
       const slot = slots[i] = { deps };
       effects.push(() => { old?.cleanup?.(); slot.cleanup = build(); });
     },
-    setTimeout(callback) { timers.set(++nextTimer, callback); return nextTimer; },
-    clearTimeout: id => timers.delete(id),
+    schedule(callback) { timers.set(++nextTimer, callback); return nextTimer; },
+    cancelTimer: id => timers.delete(id),
   });
-  vm.runInContext(hook + '\nglobalThis.wordHook = useKaraokeWordStackSupplements;', context);
   let input = { line: { startTime: 1000 }, timedChars: [{ char: '漢' }, { char: '字' }],
     timedText: '漢字', wordTimed: true, settingsRevision: 0 };
-  const render = patch => { input = { ...input, ...patch }; cursor = 0; return context.wordHook(input); };
+  const render = patch => { input = { ...input, ...patch }; cursor = 0; return renderWordStack(input); };
   const commit = () => { effects.splice(0).forEach(effect => effect()); };
   return { settings, requests, render, commit, api,
     invalidate: () => listeners.get('ivLyrics:word-supplements-invalidated')(),

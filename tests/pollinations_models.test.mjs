@@ -1,9 +1,10 @@
+import { readAiProviderFixture } from "./fixtures/ai-provider.mjs";
+import { createPollinationsConnection } from "../src/providers/ai/createPollinationsConnection.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../Addon_AI_Pollinations.js', import.meta.url), 'utf8');
+const source = readAiProviderFixture("Addon_AI_Pollinations.js");
 const fixtureModels = { data: [
     { id: 'anthropic/claude-test', title: 'Claude Test', category: 'text', output_modalities: ['text'], supported_endpoints: ['/v1/chat/completions'] },
     { id: 'google/gemini-test', category: 'text', output_modalities: ['text'] },
@@ -59,12 +60,10 @@ function harness(initial = {}, modelFetch = () => json(fixtureModels)) {
             return json({ choices: [{ message: { content: 'OK' }, finish_reason: 'stop' }] });
         },
     };
-    vm.runInNewContext(source.replace('    registerAddon();',
-        '    window.testHooks = { buildDeviceAuthorizeUrl, getModels };\n    registerAddon();'),
-    { window, Spicetify: { React }, URLSearchParams, TextDecoder, setTimeout, clearTimeout, console });
+    vm.runInNewContext(source, { window, Spicetify: { React }, URLSearchParams, TextDecoder, setTimeout, clearTimeout, console });
     const Component = addon.getSettingsUI();
     return {
-        settings, requests, addon, hooks: window.testHooks,
+        settings, requests, addon,
         render() {
             stateIndex = 0; effectIndex = 0;
             const tree = Component();
@@ -79,9 +78,17 @@ function nodes(tree, predicate) {
     return [...(predicate(tree) ? [tree] : []), ...tree.children.flatMap(child => nodes(child, predicate))];
 }
 
-test('device login requests all models while retaining device code, budget and expiry', () => {
-    const { hooks } = harness();
-    const url = new URL(hooks.buildDeviceAuthorizeUrl('AB CD'));
+test('device login requests all models while retaining device code, budget and expiry', async () => {
+    const connection = createPollinationsConnection({
+        getAiRequest: () => (url, request) => {
+            assert.equal(url, 'https://enter.pollinations.ai/api/device/code');
+            assert.match(JSON.parse(request.body).client_id, /^pk_/);
+            return json({ user_code: 'AB CD', device_code: 'fixture-device' });
+        },
+    });
+    const device = await connection.requestDeviceCode();
+    assert.equal(device.device_code, 'fixture-device');
+    const url = new URL(device.verificationUrl);
     assert.equal(url.origin, 'https://enter.pollinations.ai');
     assert.equal(url.searchParams.has('models'), false);
     assert.equal(url.searchParams.get('user_code'), 'AB CD');
@@ -90,11 +97,15 @@ test('device login requests all models while retaining device code, budget and e
 });
 
 test('catalog supports different text providers and excludes incompatible endpoints', async () => {
-    const { hooks, requests } = harness();
-    const models = await hooks.getModels();
-    assert.deepEqual(Array.from(models, item => item.id).sort(), ['anthropic/claude-test', 'google/gemini-test']);
-    assert.equal(models.find(item => item.id.startsWith('anthropic')).name, 'Claude Test');
-    assert.equal(requests[0].headers.Authorization, 'Bearer fixture-key');
+    const h = harness({ model: 'anthropic/claude-test' });
+    h.render();
+    await flush();
+    const select = nodes(h.render(), item => item.type === 'select')[0];
+    assert.deepEqual(Array.from(select.children, item => item.props.value).sort(),
+        ['anthropic/claude-test', 'google/gemini-test']);
+    assert.deepEqual(Array.from(select.children.find(item => item.props.value === 'anthropic/claude-test').children),
+        ['Claude Test · anthropic/claude-test']);
+    assert.equal(h.requests.find(request => request.url.endsWith('/models')).headers.Authorization, 'Bearer fixture-key');
 });
 
 test('picker keeps a saved model absent from the catalog and persists a new choice', async () => {

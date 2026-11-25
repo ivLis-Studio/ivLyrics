@@ -1,16 +1,18 @@
+import { createKaraokeHarnessFactory } from "./fixtures/karaoke-page-modules.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { KaraokeWordTiming } from '../src/lyrics/karaokeWordTiming.mjs';
 
 const url = new URL('./karaoke_static_render_cache.test.mjs', import.meta.url);
 const source = readFileSync(url, 'utf8');
 const harness = source.slice(source.indexOf('const currentSource ='), source.indexOf("test('vocal presence"))
     .replaceAll('import.meta.url', JSON.stringify(url.href))
     .replace('getKaraokeVocalRows };', 'getKaraokeVocalRows, buildKaraokeTimedChars };');
-const { createHarness } = new Function('assert', 'execFileSync', 'readFileSync', 'vm',
-    harness + '\nreturn { createHarness };')(assert, execFileSync, readFileSync, vm);
+const { createHarness } = createKaraokeHarnessFactory('assert', 'execFileSync', 'readFileSync', 'vm', 'KaraokeWordTiming',
+    harness + '\nreturn { createHarness };')(assert, execFileSync, readFileSync, vm, KaraokeWordTiming);
 const original = '明日も歩こう';
 const pronunciation = '아시타모 아루코오';
 const fallback = { startTime: 3000, endTime: 6000, originalText: original, text: pronunciation, phoneticText: pronunciation };

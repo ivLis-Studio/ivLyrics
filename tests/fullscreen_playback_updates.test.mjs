@@ -1,14 +1,85 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFullscreenOverlayFixture } from "./fixtures/legacy-page-source.mjs";
 import test from "node:test";
 import vm from "node:vm";
 import { artworkUtils } from './artwork_harness.mjs';
+import { createFullscreenPlaybackContext } from "../src/features/fullscreen/fullscreenPlaybackContext.mjs";
+import { renderLyricsFullscreenOverlay } from "../src/lyrics/lyricsPageFullscreenView.mjs";
+import { getKaraokeRenderGranularity, KARAOKE, WORD_KARAOKE, SYNCED } from "../src/lyrics/lyricsRenderModes.mjs";
 
-const source = readFileSync(new URL("../FullscreenOverlay.js", import.meta.url), "utf8");
+const source = readFullscreenOverlayFixture();
+
+test("fullscreen context artwork follows the active playlist and shares its pending lookup across songs", async () => {
+  const first = Promise.withResolvers();
+  const second = Promise.withResolvers();
+  const requests = [];
+  const views = [];
+  let context = {
+    uri: "spotify:playlist:first",
+    metadata: { context_description: "First playlist" },
+  };
+  const update = createFullscreenPlaybackContext({
+    readContext: () => context,
+    showImage: true,
+    fetchPlaylistMetadata(uri) {
+      requests.push(uri);
+      return uri.endsWith(":first") ? first.promise : second.promise;
+    },
+    publish: view => views.push(view),
+  });
+  update.update();
+  context = { ...context, metadata: { ...context.metadata } };
+  update.update();
+  assert.deepEqual(requests, ["spotify:playlist:first"]);
+  context = { uri: "spotify:playlist-v2:second", metadata: { context_description: "Second playlist" } };
+  update.update();
+
+  first.resolve({ images: ["spotify:image:outdated"] });
+  await first.promise;
+  assert.equal(views.at(-1).name, "Second playlist");
+  assert.equal(views.at(-1).image, "");
+  second.resolve({ images: ["spotify:image:current"] });
+  await second.promise;
+  assert.deepEqual(requests, ["spotify:playlist:first", "spotify:playlist:second"]);
+  assert.equal(views.at(-1).image, "https://i.scdn.co/image/current");
+  context = null;
+  update.update();
+  assert.equal(views.at(-1).name, "");
+});
+
+test("fullscreen context ignores pending artwork after disposal and skips lookups when artwork is hidden", async () => {
+  const pending = Promise.withResolvers();
+  const views = [];
+  const readContext = () => ({
+    uri: "spotify:playlist:fixture",
+    metadata: { context_description: "Fixture playlist" },
+  });
+  const source = createFullscreenPlaybackContext({
+    readContext,
+    showImage: true,
+    fetchPlaylistMetadata: () => pending.promise,
+    publish: view => views.push(view),
+  });
+  source.update();
+  source.dispose();
+  pending.resolve({ image: "spotify:image:outdated" });
+  await pending.promise;
+  source.update();
+  assert.equal(views.length, 1);
+  assert.equal(views[0].image, "");
+
+  createFullscreenPlaybackContext({
+    readContext,
+    showImage: false,
+    fetchPlaylistMetadata: () => assert.fail("hidden artwork does not require a lookup"),
+    publish: view => views.push(view),
+  }).update();
+  assert.equal(views.at(-1).name, "Fixture playlist");
+});
 
 // Run the actual overlay with persistent hooks, effects and event subscriptions.
 // Child components stay as elements so only work scheduled by the root is counted.
-const createHarness = ({ mode = "standard", visual = {}, windowOverrides = {}, documentOverrides = {} } = {}) => {
+const createHarness = ({ mode = "standard", visual = {}, windowOverrides = {}, documentOverrides = {}, timers = {} } = {}) => {
   const slots = [];
   const intervals = new Map();
   const listeners = new Map();
@@ -40,6 +111,7 @@ const createHarness = ({ mode = "standard", visual = {}, windowOverrides = {}, d
   const react = {
     useState,
     useMemo,
+    useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
     useCallback: (callback, deps) => useMemo(() => callback, deps),
     useRef: (current) => useMemo(() => ({ current }), []),
     useEffect: (effect, deps) => {
@@ -68,6 +140,9 @@ const createHarness = ({ mode = "standard", visual = {}, windowOverrides = {}, d
     position: 1000,
     getProgress() { progressReads++; return this.position; },
     getDuration() { return this.data.item?.metadata?.duration_ms || 0; },
+    repeat: 0,
+    getRepeat() { return this.repeat; },
+    setRepeat(mode) { this.repeat = mode; },
     addEventListener(name, callback) {
       if (!listeners.has(name)) listeners.set(name, new Set());
       listeners.get(name).add(callback);
@@ -81,6 +156,7 @@ const createHarness = ({ mode = "standard", visual = {}, windowOverrides = {}, d
   vinyl.PresentationSwitcher = () => null;
   const config = { visual: { "fullscreen-auto-hide-ui": false, ...visual } };
   const context = vm.createContext({
+    AbortController,
     Utils: artworkUtils,
     Spicetify: { React: react, Player: player },
     CONFIG: config,
@@ -89,6 +165,7 @@ const createHarness = ({ mode = "standard", visual = {}, windowOverrides = {}, d
     document: { documentElement: { classList: { remove() {} } }, ...documentOverrides },
     setInterval(callback, delay) { intervals.set(++timerId, { callback, delay }); return timerId; },
     clearInterval(id) { intervals.delete(id); },
+    ...timers,
     console,
   });
   vm.runInContext(source, context);
@@ -120,6 +197,7 @@ const createHarness = ({ mode = "standard", visual = {}, windowOverrides = {}, d
       return flush();
     },
     emit(name) { for (const callback of listeners.get(name) || []) callback(); return flush(); },
+    flush,
     update(nextProps = {}) { props = { ...props, ...nextProps }; return render(); },
     unmount() { for (const slot of slots) slot?.cleanup?.(); },
     get intervalCount() { return intervals.size; },
@@ -136,6 +214,125 @@ const elements = (node) => {
 };
 const byClass = (tree, className) => elements(tree).find((node) => node.props.className?.split(" ").includes(className));
 const text = (node) => Array.isArray(node) ? node.map(text).join("") : node && typeof node === "object" ? text(node.props.children) : typeof node === "string" ? node : "";
+
+test("the focused stage receives the same word, character or line mode selected by the lyrics page", () => {
+  const h = createHarness({ mode: "vinyl" });
+  const lyrics = [{ text: "Fixture", startTime: 1000 }];
+  const state = { isFullscreen: true, uri: "spotify:track:one", karaoke: lyrics, currentLyrics: lyrics };
+  for (const [mode, granularity] of [[KARAOKE, "character"], [WORD_KARAOKE, "word"], [SYNCED, null]]) {
+    const props = renderLyricsFullscreenOverlay({
+      react: { createElement: (_type, props) => props }, FullscreenOverlay: true,
+      state, renderedCurrentLyrics: lyrics, fullscreenPresentation: "vinyl",
+      karaokeRenderGranularity: getKaraokeRenderGranularity(mode), getPlainLyricsLineText: line => line.text,
+    });
+    h.update(props);
+    const stage = elements(h.tree).find(node => node.type === h.vinyl);
+    assert.equal(stage.props.karaokeRenderGranularity, granularity);
+    assert.equal(stage.props.activeLyricsKaraoke, granularity !== null);
+    assert.equal(stage.props.lyricsTrackUri, state.uri);
+  }
+  h.unmount();
+});
+
+test("local-track identity survives album metadata and song changes in fullscreen", () => {
+  const h = createHarness({ mode: "vinyl" });
+  const first = "spotify:local:Artist:Album:First:180";
+  const second = "spotify:local:Artist:Album:Second:180";
+  h.player.data.item = { uri: first, metadata: { title: "Shared title", artist_name: "Artist" } };
+  h.update({ trackUri: first, coverUrl: "local-cover.png" });
+  const stage = () => elements(h.tree).find(node => node.type === h.vinyl).props;
+  assert.equal(stage().track.uri, first);
+  assert.equal(stage().track.coverUrl, "local-cover.png");
+  h.player.data.item = { ...h.player.data.item, uri: second };
+  h.emit("songchange");
+  assert.equal(stage().track.uri, second);
+  assert.equal(stage().lyricsTrackUri, first);
+  assert.equal(stage().track.coverUrl, "");
+  h.unmount();
+});
+
+test("landscape, portrait and TV captions reject an outgoing track's titles and translations", () => {
+  const layouts = [
+    { name: "landscape", title: "lyrics-fullscreen-title", artist: "lyrics-fullscreen-artist" },
+    { name: "portrait", title: "portrait-track-title", artist: "portrait-track-artist" },
+    { name: "TV", title: "fullscreen-tv-title", artist: "fullscreen-tv-artist" },
+  ];
+  for (const { name, title, artist } of layouts) {
+    const h = createHarness({
+      visual: { "fullscreen-tv-mode": name === "TV", "translate-metadata-mode": "translated" },
+      windowOverrides: { matchMedia: query => ({ matches: name === "portrait" && query.includes("orientation") }) },
+    });
+    h.update({
+      trackUri: "spotify:track:one", title: "Route title", artist: "Route artist",
+      translatedMetadata: { translated: { title: "번역 제목", artist: "번역 가수" } },
+    });
+    assert.equal(text(byClass(h.tree, title)), "번역 제목", name);
+    assert.equal(text(byClass(h.tree, artist)), "번역 가수", name);
+
+    h.player.data.item = {
+      uri: "spotify:track:two", album: { uri: "spotify:album:two" },
+      metadata: { title: "Live title", artist_name: "Live artist", album_title: "Live album" },
+    };
+    h.emit("songchange");
+    assert.equal(text(byClass(h.tree, title)), "Live title", name);
+    assert.equal(text(byClass(h.tree, artist)), "Live artist", name);
+    h.update({
+      trackUri: "spotify:track:two",
+      translatedMetadata: { translated: { title: "새 제목", artist: "새 가수" } },
+    });
+    assert.equal(text(byClass(h.tree, title)), "새 제목", name);
+    h.unmount();
+  }
+});
+
+test("an idle fullscreen overlay stays hidden through a song change and releases its listener on exit", () => {
+  const pointers = new Set();
+  const timeouts = new Map();
+  let nextTimer = 0;
+  const h = createHarness({
+    visual: { "fullscreen-auto-hide-ui": true, "fullscreen-auto-hide-delay": 2 },
+    documentOverrides: {
+      addEventListener(name, handle) { if (name === "mousemove") pointers.add(handle); },
+      removeEventListener(name, handle) { if (name === "mousemove") pointers.delete(handle); },
+    },
+    timers: {
+      setTimeout(handle, delay) {
+        assert.equal(delay, 2000);
+        timeouts.set(++nextTimer, handle);
+        return nextTimer;
+      },
+      clearTimeout(id) { timeouts.delete(id); },
+    },
+  });
+  const isHidden = () => byClass(h.tree, "fullscreen-top-right").props.className.includes("hidden");
+  const move = (screenX, screenY) => {
+    assert.equal(pointers.size, 1);
+    for (const handle of pointers) handle({ screenX, screenY });
+    h.flush();
+  };
+
+  assert.equal(isHidden(), false);
+  move(20, 40);
+  assert.equal(timeouts.size, 1);
+  for (const [id, handle] of timeouts) {
+    timeouts.delete(id);
+    handle();
+  }
+  h.flush();
+  assert.equal(isHidden(), true);
+  h.player.data.item.metadata.title = "Second song";
+  h.emit("songchange");
+  move(20, 40);
+  assert.equal(isHidden(), true);
+  assert.equal(timeouts.size, 0);
+  move(21, 40);
+  assert.equal(isHidden(), false);
+  assert.equal(timeouts.size, 1);
+  h.update({ isFullscreen: false });
+  assert.equal(pointers.size, 0);
+  assert.equal(timeouts.size, 0);
+  h.unmount();
+});
 
 test("LP labels follow existing metadata modes, simplification and track ownership", () => {
   const translatedMetadata = {
@@ -543,6 +740,67 @@ for (const mode of ["standard", "compact-vinyl"]) {
   });
 }
 
+test("fullscreen research opens with the complete cache identity of a local file", () => {
+  const requests = [];
+  const h = createHarness({ mode: "vinyl", windowOverrides: {
+    localStorage: { getItem: () => "true" },
+    AIAddonManager: { getEnabledProvidersFor: () => [{}] },
+    SongInfoTMI: { fetchSongInfo(trackId, regenerate) {
+      requests.push([trackId, regenerate]);
+      return Promise.resolve(null);
+    } },
+    setTimeout: () => 1, clearTimeout() {},
+  } });
+  const uri = "spotify:local:Artist:Album:Road:180";
+  h.player.data.item.uri = uri;
+  h.update({ trackUri: uri });
+  const stage = elements(h.tree).find(node => node.type === h.vinyl);
+  stage.props.interactionProps.onContextMenu({ preventDefault() {}, stopPropagation() {} });
+  assert.deepEqual(requests, [[`local-uri:${uri}`, false]]);
+  h.unmount();
+});
+
+test("Research closes its stream and restores its repeat change as soon as playback moves", async () => {
+  const requests = [];
+  const h = createHarness({ mode: "vinyl", windowOverrides: {
+    setTimeout: () => 1, clearTimeout() {},
+    localStorage: { getItem: () => "true" },
+    AIAddonManager: { getEnabledProvidersFor: () => [{}] },
+    SongInfoTMI: { fetchSongInfo(trackId, _regenerate, options) {
+      const operation = Promise.withResolvers();
+      requests.push({ trackId, ...options, ...operation });
+      return operation.promise;
+    } },
+  } });
+  h.update({ trackUri: "spotify:track:one" });
+  const stage = () => elements(h.tree).find(node => node.type === h.vinyl);
+  const open = () => stage().props.interactionProps.onContextMenu({ preventDefault() {}, stopPropagation() {} });
+  open();
+  h.flush();
+  assert.equal(h.player.repeat, 2);
+  assert.equal(stage(), undefined);
+  const [old] = requests;
+  h.player.data.item.uri = "spotify:track:two";
+  h.emit("songchange");
+  assert.equal(old.signal.aborted, true);
+  assert.equal(h.player.repeat, 0);
+  assert.ok(stage());
+  h.update({ trackUri: "spotify:track:two" });
+  open();
+  h.flush();
+  assert.equal(requests.length, 2);
+  old.onProgress({ title: "Old chunk" });
+  old.resolve({ title: "Old final" });
+  await Promise.resolve();
+  h.flush();
+  assert.equal(elements(h.tree).some(node => node.props.info?.title === "Old final"), false);
+  h.player.repeat = 1;
+  h.update({ isFullscreen: false });
+  assert.equal(requests[1].signal.aborted, true);
+  assert.equal(h.player.repeat, 1);
+  h.unmount();
+});
+
 for (const mode of ["vinyl", "video"]) {
   test(`${mode} reports the actual focused lyric surface and restores TV/research/standard pages`, () => {
     const changes = [];
@@ -607,13 +865,31 @@ for (const mode of ["vinyl", "video"]) {
 
 test("TV progress preserves clock, fill, seek, pause and hidden-progress behavior", () => {
   const h = createHarness({ visual: { "fullscreen-tv-mode": true } });
+  const progress = () => elements(h.tree).find(node => node.type?.name === "TvProgress");
+  const renderProgress = () => progress().type(progress().props);
+  const startRenders = h.renders;
+  const localProgress = [];
+  const unsubscribe = progress().props.tvPlayhead.subscribe(({ position, duration }) => localProgress.push([position, duration]));
   h.tick(45000);
-  assert.equal(text(byClass(h.tree, "current")), "0:45");
-  assert.equal(byClass(h.tree, "fullscreen-tv-progress-fill").props.style.width, "25%");
-  byClass(h.tree, "fullscreen-tv-progress-bar").props.onClick({
-    currentTarget: { getBoundingClientRect: () => ({ left: 10, width: 200 }) }, clientX: 110,
+  assert.equal(h.renders, startRenders, "the stage and metadata do not render on a playback-only tick");
+  assert.deepEqual(localProgress, [[45000, 180000]], "only the TV progress subscribers receive a playback-only tick");
+  assert.equal(text(byClass(renderProgress(), "current")), "0:45");
+  assert.equal(byClass(renderProgress(), "fullscreen-tv-progress-fill").props.style.width, "25%");
+  const clickAt = (clientX, width = 200) => byClass(renderProgress(), "fullscreen-tv-progress-bar").props.onClick({
+    currentTarget: { getBoundingClientRect: () => ({ left: 10, width }) }, clientX,
   });
+  h.player.data.item.metadata.duration_ms = "180000";
+  h.emit("songchange");
+  assert.equal(h.renders, startRenders, "duration updates stay with the progress bar");
+  assert.deepEqual(localProgress.at(-1), [45000, "180000"]);
+  clickAt(110);
   assert.equal(h.player.lastSeek, 90000);
+  clickAt(110, 0);
+  assert.equal(h.player.lastSeek, 90000, "a zero-width bar cannot seek");
+  clickAt(0);
+  assert.equal(h.player.lastSeek, 0, "negative pointer offsets seek to the start");
+  clickAt(220);
+  assert.equal(h.player.lastSeek, 180000, "pointer offsets beyond the end seek to the end");
   h.player.data.isPaused = true;
   h.emit("onplaypause");
   const pausedPath = elements(byClass(h.tree, "play-pause")).find((node) => node.type === "path").props.d;
@@ -621,12 +897,18 @@ test("TV progress preserves clock, fill, seek, pause and hidden-progress behavio
   h.config.visual["fullscreen-tv-show-progress"] = false;
   h.update();
   const hiddenProgressRenders = h.renders;
+  const hiddenProgressReads = h.progressReads;
   h.tick(50000);
   assert.equal(h.renders, hiddenProgressRenders);
-  assert.equal(byClass(h.tree, "fullscreen-tv-progress"), undefined);
+  assert.equal(h.progressReads, hiddenProgressReads);
+  assert.deepEqual(localProgress, [[45000, 180000], [45000, "180000"]]);
+  assert.equal(progress(), undefined);
   h.config.visual["fullscreen-tv-show-progress"] = true;
   h.update();
-  assert.equal(text(byClass(h.tree, "current")), "0:50");
+  assert.equal(text(byClass(renderProgress(), "current")), "0:50");
+  assert.equal(h.intervalCount, 1);
+  assert.equal(h.listenerCount, 2);
+  unsubscribe();
   h.unmount();
   assert.equal(h.intervalCount, 0);
   assert.equal(h.listenerCount, 0);

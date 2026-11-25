@@ -15,12 +15,36 @@ if [[ ! -f "$SOURCE_UPDATER" ]]; then
     exit 1
 fi
 
+remember_spicetify_state() {
+    local updater_dir="${APP_DIR}/updater/unix"
+    local state_path="${SPICETIFY_STATE:-}"
+    local xdg_state_path="${XDG_STATE_HOME:-}"
+    local saved_environment
+    if [[ -n "$state_path" && "$state_path" != /* ]]; then
+        state_path="${PWD}/${state_path}"
+    fi
+    if [[ -n "$xdg_state_path" && "$xdg_state_path" != /* ]]; then
+        xdg_state_path="${PWD}/${xdg_state_path}"
+    fi
+
+    # The desktop launcher does not necessarily inherit the install shell.
+    # Save paths as data, so spaces and shell metacharacters stay literal.
+    saved_environment="$(mktemp "${updater_dir}/.spicetify-state.XXXXXX")"
+    if ! printf '%s\0%s\0' "$state_path" "$xdg_state_path" > "$saved_environment" ||
+        ! mv -f -- "$saved_environment" "${updater_dir}/.spicetify-state"; then
+        rm -f -- "$saved_environment"
+        return 1
+    fi
+}
+
 register_macos() {
     local updater_script="${APP_DIR}/updater/unix/ivlyrics-updater.sh"
     local app_path="${APP_DIR}/updater/macos/ivLyrics Updater.app"
     local generated_applescript="${APP_DIR}/updater/macos/ivlyrics-updater.generated.applescript"
     local legacy_updater_root="${HOME}/Library/Application Support/ivLyrics/Updater"
     local legacy_app_path="${legacy_updater_root}/ivLyrics Updater.app"
+    local lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+    lsregister="$(type -P lsregister || printf '%s' "$lsregister")"
     local escaped_updater_script
 
     if [[ ! -f "$updater_script" ]]; then
@@ -36,8 +60,8 @@ register_macos() {
         return 1
     fi
 
-    if [[ -d "$legacy_app_path" && -x "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister" ]]; then
-        "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister" -u "$legacy_app_path" >/dev/null 2>&1 || true
+    if [[ -d "$legacy_app_path" && -x "$lsregister" ]]; then
+        "$lsregister" -u "$legacy_app_path" >/dev/null 2>&1 || true
     fi
     rm -rf "$legacy_updater_root"
 
@@ -67,16 +91,17 @@ EOF
     rm -f "$generated_applescript"
 
     local plist="${app_path}/Contents/Info.plist"
-    /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$plist" 2>/dev/null || true
-    /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$plist" 2>/dev/null || true
-    /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string ivLyrics Updater" "$plist" 2>/dev/null || true
-    /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$plist" 2>/dev/null || true
-    /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string ivlyrics-updater" "$plist" 2>/dev/null || true
+    /usr/libexec/PlistBuddy \
+        -c "Add :CFBundleURLTypes array" \
+        -c "Add :CFBundleURLTypes:0 dict" \
+        -c "Add :CFBundleURLTypes:0:CFBundleURLName string ivLyrics Updater" \
+        -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" \
+        -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string ivlyrics-updater" "$plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier kr.ivlis.ivlyrics.updater" "$plist" 2>/dev/null || \
-        /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string kr.ivlis.ivlyrics.updater" "$plist" 2>/dev/null || true
+        /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string kr.ivlis.ivlyrics.updater" "$plist"
 
-    if [[ -x "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister" ]]; then
-        "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister" -f "$app_path" >/dev/null 2>&1 || true
+    if [[ -x "$lsregister" ]]; then
+        "$lsregister" -f "$app_path"
     fi
 
     echo "Registered ivlyrics-updater:// protocol for macOS."
@@ -120,7 +145,7 @@ EOF
 }
 
 case "$OS_NAME" in
-    Darwin) register_macos ;;
-    Linux) register_linux ;;
+    Darwin) remember_spicetify_state; register_macos ;;
+    Linux) remember_spicetify_state; register_linux ;;
     *) echo "Unsupported OS for updater protocol: $OS_NAME" >&2; exit 1 ;;
 esac

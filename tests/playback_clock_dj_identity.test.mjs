@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import test from "node:test";
 
-const { createSpotifyPlaybackClock } = createRequire(import.meta.url)("../PlaybackClock.js");
+const { createSpotifyPlaybackClock } = createRequire(import.meta.url)("../src/core/PlaybackClock.js");
 
 const createHarness = () => {
   let now = 0;

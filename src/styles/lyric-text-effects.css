@@ -1,0 +1,433 @@
+.lyrics-lyricsContainer-LyricsLine {
+  --lyrics-current-original-outline-shadow: var(--lyrics-original-outline-shadow, 0 0 0 transparent);
+  --lyrics-current-original-outline-stroke-width: var(--lyrics-original-outline-stroke-width, 0px);
+  --lyrics-current-original-outline-stroke-color: var(--lyrics-original-outline-stroke-color, #000000);
+  text-shadow:
+    var(--lyrics-original-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+.lyrics-lyricsContainer-LyricsLine > p:first-child {
+  text-shadow:
+    var(--lyrics-original-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+.lyrics-lyricsContainer-LyricsLine-active {
+  text-shadow: var(--lyrics-original-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+.lyrics-lyricsContainer-LyricsLine-active > p:first-child {
+  text-shadow: var(--lyrics-original-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+/* The depth blur is applied to the whole inactive line. Re-blurring dozens of
+   full-size outline copies makes their color flood back into the glyph and
+   appear much heavier than the configured width. Use a sparse, low-opacity
+   variant on surrounding lines while preserving the configured geometry; the
+   focused line keeps the full-density outline. */
+.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active),
+.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) > p:first-child {
+  text-shadow:
+    var(--lyrics-original-outline-blurred-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) > .lyrics-lyricsContainer-LyricsLine-phonetic {
+  text-shadow:
+    var(--lyrics-phonetic-outline-blurred-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) > .lyrics-lyricsContainer-LyricsLine-translation,
+.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) > .lyrics-lyricsContainer-LyricsLine-sub {
+  text-shadow:
+    var(--lyrics-translation-outline-blurred-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) > .lyrics-lyricsContainer-LyricsLine-culturalNote {
+  text-shadow:
+    var(--lyrics-cultural-note-outline-blurred-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) ruby rt {
+  text-shadow: var(--lyrics-furigana-outline-blurred-shadow, 0 0 0 transparent);
+}
+
+.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) .lyrics-karaoke-line {
+  text-shadow: var(--lyrics-original-outline-blurred-shadow, 0 0 0 transparent) !important;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) .lyrics-karaoke-char::before,
+.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) .lyrics-karaoke-text-run-segment::before {
+  -webkit-text-stroke-width: var(--lyrics-original-outline-blurred-stroke-width, 0px);
+  -webkit-text-stroke-color: var(--lyrics-original-outline-blurred-stroke-color, transparent);
+}
+
+.lyrics-lyricsContainer-LyricsLine .lyrics-karaoke-line {
+  text-shadow: var(--lyrics-current-original-outline-shadow, 0 0 0 transparent) !important;
+}
+
+/* Karaoke glyphs intentionally reset inherited text shadows to keep their
+   transparent progress fill stable. Draw a duplicate behind each glyph: the
+   foreground glyph covers the inward half of this stroke, leaving only the
+   configured outside thickness visible. */
+.lyrics-karaoke-char,
+.lyrics-karaoke-text-run-segment {
+  position: relative;
+}
+
+.lyrics-karaoke-char::before,
+.lyrics-karaoke-text-run-segment::before {
+  content: attr(data-outline-text) / "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline: var(--karaoke-glyph-bleed-x, 0.16em);
+  z-index: -1;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke-width: var(--lyrics-current-original-outline-stroke-width, 0px);
+  -webkit-text-stroke-color: var(--lyrics-current-original-outline-stroke-color, #000000);
+  text-shadow: none !important;
+  filter: none !important;
+  pointer-events: none;
+}
+
+/* A small, fixed-radius glow is painted only for currently moving glyphs when
+   text shadows are enabled. Animate opacity without changing glyph geometry. */
+.lyrics-karaoke-char.is-bouncing::after,
+.lyrics-karaoke-text-run-segment.is-bouncing::after,
+.lyrics-karaoke-word.is-word-timed.is-bouncing .lyrics-karaoke-char::after {
+  content: attr(data-outline-text) / "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline: var(--karaoke-glyph-bleed-x, 0.16em);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 0 transparent;
+  text-shadow: 0 0 0.16em var(--lyrics-color-active);
+  opacity: calc(var(--karaoke-motion-glow, 0) * var(--lyrics-shadow-enabled, 0));
+  transition: opacity 75ms linear;
+  pointer-events: none;
+}
+
+/* Glyphs of an expressive word unit glow with their wrapper, like word-timed
+   words; the expressive glow rule below sets the shadow and its strength. */
+.lyrics-karaoke-word.is-expressive-unit.is-bouncing .lyrics-karaoke-char::after {
+  content: attr(data-outline-text) / "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline: var(--karaoke-glyph-bleed-x, 0.16em);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 0 transparent;
+  transition: opacity 75ms linear;
+  pointer-events: none;
+}
+
+/* Live rows paint the glow on every display frame (KaraokeLivePainter). */
+.lyrics-karaoke-char.is-bouncing[data-karaoke-live]::after,
+.lyrics-karaoke-text-run-segment.is-bouncing[data-karaoke-live]::after,
+.lyrics-karaoke-word.is-word-timed.is-bouncing[data-karaoke-live] .lyrics-karaoke-char::after,
+.lyrics-karaoke-word.is-expressive-unit.is-bouncing[data-karaoke-live] .lyrics-karaoke-char::after {
+  transition: none;
+}
+
+/* Expressive karaoke motion. On the line being sung, units not reached yet
+   (but not the glyphs inside a word that moves as a whole) rest slightly
+   smaller and lower; the spring values written while a unit
+   moves start from this pose and settle at full size, so sung text stays
+   visibly lit. Only that line takes the pose (idle glyphs elsewhere keep no
+   transform, see the paint-chunk note on the lyric pages), and the pose eases
+   in when the line becomes live. */
+.lyrics-karaoke-line.is-motion-expressive.is-effect-live:not(.is-complete) .lyrics-karaoke-char.lyrics-karaoke-char--pending:not(.lyrics-karaoke-word.is-word-timed .lyrics-karaoke-char):not(.lyrics-karaoke-word.is-expressive-unit .lyrics-karaoke-char),
+.lyrics-karaoke-line.is-motion-expressive.is-effect-live:not(.is-complete) .lyrics-karaoke-text-run-segment.lyrics-karaoke-text-run-segment--pending,
+.lyrics-karaoke-line.is-motion-expressive.is-effect-live:not(.is-complete) .lyrics-karaoke-word.is-word-timed.is-expressive-pending,
+.lyrics-karaoke-line.is-motion-expressive.is-effect-live:not(.is-complete) .lyrics-karaoke-word.is-expressive-unit.is-expressive-pending {
+  --karaoke-bounce-scale: 0.95;
+  --karaoke-bounce-y: 0.012em;
+  transform: translateY(var(--karaoke-bounce-y)) scale(var(--karaoke-bounce-scale));
+  transition: transform 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* A character-timed word that moves as one unit: the wrapper owns the motion,
+   exactly like word-timed words, and its glyphs only paint their fill. It has
+   no transform while idle, for the same paint-chunk reason as idle glyphs. */
+.lyrics-karaoke-word.is-expressive-unit {
+  transform-origin: center bottom;
+}
+
+.lyrics-karaoke-word.is-expressive-unit.is-bouncing {
+  transform: translateY(var(--karaoke-bounce-y, 0)) scale(var(--karaoke-bounce-scale, 1));
+  will-change: transform;
+}
+
+/* Renderers without live painting step the motion per render; smooth it. */
+.lyrics-karaoke-word.is-expressive-unit.is-bouncing:not([data-karaoke-live]) {
+  transition: transform 75ms linear;
+}
+
+/* Its glyphs inherit the wrapper's motion values; reset the offset and scale
+   so they do not move a second time, and keep the inherited glow. */
+.lyrics-karaoke-word.is-expressive-unit .lyrics-karaoke-char {
+  --karaoke-bounce-y: 0;
+  --karaoke-bounce-scale: 1;
+}
+
+/* Expressive glow is part of the motion itself, so it follows the Text Effects
+   setting (already applied to --karaoke-motion-glow) rather than text shadows. */
+.lyrics-karaoke-line.is-motion-expressive .lyrics-karaoke-char.is-bouncing::after,
+.lyrics-karaoke-line.is-motion-expressive .lyrics-karaoke-text-run-segment.is-bouncing::after,
+.lyrics-karaoke-line.is-motion-expressive .lyrics-karaoke-word.is-word-timed.is-bouncing .lyrics-karaoke-char::after,
+.lyrics-karaoke-line.is-motion-expressive .lyrics-karaoke-word.is-expressive-unit.is-bouncing .lyrics-karaoke-char::after {
+  text-shadow: 0 0 0.24em var(--lyrics-color-active);
+  opacity: var(--karaoke-motion-glow, 0);
+}
+
+/* Honor an OS preference change immediately, including the pending CSS pose,
+   before the next renderer commit removes the expressive line class. */
+@media (prefers-reduced-motion: reduce) {
+  .lyrics-karaoke-line.is-motion-expressive .lyrics-karaoke-char,
+  .lyrics-karaoke-line.is-motion-expressive .lyrics-karaoke-text-run-segment,
+  .lyrics-karaoke-line.is-motion-expressive .lyrics-karaoke-word {
+    transform: none !important;
+    transition: none !important;
+    will-change: auto !important;
+  }
+
+  .lyrics-karaoke-line.is-motion-expressive .lyrics-karaoke-char::after,
+  .lyrics-karaoke-line.is-motion-expressive .lyrics-karaoke-text-run-segment::after {
+    opacity: 0 !important;
+  }
+}
+
+.lyrics-karaoke-glyph-fill {
+  --iv-karaoke-completed-color: color-mix(in srgb, var(--lyrics-color-inactive) var(--iv-karaoke-past-color-share, 0%), var(--lyrics-color-active));
+  display: inline-block;
+  position: relative;
+  /* Expand only the paint box for slanted glyph overhang. Equal negative
+     margins cancel this padding in inline layout, so advance width, kerning
+     positions, word spacing and wrapping stay exactly unchanged. */
+  padding-inline: var(--karaoke-glyph-bleed-x, 0.16em);
+  margin-inline: calc(var(--karaoke-glyph-bleed-x, 0.16em) * -1);
+  overflow: visible;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: --iv-karaoke-completed-color 520ms cubic-bezier(0.16, 1, 0.3, 1)
+    var(--lyrics-detail-exit-delay, 0ms);
+}
+
+.lyrics-karaoke-char--done > .lyrics-karaoke-glyph-fill,
+.lyrics-karaoke-text-run-segment--done > .lyrics-karaoke-glyph-fill,
+.lyrics-karaoke-line.is-complete .lyrics-karaoke-glyph-fill {
+  color: transparent;
+  background-color: var(--iv-karaoke-completed-color, var(--lyrics-color-active));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.lyrics-karaoke-char--active > .lyrics-karaoke-glyph-fill,
+.lyrics-karaoke-text-run-segment--active > .lyrics-karaoke-glyph-fill {
+  color: transparent;
+  background-image: linear-gradient(var(--karaoke-gradient-direction, to right),
+      var(--lyrics-color-active) 0,
+      var(--lyrics-color-active) var(--karaoke-char-fill-soft-start, var(--karaoke-char-fill, 0%)),
+      var(--lyrics-color-inactive) var(--karaoke-char-fill-soft-end, var(--karaoke-char-fill, 0%)),
+      var(--lyrics-color-inactive) 100%);
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.lyrics-lyricsContainer-LyricsLine > .lyrics-lyricsContainer-LyricsLine-phonetic,
+.lyrics-lyricsContainer-LyricsLine-phonetic {
+  text-shadow:
+    var(--lyrics-phonetic-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+/* Pronunciation fill (Settings > Karaoke mode). Only the singing row's
+   pronunciation has unit states. The active unit draws an active-colored copy
+   of its text over itself and reveals it up to the fill edge, so the row keeps
+   its own color, shadow, outline and line breaks. The copy is centered on the
+   unit's content box, which puts its baseline exactly on the unit's baseline. */
+.lyrics-phonetic-fill-unit--pending,
+.lyrics-phonetic-fill-unit--active {
+  color: var(--lyrics-color-inactive);
+}
+
+.lyrics-phonetic-fill-unit--done {
+  color: var(--lyrics-color-active);
+}
+
+.lyrics-phonetic-fill-unit--active {
+  position: relative;
+}
+
+.lyrics-phonetic-fill-unit--active::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  white-space: pre;
+  color: var(--lyrics-color-active);
+  -webkit-text-fill-color: var(--lyrics-color-active);
+  text-shadow: none;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(var(--phonetic-fill-direction, to right),
+      #000 var(--karaoke-char-fill-soft-start, var(--karaoke-char-fill, 0%)),
+      transparent var(--karaoke-char-fill-soft-end, var(--karaoke-char-fill, 0%)));
+  mask-image: linear-gradient(var(--phonetic-fill-direction, to right),
+      #000 var(--karaoke-char-fill-soft-start, var(--karaoke-char-fill, 0%)),
+      transparent var(--karaoke-char-fill-soft-end, var(--karaoke-char-fill, 0%)));
+}
+
+.lyrics-phonetic-fill-unit--active:dir(rtl)::after {
+  --phonetic-fill-direction: to left;
+  justify-content: flex-end;
+}
+
+/* A unit sung on a coloured range borrows the range's speaker class for its
+   colour variables only. Keep the row's inline layout instead of the range's
+   inline-block box. */
+.lyrics-phonetic-fill-unit.ivlyrics-karaoke-range-style {
+  display: inline;
+}
+
+.lyrics-lyricsContainer-LyricsLine > .lyrics-lyricsContainer-LyricsLine-translation,
+.lyrics-lyricsContainer-LyricsLine > .lyrics-lyricsContainer-LyricsLine-sub,
+.lyrics-lyricsContainer-LyricsLine-translation,
+.lyrics-lyricsContainer-LyricsLine-sub {
+  text-shadow:
+    var(--lyrics-translation-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+.lyrics-lyricsContainer-LyricsLine > .lyrics-lyricsContainer-LyricsLine-culturalNote,
+.lyrics-lyricsContainer-LyricsLine-culturalNote {
+  text-shadow:
+    var(--lyrics-cultural-note-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+.lyrics-lyricsContainer-LyricsLine ruby rt {
+  text-shadow: var(--lyrics-furigana-outline-shadow, 0 0 0 transparent);
+}
+
+.lyrics-lyricsContainer-LyricsLine-active ruby rt {
+  text-shadow: var(--lyrics-furigana-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+.lyrics-break-label {
+  text-shadow: var(--break-label-outline-shadow, 0 0 0 transparent);
+}
+
+.fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine,
+.fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine > p:first-child {
+  --lyrics-current-original-outline-shadow: var(--iv-vinyl-original-outline-shadow, 0 0 0 transparent);
+  --lyrics-current-original-outline-stroke-width: var(--iv-vinyl-original-outline-stroke-width, 0px);
+  --lyrics-current-original-outline-stroke-color: var(--iv-vinyl-original-outline-stroke-color, #000000);
+  text-shadow: var(--iv-vinyl-original-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+.fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine .lyrics-karaoke-line {
+  text-shadow: var(--lyrics-current-original-outline-shadow, 0 0 0 transparent) !important;
+}
+
+.fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-phonetic {
+  text-shadow: var(--iv-vinyl-phonetic-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+.fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-translation {
+  text-shadow: var(--iv-vinyl-translation-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+.fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-culturalNote {
+  text-shadow: var(--iv-vinyl-cultural-note-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent);
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine > p {
+  text-shadow: var(--iv-vinyl-original-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent) !important;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-phonetic {
+  text-shadow: var(--iv-vinyl-phonetic-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent) !important;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-translation {
+  text-shadow: var(--iv-vinyl-translation-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent) !important;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine-culturalNote {
+  text-shadow: var(--iv-vinyl-cultural-note-outline-shadow, 0 0 0 transparent),
+    var(--lyrics-text-shadow, 0 0 0 transparent) !important;
+}
+
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine > p:has(.lyrics-karaoke-line),
+.fullscreen-vinyl-overlay.is-presentation-video .fullscreen-vinyl-active-lyric .lyrics-lyricsContainer-LyricsLine > p:has(.lyrics-karaoke-stack) {
+  text-shadow: var(--iv-vinyl-original-outline-shadow, 0 0 0 transparent) !important;
+}
+
+.lyrics-fullscreen-title {
+  text-shadow:
+    var(--fullscreen-title-outline-shadow, 0 0 0 transparent),
+    0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.lyrics-fullscreen-title-translated,
+.lyrics-fullscreen-title-romanized,
+.portrait-track-title,
+.portrait-track-title-sub {
+  text-shadow: var(--fullscreen-title-outline-shadow, 0 0 0 transparent);
+}
+
+.fullscreen-tv-title {
+  /* Soft halo moved to .fullscreen-tv-title-container (drop-shadow filter);
+     keep only the crisp outline here so the clamp box has nothing to box. */
+  text-shadow: var(--fullscreen-title-outline-shadow, 0 0 0 transparent);
+}
+
+.lyrics-fullscreen-artist,
+.lyrics-fullscreen-artist-translated,
+.lyrics-fullscreen-artist-romanized,
+.lyrics-fullscreen-album-name,
+.portrait-track-artist,
+.portrait-track-artist-sub,
+.portrait-track-album-name {
+  text-shadow: var(--fullscreen-artist-outline-shadow, 0 0 0 transparent);
+}
+
+.fullscreen-tv-artist {
+  text-shadow: var(--fullscreen-artist-outline-shadow, 0 0 0 transparent);
+}
+
+.fullscreen-tv-album-name {
+  text-shadow: var(--fullscreen-artist-outline-shadow, 0 0 0 transparent);
+}
+
+.fullscreen-clock {
+  text-shadow:
+    var(--fullscreen-clock-outline-shadow, 0 0 0 transparent),
+    0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+.tmi-fullview {
+  text-shadow: var(--fullscreen-tmi-outline-shadow, 0 0 0 transparent);
+}
+

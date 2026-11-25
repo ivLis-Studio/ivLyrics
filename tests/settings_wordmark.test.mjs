@@ -1,10 +1,11 @@
+import { createSettingsModalChrome } from "../src/features/settings/settingsModalChrome.mjs";
+import { readSettingsSource, readSettingsStylesFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const source = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
-const styles = readFileSync(new URL("../SettingsStyles.js", import.meta.url), "utf8");
+const source = readSettingsSource();
+const styles = readSettingsStylesFixture();
 const start = source.indexOf("const SettingsWordmark =");
 const end = source.indexOf("const SettingsCrumbs =", start);
 assert.ok(start >= 0 && end > start);
@@ -12,7 +13,7 @@ const css = vm.runInNewContext(styles + "\nSETTINGS_MODAL_CSS;", { APP_NAME: "iv
 const context = vm.createContext({ react: {
   createElement: (tag, props, ...children) => ({ tag, props, children }),
 } });
-vm.runInContext(source.slice(start, end) + "\nglobalThis.wordmark = SettingsWordmark();", context);
+vm.runInContext(source.slice(start, end) + "\nglobalThis.Wordmark = SettingsWordmark; globalThis.wordmark = SettingsWordmark();", context);
 
 test("settings heading is a single accessible, left-to-right ivLyrics wordmark", () => {
   const title = context.wordmark;
@@ -21,7 +22,20 @@ test("settings heading is a single accessible, left-to-right ivLyrics wordmark",
   assert.equal(title.props.dir, "ltr");
   assert.equal(title.children.map(part => part.children.join("")).join(""), "ivLyrics");
   assert.ok(title.children.every(part => part.props["aria-hidden"] === "true"));
-  assert.match(source, /className: "settings-topbar-title"[\s\S]*?react\.createElement\(SettingsWordmark\)/);
+  const placeholder = () => null;
+  const chrome = createSettingsModalChrome(context.react, {
+    translate: key => key,
+    getSettingsText: (_key, fallback) => fallback,
+    components: { SettingsWordmark: context.Wordmark, SettingsUiIcon: placeholder, SettingsCrumbs: placeholder },
+    menus: { activeTabMeta: { label: "General" } },
+    navigation: {},
+    search: { searchQuery: "", renderSearchPanel: placeholder },
+    uiTheme: "dark",
+    changedCounts: { total: 0 },
+  });
+  const titleGroup = chrome.renderHeaderSection().children[0];
+  assert.equal(titleGroup.props.className, "settings-topbar-title");
+  assert.equal(titleGroup.children[0].tag, context.Wordmark);
 });
 
 test("brand segments use the requested 800 and 250 weights without added spacing", () => {

@@ -1,8 +1,10 @@
+import { createKaraokeHarnessFactory } from "./fixtures/karaoke-page-modules.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { KaraokeWordTiming } from '../src/lyrics/karaokeWordTiming.mjs';
 
 // Compare against the exact reviewed #126 integration, including its readings.
 const baseline = execFileSync('git', ['show', 'c6613feb3bad1be8752ea741276d8919e86879b9:Pages.js'], {
@@ -12,15 +14,15 @@ const harnessUrl = new URL('./karaoke_static_render_cache.test.mjs', import.meta
 const fixture = readFileSync(harnessUrl, 'utf8');
 const from = fixture.indexOf('const currentSource ='), to = fixture.indexOf("test('vocal presence");
 assert.ok(from >= 0 && to > from);
-const { createHarness, makeLine } = new Function('assert', 'execFileSync', 'readFileSync', 'vm',
+const { createHarness, makeLine } = createKaraokeHarnessFactory('assert', 'execFileSync', 'readFileSync', 'vm', 'KaraokeWordTiming',
   fixture.slice(from, to).replaceAll('import.meta.url', JSON.stringify(harnessUrl.href))
     .replace('getKaraokeVocalRows };', 'getKaraokeVocalRows, getKaraokeExpressiveMotion, syncKaraokeLiveEntry, paintKaraokeLiveEntry };')
-  + '\nreturn { createHarness, makeLine };')(assert, execFileSync, readFileSync, vm);
+  + '\nreturn { createHarness, makeLine };')(assert, execFileSync, readFileSync, vm, KaraokeWordTiming);
 
 // The baseline predates the expressive exports; use its original harness.
-const { createHarness: baselineHarness } = new Function('assert', 'execFileSync', 'readFileSync', 'vm',
+const { createHarness: baselineHarness } = createKaraokeHarnessFactory('assert', 'execFileSync', 'readFileSync', 'vm', 'KaraokeWordTiming',
   fixture.slice(from, to).replaceAll('import.meta.url', JSON.stringify(harnessUrl.href))
-  + '\nreturn { createHarness };')(assert, execFileSync, readFileSync, vm);
+  + '\nreturn { createHarness };')(assert, execFileSync, readFileSync, vm, KaraokeWordTiming);
 const nodes = (tree, name, found = []) => {
   if (Array.isArray(tree)) tree.forEach(child => nodes(child, name, found));
   else if (tree && typeof tree === 'object') {

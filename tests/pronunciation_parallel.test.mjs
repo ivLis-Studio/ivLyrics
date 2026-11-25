@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const managerSource = readFileSync(new URL("../AIAddonManager.js", import.meta.url), "utf8");
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
+const managerSource = bundleInitializer(new URL("../src/providers/ai/AIAddonManager.js", import.meta.url));
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -11,6 +12,7 @@ const loadManager = async () => {
 	const window = {};
 	vm.runInNewContext(managerSource, {
 		window,
+		AbortController,
 		Spicetify: { LocalStorage: { get: () => null, set: () => {} } },
 		console: { log: () => {}, warn: () => {}, error: () => {} },
 		setTimeout, clearTimeout,

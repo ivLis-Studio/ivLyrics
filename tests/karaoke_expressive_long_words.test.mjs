@@ -1,8 +1,10 @@
+import { createKaraokeHarnessFactory } from "./fixtures/karaoke-page-modules.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { KaraokeWordTiming } from '../src/lyrics/karaokeWordTiming.mjs';
 
 // Reuse the production renderer, grapheme segmenter and word-timing service.
 // The hook/element doubles let us inspect React output and attach its actual
@@ -26,8 +28,8 @@ const harnessSource = fixture.slice(from, to)
     }`);
 assert.ok(harnessSource.includes('paintKaraokeLiveEntry };'));
 assert.ok(harnessSource.includes('counts.glyphElements'));
-const { createHarness, currentSource } = new Function('assert', 'execFileSync', 'readFileSync', 'vm',
-  `${harnessSource}\nreturn { createHarness, currentSource };`)(assert, execFileSync, readFileSync, vm);
+const { createHarness, currentSource } = createKaraokeHarnessFactory('assert', 'execFileSync', 'readFileSync', 'vm', 'KaraokeWordTiming',
+  `${harnessSource}\nreturn { createHarness, currentSource };`)(assert, execFileSync, readFileSync, vm, KaraokeWordTiming);
 const hasReleaseTag = (() => {
   try {
     execFileSync('git', ['rev-parse', '--verify', '--quiet', 'v7.0.10^{commit}'], {

@@ -1,9 +1,16 @@
+import { buildSyncCreatorPlaybackTimeline, getSyncCreatorPlaybackLineIndex } from '#ivlyrics/features/sync/syncCreatorPlayback.mjs';
+import { useSyncCreatorSourceChange } from '#ivlyrics/features/sync/syncCreatorSourceChange.mjs';
+import { createSyncCreatorSessionLifecycle, createSyncCreatorSessionRefs } from '#ivlyrics/features/sync/syncCreatorSessionLifecycle.mjs';
+import { buildSyntheticLrclibResult } from '#ivlyrics/features/sync/syncCreatorLrclibLyrics.mjs';
+import { readSyncCreatorFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../SyncDataCreator.js', import.meta.url), 'utf8');
+import { createSyncCreatorLyricDocument } from "#ivlyrics/features/sync/syncCreatorLyricText.mjs";
+
+const source = readSyncCreatorFixture();
 const slice = (startMarker, endMarker) => {
 	const start = source.indexOf(startMarker);
 	const end = source.indexOf(endMarker, start + startMarker.length);
@@ -12,14 +19,10 @@ const slice = (startMarker, endMarker) => {
 };
 const helpersSource = source.slice(0, source.indexOf('const SyncDataCreator ='));
 const callbackSources = [
-	slice('\tconst stripLrclibTimestamp =', '\tconst clearLrclibCandidateState ='),
-	slice('\tconst isCurrentSyncCreatorSourceChange =', '\tconst previewLrclibCandidate ='),
-	slice('\tconst claimSessionForLocalEditing =', '\tconst toggleSessionAutosave ='),
-	slice('\tconst toggleMode =', '\tconst adjustGlobalOffset ='),
-	slice('\tconst applySyncCreatorSessionRecord =', '\tconst saveSessionCheckpoint ='),
+	slice('\tconst toggleMode =', '\tconst { adjustGlobalOffset, adjustCurrentLineOffset }'),
+	slice('\tconst applySyncCreatorSessionRecord =', '\tconst { addManualCheckpoint,'),
 ].join('\n');
-const navigationSource = slice('\tconst playbackTimeline =', '\t// 재생 위치 업데이트 + 미리보기 자동 줄 이동');
-const pollingSource = slice('\t// 재생 위치 업데이트 + 미리보기 자동 줄 이동', '\tconst autoScroll =');
+const playbackSource = slice('\tconst playbackTimeline =', '\tconst { setRecordingProgressIndex, applyRecordingProgressVisual, invalidateRecordingPaint }');
 const plain = value => JSON.parse(JSON.stringify(value));
 const deferred = () => {
 	let resolve;
@@ -30,16 +33,28 @@ const deferred = () => {
 // Execute the shipping helpers, load/restore/mode callbacks and navigation effects.
 // React setters and player/storage I/O are controlled here; the already-validated
 // sync fixture passes through the sanitizer boundary without migration.
-const createEditor = ({ progress = 0, playing = true } = {}) => {
+const createEditor = ({ progress = 0, playing = true, draftStore = null } = {}) => {
 	const calls = { seek: [], play: 0, selections: [], positions: [], toasts: [] };
 	const timers = new Map();
+	const layoutEffects = [], refs = [];
+	const draftGenerationRef = { current: null };
+	let layoutIndex = 0, refIndex = 0;
 	let timerId = 0;
 	let cleanup;
 	const context = vm.createContext({
-		console, structuredClone,
+		console, structuredClone, buildSyntheticLrclibResult,
 		useCallback: callback => callback,
 		useMemo: callback => callback(),
 		useEffect: callback => { cleanup = callback(); },
+		useRef: initial => refs[refIndex++] ??= { current: initial },
+		useLayoutEffect(callback, dependencies) {
+			const index = layoutIndex++;
+			const previous = layoutEffects[index];
+			if (previous && dependencies.every((dep, key) => Object.is(dep, previous.dependencies[key]))) return;
+			previous?.cleanup?.();
+			layoutEffects[index] = { dependencies, cleanup: callback() };
+		},
+		resetCurrentSyncInput() {},
 		clearTimeout: () => {},
 		setInterval: (callback, delay) => { const id = ++timerId; timers.set(id, { callback, delay }); return id; },
 		clearInterval: id => timers.delete(id),
@@ -60,22 +75,32 @@ const createEditor = ({ progress = 0, playing = true } = {}) => {
 		showMissingMetaToast: () => calls.toasts.push('missing metadata'),
 		clearRecordingLock: () => {}, syncSessionUiFromRecord: () => {}, announceHistoryStatus: () => {},
 		clearLyricTextSelection: () => {}, clearOffsetSelection: () => {},
-		sanitizeSyncCreatorSyncData: data => structuredClone(data),
-		syncCreatorDraftStore: null,
+		syncCreatorDraftStore: draftStore,
 	});
 	for (const [, name] of callbackSources.matchAll(/\b(\w+Ref)\.current/g)) context[name] ??= { current: null };
 	Object.assign(context, {
 		pendingPlaybackNavigationRef: { current: true },
-		positionUpdateTimerRef: { current: null },
 		lyricsScrollRef: { current: { scrollLeft: 50 } },
-		sessionSourceChangeRequestRef: { current: 0 },
-		sessionRecoveryRequestRef: { current: 0 },
-		sessionCheckpointRestoreRequestRef: { current: 0 },
-		sessionWriteGenerationRef: { current: 0 },
-		sessionClientRevisionRef: { current: 0 },
-		sessionAutoRecoveryBlockedRef: { current: false },
+		scoreInputRef: { current: null },
+		scorePendingEffectsRef: { current: new Map() },
+		serverBaselineSyncDataRef: { current: null },
+		lrclibIdInputEditedRef: { current: false },
+		sessionTrackKey: 'fixture',
+		lrclibCandidates: [],
 	});
-	for (const [, setter] of callbackSources.matchAll(/\b(set[A-Z]\w*)\b/g)) {
+	const sessionRefs = createSyncCreatorSessionRefs({ now: () => 0 });
+	Object.assign(context, sessionRefs);
+	const setters = new Set([
+		...Array.from(callbackSources.matchAll(/\b(set[A-Z]\w*)\b/g), ([, name]) => name),
+		'setLyrics', 'setLyricsText', 'setSyncData', 'setHasPublishedSync', 'setCurrentLineIndex',
+		'setLrclibCandidates', 'setSelectedLrclibCandidateKey', 'setSelectedLrclibSourceValue', 'setPreviewLrclibCandidateKey',
+		'setLrclibSearchMeta', 'setIsLoadingLrclibId', 'setLrclibIdInput', 'setProviderValue', 'setAddonId',
+		'setPendingMultiVocalDecision', 'setMultiVocalMode', 'setActiveParallelPartId', 'setError', 'setIsLoading', 'setMode',
+		'setManualParallelSplitDrafts', 'setParentheticalLayoutDrafts', 'setPendingParentheticalLayoutDecision', 'setMergedLineDrafts',
+		'setIsRestoringCheckpoint', 'setSessionReadyDraftKey', 'setSessionHistory',
+		'setSessionHistoryCursorId', 'setHistoryAnnouncement', 'setSessionSaveState', 'setSessionHydrationComplete',
+	]);
+	for (const setter of setters) {
 		const property = setter.slice(3, 4).toLowerCase() + setter.slice(4);
 		context[setter] = value => {
 			context[property] = typeof value === 'function' ? value(context[property]) : value;
@@ -83,30 +108,52 @@ const createEditor = ({ progress = 0, playing = true } = {}) => {
 			if (setter === 'setLyricsText') context.lyricsLines = context.lyricsText.split('\n').filter(line => line.trim()).map(line => line.normalize('NFC'));
 		};
 	}
+	const session = createSyncCreatorSessionLifecycle({
+		refs: sessionRefs, ui: context, pendingPlaybackNavigationRef: context.pendingPlaybackNavigationRef,
+		cancelTimer: context.clearTimeout, syncCreatorDraftStore: context.syncCreatorDraftStore,
+	});
+	const { beginDraftSourceChange, isCurrentSyncCreatorSourceChange, claimSessionForLocalEditing } = session;
+	Object.assign(context, { beginDraftSourceChange, isCurrentSyncCreatorSourceChange, claimSessionForLocalEditing });
 	context.setPosition = value => { context.position = value; calls.positions.push(value); };
 	vm.runInContext(helpersSource, context);
-	vm.runInContext(`globalThis.api = { buildSyncCreatorPlaybackTimeline, getSyncCreatorPlaybackLineIndex };`, context);
+	context.api = { buildSyncCreatorPlaybackTimeline, getSyncCreatorPlaybackLineIndex };
+	context.react = context;
 	vm.runInContext(`globalThis.makeCallbacks = () => {
 		const { mode, pendingMultiVocalDecision } = globalThis;
 		${callbackSources}
-		return { buildSyntheticLrclibResult, beginSyncCreatorSourceChange, applyLoadedLyricsResult,
-			resolveMultiVocalDecision, claimSessionForLocalEditing, toggleMode, applySyncCreatorSessionRecord };
+		return { toggleMode, applySyncCreatorSessionRecord };
 	};`, context);
 	for (const name of Object.keys(context.makeCallbacks())) {
 		context[name] = (...args) => context.makeCallbacks()[name](...args);
 	}
+	const services = vm.runInContext(`({
+		readSyncCreatorSyncService, readSyncCreatorCodec, sanitizeSyncCreatorSyncData, debugSyncCreatorSource,
+	})`, context);
+	context.announceRecoveredSession = () => {};
+	const sourceChange = () => useSyncCreatorSourceChange({
+		react: { ...context, useRef: () => draftGenerationRef }, i18n: context.I18n, toast: context.Toast,
+		track: context, lrclib: { ...context, searchRequests: { cancel() {} } }, editor: context, session: context, services,
+	});
+	for (const name of ['beginSyncCreatorSourceChange', 'applyLoadedLyricsResult', 'resolveMultiVocalDecision', 'captureOfflineDraftRecovery']) {
+		context[name] = (...args) => sourceChange()[name](...args);
+	}
 	const render = (changes = {}) => {
 		Object.assign(context, changes);
-		vm.runInContext(`(() => { ${navigationSource}\nglobalThis.playbackTimeline = playbackTimeline; })();`, context);
+		context.lineIndexByStart = createSyncCreatorLyricDocument(context.lyricsLines.join('\n')).lineIndexByStart;
+		layoutIndex = refIndex = 0;
+		vm.runInContext(`(() => { ${playbackSource}\nglobalThis.playbackTimeline = playbackTimeline; })();`, context);
 	};
 	return {
 		context, calls, timers,
 		setProgress: value => { progress = value; },
 		setPlaying: value => { playing = value; },
 		render,
-		startPolling: () => { cleanup?.(); vm.runInContext(pollingSource, context); },
+		startPolling: render,
 		poll: () => { assert.equal(timers.size, 1); timers.values().next().value.callback(); },
-		dispose: () => { cleanup?.(); },
+		dispose: () => {
+			for (const effect of layoutEffects) effect.cleanup?.();
+			cleanup?.();
+		},
 		setLyrics: (lines, syncData = null) => {
 			context.setLyrics({ synced: lines });
 			context.setLyricsText(lines.map(line => line.text).join('\n'));
@@ -196,7 +243,7 @@ test('async existing-sync loading selects the latest player position after the 2
 	assert.equal(await loading, true);
 	editor.render({ isLoading: false });
 	assert.equal(editor.context.currentLineIndex, 27);
-	assert.equal(editor.context.position, 0, 'the uncommitted React position was deliberately stale');
+	assert.equal(editor.context.position, 5000, 'the previous timer sample is deliberately stale');
 	assert.equal(editor.context.lyricsScrollRef.current.scrollLeft, 0);
 	editor.setProgress(35000);
 	editor.render();
@@ -243,9 +290,118 @@ test('matching legacy sync still loads as the published editor baseline', async 
 	editor.context.window.SyncDataService = { getSyncData: async () => ({ syncData: body }) };
 	const request = editor.context.beginSyncCreatorSourceChange();
 	await editor.context.applyLoadedLyricsResult({ provider: 'lrclib', synced: [{ text: 'New', startTime: 0 }, { text: 'Text', startTime: 2000 }] }, 'lrclib', request);
-	assert.deepEqual(plain(editor.context.syncData), body);
+	const normalized = { ...body, lines: body.lines.map(line => ({ ...line, granularity: 'character' })) };
+	assert.deepEqual(plain(editor.context.syncData), normalized);
 	assert.equal(editor.context.hasPublishedSync, true);
-	assert.deepEqual(plain(editor.context.serverBaselineSyncDataRef.current), body);
+	assert.deepEqual(plain(editor.context.serverBaselineSyncDataRef.current), normalized);
+	assert.ok(body.lines.every(line => !Object.hasOwn(line, 'granularity')));
+});
+
+test('loading prefers unsubmitted local timings and remembers the published baseline', async () => {
+	const published = { version: 2, lines: [{ start: 0, end: 2, chars: [1, 2, 3] }] };
+	const local = { version: 2, lines: [{ start: 0, end: 2, chars: [2, 3, 4] }] };
+	const lyrics = [{ text: 'New', startTime: 0 }];
+	const record = draftRecord(lyrics, local);
+	const draftStore = {
+		createDraftKey: () => record.draftKey,
+		cloneValue: structuredClone,
+		getDraft: async () => record,
+		getDraftsForTrack: async () => [],
+	};
+	const editor = createEditor({ draftStore });
+	editor.context.window.SyncDataService = { getSyncData: async () => ({ syncData: published }) };
+	const request = editor.context.beginSyncCreatorSourceChange();
+	assert.equal(await editor.context.applyLoadedLyricsResult({ provider: 'lrclib', synced: lyrics }, 'lrclib', request), true);
+	assert.deepEqual(plain(editor.context.syncData.lines[0].chars), local.lines[0].chars);
+	assert.deepEqual(plain(editor.context.serverBaselineSyncDataRef.current.lines[0].chars), published.lines[0].chars);
+	assert.equal(editor.context.hasPublishedSync, true);
+});
+
+test('an exact untimed draft restores editor choices and keeps the provider timestamps', async () => {
+	const lyrics = [{ text: 'New', startTime: 2400 }, { text: 'Text', startTime: 4200 }];
+	const lrclibSource = { lrclibId: '321' };
+	const record = draftRecord(lyrics);
+	record.lrclibSource = lrclibSource;
+	Object.assign(record.draft.editor, {
+		syncGranularity: 'word', multiVocalMode: true, activeParallelPartId: 'lead',
+	});
+	const editor = createEditor({ draftStore: {
+		createDraftKey: () => record.draftKey,
+		cloneValue: structuredClone,
+		getDraft: async () => record,
+		getDraftsForTrack() { assert.fail('an exact draft needs no fallback query'); },
+	} });
+	const request = editor.context.beginSyncCreatorSourceChange();
+	await editor.context.applyLoadedLyricsResult({ provider: 'lrclib', synced: lyrics, lrclibSource }, 'lrclib', request);
+	assert.equal(editor.context.syncGranularity, 'word');
+	assert.equal(editor.context.activeParallelPartId, 'lead');
+	assert.equal(editor.context.multiVocalMode, true);
+	assert.equal(editor.context.lyrics.synced, lyrics);
+	assert.equal(editor.context.syncData, null);
+});
+
+test('an older untimed draft cannot hide usable published timing', async () => {
+	const lyrics = [{ text: 'New', startTime: 1000 }];
+	const record = draftRecord(lyrics);
+	const published = { version: 2, lines: [{ start: 0, end: 2, chars: [1, 2, 3] }] };
+	const editor = createEditor({ draftStore: {
+		createDraftKey: () => record.draftKey,
+		cloneValue: structuredClone,
+		getDraft: async () => record,
+		getDraftsForTrack: async () => [],
+	} });
+	editor.context.window.SyncDataService = { getSyncData: async () => ({ syncData: published }) };
+	const request = editor.context.beginSyncCreatorSourceChange();
+	await editor.context.applyLoadedLyricsResult({ provider: 'lrclib', synced: lyrics }, 'lrclib', request);
+	assert.deepEqual(plain(editor.context.syncData.lines[0].chars), published.lines[0].chars);
+	assert.equal(editor.context.hasPublishedSync, true);
+});
+
+test('a draft that cleared all timing keeps the edit and retains published timing for revert', async () => {
+	const lyrics = [{ text: 'New', startTime: 1000 }];
+	const published = { version: 2, lines: [{ start: 0, end: 2, chars: [1, 2, 3] }] };
+	for (const legacy of [false, true]) {
+		const record = draftRecord(lyrics);
+		if (legacy) record.history = [{ kind: 'source', snapshot: { syncData: published } }];
+		else record.draft.timingCleared = true;
+		const editor = createEditor({ draftStore: {
+			createDraftKey: () => record.draftKey,
+			cloneValue: structuredClone,
+			getDraft: async () => record,
+			getDraftsForTrack() { assert.fail('the exact clear must be restored'); },
+		} });
+		editor.context.window.SyncDataService = { getSyncData: async () => ({ syncData: published }) };
+		const request = editor.context.beginSyncCreatorSourceChange();
+		await editor.context.applyLoadedLyricsResult({ provider: 'lrclib', synced: lyrics }, 'lrclib', request);
+		assert.equal(editor.context.syncData, null);
+		assert.equal(editor.context.hasPublishedSync, true);
+		assert.deepEqual(plain(editor.context.serverBaselineSyncDataRef.current.lines[0].chars), published.lines[0].chars);
+	}
+});
+
+test('offline draft recovery retains the saved source timeline and stays owned by the load', async () => {
+	const lines = [{ text: 'A', startTime: 2000 }, { text: 'B', startTime: 3100 }, { text: 'C', startTime: 4900 }];
+	const record = { ...draftRecord(lines), sourceLineStarts: lines.map(line => line.startTime) };
+	for (const end of ['apply', 'new edit', 'new source']) {
+		const waiting = deferred();
+		const editor = createEditor({ draftStore: { getDraftsForTrack: () => waiting.promise, cloneValue: structuredClone } });
+		const request = editor.context.beginSyncCreatorSourceChange();
+		const recover = editor.context.captureOfflineDraftRecovery(request);
+		const loading = recover();
+		if (end === 'new edit') editor.context.claimSessionForLocalEditing();
+		if (end === 'new source') editor.context.beginSyncCreatorSourceChange();
+		waiting.resolve([record]);
+		const result = await loading;
+		if (end === 'apply') {
+			assert.equal(result.draftKey, record.draftKey);
+			assert.deepEqual(plain(editor.context.lyrics.synced), lines);
+			assert.equal(editor.context.currentLineIndex, 1);
+			assert.equal(editor.context.isLoading, false);
+		} else {
+			assert.equal(result, null);
+			assert.equal(editor.context.lyrics, null);
+		}
+	}
 });
 
 test('pending vocal choice defers initialization and uses progress when the choice is resolved', async () => {
@@ -269,10 +425,25 @@ test('manual editing cancels pending initialization even when the load finishes 
 	const loading = editor.context.applyLoadedLyricsResult({ provider: 'lrclib', synced: timedLines(40) }, 'lrclib', request);
 	editor.context.claimSessionForLocalEditing();
 	editor.context.setCurrentLineIndex(3);
+	editor.context.setLyricsText('Local changes');
 	waiting.resolve(null);
-	await loading;
+	assert.equal(await loading, false);
 	editor.render({ isLoading: false });
 	assert.deepEqual(editor.calls.selections, [3]);
+	assert.equal(editor.context.lyricsText, 'Local changes');
+	assert.equal(editor.context.lyrics, null);
+});
+
+test('a background save changing the write generation does not cancel the current source load', async () => {
+	const editor = createEditor({ progress: 1500 });
+	const waiting = deferred();
+	editor.context.window.SyncDataService = { getSyncData: () => waiting.promise };
+	const request = editor.context.beginSyncCreatorSourceChange();
+	const loading = editor.context.applyLoadedLyricsResult({ provider: 'lrclib', synced: timedLines(4) }, 'lrclib', request);
+	editor.context.sessionWriteGenerationRef.current++;
+	waiting.resolve(null);
+	assert.equal(await loading, true);
+	assert.equal(editor.context.lyricsText, 'Line 1\nLine 2\nLine 3\nLine 4');
 });
 
 test('merged continuation rows are excluded from the production timeline memo', () => {
@@ -286,6 +457,7 @@ test('merged continuation rows are excluded from the production timeline memo', 
 	editor.setProgress(3500);
 	editor.poll();
 	assert.equal(editor.context.currentLineIndex, 3);
+	editor.startPolling();
 	editor.setProgress(500);
 	editor.poll();
 	assert.equal(editor.context.currentLineIndex, 0);
@@ -307,6 +479,62 @@ test('preview follows LRCLIB-only timing without seeking; idle and record retain
 		assert.equal(editor.timers.values().next().value.delay, { idle: 500, record: 50, preview: 100 }[mode]);
 		editor.dispose();
 	}
+});
+
+test('initial line selection waits for the first valid player position after lyrics are ready', t => {
+	const editor = createEditor({ progress: undefined });
+	t.after(editor.dispose);
+	editor.setLyrics(timedLines(4));
+	editor.setProgress(undefined);
+	editor.render({ isLoading: false, currentLineIndex: 1 });
+	assert.equal(editor.context.pendingPlaybackNavigationRef.current, true);
+	assert.equal(editor.context.currentLineIndex, 1);
+	assert.deepEqual(editor.calls.positions, []);
+	editor.setProgress(2300);
+	editor.poll();
+	assert.deepEqual(editor.calls.selections, [2]);
+	assert.deepEqual(editor.calls.positions, [2300]);
+	assert.equal(editor.context.pendingPlaybackNavigationRef.current, false);
+});
+
+test('preview retains the same timer across line and timeline changes and rejects stale samples', t => {
+	const editor = createEditor({ progress: 1250 });
+	t.after(editor.dispose);
+	editor.setLyrics(timedLines(5));
+	editor.render({ mode: 'preview', isLoading: false });
+	const [previewTimerId] = editor.timers.keys();
+	const samplePreview = editor.timers.get(previewTimerId).callback;
+	editor.setProgress(2100);
+	editor.poll();
+	editor.poll();
+	assert.deepEqual(editor.calls.selections, [1, 2]);
+	editor.render();
+	assert.deepEqual([...editor.timers.keys()], [previewTimerId]);
+
+	editor.setProgress(NaN);
+	editor.poll();
+	editor.setProgress(null);
+	editor.poll();
+	assert.equal(editor.context.currentLineIndex, 2);
+	assert.equal(editor.calls.positions.at(-1), 2100);
+
+	editor.setLyrics(timedLines(5).map(line => ({ ...line, startTime: line.startTime + 1000 })));
+	editor.render();
+	editor.setProgress(2350);
+	editor.poll();
+	assert.deepEqual([...editor.timers.keys()], [previewTimerId]);
+	assert.equal(editor.context.currentLineIndex, 1);
+
+	editor.context.manualPreviewExitRef.current = true;
+	editor.setProgress(4900);
+	editor.poll();
+	assert.equal(editor.context.currentLineIndex, 1);
+	editor.render({ mode: 'record' });
+	assert.equal(editor.timers.values().next().value.delay, 50);
+	editor.setProgress(7000);
+	samplePreview();
+	assert.equal(editor.calls.positions.at(-1), 4900);
+	assert.equal(editor.context.currentLineIndex, 1);
 });
 
 test('mode toggles retain paused play, stop and recording metadata checks without seek(0)', () => {

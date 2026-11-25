@@ -1,25 +1,20 @@
+import { readI18nFixture } from "./fixtures/legacy-page-source.mjs";
+import { readLanguageTable } from "./fixtures/language-source.mjs";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { createDebugSettingsPanel } from "../src/features/settings/debugSettingsPanel.mjs";
+import { createSettingsColorControls } from "../src/features/settings/settingsColorControls.mjs";
+import { createApiTracker } from "../src/core/createApiTracker.mjs";
 
 const repo = new URL("../", import.meta.url);
-const read = (path) => readFileSync(new URL(path, repo), "utf8");
-const section = (source, start, end) => {
-  const from = source.indexOf(start);
-  const to = source.indexOf(end, from + start.length);
-  assert.ok(from >= 0 && to > from, `Missing production section: ${start}`);
-  return source.slice(from, to);
-};
-const panelSource = section(read("Settings.js"), "const DebugInfoPanel =", "\n// ---------------------------------------------------------------------------");
-const trackerSource = section(read("LyricsService.js"), "    const ApiTracker = {", "    // 전역 접근 가능하도록 window에 등록");
-const colorSource = section(read("Settings.js"), "const normalizeSettingsHexColor =", "const ConfigColorPicker =");
-const i18nSource = read("I18n.js");
-const languages = readdirSync(new URL("langs/", repo)).filter((file) => /^Lang.*\.js$/.test(file))
+const i18nSource = readI18nFixture();
+const languages = readdirSync(new URL("src/i18n/langs/", repo)).filter((file) => /^Lang.*\.js$/.test(file))
   .map((file) => {
     const suffix = file.slice(4, -3);
     const code = ({ ZhCN: "zh-CN", ZhTW: "zh-TW" })[suffix] || suffix.toLowerCase();
-    return { file, code, source: read(`langs/${file}`) };
+    return { file, code, table: readLanguageTable(file) };
   });
 
 const elements = (node) => Array.isArray(node) ? node.flatMap(elements)
@@ -88,20 +83,30 @@ function harness(language = "en", { withTracker = true } = {}) {
     Toast: { success: (value) => toasts.push(["success", value]), error: (value) => toasts.push(["error", value]) },
     setTimeout: (callback) => timers.push(callback),
   });
-  for (const entry of languages.filter(({ code }) => code === "ko" || code === language)) {
-    vm.runInContext(entry.source, context, { filename: entry.file });
-  }
   vm.runInContext(i18nSource, context, { filename: "I18n.js" });
   context.I18n = context.window.I18n;
-  vm.runInContext(`${trackerSource}\nwindow.ApiTracker = ApiTracker;`, context, { filename: "LyricsService.js:ApiTracker" });
-  const tracker = context.window.ApiTracker;
+  const tracker = context.window.ApiTracker = createApiTracker({ now: () => clock });
   const addListener = tracker.addListener;
   tracker.addListener = function (listener) {
     const unsubscribe = addListener.call(this, listener);
     return () => { unsubscribeCalls++; unsubscribe(); };
   };
   if (!withTracker) delete context.window.ApiTracker;
-  vm.runInContext(`${panelSource}\nglobalThis.panel = DebugInfoPanel;`, context, { filename: "Settings.js:DebugInfoPanel" });
+  const renderPanel = createDebugSettingsPanel({
+    react, readTracker: () => context.window.ApiTracker,
+    readTrack: () => context.Spicetify.Player.data?.item,
+    readCachedLyrics: (uri) => context.window.CACHE?.[uri],
+    readVisualSettings: () => context.CONFIG.visual,
+    readAppVersion: () => context.Utils.currentVersion,
+    readClientId: () => context.Spicetify.LocalStorage.get("ivLyrics:user-hash"),
+    readPlatform: () => context.Utils.detectPlatform(),
+    readLanguage: () => context.I18n.getCurrentLanguage(),
+    translate: (...args) => context.I18n.t(...args),
+    copyText: (value) => context.navigator.clipboard.writeText(value),
+    openLink: (...args) => context.window.open(...args),
+    scheduleTimeout: context.setTimeout,
+    notifySuccess: context.Toast.success, notifyError: context.Toast.error,
+  });
   return {
     context, tracker, clipboard, toasts, opened, timers,
     get unsubscribeCalls() { return unsubscribeCalls; },
@@ -111,7 +116,7 @@ function harness(language = "en", { withTracker = true } = {}) {
       let tree, renders = 0;
       do {
         cursor = 0; dirty = false;
-        tree = context.panel();
+        tree = renderPanel();
         pendingEffects.splice(0).forEach((effect) => effect());
         assert.ok(++renders < 10, "Panel effects must settle");
       } while (dirty);
@@ -323,7 +328,7 @@ for (const { file, code } of languages) {
   test(`${file}: production panel uses its own translations for heading, empty, summary, statuses, time and detail labels`, () => {
     const h = harness(code);
     assert.equal(h.context.I18n.getCurrentLanguage(), code);
-    const own = h.context.window[`LANG_${code.toUpperCase().replace("-", "_")}`].settingsAdvanced.debugTab.apiLogs;
+    const own = languages.find(entry => entry.code === code).table.settingsAdvanced.debugTab.apiLogs;
     for (const key of ["title", "empty", "summary", "unknownTime", "request", "response", "error"]) {
       assert.equal(typeof own[key], "string");
       assert.ok(own[key].trim());
@@ -335,9 +340,7 @@ for (const { file, code } of languages) {
       assert.equal(h.t(`apiLogs.status.${key}`), own.status[key]);
     }
     if (code !== "en") {
-      const englishContext = { window: {} };
-      vm.runInNewContext(languages.find((entry) => entry.code === "en").source, englishContext);
-      const english = englishContext.window.LANG_EN.settingsAdvanced.debugTab.apiLogs;
+      const english = languages.find(entry => entry.code === "en").table.settingsAdvanced.debugTab.apiLogs;
       for (const key of ["title", "empty", "summary"]) assert.notEqual(own[key], english[key], `${key} must be translated`);
     }
     assert.equal(text(byClass(h.render(), "debug-api-empty")), own.empty);
@@ -364,8 +367,10 @@ for (const { file, code } of languages) {
 
   test(`${file}: ConfigColorControl localizes both ARIA labels with the control name`, () => {
     const h = harness(code);
-    const own = h.context.window[`LANG_${code.toUpperCase().replace("-", "_")}`].settingsUi.controls;
-    vm.runInContext(`${colorSource}\nglobalThis.colorControl = ConfigColorControl;`, h.context);
+    const own = languages.find(entry => entry.code === code).table.settingsUi.controls;
+    const { ConfigColorControl } = createSettingsColorControls({
+      react: h.context.react, translate: (...args) => h.context.I18n.t(...args),
+    });
     const keys = ["colorPickerAriaLabel", "colorHexAriaLabel"];
     for (const key of keys) {
       assert.equal(typeof own[key], "string");
@@ -374,7 +379,7 @@ for (const { file, code } of languages) {
       if (code !== "en") assert.notEqual(own[key], key === keys[0] ? "{name} color picker" : "{name} HEX value");
     }
     for (const label of ["MALE 1", "FEMALE 2", "DUET 1", "Custom <&> $& {name}", "", undefined]) {
-      const tree = h.context.colorControl({ value: "#abcdef", label });
+      const tree = ConfigColorControl({ value: "#abcdef", label });
       const picker = find(tree, (node) => node.props.type === "color");
       const hex = find(tree, (node) => node.props.type === "text");
       const expected = keys.map((key) => own[key].replace("{name}", () => label || "").trim());

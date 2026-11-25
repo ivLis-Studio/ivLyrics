@@ -1,12 +1,13 @@
+import { createWordSupplementPrefetcher } from "#ivlyrics/lyrics/createWordSupplementPrefetcher.mjs";
+import { createFixtureWordSupplementService } from "./fixtures/word-supplement-service.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { createLyricsCache } from "#ivlyrics/lyrics/createLyricsCache.mjs";
+import { regeneratePageWordSupplements } from "#ivlyrics/lyrics/pageLyricRegeneration.mjs";
 
-const supplementsSource = readFileSync(new URL("../WordLevelSupplements.js", import.meta.url), "utf8");
-const indexSource = readFileSync(new URL("../index.js", import.meta.url), "utf8");
-const pagesSource = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
-const serviceSource = readFileSync(new URL("../LyricsService.js", import.meta.url), "utf8");
+const indexSource = readFileSync(new URL("../src/spicetify/index.js", import.meta.url), "utf8");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const DEBOUNCE = 350;
@@ -59,45 +60,77 @@ const loadSupplements = () => {
 			return new Promise((resolve, reject) => { glossResponders.push({ resolve, reject }); });
 		},
 	};
-	const context = vm.createContext({
-		window,
-		console: { log: () => {}, warn: () => {}, error: () => {} },
-		setTimeout, clearTimeout,
-	});
-	vm.runInContext(supplementsSource, context);
+	createFixtureWordSupplementService(window);
 	return { window, api: window.ivLyricsWordSupplements, readCalls, glossCalls, glossResponders };
 };
 
-test("regenerateWordSupplements explicitly refetches with force after clearing the cache", () => {
+test("regenerateWordSupplements explicitly refetches with force after clearing the cache", async () => {
+	assert.match(indexSource, /getWordSupplementPrefetcher as getAppWordSupplementPrefetcher,[\s\S]*?from "#ivlyrics\/lyrics\/wordSupplementRuntime\.mjs"/);
 	const body = indexSource.slice(
 		indexSource.indexOf("async regenerateWordSupplements()"),
 		indexSource.indexOf("async regenerateTranslation(")
 	);
 	assert.ok(body.length > 0, "regenerateWordSupplements body found");
-	// Persistent clear still happens first, then memory invalidation...
-	assert.match(body, /await window\.LyricsService\?\.clearWordSupplementsCache\?\. *\(trackId\)/);
-	assert.match(body, /window\.ivLyricsWordSupplements\?\.invalidate\?\.?\(\)/);
-	// ...followed by an explicit, awaited refetch that bypasses the
-	// prefetch toggle with the same track id the render path uses.
-	assert.match(body, /await prefetch\(karaokeLines, \{ sourceLang, trackId, force: true \}\)/);
-	// Success is reported only after the refetch settles and the track is
-	// still current; a no-op refetch surfaces as a failure.
-	assert.match(body, /if \(!refetched\)/);
-	assert.match(body, /this\.state\.karaoke/);
+	const calls = [];
+	const karaoke = [{ text: "生" }];
+	const app = vm.runInNewContext(`({ ${body} })`, {
+		regeneratePageWordSupplements,
+		window: {},
+		Utils: { extractTrackId: uri => uri.split(":").pop() },
+		getAppService: () => ({
+			clearWordSupplementsCache: async id => { calls.push(["persistent", id]); return true; },
+			detectLanguage: () => "ja",
+		}),
+		getAppWordSupplementService: () => ({
+			clearCaches: () => calls.push(["memory"]),
+			invalidate: () => calls.push(["invalidate"]),
+		}),
+		getAppWordSupplementPrefetcher: () => async (lines, options) => {
+			assert.equal(lines, karaoke);
+			calls.push(["prefetch", { ...options }]);
+			return true;
+		},
+		Toast: { show() {}, success: () => calls.push(["success"]), error: message => assert.fail(message) },
+		I18n: { t: key => key },
+	});
+	app.state = { uri: "spotify:track:T1", currentLyrics: karaoke, karaoke };
+	app.isCurrentLyricsUri = uri => uri === app.state.uri;
+	await app.regenerateWordSupplements();
+	assert.deepEqual(calls, [
+		["memory"], ["persistent", "T1"], ["invalidate"],
+		["prefetch", { sourceLang: "ja", trackId: "T1", force: true }], ["success"],
+	]);
 });
 
-test("word prefetch honors the force flag for explicit regenerate requests", () => {
-	assert.match(pagesSource, /trackId = "", force = false \} = \{\}\) => \{/);
-	assert.match(
-		pagesSource,
-		/if \(!force && window\.CONFIG\?\.visual\?\.\["prefetch-word-details-enabled"\] === false\)/
-	);
+function createTestPrefetcher({ getWordGlosses, enabled = true }) {
+	const api = {
+		getWordUnits: () => units,
+		isSuitableSourceLanguage: () => true,
+		resolveReadingMode: () => null,
+		getWordGlosses,
+	};
+	return createWordSupplementPrefetcher({
+		getService: () => api,
+		getVisualSettings: () => ({ "prefetch-word-details-enabled": enabled }),
+		getDetectedLanguage: () => "ja",
+		prepareTimedChars: () => [{ char: "生" }],
+	});
+}
+
+test("word prefetch honors the force flag for explicit regenerate requests", async () => {
+	let calls = 0;
+	const prefetch = createTestPrefetcher({
+		enabled: false,
+		getWordGlosses: async () => { calls++; return ["life"]; },
+	});
+	assert.equal(await prefetch([{}]), false);
+	assert.equal(calls, 0);
+	assert.equal(await prefetch([{}], { force: true }), true);
+	assert.equal(calls, 1);
 });
 
 function loadPersistentClear() {
-	const start = serviceSource.indexOf("        async clearWordSupplementsForTrack(");
-	const end = serviceSource.indexOf("\n        },", start) + "\n        },".length;
-	const service = vm.runInNewContext("({" + serviceSource.slice(start, end) + "})", { console });
+	const service = createLyricsCache({});
 	let notifyReady;
 	const ready = new Promise(resolve => { notifyReady = resolve; });
 	const request = {};
@@ -132,25 +165,13 @@ test("an aborted word cache deletion cannot report success", async () => {
 });
 
 test("word prefetch reports success only when a supplement was actually returned", async () => {
-	const start = pagesSource.indexOf("const prefetchWordSupplementsForLyrics =");
-	const end = pagesSource.indexOf("window.ivLyricsPrefetchWordSupplements =", start);
 	let result = [];
-	const context = vm.createContext({
-		window: { CONFIG: { visual: {} }, ivLyricsWordSupplements: {
-			getWordUnits: () => units, isSuitableSourceLanguage: () => true,
-			resolveReadingMode: () => null, getWordGlosses: async () => result,
-		} },
-		Utils: { getDetectedLanguage: () => "ja" },
-		buildKaraokeTimedChars: () => [{ char: "生" }],
-		applyKaraokeWhitespaceCompensation: chars => chars,
-		assignKaraokeWordIndexes: chars => chars,
-	});
-	vm.runInContext(pagesSource.slice(start, end) + "\nglobalThis.prefetch = prefetchWordSupplementsForLyrics;", context);
-	assert.equal(await context.prefetch([{}], { sourceLang: "ja", force: true }), false);
+	const prefetch = createTestPrefetcher({ getWordGlosses: async () => result });
+	assert.equal(await prefetch([{}], { sourceLang: "ja", force: true }), false);
 	result = ["", " "];
-	assert.equal(await context.prefetch([{}], { sourceLang: "ja", force: true }), false);
+	assert.equal(await prefetch([{}], { sourceLang: "ja", force: true }), false);
 	result = ["life"];
-	assert.equal(await context.prefetch([{}], { sourceLang: "ja", force: true }), true);
+	assert.equal(await prefetch([{}], { sourceLang: "ja", force: true }), true);
 });
 
 test("clearing persistent cache plus invalidate makes the next fetch resend the AI request", async () => {

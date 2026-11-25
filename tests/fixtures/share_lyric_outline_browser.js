@@ -13,7 +13,6 @@ async (page) => {
       await page.setViewportSize({ width, height: 840 });
       await page.goto(`${origin}/?surface=toolbar&language=en&theme=${theme}`);
       await page.evaluate(() => {
-        window.LyricsShareImage = { PRESETS: {}, DEFAULT_SETTINGS: {}, generateImage: async () => ({ dataUrl: null }) };
         openShareImageModal(Array.from({ length: 12 }, (_, i) => ({
           originalText: i % 2 ? `歌詞の選択 ${i + 1}` : `Lyric selection row ${i + 1}`,
           text2: i % 3 ? `Translation for row ${i + 1}` : null,

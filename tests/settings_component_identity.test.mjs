@@ -1,9 +1,11 @@
+import { readSettingsSource, readSettingsStylesFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { createSettingsUiTheme } from "../src/features/settings/settingsUiTheme.mjs";
+import { settingsTabModules, installSettingsFixtureBindings } from "./fixtures/settings-tab-modules.mjs";
 
-const source = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
+const source = readSettingsSource();
 const section = (start, end) => {
   const from = source.indexOf(start);
   const to = source.indexOf(end, from);
@@ -43,6 +45,8 @@ const createHarness = () => {
   };
   const placeholder = () => null;
   const context = vm.createContext({
+    createSettingsUiTheme,
+    ...settingsTabModules,
     react, ...react,
     CONFIG: { visual: { "line-spacing": 8 } },
     APP_NAME: "ivLyrics",
@@ -51,18 +55,29 @@ const createHarness = () => {
     window: {},
     document: { getElementById: () => null },
     localStorage: { getItem: () => null },
+    settingsInputContext: { onSaveError: placeholder },
     OptionList: placeholder,
     ConfigSelection: placeholder,
+    ColorPresetSelector: placeholder,
+    ConfigWarning: placeholder,
+    openSettingsHelperDownload: placeholder,
+    VideoHelperToggle: placeholder,
+    SettingsChoiceCards: placeholder,
     ConfigSlider: placeholder,
     ConfigSliderRange: placeholder,
+    ConfigColorPicker: placeholder,
     ConfigButton: placeholder,
     OverlaySettings: placeholder,
     SettingsOutlineIcon: placeholder,
+    SettingsSegmented: placeholder,
+    handleSettingsRadioKeys: placeholder,
     ProviderSupportIconChip: placeholder,
+    ConfigKaraokeFillCurveEditor: placeholder, SettingsHotkeyTable: placeholder, ConfigHotkey: placeholder,
+    LocalCacheManager: placeholder, LyricsHelperToggle: placeholder, ConfigInfo: placeholder,
   });
-  vm.runInContext(readFileSync(new URL("../SettingsStyles.js", import.meta.url), "utf8"), context);
+  installSettingsFixtureBindings(context);
+  vm.runInContext(readSettingsStylesFixture(), context);
   vm.runInContext(`${section("const getEffectiveReducedMotionPreference =", "function openConfig(")}
-    ${section("const AddonSettingsCard =", "// 가사 제공자 설정 탭 컴포넌트")}
     globalThis.components = { ConfigModal, AddonSettingsCard, LyricsProviderCard };`, context);
   return {
     render(name, props = {}) {

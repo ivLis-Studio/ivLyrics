@@ -1,0 +1,321 @@
+/* ==========================================
+   PORTRAIT MODE - Overlay Design (세로 모드)
+   가사가 전체 화면을 차지하고, 곡정보/컨트롤이
+   반투명 오버레이로 떠있는 방식
+   ========================================== */
+
+/* 컨테이너: 그리드 분할 없이 가사가 전체 화면 차지 */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.portrait-mode {
+  grid-template-columns: 1fr !important;
+  grid-template-rows: 1fr !important;
+  gap: 0 !important;
+}
+
+/* 기존 left-panel 세로모드에서 숨김 */
+.portrait-mode .lyrics-fullscreen-left-panel {
+  display: none !important;
+}
+
+/* 가사 페이지: 전체 화면, 상하 패딩으로 오버레이 공간 확보 */
+.portrait-mode .lyrics-lyricsContainer-SyncedLyricsPage,
+.portrait-mode .lyrics-lyricsContainer-UnsyncedLyricsPage {
+  grid-row: 1 !important;
+  grid-column: 1 !important;
+  width: 100% !important;
+  height: 100% !important;
+  padding: clamp(100px, 18svh, 180px) 5vw clamp(80px, 14svh, 150px) 5vw !important;
+  box-sizing: border-box;
+  display: block;
+  transform: none !important;
+  mask-image: none !important;
+  -webkit-mask-image: none !important;
+  margin-top: 0 !important;
+  z-index: 10;
+  transition: padding 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.portrait-mode .lyrics-lyricsContainer-SyncedLyrics {
+  transform: none !important;
+  margin-top: 0 !important;
+  mask-image: none !important;
+  -webkit-mask-image: none !important;
+}
+
+/* UI 숨김 시 가사 패딩 최소화 → 풀스크린 효과 */
+.portrait-mode.ui-hidden .lyrics-lyricsContainer-SyncedLyricsPage,
+.portrait-mode.ui-hidden .lyrics-lyricsContainer-UnsyncedLyricsPage {
+  padding-top: clamp(100px, 18svh, 180px) !important;
+  padding-bottom: clamp(80px, 14svh, 150px) !important;
+}
+
+/* layout-reversed: 가사 패딩 반전 */
+.portrait-mode.layout-reversed .lyrics-lyricsContainer-SyncedLyricsPage,
+.portrait-mode.layout-reversed .lyrics-lyricsContainer-UnsyncedLyricsPage {
+  padding-top: clamp(80px, 14svh, 150px) !important;
+  padding-bottom: clamp(100px, 18svh, 180px) !important;
+}
+
+/* ---- [상단 오버레이] 곡정보 ---- */
+.portrait-overlay-top {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: clamp(12px, 2.5vw, 20px);
+  padding: clamp(16px, 3svh, 28px) clamp(20px, 5vw, 32px);
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0.3) 60%, transparent 100%);
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    padding var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+  pointer-events: auto;
+}
+
+.portrait-overlay-top.hidden {
+  opacity: 0;
+  transform: translateY(calc(var(--iv-motion-distance-md) * -1));
+  pointer-events: none;
+}
+
+/* 상단 오버레이 내 앨범아트 */
+.portrait-overlay-top .portrait-album-art {
+  display: block;
+  width: clamp(48px, 8svh, 80px);
+  height: clamp(48px, 8svh, 80px);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+/* 상단 오버레이 내 앨범아트 컨테이너 (TMI 클릭 지원) */
+.portrait-overlay-top .portrait-album-container {
+  /* Inline-size containment for the hover menu needs explicit bounds; an
+     image alone cannot give its containing button an intrinsic width. */
+  width: clamp(48px, 8svh, 80px);
+  height: clamp(48px, 8svh, 80px);
+  flex-shrink: 0;
+  position: relative;
+  cursor: pointer;
+}
+
+/* 상단 오버레이 내 곡정보 */
+.portrait-overlay-top .portrait-track-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.portrait-overlay-top .portrait-track-title {
+  font-weight: 800;
+  font-size: clamp(16px, 2.5svh, 24px);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--spice-text, #fff);
+}
+
+.portrait-overlay-top .portrait-track-title-sub {
+  font-weight: 600;
+  font-size: clamp(11px, 1.6svh, 16px);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.7;
+  color: var(--spice-text, #fff);
+}
+
+.portrait-overlay-top .portrait-track-artist {
+  font-size: clamp(12px, 1.8svh, 18px);
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--spice-text, #fff);
+}
+
+.portrait-overlay-top .portrait-track-artist-sub {
+  font-size: clamp(10px, 1.4svh, 14px);
+  opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--spice-text, #fff);
+}
+
+.portrait-overlay-top .portrait-track-album-name {
+  font-size: clamp(10px, 1.4svh, 14px);
+  opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--spice-text, #fff);
+  margin-top: 2px;
+}
+
+/* ---- [하단 오버레이] 컨트롤 ---- */
+.portrait-overlay-bottom {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: clamp(12px, 2svh, 20px) clamp(20px, 5vw, 32px) clamp(20px, 3svh, 36px);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0.3) 60%, transparent 100%);
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    padding var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+  pointer-events: auto;
+}
+
+.portrait-overlay-bottom.hidden {
+  opacity: 0;
+  transform: translateY(var(--iv-motion-distance-md));
+  pointer-events: none;
+}
+
+.portrait-overlay-bottom .fullscreen-player-controls,
+.portrait-overlay-bottom .fullscreen-progress-container,
+.portrait-overlay-bottom .fullscreen-progress-standalone {
+  max-width: min(92vw, 500px);
+  width: 100%;
+}
+
+.portrait-overlay-bottom .fullscreen-player-controls.with-background {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* ---- layout-reversed: 곡정보 하단, 컨트롤 상단 ---- */
+.portrait-overlay-top.layout-reversed {
+  top: auto;
+  bottom: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0.3) 60%, transparent 100%);
+}
+
+.portrait-overlay-top.layout-reversed.hidden {
+  transform: translateY(var(--iv-motion-distance-md));
+}
+
+.portrait-overlay-bottom.layout-reversed {
+  bottom: auto;
+  top: 0;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0.3) 60%, transparent 100%);
+}
+
+.portrait-overlay-bottom.layout-reversed.hidden {
+  transform: translateY(calc(var(--iv-motion-distance-md) * -1));
+}
+
+/* ---- 코너 요소 위치 조정 ---- */
+.portrait-mode .fullscreen-top-right {
+  top: 20px;
+  right: 20px;
+}
+
+.portrait-mode .fullscreen-bottom-left {
+  bottom: 20px;
+  left: 20px;
+}
+
+.portrait-mode .fullscreen-clock {
+  font-size: clamp(24px, 4vw, 32px);
+}
+
+.portrait-mode .lyrics-config-button-container {
+  --iv-floating-toolbar-top-gap: 20px;
+  --iv-floating-toolbar-bottom-gap: 20px;
+  bottom: 20px;
+  right: 20px;
+}
+
+.portrait-mode .fullscreen-lyrics-progress {
+  bottom: 64px;
+  left: 20px;
+}
+
+/* ---- 가사 없을 때 ---- */
+.portrait-mode.fullscreen-no-lyrics {
+  grid-template-rows: 1fr !important;
+}
+
+.portrait-mode.fullscreen-no-lyrics .portrait-overlay-top {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  width: min(90vw, 400px);
+  transform: translate(-50%, -50%);
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background: transparent;
+  gap: clamp(12px, 2svh, 20px);
+}
+
+.portrait-mode.fullscreen-no-lyrics .portrait-overlay-top .portrait-album-art,
+.portrait-mode.fullscreen-no-lyrics .portrait-overlay-top .portrait-album-container {
+  width: clamp(120px, 28svh, 280px);
+  height: clamp(120px, 28svh, 280px);
+  border-radius: 12px;
+}
+
+.portrait-mode.fullscreen-no-lyrics .portrait-overlay-top .portrait-track-info {
+  align-items: center;
+}
+
+.portrait-mode.fullscreen-no-lyrics .portrait-overlay-top .portrait-track-title {
+  font-size: clamp(20px, 3.5svh, 36px);
+  white-space: normal;
+  text-align: center;
+}
+
+.portrait-mode.fullscreen-no-lyrics .portrait-overlay-top .portrait-track-artist {
+  font-size: clamp(14px, 2.2svh, 22px);
+  white-space: normal;
+  text-align: center;
+}
+
+.portrait-mode.fullscreen-no-lyrics .portrait-overlay-top.hidden {
+  opacity: 0;
+  transform: translate(-50%, calc(-50% - var(--iv-motion-distance-md)));
+}
+
+/* ---- 태블릿 (>= 768px) 확장 ---- */
+@media (orientation: portrait) and (min-width: 768px) {
+  .portrait-overlay-top .portrait-album-art,
+  .portrait-overlay-top .portrait-album-container {
+    width: clamp(64px, 10svh, 100px);
+    height: clamp(64px, 10svh, 100px);
+  }
+
+  .portrait-overlay-bottom .fullscreen-player-controls,
+  .portrait-overlay-bottom .fullscreen-progress-container,
+  .portrait-overlay-bottom .fullscreen-progress-standalone {
+    max-width: min(80vw, 640px);
+  }
+
+  .portrait-mode .lyrics-lyricsContainer-SyncedLyricsPage,
+  .portrait-mode .lyrics-lyricsContainer-UnsyncedLyricsPage {
+    padding-left: 10vw !important;
+    padding-right: 10vw !important;
+  }
+}
+

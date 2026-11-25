@@ -1,12 +1,14 @@
+import { createShareImageModal } from '../src/features/share/shareImageDialog.mjs';
+import { createShareImageExportActions } from '../src/features/share/shareImageExportActions.mjs';
+import { DEFAULT_SETTINGS, PRESETS } from '../src/features/share/shareImagePresets.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import vm from 'node:vm';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const current = readFileSync(new URL('../OptionsMenu.js', import.meta.url), 'utf8');
+const current = createShareImageModal;
 const baseline = execFileSync('git', ['show', '98e6a4167c72f80b422ec77461852d9da12f97e9:OptionsMenu.js'], { cwd: root, encoding: 'utf8' });
 const section = (source, start, end) => {
   const from = source.indexOf(start);
@@ -14,25 +16,24 @@ const section = (source, start, end) => {
   assert.ok(from >= 0 && to > from);
   return source.slice(from, to);
 };
-const presetsSource = readFileSync(new URL('../LyricsShareImage.js', import.meta.url), 'utf8');
-const presets = vm.runInNewContext(`(() => {
-  ${section(presetsSource, '  const DEFAULT_SETTINGS =', '  // TEMPLATES')}
-  return { DEFAULT_SETTINGS, PRESETS };
-})()`);
-const normalize = (value) => JSON.parse(JSON.stringify(value, (_key, entry) => typeof entry === 'function' ? '[handler]' : entry));
+const normalize = (value) => JSON.parse(JSON.stringify(value, (key, entry) => {
+  if (key === 'ref') return undefined;
+  return typeof entry === 'function' ? '[handler]' : entry;
+}));
 const nodes = (tree) => Array.isArray(tree) ? tree.flatMap(nodes) : tree?.type ? [tree, ...nodes(tree.children)] : [];
 const byClass = (tree, value) => nodes(tree).find(node => node.props?.className?.split(' ').includes(value));
 
 // Execute the complete modal with persistent state; existing preview lifecycle
 // tests exercise its effects separately. No new component types hide DOM changes.
-function harness(source, { defaults = presets.DEFAULT_SETTINGS, templates = presets.PRESETS, custom = {}, translated = true } = {}) {
+function harness(source, { defaults = DEFAULT_SETTINGS, templates = PRESETS, custom = {}, translated = true, image = {}, notify = () => {}, onClose = () => {}, canShare = false } = {}) {
   const hooks = [];
+  const customSettingsIndex = typeof source === 'function' ? 4 : 5;
   let cursor = 0;
   const react = {
     createElement: (type, props, ...children) => ({ type, props, children }),
     useState(initial) {
       const index = cursor++;
-      if (!(index in hooks)) hooks[index] = { value: index === 5 ? custom : initial };
+      if (!(index in hooks)) hooks[index] = { value: index === customSettingsIndex ? custom : initial };
       return [hooks[index].value, value => { hooks[index].value = typeof value === 'function' ? value(hooks[index].value) : value; }];
     },
     useMemo(factory, deps) {
@@ -43,17 +44,29 @@ function harness(source, { defaults = presets.DEFAULT_SETTINGS, templates = pres
     useRef(value) { const index = cursor++; hooks[index] ||= { value: { current: value } }; return hooks[index].value; },
     useEffect() { cursor++; },
   };
-  const context = vm.createContext({
-    react, I18n: { t: key => translated ? `translated:${key}` : '' },
-    LyricsShareImage: { DEFAULT_SETTINGS: defaults, PRESETS: templates }, navigator: {},
-    Toast: { error() {} },
-  });
-  const start = source.includes('const renderShareImageControls =') ? 'const renderShareImageControls =' : 'const ShareImageModal =';
-  vm.runInContext(`${section(source, start, '// Open Share Image Modal')}\nglobalThis.renderModal = ShareImageModal;`, context);
-  const props = { lyrics: [{ originalText: 'Song line', text: 'Pronunciation', text2: 'Translation' }], trackInfo: { name: 'Song', artist: 'Artist' }, onClose() {} };
+  const translate = key => translated ? `translated:${key}` : '';
+  const imageApi = { DEFAULT_SETTINGS: defaults, PRESETS: templates, ...image };
+  let renderModal;
+  if (typeof source === 'function') {
+    renderModal = source({
+      react, translate, image: imageApi, notify, readTheme: () => 'dark', canShare: () => canShare,
+    });
+  } else {
+    const context = vm.createContext({
+      react, I18n: { t: translate }, LyricsShareImage: imageApi, navigator: {},
+      Toast: { error() {} },
+    });
+    const start = source.includes('const renderShareImageControls =') ? 'const renderShareImageControls =' : 'const ShareImageModal =';
+    vm.runInContext(`${section(source, start, '// Open Share Image Modal')}\n globalThis.renderModal = ShareImageModal;`, context);
+    renderModal = context.renderModal;
+  }
+  const props = {
+    lyrics: [{ originalText: 'Song line', text: 'Pronunciation', text2: 'Translation' }],
+    trackInfo: { name: 'Song', artist: 'Artist' }, onClose,
+  };
   return {
-    render() { cursor = 0; return context.renderModal(props); },
-    get settings() { return normalize(hooks[5].value); },
+    render() { cursor = 0; return renderModal(props); },
+    get settings() { return normalize(hooks[customSettingsIndex].value); },
     open() {
       // Idempotent: baseline has a collapsible toggle (open only when the
       // panel is closed); current renders the panel always open.
@@ -199,7 +212,7 @@ for (const translated of [true, false]) {
     const hs = pair({ translated });
     assertTrees(hs);
     hs.forEach(h => h.open());
-    for (const template of Object.keys(presets.PRESETS)) {
+    for (const template of Object.keys(PRESETS)) {
       for (const h of hs) nodes(h.render()).find(node => node.props?.className === 'share-image-chip' && node.props.key === template).props.onClick();
       assertTrees(hs);
     }
@@ -462,12 +475,117 @@ test('custom font input appears only for the custom source and stores values', (
   assert.equal(custom.settings.customFontFamily, 'MyFont');
 });
 
-test('preview scheduling and export handlers remain byte-for-byte unchanged', () => {
-  // Compare with line endings normalized: checkouts may use CRLF while git
-  // blobs use LF, which must not count as a handler change.
-  const crlf = (value) => value.replace(/\r\n/g, '\n');
-  assert.equal(
-    section(crlf(current), '  const previewGenerationRef =', '  return react.createElement("div", {\n    className: "share-image-modal"'),
-    section(crlf(baseline), '  const previewGenerationRef =', '  return react.createElement("div", {\n    className: "share-image-modal"'),
-  );
+test('export uses the selected lyrics and confirms before copy, download or share', async () => {
+  for (const action of ['copy', 'download', 'share']) {
+    const calls = [], outputs = [];
+    const blob = { type: 'image/png' };
+    const dataUrl = 'data:image/png;base64,test';
+    const h = harness(current, {
+      canShare: true,
+      onClose: () => calls.push(['closed']),
+      notify: (...args) => calls.push(args),
+      image: {
+        generateImage: async options => {
+          assert.equal(options.width, undefined);
+          assert.equal(options.template, 'cover');
+          assert.equal(options.trackName, 'Song');
+          assert.equal(options.artistName, 'Artist');
+          assert.equal(options.lyrics[0].originalText, 'Song line');
+          assert.equal(options.lyrics[0].pronText, 'Pronunciation');
+          assert.equal(options.lyrics[0].transText, 'Translation');
+          outputs.push(options.output);
+          return { blob, dataUrl };
+        },
+        copyToClipboard: async value => { calls.push(['copy', value]); return true; },
+        download: (...args) => calls.push(['download', ...args]),
+        share: async (...args) => { calls.push(['share', ...args]); return false; },
+      },
+    });
+    const button = key => nodes(h.render()).find(node => node.type === 'button' && node.children.includes(`translated:${key}`));
+    assert.equal(button(`shareImage.actions.${action}`).props.disabled, true);
+    byClass(h.render(), 'share-image-modal-lyric-line').props.onClick();
+    button(`shareImage.actions.${action}`).props.onClick();
+    assert.deepEqual(outputs, [], 'image generation waits until copyright confirmation');
+    await byClass(h.render(), 'share-image-copyright-confirm').props.onClick();
+    if (action === 'copy') {
+      assert.deepEqual(outputs, ['blob']);
+      assert.deepEqual(calls, [['copy', blob], ['success', 'notifications.shareImageCopied'], ['closed']]);
+    } else {
+      assert.deepEqual(outputs, action === 'share' ? ['blob'] : ['dataUrl']);
+      assert.deepEqual(calls, [
+        ...(action === 'share' ? [['share', blob, 'Song', 'Artist', { rejectOnCancel: true }]] : []),
+        ['download', dataUrl, 'Song - Artist.png'], ['success', 'notifications.shareImageDownloaded'], ['closed'],
+      ]);
+    }
+  }
+});
+
+test('confirmation and rendering hold the selected lines and preset until export finishes', async () => {
+  const generated = Promise.withResolvers();
+  const requests = [];
+  const h = harness(current, { image: {
+    generateImage(options) { requests.push(options); return generated.promise; },
+    download() {},
+  } });
+  const line = () => byClass(h.render(), 'share-image-modal-lyric-line');
+  const choosePreset = () => nodes(h.render()).find(node => node.props?.className === 'share-image-chip' && node.props.key === 'minimal');
+  const openDownload = () => nodes(h.render()).find(node => node.children.includes('translated:shareImage.actions.download')).props.onClick();
+  line().props.onClick();
+  openDownload();
+  choosePreset().props.onClick();
+  line().props.onClick();
+  assert.equal(line().props['data-selected'], true);
+  assert.equal(choosePreset().props['data-active'], false);
+
+  const exporting = byClass(h.render(), 'share-image-copyright-confirm').props.onClick();
+  choosePreset().props.onClick();
+  assert.equal(choosePreset().props['data-active'], false);
+  assert.equal(requests[0].template, 'cover');
+  assert.equal(requests[0].lyrics[0].originalText, 'Song line');
+  generated.resolve({ dataUrl: 'data:image/png;base64,ready' });
+  await exporting;
+});
+
+test('share reuses the visible preview and survives cancellation, fallback, and closing', async () => {
+  for (const outcome of ['cancel', 'fallback', 'closed']) {
+    let finishShare;
+    const calls = [];
+    const operation = { current: false };
+    let open = true;
+    const dataUrl = 'data:image/png;base64,preview';
+    const blob = { type: 'image/png' };
+    const shareStarted = Promise.withResolvers();
+    const { executeShare, executeDownload } = createShareImageExportActions({
+      image: {
+        generateImage: async () => assert.fail('the preview should be reused'),
+        share: value => {
+          assert.equal(value, blob);
+          return new Promise((resolve, reject) => {
+            finishShare = outcome === 'cancel' ? () => reject(new DOMException('Cancelled', 'AbortError')) : () => resolve(false);
+            shareStarted.resolve();
+          });
+        },
+        download: (...args) => calls.push(['download', ...args]),
+      },
+      selection: { trackInfo: { name: 'Song', artist: 'Artist' } },
+      operation,
+      isOpen: () => open,
+      getRenderedPreview: () => ({ dataUrl, canvas: { toBlob: callback => callback(blob) } }),
+      notify: (...args) => calls.push(args),
+      onClose: () => calls.push(['close']),
+      setIsGenerating: value => calls.push(['busy', value]),
+    });
+    const pending = executeShare();
+    await shareStarted.promise;
+    await executeDownload();
+    assert.deepEqual(calls, [['busy', true]]);
+    if (outcome === 'closed') open = false;
+    finishShare();
+    await pending;
+    assert.equal(operation.current, false);
+    assert.deepEqual(calls, outcome === 'fallback' ? [
+      ['busy', true], ['download', dataUrl, 'Song - Artist.png'],
+      ['success', 'notifications.shareImageDownloaded'], ['busy', false], ['close'],
+    ] : outcome === 'cancel' ? [['busy', true], ['busy', false]] : [['busy', true]]);
+  }
 });

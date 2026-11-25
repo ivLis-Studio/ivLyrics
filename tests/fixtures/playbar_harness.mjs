@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-const productionSource = readFileSync(new URL("../../PlaybarButton.js", import.meta.url), "utf8");
+import { bundleInitializer } from "./initializer-bundle.mjs";
+const productionSource = bundleInitializer(new URL("../../src/features/player/PlaybarButton.js", import.meta.url));
 
 // The release test runner has no npm dependencies. Model connected DOM trees,
 // matching selectors and queued MutationObserver delivery, not selector hits.
@@ -172,11 +173,25 @@ function installPlaybarApi(h) {
   const { window, document, context } = h;
   if (process.env.IVLYRICS_PLAYBAR_WRAPPER) {
     const wrapper = readFileSync(process.env.IVLYRICS_PLAYBAR_WRAPPER, "utf8");
-    const start = wrapper.indexOf("Spicetify.Playbar = (() => {"), end = wrapper.indexOf("(async function checkForUpdate()", start);
-    assert.ok(start >= 0 && end > start, "installed wrapper Playbar boundary changed");
-    const source = wrapper.slice(start, end);
-    assert.match(source, /return \{ Button, Widget \};\s*\}\)\(\);\s*$/);
-    vm.runInContext(source, context);
+    const start = wrapper.search(/Spicetify\.Playbar\s*=\s*\(\(\)\s*=>\s*\{/);
+    assert.ok(start >= 0, "installed wrapper Playbar initializer exists");
+    const tail = wrapper.slice(start);
+    const end = tail.search(/\(async function (?:checkForUpdate\(\)|[\w$]+\(\)\{if\(!Spicetify\.Config\))/);
+    assert.ok(end >= 0, "installed wrapper Playbar boundary changed");
+    const source = tail.slice(0, end);
+    if (source.startsWith("Spicetify.Playbar=")) {
+      assert.match(source, /\{Button:[\w$]+,Widget:[\w$]+\}\}\)\(\);\s*$/);
+      // The packaged wrapper's private wait helper is outside the Playbar
+      // expression. Resolve present DOM nodes without creating polling timers.
+      const waitForMountedNode = read => new Promise(resolve => {
+        const node = read();
+        if (node) resolve(node);
+      });
+      vm.compileFunction(source, ["b"], { parsingContext: context })(waitForMountedNode);
+    } else {
+      assert.match(source, /return \{ Button, Widget \};\s*\}\)\(\);\s*$/);
+      vm.runInContext(source, context);
+    }
   } else {
     const cachedContainer = document.querySelector(".main-nowPlayingBar-right > div"), stash = new Set();
     class Button {
@@ -205,8 +220,9 @@ function installPlaybarApi(h) {
   };
 }
 
-export function createPlaybarHarness({ enabled = true, apiReady = true, historyReady = true,
-  mounted = true, controlsClass = "main-nowPlayingBar-extraControls", layout = "legacy", source = productionSource } = {}) {
+export function createPlaybarHarness({ enabled = true, apiReady = true, historyReady = true, storageReady = true,
+  mounted = true, controlsClass = "main-nowPlayingBar-extraControls", layout = "legacy",
+  centerInitially = false, historyListenReady = true, persisted = false, source = productionSource } = {}) {
   const h = createDomHarness();
   const { document, window, context } = h;
   h.created = []; h.warnings = [];
@@ -215,8 +231,12 @@ export function createPlaybarHarness({ enabled = true, apiReady = true, historyR
     listen(callback) { historyListeners.add(callback); return () => historyListeners.delete(callback); },
     push(path) { history.pushes.push(path); h.navigate(path); }, goBack() { history.backs++; },
   };
+  const originalListen = history.listen;
+  if (!historyListenReady) delete history.listen;
   const storage = new Map(["playbar-button", "fullscreen-button"].map((name) => [`ivLyrics:visual:${name}`, String(enabled)]));
-  window.Spicetify = { Platform: { History: historyReady ? history : null }, SVGIcons: {}, LocalStorage: { get: (key) => storage.get(key) ?? null } };
+  const spotifyStorage = { get: (key) => storage.get(key) ?? null };
+  window.Spicetify = { Platform: { History: historyReady ? history : null }, SVGIcons: {}, LocalStorage: storageReady ? spotifyStorage : null };
+  if (persisted) window.ivLyricsStoragePersistence = { getItem: key => storage.get(key) ?? null };
   context.Spicetify = window.Spicetify;
   context.console = { warn: (...args) => h.warnings.push(args), log() {}, debug() {} };
   const left = document.createElement("div"); left.className = "main-nowPlayingBar-left";
@@ -233,7 +253,7 @@ export function createPlaybarHarness({ enabled = true, apiReady = true, historyR
   };
   // "legacy": Spicetify-mapped .main-nowPlayingBar-right. "spotify-1.3.6": the same
   // three-column bar with unmapped class names, identified only by test ids.
-  h.mount = () => {
+  h.mount = ({ centerOnly = false } = {}) => {
     const root = document.createElement("div");
     if (layout === "legacy") {
       root.className = "main-nowPlayingBar-right";
@@ -246,10 +266,12 @@ export function createPlaybarHarness({ enabled = true, apiReady = true, historyR
     const player = document.createElement("div"); player.setAttribute("data-testid", "player-controls");
     root.className = "_rXd41iaM5t1x5IDLxCJ";
     center.appendChild(player); root.appendChild(h.newControls());
-    row.append(left, center, root); bar.appendChild(row); h.layout.appendChild(bar);
+    row.append(left, center); bar.appendChild(row); h.layout.appendChild(bar);
+    if (!centerOnly) row.appendChild(root);
+    h.row = row;
     return root;
   };
-  h.root = mounted ? h.mount() : null;
+  h.root = mounted ? h.mount({ centerOnly: centerInitially }) : null;
   h.installApi = () => installPlaybarApi(h);
   if (apiReady) h.installApi();
   h.toggle = (name, value) => {
@@ -258,11 +280,13 @@ export function createPlaybarHarness({ enabled = true, apiReady = true, historyR
   };
   h.navigate = (pathname) => { history.location = { pathname }; for (const listener of historyListeners) listener(history.location); h.flush(); };
   h.history = history; h.historyListeners = historyListeners;
-  h.makeHistoryReady = () => { window.Spicetify.Platform.History = history; };
+  h.makeHistoryReady = () => { history.listen = originalListen; window.Spicetify.Platform.History = history; };
+  h.makeStorageReady = () => { window.Spicetify.LocalStorage = spotifyStorage; };
   h.hideStyle = (name) => document.head.children.find((node) => node.classList.contains(`ivLyrics:visual:${name}`));
   h.controls = () => layout === "legacy"
     ? document.querySelector(".main-nowPlayingBar-right > div")
     : document.querySelector('[data-testid="player-controls"]')?.parentElement?.parentElement?.children.at(-1)?.children[0] || null;
-  vm.runInContext(source, context); h.flush();
+  h.load = () => { vm.runInContext(source, context); h.flush(); };
+  h.load();
   return h;
 }

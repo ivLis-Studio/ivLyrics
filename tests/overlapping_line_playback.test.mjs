@@ -1,11 +1,14 @@
+import { buildPanelDisplayRows, preparePanelDisplayRows } from "#ivlyrics/lyrics/panelDisplayRows.mjs";
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import test from 'node:test';
 import vm from 'node:vm';
+import { getPanelSingingLineIndices, preparePanelLinePlaybackTimeline } from '../src/lyrics/lyricPlaybackTimeline.mjs';
+import { startPanelPlaybackSubscription, getTrailingKaraokeInterludeKey } from '../src/lyrics/panelPlaybackSubscription.mjs';
+import { createLyricInterludeTiming, toFiniteTime } from '../src/lyrics/lyricInterludeTiming.mjs';
 
-const panelSource = readFileSync(new URL('../NowPlayingPanelLyrics.js', import.meta.url), 'utf8');
-const pageSource = readFileSync(new URL('../Pages.js', import.meta.url), 'utf8');
+const panelSource = readFileSync(new URL('../src/lyrics/NowPlayingPanelLyrics.js', import.meta.url), 'utf8');
 const slice = (source, start, end) => {
   const a = source.indexOf(start), b = source.indexOf(end, a);
   assert.ok(a >= 0 && b > a, start);
@@ -20,25 +23,24 @@ const line = (text, startTime, endTime) => ({text, startTime, endTime, syllables
 const lyrics = [line('held', 1000, 10000), line('response', 2000, 3000), line('next', 14000, 15000)];
 
 function helpers() {
+  const timing = createLyricInterludeTiming({
+    readLineFillEndTime: fillEnd,
+    readTrackDuration: () => 20000,
+    readAutoBreakEnabled: () => true,
+  });
   const context = vm.createContext({
-    getLastSyllableEndTime: fillEnd, getKaraokeLineFillEndTime: fillEnd,
-    toFiniteTime: value => Number.isFinite(Number(value)) ? Number(value) : null,
+    getLastSyllableEndTime: fillEnd, toFiniteTime,
+    preparePanelLinePlaybackTimeline, getPanelSingingLineIndices, getTrailingKaraokeInterludeKey,
     isAutoInstrumentalBreakEnabled: () => true,
-    isInterludeMarkerText: () => false, getInterludeCandidateText: line => line?.text ?? '',
     getCurrentTrackDurationMs: () => 20000,
-    KARAOKE_TRAILING_INTERLUDE_DELAY_MS: 500, INTERLUDE_MIN_DURATION_MS: 1000,
+    getTrailingKaraokeInterludeInfo: timing.getTrailingKaraokeInterludeInfo,
   });
   vm.runInContext([
-    slice(panelSource, '    const buildPanelLinePlaybackTimeline', '    const getInterludeInfo'),
-    slice(panelSource, '    const getTrailingKaraokeInterludeInfo', '    // ============================================\n    // 노래방 단어'),
+    slice(panelSource, '    const buildPanelLinePlaybackTimeline', '    const { getInterludeInfo'),
+    slice(panelSource, '    const createTrailingKaraokeInterludeResolver', '    // ============================================\n    // 노래방 단어'),
     'globalThis.panel = {buildPanelLinePlaybackTimeline, getPanelSingingLineIndices, createTrailingKaraokeInterludeResolver};',
   ].join('\n'), context);
-  const pageContext = vm.createContext({...context});
-  vm.runInContext([
-    slice(pageSource, 'const buildKaraokeCumulativeEndTimes', 'const createBreakIconChildren'),
-    'globalThis.page = {buildKaraokeCumulativeEndTimes, createActiveTrailingKaraokeInterludeLine};',
-  ].join('\n'), pageContext);
-  return {context, panel: context.panel, page: pageContext.page};
+  return {context, panel: context.panel, page: timing};
 }
 
 test('independent held lines remain singing across later short lines and bidirectional seeks', () => {
@@ -65,12 +67,12 @@ test('main page and panel wait for all preceding vocals before showing the same 
   const ends = page.buildKaraokeCumulativeEndTimes(lyrics);
   assert.deepEqual(plain(ends), [10000, 10000, 15000]);
   const resolvePanel = panel.createTrailingKaraokeInterludeResolver(lyrics);
-  assert.equal(resolvePanel(1).startTime, 10500);
+  assert.equal(resolvePanel(1).startTime, 12500);
   const args = {line: lyrics[1], nextLine: lyrics[2], lineIndex: 1, lineCount: 3,
     isActiveLine: true, isKara: true, precedingFillEndTime: ends[1]};
   assert.equal(page.createActiveTrailingKaraokeInterludeLine({...args, position: 4000}), null);
-  assert.equal(page.createActiveTrailingKaraokeInterludeLine({...args, position: 10499}), null);
-  const gap = page.createActiveTrailingKaraokeInterludeLine({...args, position: 10500});
+  assert.equal(page.createActiveTrailingKaraokeInterludeLine({...args, position: 12499}), null);
+  const gap = page.createActiveTrailingKaraokeInterludeLine({...args, position: 12500});
   assert.equal(gap.startTime, resolvePanel(1).startTime);
   assert.equal(gap.endTime, 14000);
   assert.equal(page.createActiveTrailingKaraokeInterludeLine({...args, position: 14000}), null);
@@ -79,16 +81,16 @@ test('main page and panel wait for all preceding vocals before showing the same 
 test('overlap panel rows remain active, unfinished, and visible beyond the usual window', () => {
   const {context} = helpers();
   const rows = [line('held', 1000, 10000), ...[2,3,4,5,6].map(n => line(`response${n}`, n * 1000, n * 1000 + 500))];
-  Object.assign(context, {
-    lyrics: rows, displayLyrics: rows, currentIndex: 5, visualIndex: 5, visibleLineCount: 3,
+  const getInterludeInfo = () => ({isInterlude: false});
+  const preparedRows = preparePanelDisplayRows(rows, rows, getInterludeInfo, value => value ?? '');
+  const result = buildPanelDisplayRows({
+    lyrics: rows, preparedRows, currentIndex: 5, visualIndex: 5, visibleLineCount: 3,
     activeTrailingInterludeKey: null, visualTrailingInterludeKey: null,
     singingLineIndices: [0,5], autoInstrumentalBreakEnabled: false,
     panelPlaybackTimeline: context.panel.buildPanelLinePlaybackTimeline(rows),
-    getInterludeInfo: () => ({isInterlude: false}), getDistinctPanelSupplement: value => value ?? '',
+    getInterludeInfo,
+    getTrailingKaraokeInterludeInfo: () => null,
   });
-  const memo = slice(panelSource, '        const panelLines = useMemo(() => {', '        // currentTime은 더 이상 상태로 관리하지 않음');
-  const body = memo.slice(memo.indexOf('{') + 1, memo.lastIndexOf('}, ['));
-  const result = vm.runInContext(`(() => {${body}})()`, context);
   assert.equal(result[0].isActive, true);
   assert.equal(result[0].isPast, false);
   assert.equal(result[0].isLayoutHidden, false);
@@ -98,28 +100,34 @@ test('overlap panel rows remain active, unfinished, and visible beyond the usual
 });
 
 test('panel clock only publishes active row changes at vocal boundaries, including seeks', () => {
-  const {context, panel} = helpers();
+  const {panel} = helpers();
   const activeChanges = [];
   let tick, position = 0;
-  Object.assign(context, {
-    lyrics, panelPlaybackTimeline: panel.buildPanelLinePlaybackTimeline(lyrics),
-    window: {dispatchEvent() {}}, Event: class {},
-    Spicetify: {Player: {getProgress: () => position, data: {item: {uri: 'test'}}}, LocalStorage: {get: () => null}},
-    currentIndex: 0, visualIndex: 0, isEnabled: true, trackOffset: 0, globalOffset: 0,
-    karaokeSource: 'unison', pseudoKaraokeAdvanceMs: 0, PSEUDO_KARAOKE_SOURCES: new Set(),
-    hasKaraokeTiming: true, reducePanelMotion: true, PANEL_LINE_TRANSITION_DURATION_MS: 520,
-    getPanelTimedLineIndex: (_, p) => Math.max(0, lyrics.findLastIndex(row => row.startTime <= p)),
-    getPanelTrailingInterludeState: () => ({activeKey: null, visualKey: null}),
-    setSingingLineIndices: indices => activeChanges.push(plain(indices)),
-    setCurrentIndex() {}, setVisualIndex() {}, setActiveTrailingInterludeKey() {}, setVisualTrailingInterludeKey() {},
-    document: {hidden: false, addEventListener() {}, removeEventListener() {}},
-    setTimeout: callback => {tick = callback; return 1;}, clearTimeout() {},
+  const cleanup = startPanelPlaybackSubscription({
+    lyrics, timeline: panel.buildPanelLinePlaybackTimeline(lyrics),
+    enabled: true, hasKaraokeTiming: true, reduceMotion: true,
+    startIndex: -1, startVisualIndex: -1,
+    offsetMs: {track: 0, global: 0, pseudo: 0},
+    transitionMs: 280,
+    resolveTrailingInterlude: panel.createTrailingKaraokeInterludeResolver(lyrics),
+    read: {
+      snapshot: () => ({position, isPlaying: false}),
+      trackUri: () => 'track', storedTrackDelay: () => null, pronunciationLead: () => 0,
+    },
+    on: {
+      position() {}, positionChanged() {}, activeLineChanged() {}, visualLineChanged() {},
+      activeInterludeChanged() {}, visualInterludeChanged() {},
+      singingLinesChanged: (indices) => activeChanges.push(indices),
+    },
+    scheduler: {
+      visibilityTarget: {addEventListener() {}, removeEventListener() {}},
+      isHidden: () => false,
+      scheduleTimer: (callback) => {tick = callback; return 1;}, cancelTimer() {},
+    },
   });
-  const effect = slice(panelSource, '        // 현재 재생 위치 추적 및 노래방 가사 타이밍 업데이트', '        }, [lyrics, isEnabled, trackOffset');
-  const body = effect.slice(effect.indexOf('useEffect(() => {') + 'useEffect(() => {'.length);
-  vm.runInContext(`(() => {${body}})()`, context);
   for (const p of [1000, 1100, 2000, 2200, 3000, 4000, 4000, 10000, 2500, 0]) {position = p; tick();}
   assert.deepEqual(activeChanges, [[], [0], [0,1], [0], [], [0,1], []]);
+  cleanup();
 });
 
 test('panel postlude reuses lyric bounds and refreshes late duration, settings, seeks and new lyrics', () => {
@@ -129,17 +137,26 @@ test('panel postlude reuses lyric bounds and refreshes late duration, settings, 
   const build = source => {
     let scans = 0;
     const state = { duration: null, enabled: true };
+    const readLineFillEndTime = (row) => { scans++; return fillEnd(row); };
+    const readTrackDuration = () => state.duration;
+    const readAutoBreakEnabled = () => state.enabled;
+    const currentSource = source === panelSource;
     const context = vm.createContext({
-      toFiniteTime: value => Number.isFinite(Number(value)) ? Number(value) : null,
-      getLastSyllableEndTime: row => { scans++; return fillEnd(row); },
-      isAutoInstrumentalBreakEnabled: () => state.enabled,
+      toFiniteTime, preparePanelLinePlaybackTimeline, getTrailingKaraokeInterludeKey,
+      getLastSyllableEndTime: readLineFillEndTime,
+      isAutoInstrumentalBreakEnabled: readAutoBreakEnabled,
       isInterludeMarkerText: () => false, getInterludeCandidateText: row => row?.text ?? '',
-      getCurrentTrackDurationMs: () => state.duration,
-      KARAOKE_TRAILING_INTERLUDE_DELAY_MS: 500, INTERLUDE_MIN_DURATION_MS: 1000,
+      getCurrentTrackDurationMs: readTrackDuration,
+      KARAOKE_TRAILING_INTERLUDE_DELAY_MS: 2500, INTERLUDE_MIN_DURATION_MS: 500,
     });
+    if (currentSource) {
+      context.getTrailingKaraokeInterludeInfo = createLyricInterludeTiming({
+        readLineFillEndTime, readTrackDuration, readAutoBreakEnabled,
+      }).getTrailingKaraokeInterludeInfo;
+    }
     vm.runInContext([
-      slice(source, '    const buildPanelLinePlaybackTimeline', '    const getInterludeInfo'),
-      slice(source, '    const getTrailingKaraokeInterludeInfo', '    // ============================================\n    // 노래방 단어'),
+      slice(source, '    const buildPanelLinePlaybackTimeline', currentSource ? '    const { getInterludeInfo' : '    const getInterludeInfo'),
+      slice(source, currentSource ? '    const createTrailingKaraokeInterludeResolver' : '    const getTrailingKaraokeInterludeInfo', '    // ============================================\n    // 노래방 단어'),
       'globalThis.makeResolver = createTrailingKaraokeInterludeResolver;',
     ].join('\n'), context);
     return { state, makeResolver: rows => context.makeResolver(rows), count: () => scans, reset: () => { scans = 0; } };
@@ -165,5 +182,5 @@ test('panel postlude reuses lyric bounds and refreshes late duration, settings, 
   const replacement = [...lyrics.slice(0, -1), line('edited ending', 14000, 19000)];
   resolve = current.makeResolver(replacement); oldResolve = previous.makeResolver(replacement);
   compare(2);
-  assert.equal(resolve(2).startTime, 19500);
+  assert.equal(resolve(2).startTime, 21500);
 });

@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
+import { createSettingsFullscreenPreview } from "#ivlyrics/features/settings/createSettingsFullscreenPreview.mjs";
 
-const source = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
-const from = source.indexOf("const getSettingsPreviewNumber ="), to = source.indexOf("const getSettingsMatrixRowId =", from);
-assert.ok(from > 0 && to > from);
 const elements = node => Array.isArray(node) ? node.flatMap(elements)
   : node?.props ? [node, ...elements(node.props.children)] : [];
 const hasClass = (node, value) => (node?.props.className || "").split(" ").includes(value);
@@ -14,12 +10,11 @@ function preview(values = {}, view = "normal") {
   const visual = { "fullscreen-tv-show-controls": false, "fullscreen-tv-show-progress": false, ...values };
   const saved = JSON.stringify(visual);
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) };
-  const runtime = vm.createContext({ react, CONFIG: { visual }, useSettingsConfigRevision() {},
+  const { SettingsFullscreenPreview } = createSettingsFullscreenPreview({ react, getVisual: () => visual, useSettingsConfigRevision() {},
     normalizeSettingsHexColor: value => value,
     getCurrentSettingsBackgroundMode: () => visual["solid-background"] ? "solid-background" : "gradient-background",
   });
-  vm.runInContext(source.slice(from, to) + "\nglobalThis.render = SettingsFullscreenPreview;", runtime);
-  const tree = runtime.render({ view }), all = elements(tree);
+  const tree = SettingsFullscreenPreview({ view }), all = elements(tree);
   assert.equal(JSON.stringify(visual), saved, "preview cannot change saved settings");
   const find = name => all.filter(node => hasClass(node, name));
   const within = (name, child) => find(name).flatMap(elements).filter(node => hasClass(node, child));

@@ -1,0 +1,225 @@
+// ============================================
+// VideoMatch.js
+// Judges whether a YouTube video picked for a song really is that song, and how
+// far its timeline can be trusted. The ivLyrics server chooses videos; this only
+// checks the answer on the client (title, artist, channel, warning words, length,
+// ISRC) so an obviously wrong match falls back to another candidate or artwork.
+// ============================================
+
+export const VideoMatch = (() => {
+    // Versions whose audio or timeline differs from the studio recording. Ignored
+    // when the Spotify title itself contains the word (a live album, a remix, …).
+    const ALTERED_VERSION_KEYWORDS = [
+        "live", "cover", "remix", "sped up", "speed up", "slowed", "reverb", "nightcore",
+        "8d", "reaction", "karaoke", "instrumental", "acoustic", "1 hour", "10 hours",
+        "hour version", "bass boosted", "tutorial", "lesson", "fan made", "fanmade",
+        "teaser", "trailer", "snippet", "shorts", "amv", "fan edit", "grammy", "grammys",
+        "concert", "performance",
+    ];
+    // Words for a live performance: a live track (its Spotify title says so)
+    // may use any of them.
+    const LIVE_KEYWORDS = new Set(["live", "concert", "performance", "grammy", "grammys"]);
+    const EXACT_LENGTH_TOLERANCE_SECONDS = 3;
+    // Music videos often add an intro or outro; beyond this the start-of-song
+    // assumption for a video without a known start point is only a guess.
+    const TIMING_GUESS_EXTRA_SECONDS = 8;
+    // A video this much shorter than the song cuts parts of it: even a known
+    // start point only holds until the first cut.
+    const EDIT_SHORTER_SECONDS = 10;
+
+    const normalizeText = (value) => String(value ?? "")
+        .normalize("NFKD")
+        .replace(/\p{M}+/gu, "")
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .trim();
+    const compactText = (value) => normalizeText(value).replace(/ /g, "");
+
+    // "Song - Remastered 2011", "Song (feat. X)", "Song [Live]" → "Song".
+    const getCoreTitle = (title) => {
+        const raw = String(title ?? "");
+        const core = raw.split(/\s+[-–—]\s+/)[0].replace(/[([{【「『].*?[)\]}】」』]/g, " ").trim();
+        return core || raw.trim();
+    };
+
+    const getDominantScript = (value) => {
+        let latin = 0;
+        let other = 0;
+        for (const char of String(value ?? "")) {
+            if (/\p{Script=Latin}/u.test(char)) latin++;
+            else if (/\p{L}/u.test(char)) other++;
+        }
+        if (!latin && !other) return null;
+        return latin >= other ? "latin" : "other";
+    };
+
+    const matchTitle = (trackTitle, videoTitle) => {
+        const core = compactText(getCoreTitle(trackTitle));
+        const video = compactText(videoTitle);
+        if (!core || !video) return "unknown";
+        if (video.includes(core)) return "full";
+        const tokens = normalizeText(getCoreTitle(trackTitle)).split(" ").filter((token) => token.length >= 2);
+        if (tokens.length < 2) return "none";
+        const videoWords = ` ${normalizeText(videoTitle)} `;
+        const found = tokens.filter((token) => videoWords.includes(` ${token} `)).length;
+        return found / tokens.length >= 0.6 ? "partial" : "none";
+    };
+
+    const matchArtist = (artists, videoText) => {
+        const video = compactText(videoText);
+        if (!video) return false;
+        return (Array.isArray(artists) ? artists : [artists])
+            .map(compactText)
+            .some((artist) => artist.length >= 2 && video.includes(artist));
+    };
+
+    const findAlteredVersionKeywords = (trackTitle, videoTitle) => {
+        const track = ` ${normalizeText(trackTitle)} `;
+        const video = ` ${normalizeText(videoTitle)} `;
+        const liveTrack = [...LIVE_KEYWORDS].some((keyword) => track.includes(` ${keyword} `));
+        return ALTERED_VERSION_KEYWORDS.filter((keyword) =>
+            video.includes(` ${keyword} `) && !track.includes(` ${keyword} `)
+            && !(liveTrack && LIVE_KEYWORDS.has(keyword)));
+    };
+
+    const compareLength = (songDurationMs, videoDurationSeconds) => {
+        const song = Number(songDurationMs) / 1000;
+        const video = Number(videoDurationSeconds);
+        if (!(song > 0) || !(video > 0)) return "unknown";
+        const extra = video - song;
+        if (Math.abs(extra) <= EXACT_LENGTH_TOLERANCE_SECONDS) return "exact";
+        if (video < song * 0.6) return "much-shorter";
+        if (extra < -20) return "shorter";
+        if (extra < 0) return "slightly-shorter";
+        if (extra > Math.max(240, song * 1.5)) return "much-longer";
+        return "longer";
+    };
+
+    const LENGTH_SCORES = {
+        exact: 2, longer: 0.5, "slightly-shorter": -0.5, shorter: -2,
+        "much-shorter": -4, "much-longer": -4, unknown: 0,
+    };
+
+    // A video someone chose on purpose is never second-guessed by its title.
+    const isCurated = (video) => video?.userChosen === true
+        || (video?.isAutoGenerated !== true && video?.communityEntryId != null);
+
+    /**
+     * @param {{title?: string, artists?: string[], durationMs?: number, isrc?: string}} track
+     * @param {{title?: string, channel?: string, durationSeconds?: number, isrc?: string,
+     *   isAutoGenerated?: boolean, communityEntryId?: *, userChosen?: boolean}} video
+     * @returns {{verdict: "match"|"uncertain"|"weak"|"mismatch", score: number, reasons: string[]}}
+     */
+    const assess = (track = {}, video = {}) => {
+        const reasons = [];
+        if (video.userChosen === true) return { verdict: "match", score: 10, reasons: ["user-chosen"] };
+
+        const trackIsrc = String(track.isrc || "").toUpperCase();
+        const videoIsrc = String(video.isrc || "").toUpperCase();
+        if (trackIsrc && videoIsrc && trackIsrc !== videoIsrc) {
+            return { verdict: "mismatch", score: -10, reasons: ["isrc"] };
+        }
+
+        let score = 0;
+        const title = String(video.title || "");
+        const titleMatch = matchTitle(track.title, title);
+        const artistMatch = matchArtist(track.artists, `${title} ${video.channel || ""}`);
+        const keywords = title ? findAlteredVersionKeywords(track.title, title) : [];
+        const length = compareLength(track.durationMs, video.durationSeconds);
+        if (titleMatch === "full") score += 3;
+        else if (titleMatch === "partial") score += 1.5;
+        if (artistMatch) score += 2;
+        score -= 3 * keywords.length;
+        score += LENGTH_SCORES[length];
+        if (keywords.length) reasons.push(`keywords:${keywords.join(",")}`);
+        if (length !== "unknown") reasons.push(`length:${length}`);
+
+        if (isCurated(video)) {
+            return { verdict: score >= 3 ? "match" : "uncertain", score, reasons: [...reasons, "curated"] };
+        }
+
+        // Titles in different scripts (a romanized Spotify title, a native-script
+        // YouTube title) cannot be compared, so only the length can reject them.
+        const comparable = titleMatch !== "none" || artistMatch
+            || getDominantScript(getCoreTitle(track.title)) === getDominantScript(title);
+        if (title && titleMatch === "none" && !artistMatch) {
+            reasons.push(comparable ? "title-artist" : "different-script");
+            if (comparable) return { verdict: "mismatch", score, reasons };
+            if (["shorter", "much-shorter", "much-longer"].includes(length)) {
+                return { verdict: "mismatch", score, reasons };
+            }
+            return { verdict: "uncertain", score, reasons };
+        }
+        // Length alone only rejects a video whose title was seen and does not
+        // fully match; a long story-style music video is still the song.
+        if ((length === "much-shorter" || length === "much-longer") && (titleMatch === "partial" || titleMatch === "none")) {
+            return { verdict: "mismatch", score, reasons };
+        }
+        if (keywords.length) return { verdict: "weak", score, reasons };
+        return { verdict: score >= 3 ? "match" : "uncertain", score, reasons };
+    };
+
+    const VERDICT_RANK = { match: 3, uncertain: 2, weak: 1 };
+    const pickBest = (entries) => entries.reduce((best, entry) => {
+        const rankDelta = VERDICT_RANK[entry.assessment.verdict] - VERDICT_RANK[best.assessment.verdict];
+        return rankDelta > 0 || (rankDelta === 0 && entry.assessment.score > best.assessment.score) ? entry : best;
+    });
+
+    /**
+     * Keeps the first candidate (the server's pick) unless it is wrong, or an
+     * altered version while a clean match exists.
+     * @returns {{index: number, video: *, assessment: *} | null}
+     */
+    const pickCandidate = (track, candidates, { describe = (video) => video, rejectedIds = null } = {}) => {
+        const assessed = (Array.isArray(candidates) ? candidates : [])
+            .map((video, index) => ({ index, video, assessment: assess(track, describe(video)) }))
+            .filter(({ video }) => video?.youtubeVideoId && !rejectedIds?.has?.(video.youtubeVideoId));
+        const usable = assessed.filter(({ assessment }) => assessment.verdict !== "mismatch");
+        if (!usable.length) return null;
+        const first = assessed[0];
+        const verdict = first.assessment.verdict;
+        if (verdict === "match" || verdict === "uncertain") return first;
+        if (verdict === "weak") {
+            const matches = usable.filter(({ assessment }) => assessment.verdict === "match");
+            return matches.length ? pickBest(matches) : first;
+        }
+        return pickBest(usable);
+    };
+
+    /**
+     * How the video timeline is anchored to the song:
+     * "known"   — a start point (first lyric in the video) was registered;
+     * "edit"    — a start point is known, but the video is clearly shorter
+     *             than the song (a different edit that cuts parts of it);
+     * "aligned" — no start point, but the video is as long as the song, so it
+     *             very likely starts with it;
+     * "guess"   — no start point and the video is clearly longer (intro/outro)
+     *             or shorter (a different edit);
+     * "unknown" — the length is not known yet.
+     */
+    const getTimingConfidence = (videoInfo, videoDurationSeconds, songDurationMs) => {
+        const start = videoInfo?.captionStartTime;
+        const hasStart = start !== null && start !== undefined && Number.isFinite(Number(start))
+            && !(videoInfo?.isAutoGenerated === true && Math.abs(Number(start)) < 0.001);
+        const song = Number(songDurationMs) / 1000;
+        const video = Number(videoDurationSeconds);
+        if (hasStart) return song > 0 && video > 0 && song - video > EDIT_SHORTER_SECONDS ? "edit" : "known";
+        if (!(song > 0) || !(video > 0)) return "unknown";
+        if (Math.abs(video - song) <= EXACT_LENGTH_TOLERANCE_SECONDS) return "aligned";
+        // Longer: an unknown intro/outro. Shorter: a different edit that cuts
+        // parts of the song. Either way the start-of-song guess cannot hold.
+        return video - song > TIMING_GUESS_EXTRA_SECONDS || video < song ? "guess" : "aligned";
+    };
+
+    return {
+        normalizeText,
+        getCoreTitle,
+        matchTitle,
+        matchArtist,
+        findAlteredVersionKeywords,
+        compareLength,
+        assess,
+        pickCandidate,
+        getTimingConfidence,
+    };
+})();

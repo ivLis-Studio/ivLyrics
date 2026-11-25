@@ -1,0 +1,68 @@
+/* Word-stack supplements: original / gloss / reading per karaoke word.
+   Only rendered for suitable source languages (ja/ko/zh) in word mode.
+   Rows are height-normalized across the whole line so annotations line up:
+   every main box shares one min-height with bottom-aligned glyphs (same
+   font size => shared baseline, ruby absorbed above), and gloss/reading are
+   single non-wrapping lines with fixed height (horizontal overflow stays
+   visible, like ruby text). */
+.lyrics-karaoke-line.has-word-stack .lyrics-karaoke-word-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  max-width: 100%;
+  vertical-align: top;
+  line-height: 1.25;
+  /* Gutters keep neighboring columns (and their centered overflow
+     annotations) from visually merging into one string. */
+  margin: 0 0.28em;
+}
+
+.lyrics-karaoke-line.has-word-stack .lyrics-karaoke-word-stack > .lyrics-karaoke-word {
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-height: 2.3em;
+  line-height: 1.25;
+}
+
+.lyrics-karaoke-word-gloss,
+.lyrics-karaoke-word-reading {
+  display: block;
+  max-width: none;
+  overflow: visible;
+  white-space: nowrap;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  line-height: 1.4;
+  min-height: 1.4em;
+}
+
+.lyrics-karaoke-word-gloss {
+  font-size: 0.62em;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.95;
+}
+
+.lyrics-karaoke-word-reading {
+  font-size: 0.68em;
+  opacity: 0.55;
+  font-style: italic;
+  font-weight: 400;
+}
+
+.lyrics-karaoke-line.has-word-stack.is-complete .lyrics-karaoke-word-gloss,
+.lyrics-karaoke-line.has-word-stack.is-complete .lyrics-karaoke-word-reading {
+  opacity: 0.85;
+}
+
+/* Per-word readings replace the line-level pronunciation row (which would
+   duplicate the same content). The full-line translation row stays visible. */
+.lyrics-lyricsContainer-LyricsLine:has(.lyrics-karaoke-line.has-word-stack-readings) > .lyrics-lyricsContainer-LyricsLine-phonetic,
+.fullscreen-vinyl-active-lyric:has(.lyrics-karaoke-line.has-word-stack-readings) .lyrics-lyricsContainer-LyricsLine-phonetic {
+  display: none;
+}
+

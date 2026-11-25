@@ -1,0 +1,493 @@
+#lyrics-fullscreen-container,
+#lyrics-fullscreen-container .lyrics-lyricsContainer-LyricsContainer {
+  overflow-x: hidden;
+}
+
+/* Hover 효과는 기존 스타일(.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:hover)을 따름 */
+/* Active 효과도 기존 스타일(.lyrics-lyricsContainer-LyricsLine-active)을 따름 */
+
+/* A focused lyric must never scroll the fullscreen stage along with its
+   own viewport. `clip` also blocks programmatic ancestor scrolling. */
+@supports (overflow: clip) {
+  #lyrics-fullscreen-container:has(.lyrics-lyricsContainer-SyncedLyricsPage),
+  #lyrics-fullscreen-container .lyrics-lyricsContainer-LyricsContainer:has(.lyrics-lyricsContainer-SyncedLyricsPage),
+  .lyrics-lyricsContainer-LyricsContainer.fullscreen-page-ui:has(.lyrics-lyricsContainer-SyncedLyricsPage) {
+    overflow: clip;
+  }
+}
+
+/* Browsing uses the same grid, row transforms, and typography as playback.
+   Hide the native gutter so entering scroll mode never changes line wrapping. */
+.lyrics-lyricsContainer-SyncedLyricsPage.scrolling-active {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+  scroll-behavior: auto;
+}
+
+.lyrics-lyricsContainer-SyncedLyricsPage.scrolling-active::-webkit-scrollbar {
+  display: none;
+}
+
+.lyrics-native-scroll-spacer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  pointer-events: none;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyricsPage.scrolling-active .lyrics-lyricsContainer-LyricsLine {
+  filter: blur(calc(var(--manual-blur-index, var(--blur-index)) * 1.5px));
+}
+
+/* Fullscreen Mode Styles */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active {
+  --ivfs-lyrics-anchor-ratio: 0.5;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  padding: 0;
+  box-sizing: border-box;
+  background-color: var(--spice-main);
+  overflow: hidden;
+  width: 100%;
+  height: 100vh;
+  transition: grid-template-columns var(--iv-motion-duration-slow) var(--iv-motion-ease-standard);
+  isolation: isolate;
+}
+
+/* Background elements in fullscreen should cover entire area */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-lyricsContainer-LyricsBackground {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  grid-area: unset;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: background-color, opacity;
+  contain: paint;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active #ivLyrics-gradient-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Reversed layout - Album on right, Lyrics on left */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.layout-reversed {
+  direction: rtl;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.layout-reversed>* {
+  direction: ltr;
+}
+
+/* Left Panel (Album Art & Info) */
+.lyrics-fullscreen-left-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  /* Reserve space for ticker */
+  padding: 40px;
+  box-sizing: border-box;
+  z-index: 10;
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-standard),
+    padding var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.lyrics-fullscreen-left-panel.tmi-mode {
+  padding: 0;
+  overflow: hidden;
+  justify-content: flex-start;
+}
+
+/* Hover strip that reveals the left-panel playback controls. Width is set inline
+   from the album size (115%) so it stays narrow even when .fullscreen-no-lyrics
+   stretches the panel across the full grid. Negative z-index keeps it behind the
+   panel content, so the album, title and artist links keep their own hit area. */
+.lyrics-fullscreen-hover-zone {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 100%;
+  max-width: 100%;
+  z-index: -1;
+}
+
+.lyrics-fullscreen-left-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Center align content */
+  text-align: center;
+  min-width: 0;
+  max-width: 90%;
+  width: 100%;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+/* Auto margins center a stack that fits and resolve to zero when it overflows,
+   so the top and bottom both remain reachable without changing saved sizes. */
+.lyrics-fullscreen-left-panel:has(.left-controls-player) {
+  justify-content: flex-start;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  /* This column ends on the grid boundary, so its native scrollbar paints
+     over the lyrics that start next to the album. Keep the scroll path,
+     drop the bar. */
+  scrollbar-width: none;
+}
+
+.lyrics-fullscreen-left-panel:has(.left-controls-player)::-webkit-scrollbar {
+  display: none;
+}
+
+.lyrics-fullscreen-left-panel:has(.left-controls-player) > .lyrics-fullscreen-left-content {
+  flex-shrink: 0;
+  margin-block: auto;
+}
+
+.lyrics-fullscreen-album-art {
+  aspect-ratio: 1/1;
+  border-radius: 12px;
+  margin-bottom: 32px;
+  object-fit: cover;
+  flex-shrink: 0;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    box-shadow var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    margin var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.lyrics-fullscreen-album-art.with-shadow {
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+
+.lyrics-fullscreen-track-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    gap var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.lyrics-fullscreen-title {
+  font-size: 48px;
+  font-weight: 800;
+  color: var(--spice-text);
+  line-height: 1.1;
+  word-break: keep-all;
+  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    letter-spacing var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.lyrics-fullscreen-artist {
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--spice-subtext);
+  opacity: 0.9;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+/* Normal Fullscreen Album Name */
+.lyrics-fullscreen-album-name {
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--spice-subtext);
+  opacity: 0.7;
+  margin-top: 4px;
+  transition:
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis),
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.fullscreen-navigation-link {
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.fullscreen-navigation-link:hover {
+  color: var(--spice-text);
+  opacity: 1;
+  text-decoration: none;
+}
+
+.fullscreen-navigation-link:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.48);
+  outline-offset: 4px;
+}
+
+/* Right Panel (Lyrics) Adjustments */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-lyricsContainer-SyncedLyricsPage {
+  grid-area: auto;
+  height: 100vh;
+  /* Reserve space for ticker */
+  width: 100%;
+  padding: 0 40px;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: 1fr 30px;
+  overflow: hidden;
+  overflow-anchor: none;
+  text-align: var(--lyrics-align-text);
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-standard),
+    padding-top var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    padding-bottom var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    padding-left var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    padding-right var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+/* UnsyncedLyricsPage는 스크롤 가능하도록 별도 스타일 */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-lyricsContainer-UnsyncedLyricsPage {
+  grid-area: auto;
+  height: 100vh;
+  /* Reserve space for ticker */
+  width: 100%;
+  padding: 60px 40px;
+  box-sizing: border-box;
+  display: block;
+  overflow-y: auto;
+  overflow-x: hidden;
+  text-align: var(--lyrics-align-text);
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-slow) var(--iv-motion-ease-standard),
+    padding-top var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    padding-bottom var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    padding-left var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    padding-right var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+  /* 스크롤바 스타일링 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+/* 전체화면 UnsyncedLyricsPage 스크롤바 스타일 */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-lyricsContainer-UnsyncedLyricsPage::-webkit-scrollbar {
+  width: 8px;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-lyricsContainer-UnsyncedLyricsPage::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-lyricsContainer-UnsyncedLyricsPage::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-lyricsContainer-UnsyncedLyricsPage::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+/* 전체화면 UnsyncedLyricsPage 패딩 요소 높이 조정 */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-lyricsContainer-UnsyncedLyricsPage .lyrics-lyricsContainer-LyricsUnsyncedPadding {
+  height: 20px;
+}
+
+/* Adjust lyrics text size and alignment in fullscreen */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-lyricsContainer-LyricsLine {
+  text-align: var(--lyrics-align-text);
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  transform-origin: var(--lyrics-align-text) center;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine {
+  transform-origin: var(--lyrics-align-text) center;
+}
+
+/* Give standard fullscreen lyrics equal breathing room on both sides. */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active:not(:is(.tv-mode-active, .portrait-mode, .fullscreen-single-column, .fullscreen-focus-active, .fullscreen-no-lyrics, .marketplace-active)) > :is(.lyrics-lyricsContainer-SyncedLyricsPage, .lyrics-lyricsContainer-UnsyncedLyricsPage) {
+  padding-inline: 64px;
+}
+
+/* Center within the visible space beside the album, rather than the grid's
+   second half. Absolute positioning keeps lyric width out of album sizing. */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active[data-album-centered-lyrics="true"]:not(:is(.tv-mode-active, .portrait-mode, .fullscreen-single-column, .fullscreen-focus-active, .fullscreen-no-lyrics, .marketplace-active)) > :is(.lyrics-lyricsContainer-SyncedLyricsPage, .lyrics-lyricsContainer-UnsyncedLyricsPage) {
+  position: absolute;
+  top: 0;
+  left: var(--lyrics-fullscreen-region-left, 50%);
+  right: var(--lyrics-fullscreen-region-right, 0px);
+  width: auto !important;
+  max-width: none !important;
+  min-width: 0;
+  margin: 0 !important;
+  scrollbar-gutter: stable both-edges;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui {
+  inset: 0;
+  width: 100%;
+  height: 100% !important;
+  min-height: 0;
+  max-height: 100%;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .lyrics-lyricsContainer-SyncedLyricsPage,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .lyrics-lyricsContainer-UnsyncedLyricsPage {
+  height: 100% !important;
+  min-height: 0;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .fullscreen-bottom-left,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .fullscreen-top-right,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .fullscreen-bottom,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .fullscreen-lyrics-progress-container,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .fullscreen-queue-wrapper,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .fullscreen-queue-trigger-area,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .fullscreen-queue-panel,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .fullscreen-tv-tmi-overlay,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .fullscreen-tv-song-info,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .fullscreen-tv-controls-wrapper,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .portrait-overlay-top,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .portrait-overlay-bottom,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .lyrics-config-button-container {
+  position: absolute !important;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .fullscreen-queue-wrapper,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .fullscreen-queue-trigger-area,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .fullscreen-queue-panel {
+  height: 100%;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.fullscreen-page-ui .fullscreen-tv-tmi-overlay {
+  inset: 0;
+}
+
+/* Hide other elements in fullscreen */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-tabBar-header {
+  display: none;
+  /* Hide tab bar in fullscreen for clean look */
+}
+
+/* Menu buttons in fullscreen - hidden by default, show on mouse move */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-config-button-container {
+  --iv-floating-toolbar-top-gap: 20px;
+  --iv-floating-toolbar-bottom-gap: 40px;
+  --iv-floating-menu-content-top-offset: 130px;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    transform var(--iv-motion-duration-medium) var(--iv-motion-ease-standard),
+    box-shadow var(--iv-motion-duration-fast) ease;
+  pointer-events: auto;
+  position: fixed;
+  bottom: 40px;
+  right: 24px;
+  margin: 0;
+  z-index: var(--iv-layer-floating-toolbar);
+}
+
+/* Hide controls and cursor in fullscreen when mouse is idle */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.controls-hidden {
+  cursor: none;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.controls-hidden .lyrics-config-button-container {
+  opacity: 0;
+  transform: translateY(var(--iv-motion-distance-md)) scale(0.98);
+  pointer-events: none;
+}
+
+/* Keep controls visible when hovering directly on them in fullscreen */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.controls-hidden .lyrics-config-button-container:hover,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.controls-hidden .lyrics-config-button-container:focus-within {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-config-button-container>* {
+  pointer-events: auto;
+}
+
+/* Ensure menus/dropdowns in fullscreen are visible and accessible */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-config-button-container .main-contextMenu-menu {
+  z-index: var(--iv-layer-floating-toolbar-menu);
+  position: fixed;
+  bottom: auto;
+  top: auto;
+}
+
+/* Add a way to exit fullscreen (ESC hint or button could be added later) */
+
+/* Fullscreen - single column mode (no left panel) */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-single-column {
+  grid-template-columns: 1fr;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.marketplace-active {
+  grid-template-columns: 1fr !important;
+  grid-template-rows: 1fr !important;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.marketplace-active .ivlyrics-marketplace-root {
+  grid-area: 1 / 1 / -1 / -1;
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  z-index: var(--iv-layer-marketplace);
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.marketplace-active .ivlyrics-marketplace-header-left,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-active.marketplace-active .ivlyrics-marketplace-detail-back {
+  margin-left: calc(env(safe-area-inset-left, 0px) + 32px);
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-single-column .lyrics-lyricsContainer-SyncedLyricsPage {
+  padding: 0 10%;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-single-column .lyrics-lyricsContainer-UnsyncedLyricsPage {
+  padding: 60px 10%;
+}
+
+/* Fullscreen - no lyrics state */
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-no-lyrics {
+  grid-template-columns: 1fr;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-no-lyrics .lyrics-fullscreen-left-panel {
+  grid-column: 1;
+  justify-content: center;
+  align-items: center;
+}
+
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-no-lyrics .lyrics-lyricsContainer-SyncedLyricsPage,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-no-lyrics .lyrics-lyricsContainer-UnsyncedLyricsPage,
+.lyrics-lyricsContainer-LyricsContainer.fullscreen-no-lyrics:not(.fullscreen-lyrics-loading) .lyrics-lyricsContainer-LyricsUnavailablePage {
+  display: none !important;
+}
+

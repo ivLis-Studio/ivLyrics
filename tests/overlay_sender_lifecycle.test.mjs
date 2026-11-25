@@ -1,10 +1,16 @@
+import { readOverlaySendersFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { createOverlayOffsetResolver } from '../src/features/overlay/overlayOffsets.mjs';
+import { createOverlayLyricPayload } from '../src/features/overlay/overlayLyricPayload.mjs';
+import { getLyricSupplementVisibility as getOverlaySupplementVisibility } from '../src/lyrics/lyricSupplementPresentation.mjs';
+import { normalizeProgressTiming as normalizeOverlayProgressTiming } from '../src/features/overlay/OverlayProtocol.js';
+import { createOverlayPlaybackVisibility } from '../src/features/overlay/overlayPresentationHost.mjs';
+import { createOverlayProgress } from '../src/features/overlay/overlayProgress.mjs';
 
-const source = readFileSync(new URL('../LyricsService.js', import.meta.url), 'utf8');
+const source = readOverlaySendersFixture();
 const baselineRevision = process.env.IVLYRICS_REFACTOR_TEST_REVISION;
 const baseline = baselineRevision ? execFileSync('git', ['show', `${baselineRevision}:LyricsService.js`], {
   cwd: new URL('..', import.meta.url), encoding: 'utf8',
@@ -17,7 +23,7 @@ const serial = value => JSON.parse(JSON.stringify(value));
 function load(text) {
   const trace = [], timers = new Map(), workers = [], values = new Map(), pendingFetches = [];
   const clock = {now: 1_000_000};
-  let nextId = 0, removePlayerThrows = false;
+  let nextId = 0, removePlayerThrows = false, playbackUri;
   const surface = name => {
     const listeners = new Map();
     return {
@@ -33,6 +39,7 @@ function load(text) {
   const timeout = (fn, ms) => { const id = ++nextId; timers.set(id, {fn, ms}); trace.push(['timer', id, ms]); return id; };
   const clear = id => { timers.delete(id); trace.push(['clear', id]); };
   const context = vm.createContext({
+    createOverlayOffsetResolver, createOverlayLyricPayload, getOverlaySupplementVisibility, normalizeOverlayProgressTiming,
     window, document, Blob, URL: {createObjectURL: () => 'blob:worker', revokeObjectURL() {}},
     Worker: class { constructor() { this.id = workers.length; workers.push(this); trace.push(['worker', this.id]); }
       postMessage(message) { trace.push(['worker-message', this.id, message]); }
@@ -41,7 +48,7 @@ function load(text) {
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     setTimeout: timeout, clearTimeout: clear, setInterval: timeout, clearInterval: clear,
     helperDebug: (...args) => trace.push(['debug', ...args]), scheduleSenderBootstrap: (...args) => trace.push(['bootstrap', ...args]),
-    Utils: {getPlayerPlaybackSnapshot: () => ({uri: player.data.item.uri})},
+    Utils: {getPlayerPlaybackSnapshot: () => ({uri: playbackUri ?? player.data.item.uri})},
     // Keep connection probes pending: no external transport or asynchronous
     // recovery changes interfere with the lifecycle scheduling assertions.
     fetch: (url, options) => {
@@ -51,8 +58,8 @@ function load(text) {
     AbortSignal: {timeout: ms => ({timeout: ms})},
     Date: class extends Date { static now() { return clock.now; } },
   });
-  vm.runInContext(section(text, '    const cleanupWorker =', '    serviceDebug("[LyricsService] Initializing')
-    + section(text, '    const LYRICS_SEND_RETRY_DELAYS =', '    window.LyricsService = LyricsService;')
+  vm.runInContext(text === source ? source : section(text, '    const cleanupWorker =', '    serviceDebug("[LyricsService] Initializing')
+    + section(text, '    const LYRICS_SEND_RETRY_DELAYS =', '    if (window.__ivLyricsSnapshotReadyListener)')
     + '\nglobalThis.senders = [OverlaySender, lyricsHelperSender];', context);
   const [overlay, helper] = context.senders;
   const state = () => serial({
@@ -65,6 +72,7 @@ function load(text) {
     listeners: [window.counts(), document.counts(), player.counts()], timers: [...timers].map(([id, t]) => [id, t.ms]),
   });
   return {overlay, helper, window, player, trace, state, workers, values, pendingFetches, clock,
+    setPlaybackUri: uri => { playbackUri = uri; },
     timerCallbacks: ms => [...timers.values()].filter(timer => timer.ms === ms).map(timer => timer.fn),
     removePlayerThrows: value => { removePlayerThrows = value; },
     runTimer(ms) { const entry = [...timers].find(([, t]) => t.ms === ms); assert.ok(entry); timers.delete(entry[0]); entry[1].fn(); },
@@ -119,7 +127,13 @@ function lifecycle(text) {
 
 test('overlay/helper lifecycle isolates enable, duplicate init, disable, songchange, destroy and reinitialize', () => {
   const actual = lifecycle(source);
-  if (baseline) assert.deepEqual(actual, lifecycle(baseline));
+  if (baseline) {
+    // The seek subscription is a new behavior, exercised separately below.
+    for (const {listeners} of actual.snapshots) delete listeners[2].onseek;
+    actual.trace = actual.trace.filter(([action, target, event]) =>
+      !(target === 'player' && event === 'onseek' && (action === 'add' || action === 'remove')));
+    assert.deepEqual(actual, lifecycle(baseline));
+  }
 });
 
 test('connection loss stops only its worker and reconnect resumes exactly once', () => {
@@ -195,6 +209,78 @@ test('disable/re-enable invalidates probes while the other sender remains live',
   assert.notEqual(h.helper._runtimeGeneration, h.overlay._runtimeGeneration, 'epochs belong to each sender');
 });
 
+test('concurrent checks share one probe, and a late timeout cannot undo a newer reply', async () => {
+  const h = load(source);
+  h.overlay.init();
+  const probe = h.overlay.checkConnection();
+  assert.strictEqual(h.overlay.checkConnection(), probe);
+  assert.equal(h.pendingFetches.length, 1);
+  const progress = h.overlay.sendToEndpoint('/progress', {position: 123, isPlaying: false});
+  h.pendingFetches[1].resolve({ok: true});
+  assert.equal(await progress, true);
+  const connectedWorker = h.overlay._worker;
+  h.pendingFetches[0].reject(Error('old probe timed out'));
+  assert.equal(await probe, true);
+  assert.equal(h.overlay.isConnected, true);
+  assert.strictEqual(h.overlay._worker, connectedWorker);
+});
+
+test('switching ports twice invalidates old probes and late receipt parsing', async () => {
+  const h = load(source);
+  h.overlay.init();
+  const oldProbe = h.overlay.checkConnection();
+  let finishReceipt;
+  const oldPost = h.overlay.sendToEndpoint('/progress', {position: 123}, {receipt: true});
+  h.pendingFetches[1].resolve({ok: true, json: () => new Promise(resolve => { finishReceipt = resolve; })});
+  await new Promise(resolve => setImmediate(resolve));
+  h.overlay.port = 15001;
+  h.overlay.port = 15000;
+  const currentProbe = h.overlay.checkConnection();
+  assert.equal(h.pendingFetches.length, 4);
+  h.pendingFetches[3].resolve({ok: true, json: async () => ({protocol: 3})});
+  assert.equal(await currentProbe, true);
+  const currentWorker = h.overlay._worker;
+  finishReceipt({ok: true, hasLyrics: false});
+  assert.equal(await oldPost, false);
+  h.pendingFetches[0].resolve({ok: false, status: 405});
+  assert.equal(await oldProbe, false);
+  h.pendingFetches[2].reject(Error('other port closed'));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.overlay._receiverProtocol, 3);
+  assert.equal(h.overlay.isConnected, true);
+  assert.strictEqual(h.overlay._worker, currentWorker);
+});
+
+test('reconnecting on a new port resends the current lyrics while the old response is pending', async () => {
+  const h = load(source), sender = h.overlay;
+  const settle = () => new Promise(setImmediate);
+  const lyricsPosts = () => h.trace.filter(([kind, url, body]) => kind === 'fetch' && url.endsWith('/lyrics') && typeof body === 'object');
+  const uri = h.player.data.item.uri;
+  h.player.getDuration = () => 180000;
+  sender.getSyncOffset = async () => 0;
+  sender.init();
+  sender.isConnected = true;
+  const firstSend = sender.sendLyrics({uri, title: 'Current song'}, [{text: 'Current verse', startTime: 200}]);
+  await settle();
+  assert.equal(lyricsPosts().length, 1);
+
+  sender.port = 15001;
+  const probe = sender.checkConnection();
+  h.pendingFetches[1].resolve({ok: true, json: async () => ({protocol: 3})});
+  assert.equal(await probe, true);
+  assert.equal(h.timerCallbacks(100).length, 1, 'an obsolete POST must not suppress recovery for the new receiver');
+  h.runTimer(100);
+  await settle();
+  h.pendingFetches[0].resolve({ok: true});
+  await settle();
+
+  assert.deepEqual(lyricsPosts().map(([, url]) => url), ['http://localhost:15000/lyrics', 'http://localhost:15001/lyrics']);
+  assert.equal(lyricsPosts()[1][2].lyrics[0].text, 'Current verse');
+  h.pendingFetches[2].resolve({ok: true});
+  await firstSend;
+  assert.equal(sender.lastDeliveredUri, uri);
+});
+
 test('paused progress is deduplicated without losing heartbeat, seek, track or queue changes', async () => {
   const h = load(source), sent = [];
   Object.defineProperty(h.helper, 'sendToEndpoint', {value: async (endpoint, payload) => { sent.push([endpoint, payload]); return true; }});
@@ -231,6 +317,107 @@ test('a long pause keeps the overlay heartbeat and still sends paused seeks at o
   await h.overlay.sendProgressPayload('/progress', {...paused, position: 20000}, 'one');
   assert.equal(sent.length, 7);
   assert.equal(sent.at(-1).position, 20000, 'a seek during a long pause reaches the overlay at once');
+});
+
+test('an explicit small seek bypasses heartbeat deduplication without resending track metadata', async () => {
+  const h = load(source), sent = [];
+  const { overlay, helper } = h;
+  overlay.init();
+  overlay.isConnected = true;
+  overlay._receiverProtocol = 3;
+  Object.defineProperty(overlay, 'sendToEndpoint', {value: async (_endpoint, body) => { sent.push(body); return true; }});
+  const uri = h.player.data.item.uri;
+  const playing = {source: 'ivlyrics', trackUri: uri, position: 1000, isPlaying: true, currentTrack: {title: 'Fixture'}};
+  await overlay.sendProgressPayload('/progress', playing, uri);
+  h.player.dispatchEvent({type: 'onseek'});
+  const nudged = {...playing, position: 1110, currentTrack: null};
+  await overlay.sendProgressPayload('/progress', nudged, uri);
+  assert.deepEqual(sent.map(body => [body.position, body.currentTrack?.title]), [[1000, 'Fixture'], [1110, undefined]]);
+  assert.equal(overlay._lastProgressUri, uri);
+  assert.equal(helper._lastProgress, null);
+  overlay.destroy();
+  assert.equal(h.player.counts().onseek, 0);
+});
+
+test('a small paused seek without an event is sent, while a hidden playing clock stays on its heartbeat', async () => {
+  const h = load(source), sent = [];
+  h.overlay._receiverProtocol = 3;
+  h.overlay.sendToEndpoint = async (_endpoint, body) => { sent.push(body); return true; };
+  const uri = h.player.data.item.uri;
+  const paused = {source: 'ivlyrics', trackUri: uri, position: 1000, isPlaying: false};
+  await h.overlay.sendProgressPayload('/progress', paused, uri);
+  await h.overlay.sendProgressPayload('/progress', {...paused, position: 1110}, uri);
+  await h.overlay.sendProgressPayload('/progress', {...paused, position: 1110}, uri);
+  assert.deepEqual(sent.map(body => body.position), [1000, 1110]);
+
+  const start = h.clock.now;
+  for (let elapsed = 0; elapsed <= 3000; elapsed += 250) {
+    h.clock.now = start + elapsed;
+    await h.overlay.sendProgressPayload('/progress', {...paused, position: 1110 + elapsed}, uri, true);
+  }
+  assert.deepEqual(sent.slice(2).map(body => [body.position, body.isPlaying]), [[1110, false]]);
+});
+
+test('the progress worker retired with a connection cannot send ticks through its replacement', async () => {
+  const h = load(source), sent = [];
+  const { overlay } = h;
+  overlay.init();
+  overlay.isConnected = true;
+  const retiredTick = overlay._worker.onmessage;
+  overlay.isConnected = false;
+  overlay.isConnected = true;
+  overlay.buildProgressPayload = () => ({trackUri: 'fixture', payload: {position: 1000, isPlaying: true}});
+  overlay.sendProgressPayload = async (...args) => { sent.push(args); };
+  await retiredTick();
+  assert.equal(sent.length, 0);
+  await overlay._worker.onmessage();
+  assert.equal(sent.length, 1);
+  assert.equal(h.player.counts().onseek, 1);
+  overlay.destroy();
+  assert.equal(h.player.counts().onseek, 0);
+});
+
+test('a confirmed missing playback track never sends the old public item or its timings', async () => {
+  const h = load(source);
+  const previous = h.player.data.item;
+  h.setPlaybackUri('');
+  assert.equal(h.overlay.isStaleTrackSend(previous), true);
+  const progress = createOverlayProgress({
+    playback: {
+      getPlayerPlaybackSnapshot: () => ({uri: '', isPlaying: true, position: 1100, duration: 15000}),
+      resolveStablePlaybackTrack: () => ({...previous, name: 'Previous track'}),
+    },
+    getSpicetify: () => ({ Player: h.player }),
+    getOverlayProgressIsPlaying: () => true,
+  });
+  const { trackUri, payload } = progress.buildProgressPayload.call(h.overlay);
+  assert.equal(trackUri, '');
+  assert.deepEqual([payload.trackUri, payload.currentTrack, payload.isPlaying, payload.position, payload.duration],
+    [null, null, false, 0, 0]);
+});
+
+test('overlay visibility uses the playback snapshot and both ivLyrics fullscreen layouts', () => {
+  let pageFullscreen = false, portalFullscreen = false, hideOverlay = true, publicPlaying = true;
+  const document = {
+    getElementById: () => portalFullscreen ? {querySelector: () => ({})} : null,
+    body: {contains: () => true},
+    querySelector: () => pageFullscreen ? {} : null,
+  };
+  const isPlaying = createOverlayPlaybackVisibility({
+    document, getVisualSettings: () => ({'fullscreen-hide-overlay': hideOverlay}),
+    getStorageItem: () => null,
+    isPlayerPlaying: () => publicPlaying,
+  });
+  assert.equal(isPlaying({isPlaying: false}), false);
+  publicPlaying = false;
+  assert.equal(isPlaying({isPlaying: true}), true);
+  pageFullscreen = true;
+  assert.equal(isPlaying({isPlaying: true}), false);
+  pageFullscreen = false;
+  portalFullscreen = true;
+  assert.equal(isPlaying({isPlaying: true}), false);
+  hideOverlay = false;
+  assert.equal(isPlaying({isPlaying: true}), true);
 });
 
 test('probes are GET requests that back off while nothing answers and return sooner on focus', async () => {
@@ -334,12 +521,30 @@ test('a receipt without the delivered lyrics resends them, at most every five se
   h.overlay.handleReceipt({hasLyrics: true, lyricsTrackUri: 'zero'}, 'one');
   assert.equal(resends.length, 1, 'repeated receipts wait for the resend gap');
   h.clock.now += 5000;
-  h.overlay._lyricsSendActive = true;
+  h.overlay._activeLyricsSend = {generation: h.overlay._deliveryGeneration};
   h.overlay.handleReceipt({hasLyrics: true, lyricsTrackUri: 'zero'}, 'one');
   assert.equal(resends.length, 1, 'a delivery already in flight is not duplicated');
-  h.overlay._lyricsSendActive = false;
+  h.overlay._activeLyricsSend = null;
   h.overlay.handleReceipt({hasLyrics: true, lyricsTrackUri: 'zero'}, 'one');
   assert.equal(resends.length, 2);
+});
+
+test('receiver recovery for one song does not rate-limit missing lyrics after a track change', () => {
+  const h = load(source), resends = [];
+  h.overlay.init();
+  Object.defineProperty(h.overlay, 'resendWithNewOffset', {value: reason => resends.push(reason)});
+  const missingLyrics = {hasLyrics: false, lyricsTrackUri: null};
+  h.overlay._lastTrackInfo = {uri: 'one'};
+  h.overlay.lastDeliveredUri = 'one';
+  h.overlay.handleReceipt(missingLyrics, 'one');
+  assert.equal(resends.length, 1);
+
+  h.player.dispatchEvent({type:'songchange'});
+  h.overlay._lastTrackInfo = {uri: 'two'};
+  h.overlay.lastDeliveredUri = 'two';
+  h.overlay.handleReceipt(missingLyrics, 'two');
+  assert.equal(resends.length, 2);
+  h.overlay.destroy();
 });
 
 
@@ -356,7 +561,8 @@ test('helper reuses lifecycle methods without changing its own property descript
     '_runtimeGeneration', '_connectionRecoveryTimer', '_connectionRecoveryBootstrapTimer']) {
     assert.equal(Object.getOwnPropertyDescriptor(after.helper, name)?.writable, true, `${name} must remain independently writable`);
   }
-  if (baseline) assert.deepEqual(Object.getOwnPropertyNames(after.helper), Object.getOwnPropertyNames(load(baseline).helper));
+  if (baseline) assert.deepEqual(Object.getOwnPropertyNames(after.helper).filter(name => name !== '_removeProgressSeekListener'),
+    Object.getOwnPropertyNames(load(baseline).helper));
 });
 
 test('teardown retains the detached-player exception path and missing-remove-listener behavior', () => {

@@ -1,0 +1,619 @@
+/* Confirm Modal */
+.ivlyrics-marketplace-confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--iv-layer-internal-dialog);
+  backdrop-filter: blur(4px);
+  animation: ivlyricsSoftFadeIn var(--iv-motion-duration-medium) var(--iv-motion-ease-standard);
+}
+
+.ivlyrics-marketplace-confirm-modal {
+  background: var(--spice-card, #282828);
+  border-radius: 12px;
+  padding: 28px 32px 24px;
+  min-width: 320px;
+  max-width: 420px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  animation: ivlyricsSoftRiseIn var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis);
+}
+
+.ivlyrics-marketplace-confirm-message {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--spice-text, #fff);
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.ivlyrics-marketplace-confirm-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.ivlyrics-marketplace-confirm-btn {
+  padding: 8px 20px;
+  border-radius: 20px;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.ivlyrics-marketplace-confirm-btn:hover {
+  opacity: 0.85;
+}
+
+.ivlyrics-marketplace-confirm-btn:active {
+  transform: scale(0.97);
+}
+
+.ivlyrics-marketplace-confirm-btn-cancel {
+  background: rgba(var(--spice-rgb-text), 0.1);
+  color: var(--spice-text, #fff);
+}
+
+.ivlyrics-marketplace-confirm-btn-ok {
+  background: #e74c3c;
+  color: #fff;
+}
+
+.ivlyrics-marketplace-confirm-btn-warn {
+  background: #f59e0b;
+  color: #000;
+}
+
+/* Disclaimer Notice Banner */
+.ivlyrics-marketplace-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  margin: 0 0 16px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--spice-text, #fff);
+  opacity: 0.75;
+}
+
+.ivlyrics-marketplace-notice-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #f59e0b;
+}
+
+/* Disclaimer Modal */
+.ivlyrics-marketplace-disclaimer-modal {
+  max-width: 440px;
+  text-align: center;
+}
+
+.ivlyrics-marketplace-disclaimer-icon {
+  margin-bottom: 12px;
+}
+
+.ivlyrics-marketplace-disclaimer-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--spice-text, #fff);
+  margin-bottom: 12px;
+}
+
+.ivlyrics-marketplace-disclaimer-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  font-size: 13px;
+  color: var(--spice-text, #fff);
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.ivlyrics-marketplace-disclaimer-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #f59e0b;
+  cursor: pointer;
+}
+
+/* Marketplace navigation and direct URL install */
+.ivlyrics-marketplace-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.ivlyrics-marketplace-direct-add-btn {
+  min-height: 36px;
+  padding: 8px 14px;
+  border: 1px solid rgba(var(--spice-rgb-text), 0.16);
+  border-radius: var(--iv-radius-pill, 999px);
+  background: rgba(var(--spice-rgb-text), 0.09);
+  color: var(--spice-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ivlyrics-marketplace-direct-add-btn:hover:not(:disabled) {
+  background: rgba(var(--spice-rgb-text), 0.15);
+  border-color: rgba(var(--spice-rgb-text), 0.26);
+}
+
+.ivlyrics-marketplace-primary-tabs {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  min-height: 42px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(var(--spice-rgb-text), 0.1);
+}
+
+.ivlyrics-marketplace-primary-tab {
+  align-self: stretch;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: rgba(var(--spice-rgb-text), 0.58);
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ivlyrics-marketplace-primary-tab::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--spice-text);
+  opacity: 0;
+  transform: scaleX(0.5);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.ivlyrics-marketplace-primary-tab:hover,
+.ivlyrics-marketplace-primary-tab.active {
+  color: var(--spice-text);
+}
+
+.ivlyrics-marketplace-primary-tab.active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.ivlyrics-marketplace-primary-tab-count {
+  min-width: 19px;
+  height: 19px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--spice-rgb-text), 0.12);
+  color: inherit;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.ivlyrics-marketplace-direct-modal {
+  width: min(580px, calc(100vw - 32px));
+  max-width: 580px;
+  padding: 24px;
+  text-align: start;
+}
+
+.ivlyrics-marketplace-direct-heading {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-bottom: 16px;
+}
+
+.ivlyrics-marketplace-direct-heading .ivlyrics-marketplace-disclaimer-icon {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 15px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.23);
+}
+
+.ivlyrics-marketplace-direct-title {
+  margin: 0;
+  color: var(--spice-text);
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.ivlyrics-marketplace-direct-warning {
+  margin-bottom: 16px;
+  padding: 13px 14px;
+  border: 1px solid rgba(245, 158, 11, 0.24);
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--spice-text);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.ivlyrics-marketplace-direct-warning strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #fbbf24;
+  font-size: 13px;
+}
+
+.ivlyrics-marketplace-direct-warning p {
+  margin: 0;
+  opacity: 0.78;
+}
+
+.ivlyrics-marketplace-direct-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 9px;
+  color: var(--spice-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ivlyrics-marketplace-direct-field input {
+  width: 100%;
+  height: 42px;
+  padding: 0 13px;
+  border: 1px solid rgba(var(--spice-rgb-text), 0.17);
+  border-radius: var(--iv-radius-input, 10px);
+  outline: none;
+  background: rgba(var(--spice-rgb-text), 0.065);
+  color: var(--spice-text);
+  font-size: 13px;
+}
+
+.ivlyrics-marketplace-direct-field input:focus {
+  border-color: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.64);
+  box-shadow: 0 0 0 3px rgba(var(--spice-rgb-accent, 30, 215, 96), 0.15);
+}
+
+.ivlyrics-marketplace-direct-snapshot {
+  margin-bottom: 14px;
+  color: rgba(var(--spice-rgb-text), 0.5);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.ivlyrics-marketplace-direct-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 17px;
+  color: rgba(var(--spice-rgb-text), 0.82);
+  font-size: 12.5px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.ivlyrics-marketplace-direct-consent input {
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  flex: 0 0 auto;
+  accent-color: #f59e0b;
+}
+
+.ivlyrics-marketplace-direct-error {
+  margin: -5px 0 15px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  color: #fca5a5;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ivlyrics-marketplace-confirm-btn:disabled,
+.ivlyrics-marketplace-direct-add-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+/* Installed addon management */
+.ivlyrics-marketplace-installed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 80px;
+}
+
+.ivlyrics-marketplace-installed-card {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 94px;
+  padding: 15px 16px;
+  border: 1px solid rgba(var(--spice-rgb-text), 0.09);
+  border-radius: 14px;
+  background: rgba(var(--spice-rgb-card), 0.42);
+  animation: ivlyricsSoftRiseIn var(--iv-motion-duration-slow) var(--iv-motion-ease-emphasis) both;
+}
+
+.ivlyrics-marketplace-installed-card:hover {
+  border-color: rgba(var(--spice-rgb-text), 0.16);
+  background: rgba(var(--spice-rgb-card), 0.58);
+}
+
+.ivlyrics-marketplace-installed-card.has-error {
+  border-color: rgba(239, 68, 68, 0.22);
+}
+
+.ivlyrics-marketplace-installed-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: rgba(var(--spice-rgb-text), 0.07);
+  color: rgba(var(--spice-rgb-text), 0.55);
+}
+
+.ivlyrics-marketplace-installed-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ivlyrics-marketplace-installed-main {
+  min-width: 0;
+}
+
+.ivlyrics-marketplace-installed-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+}
+
+.ivlyrics-marketplace-installed-title-row h3 {
+  max-width: min(360px, 45vw);
+  margin: 0 3px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--spice-text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.ivlyrics-marketplace-source-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 21px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(var(--spice-rgb-text), 0.08);
+  color: rgba(var(--spice-rgb-text), 0.64);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.ivlyrics-marketplace-source-badge.is-direct {
+  background: rgba(59, 130, 246, 0.13);
+  color: #93c5fd;
+}
+
+.ivlyrics-marketplace-source-badge.is-missing {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+}
+
+.ivlyrics-marketplace-source-badge.is-error {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+}
+
+.ivlyrics-marketplace-installed-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 6px;
+  color: rgba(var(--spice-rgb-text), 0.48);
+  font-size: 11px;
+}
+
+.ivlyrics-marketplace-installed-meta span:not(:last-child)::after {
+  content: "·";
+  margin-inline-start: 12px;
+  opacity: 0.55;
+}
+
+.ivlyrics-marketplace-installed-warning {
+  margin: 7px 0 0;
+  color: #fca5a5;
+  font-size: 11px;
+}
+
+.ivlyrics-marketplace-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  margin-top: 7px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(var(--spice-rgb-text), 0.62);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.ivlyrics-marketplace-source-link:hover {
+  color: var(--spice-text);
+}
+
+.ivlyrics-marketplace-installed-remove {
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  border-radius: var(--iv-radius-pill, 999px);
+  background: rgba(239, 68, 68, 0.08);
+  color: #f87171;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ivlyrics-marketplace-installed-remove:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.34);
+}
+
+.ivlyrics-marketplace-installed-remove:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.ivlyrics-marketplace-installed-empty {
+  min-height: 270px;
+  padding: 40px 20px 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: rgba(var(--spice-rgb-text), 0.58);
+  text-align: center;
+}
+
+.ivlyrics-marketplace-installed-empty p {
+  max-width: 430px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.ivlyrics-marketplace-installed-empty-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--spice-rgb-text), 0.07);
+  color: rgba(var(--spice-rgb-text), 0.45);
+}
+
+.ivlyrics-marketplace-primary-tab:focus-visible,
+.ivlyrics-marketplace-direct-add-btn:focus-visible,
+.ivlyrics-marketplace-installed-remove:focus-visible,
+.ivlyrics-marketplace-source-link:focus-visible,
+.ivlyrics-marketplace-direct-consent input:focus-visible,
+.ivlyrics-marketplace-direct-field input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(var(--spice-rgb-accent, 30, 215, 96), 0.24);
+}
+
+@media (max-width: 760px) {
+  .ivlyrics-marketplace-container {
+    padding: 18px 16px;
+  }
+
+  .ivlyrics-marketplace-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .ivlyrics-marketplace-header-actions {
+    flex-basis: 100%;
+  }
+
+  .ivlyrics-marketplace-header-actions .ivlyrics-marketplace-search-wrapper {
+    flex: 1 1 auto;
+  }
+
+  .ivlyrics-marketplace-installed-card {
+    grid-template-columns: 46px minmax(0, 1fr);
+    align-items: start;
+    padding: 13px;
+  }
+
+  .ivlyrics-marketplace-installed-icon {
+    width: 46px;
+    height: 46px;
+  }
+
+  .ivlyrics-marketplace-installed-remove {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .ivlyrics-marketplace-installed-title-row h3 {
+    max-width: 65vw;
+  }
+}
+
+@media (max-width: 470px) {
+  .ivlyrics-marketplace-header-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ivlyrics-marketplace-direct-add-btn {
+    width: 100%;
+  }
+
+  .ivlyrics-marketplace-filter-tabs {
+    overflow-x: auto;
+    padding-bottom: 3px;
+  }
+
+  .ivlyrics-marketplace-direct-modal {
+    padding: 20px 17px;
+  }
+}
+
+/* Marketplace button active state */
+.lyrics-marketplace-button.active {
+  background: rgba(var(--spice-rgb-text), 0.2) !important;
+}
+

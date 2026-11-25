@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
+import { createAIRequest } from "../src/providers/ai/AIRequest.js";
 import test from 'node:test';
 
 const BASE = 'https://integrate.api.nvidia.com/v1';
@@ -20,9 +19,8 @@ function setup(responder, localStorage) {
             throw new Error('Resolver not found!');
         } } }
     };
-    const context = vm.createContext({ window, TypeError, URL, AbortSignal, AbortController, DOMException, Response, setTimeout, clearTimeout });
-    vm.runInContext(readFileSync(new URL('../AIRequest.js', import.meta.url), 'utf8'), context);
-    return { fetch: window.ivLyricsFetch, requests, get cosmosCalls() { return cosmosCalls; } };
+    const fetch = createAIRequest({ host: window, getSpicetify: () => window.Spicetify });
+    return { fetch, requests, get cosmosCalls() { return cosmosCalls; } };
 }
 
 function blockedDirectThen(reply) {
@@ -124,4 +122,42 @@ test('other provider requests that work directly keep their URL and transport', 
     assert.equal(await h.fetch(url, { method: 'POST' }), upstream);
     assert.equal(h.requests.length, 1);
     assert.equal(h.requests[0].url, url);
+});
+
+test('invalid or throwing diagnostics cannot prevent the Cosmos transport fallback', async () => {
+    for (const logger of [true, () => { throw new Error('Diagnostics hook failed'); }]) {
+        const host = {
+            __ivLyricsDebugLog: logger,
+            fetch: async () => { throw new TypeError('Failed to fetch'); },
+        };
+        let calls = 0;
+        const spicetify = { CosmosAsync: { request: async () => {
+            calls++;
+            return { status: 200, body: { answer: 'ok' } };
+        } } };
+        const request = createAIRequest({ host, getSpicetify: () => spicetify });
+        const response = await request('https://provider.example.test/v1/chat/completions');
+        assert.deepEqual(await response.json(), { answer: 'ok' });
+        assert.equal(calls, 1);
+    }
+});
+
+test('Cosmos fallback diagnostics avoid logging credentials from the request URL', async () => {
+    const logs = [];
+    const url = 'https://provider.example.test/v1/models/test:streamGenerateContent?alt=sse&key=fixture-secret';
+    const host = {
+        __ivLyricsDebugLog: (...args) => logs.push(args.join(' ')),
+        fetch: async () => { throw new TypeError('Failed to fetch'); },
+    };
+    const request = createAIRequest({ host, getSpicetify: () => ({ CosmosAsync: {
+        async request(_method, actualUrl) {
+            assert.equal(actualUrl, url);
+            return { status: 200, body: { answer: 'ok' } };
+        },
+    } }) });
+
+    assert.deepEqual(await (await request(url)).json(), { answer: 'ok' });
+    assert.equal(logs.length, 1);
+    assert.match(logs[0], /provider\.example\.test/);
+    assert.doesNotMatch(logs[0], /fixture-secret/);
 });

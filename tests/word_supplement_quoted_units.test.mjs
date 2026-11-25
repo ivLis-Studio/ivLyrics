@@ -1,11 +1,11 @@
+import { createFixtureWordSupplementService } from "./fixtures/word-supplement-service.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { createFuriganaConverter } from "../src/lyrics/furigana.mjs";
 
-const suppSource = readFileSync(new URL("../WordLevelSupplements.js", import.meta.url), "utf8");
-const managerSource = readFileSync(new URL("../AIAddonManager.js", import.meta.url), "utf8");
-const indexSource = readFileSync(new URL("../index.js", import.meta.url), "utf8");
+import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
+const managerSource = bundleInitializer(new URL("../src/providers/ai/AIAddonManager.js", import.meta.url));
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const DEBOUNCE = 350;
@@ -41,12 +41,7 @@ const loadSupplements = ({ convertImpl } = {}) => {
 			return new Promise((resolve, reject) => { glossResponders.push({ resolve, reject }); });
 		},
 	};
-	const context = vm.createContext({
-		window,
-		console: { log: () => {}, warn: () => {}, error: () => {} },
-		setTimeout, clearTimeout,
-	});
-	vm.runInContext(suppSource, context);
+	createFixtureWordSupplementService(window);
 	return { api: window.ivLyricsWordSupplements, glossCalls, glossResponders, convertedTexts };
 };
 
@@ -137,10 +132,8 @@ test("word gloss strips echoes with normalized or dropped quotes", async () => {
 });
 
 test("furigana kanji check keeps the 々 iteration mark with its word", () => {
-	const match = indexSource.match(/const kanjiRegex = (\/.*?\/);/);
-	assert.ok(match, "kanjiRegex found in index.js");
-	const kanjiRegex = eval(match[1]);
-	assert.equal(kanjiRegex.test("々"), true);
-	assert.equal(kanjiRegex.test("日"), true);
-	assert.equal(kanjiRegex.test("“"), false);
+	const { containsKanji } = createFuriganaConverter({ XMLHttpRequest: class {} });
+	assert.equal(containsKanji("々"), true);
+	assert.equal(containsKanji("日"), true);
+	assert.equal(containsKanji("“"), false);
 });

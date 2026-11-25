@@ -11,15 +11,13 @@ param(
 
 # --- Configuration ---
 $REPO = "ivLis-Studio/ivLyrics"
-$LEGACY_TARGET_DIRS = @(
-    "$env:LOCALAPPDATA\spicetify\CustomApps",
-    "$env:APPDATA\spicetify\CustomApps"
-)
-$TARGET_DIR = $LEGACY_TARGET_DIRS[0]
 $FINAL_APP_NAME = "ivLyrics"
 $PROXY_URL = "https://ivlis.kr/ivLyrics/proxy.php"
 $MAX_RETRIES = 3
+$METADATA_TIMEOUT = 20
+$ARCHIVE_TIMEOUT = 180
 $SCRIPT_VERSION = "2.1.3"
+$RELEASE_VERSION_PATTERN = '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
 
 # --- Colors ---
 $script:Colors = @{
@@ -31,10 +29,6 @@ $script:Colors = @{
     White   = "White"
     Magenta = "Magenta"
 }
-
-# --- State ---
-$script:IsUpdate = $false
-$script:CurrentVersion = $null
 
 # --- Helper Functions ---
 function Write-Colored {
@@ -170,9 +164,10 @@ function Write-Footer {
 }
 
 function Get-CurrentVersion {
-    $versionFile = Join-Path $TARGET_DIR "$FINAL_APP_NAME\version.txt"
-    if (Test-Path $versionFile) {
-        return (Get-Content $versionFile -Raw).Trim()
+    param([string]$AppDir)
+    $versionFile = Join-Path $AppDir "version.txt"
+    if (Test-Path -LiteralPath $versionFile -PathType Leaf) {
+        return ([string](Get-Content -LiteralPath $versionFile -Raw -ErrorAction Stop)).Trim()
     }
     return $null
 }
@@ -180,6 +175,23 @@ function Get-CurrentVersion {
 function Get-NormalizedVersion {
     param([AllowNull()][string]$Version)
     return (($Version -replace '\s', '') -replace '^[vV]', '')
+}
+
+function Test-IvLyricsVersionIsNewer {
+    param([string]$InstalledVersion, [string]$ReleaseVersion)
+    $installedParts = $InstalledVersion.Split('.')
+    $releaseParts = $ReleaseVersion.Split('.')
+    for ($index = 0; $index -lt 3; $index++) {
+        $installed = $installedParts[$index]
+        $remote = $releaseParts[$index]
+        if ($installed.Length -ne $remote.Length) {
+            return $installed.Length -gt $remote.Length
+        }
+        if ($installed -cne $remote) {
+            return [string]::CompareOrdinal($installed, $remote) -gt 0
+        }
+    }
+    return $false
 }
 
 function Test-SpicetifyInstalled {
@@ -288,16 +300,34 @@ function Remove-IvLyricsInstallerTemporaryPath {
 }
 
 function Test-Installation {
-    $appDir = Join-Path $TARGET_DIR $FINAL_APP_NAME
-    $requiredFiles = @("index.js", "manifest.json")
+    param([string]$AppDir, [string]$Version)
 
-    foreach ($file in $requiredFiles) {
-        $filePath = Join-Path $appDir $file
-        if (-not (Test-Path $filePath)) {
+    try {
+        $manifestPath = Join-Path $AppDir "manifest.json"
+        if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
             return $false
         }
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        if ($manifest.name -ne $FINAL_APP_NAME -or (Get-NormalizedVersion (Get-CurrentVersion $AppDir)) -ne $Version) {
+            return $false
+        }
+
+        $root = [IO.Path]::GetFullPath($AppDir).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+        $requiredFiles = @("index.js", "style.css") + @($manifest.subfiles) + @($manifest.subfiles_extension)
+        foreach ($file in $requiredFiles) {
+            if ($null -eq $file) { continue }
+            $filePath = [IO.Path]::GetFullPath((Join-Path $AppDir $file))
+            if (-not $filePath.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -or
+                -not (Test-Path -LiteralPath $filePath -PathType Leaf) -or
+                (Get-Item -LiteralPath $filePath -ErrorAction Stop).Length -eq 0) {
+                return $false
+            }
+        }
+        return $true
     }
-    return $true
+    catch {
+        return $false
+    }
 }
 
 function ConvertFrom-IvLyricsInstallerTerminalText {
@@ -412,42 +442,17 @@ function Get-IvLyricsInstallerPathEntry {
     ) | Select-Object -First 1
 }
 
-function Initialize-IvLyricsInstallerNativeMethods {
-    if ($null -ne ("IvLyrics.InstallerNativeMethods" -as [type])) {
-        return
-    }
-    Add-Type -TypeDefinition @"
-using System.Runtime.InteropServices;
-
-namespace IvLyrics {
-    public static class InstallerNativeMethods {
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "RemoveDirectoryW")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool RemoveDirectory(string path);
-    }
-}
-"@
-}
-
 function Remove-IvLyricsInstallerPath {
     param([string]$Path)
     $entry = Get-IvLyricsInstallerPathEntry -Path $Path
-    if ($null -eq $entry) {
-        return
+    if ($null -ne $entry) {
+        # Directory.Delete removes directory links without traversing their targets.
+        [IO.Directory]::Delete($entry.FullName, $true)
     }
-    if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) {
-        Initialize-IvLyricsInstallerNativeMethods
-        if (-not [IvLyrics.InstallerNativeMethods]::RemoveDirectory([IO.Path]::GetFullPath($Path))) {
-            $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-            throw "Could not remove directory link '$Path' (error $errorCode)."
-        }
-        return
-    }
-    Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
 }
 
 function Register-IvLyricsUpdaterProtocol {
-    $appDir = Join-Path $TARGET_DIR $FINAL_APP_NAME
+    param([string]$AppDir)
     $registerScript = Join-Path $appDir "updater\windows\register-updater-protocol.ps1"
 
     if (-not (Test-Path -LiteralPath $registerScript)) {
@@ -497,6 +502,317 @@ function Invoke-WithRetry {
     throw $lastError
 }
 
+function Get-IvLyricsRelease {
+    try {
+        $release = Invoke-WithRetry -MaxRetries $MAX_RETRIES -ScriptBlock {
+            $response = Invoke-RestMethod -Uri "https://api.github.com/repos/$REPO/releases/latest" -TimeoutSec $METADATA_TIMEOUT -ErrorAction Stop
+            $archive = @($response.assets | Where-Object { $_.name -eq "ivLyrics.zip" }) | Select-Object -First 1
+            $checksum = @($response.assets | Where-Object { $_.name -eq "ivLyrics.zip.sha256" }) | Select-Object -First 1
+            if (-not $archive.browser_download_url -or -not $checksum.browser_download_url -or
+                (Get-NormalizedVersion $response.tag_name) -notmatch $RELEASE_VERSION_PATTERN) {
+                throw "Verified release archive is unavailable"
+            }
+            return @{
+                Url         = $archive.browser_download_url
+                ChecksumUrl = $checksum.browser_download_url
+                Version     = $response.tag_name
+            }
+        }
+        Write-SubStep "Found version: $($release.Version) (via GitHub)" "success"
+        return $release
+    }
+    catch {
+        Write-SubStep "GitHub unavailable, trying proxy..." "warning"
+    }
+
+    return Get-IvLyricsProxyRelease
+}
+
+function Get-IvLyricsProxyRelease {
+    param([string]$ExpectedVersion, [string]$ExpectedChecksum)
+
+    $release = Invoke-WithRetry -MaxRetries $MAX_RETRIES -ScriptBlock {
+        $response = Invoke-RestMethod -Uri "$PROXY_URL`?action=version" -TimeoutSec $METADATA_TIMEOUT -ErrorAction Stop
+        $version = Get-NormalizedVersion $response.tag_name
+        if (-not $response.zip_available -or "$($response.sha256)" -notmatch '^[a-fA-F0-9]{64}$' -or
+            $version -notmatch $RELEASE_VERSION_PATTERN) {
+            throw "Verified release archive is unavailable from the proxy"
+        }
+        if ($ExpectedVersion -and $version -ne $ExpectedVersion) {
+            throw "Proxy offers $version, but GitHub selected $ExpectedVersion."
+        }
+        $checksum = ([string]$response.sha256).ToLowerInvariant()
+        if ($ExpectedChecksum -and $checksum -ne $ExpectedChecksum) {
+            throw "Proxy checksum does not match the GitHub release."
+        }
+        return @{
+            Url      = "$PROXY_URL`?action=download"
+            Checksum = $checksum
+            Version  = $response.tag_name
+        }
+    }
+    Write-SubStep "Found version: $($release.Version) (via proxy)" "success"
+    return $release
+}
+
+function Read-IvLyricsReleaseChecksum {
+    param([string]$Url, [string]$ChecksumPath)
+
+    Invoke-WithRetry -MaxRetries $MAX_RETRIES -ScriptBlock {
+        Remove-Item -LiteralPath $ChecksumPath -Force -ErrorAction SilentlyContinue
+        $ProgressPreference = "SilentlyContinue"
+        Invoke-WebRequest -Uri $Url -OutFile $ChecksumPath -TimeoutSec $METADATA_TIMEOUT -UseBasicParsing -ErrorAction Stop
+        $checksumText = Get-Content -LiteralPath $ChecksumPath -Raw -ErrorAction Stop
+        $checksumMatch = [regex]::Match($checksumText, '\A([a-fA-F0-9]{64})(?=\s|\z)')
+        if (-not $checksumMatch.Success) {
+            throw "Release checksum file is invalid"
+        }
+        return $checksumMatch.Groups[1].Value.ToLowerInvariant()
+    }
+}
+
+function Save-IvLyricsReleaseArchive {
+    param([string]$Url, [string]$ArchivePath, [string]$ExpectedChecksum)
+
+    if ($ExpectedChecksum -notmatch '^[a-f0-9]{64}$') {
+        throw "Release checksum is missing or invalid"
+    }
+
+    Invoke-WithRetry -MaxRetries $MAX_RETRIES -ScriptBlock {
+        for ($i = 0; $i -le 80; $i += 20) {
+            Write-ProgressBar $i
+            Start-Sleep -Milliseconds 50
+        }
+        Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
+        $ProgressPreference = "SilentlyContinue"
+        Invoke-WebRequest -Uri $Url -OutFile $ArchivePath -TimeoutSec $ARCHIVE_TIMEOUT -UseBasicParsing -ErrorAction Stop
+        if (-not (Test-Path -LiteralPath $ArchivePath -PathType Leaf) -or
+            (Get-Item -LiteralPath $ArchivePath).Length -lt 1000) {
+            throw "Download failed or file too small"
+        }
+
+        if ((Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256 -ErrorAction Stop).Hash -ine $ExpectedChecksum) {
+            throw "Release checksum verification failed"
+        }
+    }
+}
+
+function Expand-IvLyricsRelease {
+    param([hashtable]$Release, [string]$Destination)
+
+    $tempRoot = Join-Path (Split-Path -Parent $Destination) "download"
+    try {
+        New-Item -ItemType Directory -Path $tempRoot -ErrorAction Stop | Out-Null
+        $archivePath = Join-Path $tempRoot "ivLyrics.zip"
+        $checksumPath = Join-Path $tempRoot "ivLyrics.zip.sha256"
+        $checksum = $Release.Checksum
+        try {
+            if ($Release.ChecksumUrl) {
+                $checksum = Read-IvLyricsReleaseChecksum -Url $Release.ChecksumUrl -ChecksumPath $checksumPath
+            }
+            Save-IvLyricsReleaseArchive -Url $Release.Url -ArchivePath $archivePath -ExpectedChecksum $checksum
+        }
+        catch {
+            if (-not $Release.ChecksumUrl) { throw }
+            Write-SubStep "GitHub archive download failed, trying proxy..." "warning"
+            $mirror = Get-IvLyricsProxyRelease -ExpectedVersion (Get-NormalizedVersion $Release.Version) -ExpectedChecksum $checksum
+            Save-IvLyricsReleaseArchive -Url $mirror.Url -ArchivePath $archivePath -ExpectedChecksum $mirror.Checksum
+        }
+        Write-ProgressBar 100
+        Write-Host ""
+        Write-SubStep "Download complete" "success"
+
+        Expand-Archive -LiteralPath $archivePath -DestinationPath $Destination -Force -ErrorAction Stop
+        $appDir = Join-Path $Destination $FINAL_APP_NAME
+        if (-not (Test-Path -LiteralPath $appDir -PathType Container)) {
+            $legacyDir = @(Get-ChildItem -LiteralPath $Destination -Directory -ErrorAction Stop)
+            if ($legacyDir.Count -ne 1) {
+                throw "Could not find the ivLyrics directory in the archive"
+            }
+            $appDir = $legacyDir[0].FullName
+        }
+        if (-not (Test-Installation -AppDir $appDir -Version (Get-NormalizedVersion $Release.Version))) {
+            throw "The archive is missing required files or its version does not match $($Release.Version)."
+        }
+        Write-SubStep "Extracted release verified" "success"
+        return $appDir
+    }
+    finally {
+        Remove-IvLyricsInstallerTemporaryPath -Path $tempRoot
+    }
+}
+
+function Invoke-IvLyricsSpicetify {
+    param([string[]]$Arguments)
+    $result = Invoke-IvLyricsSpicetifyCommand -Arguments $Arguments
+    $output = $result.Output -join [Environment]::NewLine
+    # Spicetify can skip a custom app and still report success.
+    $appRejected = $Arguments[-1] -eq "apply" -and (
+        $output.Contains("Spotify version mismatch with Spicetify.") -or
+        $output.Contains('Custom app "' + $FINAL_APP_NAME + '" not found') -or
+        $output.Contains('Custom app "' + $FINAL_APP_NAME + '" does not have index.js')
+    )
+    if ($result.ExitCode -ne 0 -or $appRejected) {
+        throw "spicetify $($Arguments -join ' ') failed: $output"
+    }
+    return $result.Output
+}
+
+function Stop-IvLyricsSpotify {
+    if (-not (Get-Process -Name "Spotify" -ErrorAction SilentlyContinue)) {
+        Write-SubStep "Spotify is not running" "success"
+        return
+    }
+    Write-SubStep "Spotify is running, closing..." "warning"
+    Stop-Process -Name "Spotify" -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    if (Get-Process -Name "Spotify" -ErrorAction SilentlyContinue) {
+        throw "Could not close Spotify. Close it and retry."
+    }
+    Write-SubStep "Spotify closed" "success"
+}
+
+function Test-IvLyricsRegistered {
+    $configuredApps = @(
+        Invoke-IvLyricsSpicetify -Arguments @("config", "custom_apps") |
+            ForEach-Object { ConvertFrom-IvLyricsInstallerTerminalText -Value $_ }
+    ) -join '|'
+    return ($configuredApps -split '\|') -contains $FINAL_APP_NAME
+}
+
+function Set-IvLyricsRegistration {
+    param([bool]$Registered)
+    $argument = if ($Registered) { $FINAL_APP_NAME } else { "$FINAL_APP_NAME-" }
+    $null = Invoke-IvLyricsSpicetify -Arguments @("config", "custom_apps", $argument)
+    if ((Test-IvLyricsRegistered) -ne $Registered) {
+        throw "The ivLyrics registration change was not saved in the Spicetify config."
+    }
+}
+
+function Save-IvLyricsInstallState {
+    param([string]$Stage, [bool]$HadApp, [bool]$Registered)
+    $pending = Join-Path $Stage "before.next"
+    [IO.File]::WriteAllText($pending, "$([int]$HadApp) $([int]$Registered)")
+    [IO.File]::Move($pending, (Join-Path $Stage "before"))
+}
+
+function Complete-IvLyricsInstallRecovery {
+    param([string]$Stage, [string]$AppDir, [switch]$Restart)
+    $entry = Get-IvLyricsInstallerPathEntry -Path $Stage
+    if ($null -eq $entry) { return }
+    if (-not $entry.PSIsContainer -or ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw "Invalid installer recovery directory: $Stage"
+    }
+
+    $state = Join-Path $Stage "before"
+    $previous = Join-Path $Stage "previous"
+    $rejected = Join-Path $Stage "rejected"
+    try {
+        if ([IO.File]::Exists($state) -and -not [IO.File]::Exists((Join-Path $Stage "committed"))) {
+            if ([IO.File]::ReadAllText($state) -notmatch '\A([01]) ([01])\r?\n?\z') {
+                throw "Invalid installer recovery record"
+            }
+            $hadApp = $Matches[1] -eq '1'
+            $registered = $Matches[2] -eq '1'
+            $applyStarted = [IO.File]::Exists((Join-Path $Stage "apply-started"))
+            if ($Restart -and $applyStarted) { Stop-IvLyricsSpotify }
+
+            $current = Get-IvLyricsInstallerPathEntry -Path $AppDir
+            if ($null -ne (Get-IvLyricsInstallerPathEntry -Path $previous)) {
+                if ($null -ne $current) { [IO.Directory]::Move($AppDir, $rejected) }
+                [IO.Directory]::Move($previous, $AppDir)
+            }
+            elseif ($hadApp) {
+                if ($null -eq $current) { throw "The previous app directory is missing" }
+            }
+            elseif ($null -ne $current -and -not [IO.Directory]::Exists((Join-Path $Stage "incoming"))) {
+                [IO.Directory]::Move($AppDir, $rejected)
+            }
+
+            if ([IO.File]::Exists((Join-Path $Stage "registration-started"))) {
+                Set-IvLyricsRegistration -Registered $registered
+            }
+            if ($applyStarted) { $null = Invoke-IvLyricsSpicetify -Arguments @("-n", "apply") }
+        }
+    }
+    catch {
+        throw "Could not finish restoration. Recovery files: $Stage. $($_.Exception.Message)"
+    }
+
+    # Removing each link explicitly preserves its external target.
+    Remove-IvLyricsInstallerPath -Path $previous
+    Remove-IvLyricsInstallerPath -Path $rejected
+    Remove-IvLyricsInstallerTemporaryPath -Path $Stage
+    if (Test-Path -LiteralPath $Stage) { throw "Could not remove the completed recovery files at $Stage." }
+}
+
+function Invoke-IvLyricsInstallationApply {
+    param([string]$Stage, [bool]$Registered, [bool]$IsUpdate)
+
+    Write-Section "CONFIGURING"
+    Write-Step 7 7 "Applying Spicetify configuration..." "running"
+    if (-not $Registered) {
+        [IO.File]::WriteAllText((Join-Path $Stage "registration-started"), "")
+        Set-IvLyricsRegistration -Registered $true
+    }
+    Write-SubStep "Custom app registered" "success"
+
+    [IO.File]::WriteAllText((Join-Path $Stage "apply-started"), "")
+    try {
+        $null = Invoke-IvLyricsSpicetify -Arguments @("-n", "apply")
+    }
+    catch {
+        if ($IsUpdate) { throw }
+        $null = Invoke-IvLyricsSpicetify -Arguments @("-n", "auto")
+        $null = Invoke-IvLyricsSpicetify -Arguments @("-n", "apply")
+    }
+
+    [IO.File]::WriteAllText((Join-Path $Stage "committed"), "")
+    Write-SubStep "Spicetify applied" "success"
+}
+
+function Repair-IvLyricsRegistration {
+    param([string]$Stage, [string]$AppDir)
+    Stop-IvLyricsSpotify
+    New-Item -ItemType Directory -Path $Stage -ErrorAction Stop | Out-Null
+    try {
+        Save-IvLyricsInstallState -Stage $Stage -HadApp $true -Registered $false
+        Invoke-IvLyricsInstallationApply -Stage $Stage -Registered $false -IsUpdate $true
+    }
+    finally {
+        Complete-IvLyricsInstallRecovery -Stage $Stage -AppDir $AppDir
+    }
+    Write-SubStep "Spicetify registration repaired" "success"
+}
+
+function Install-IvLyricsApp {
+    param([hashtable]$Release, [string]$Stage, [string]$AppDir, [bool]$IsUpdate)
+
+    # Keep the staged payload and the old directory on the CustomApps volume.
+    New-Item -ItemType Directory -Path $Stage -ErrorAction Stop | Out-Null
+    try {
+        $payload = Expand-IvLyricsRelease -Release $Release -Destination (Join-Path $Stage "extracted")
+        $incoming = Join-Path $Stage "incoming"
+        [IO.Directory]::Move($payload, $incoming)
+        $original = Get-IvLyricsInstallerPathEntry -Path $AppDir
+        if ($null -ne $original -and -not $original.PSIsContainer) {
+            throw "The configured ivLyrics path is not a directory: $AppDir"
+        }
+
+        $registered = Test-IvLyricsRegistered
+        Stop-IvLyricsSpotify
+        Save-IvLyricsInstallState -Stage $Stage -HadApp ($null -ne $original) -Registered $registered
+        if ($null -ne $original) {
+            [IO.Directory]::Move($AppDir, (Join-Path $Stage "previous"))
+        }
+        [IO.Directory]::Move($incoming, $AppDir)
+        Invoke-IvLyricsInstallationApply -Stage $Stage -Registered $registered -IsUpdate $IsUpdate
+    }
+    finally {
+        Complete-IvLyricsInstallRecovery -Stage $Stage -AppDir $AppDir
+    }
+}
+
 # --- Handle Command Line Arguments ---
 if ($FunctionsOnly) {
     return
@@ -519,19 +835,19 @@ Write-Logo
 Write-Section "CHECKING REQUIREMENTS"
 Write-Step 1 7 "Checking network connectivity..." "running"
 
-if (-not (Test-NetworkConnection)) {
-    Write-SubStep "No network connection!" "error"
-    Write-Host ""
-    Write-Colored "  Please check your internet connection and try again." $Colors.Error
-    Write-Host ""
-    exit 1
+$networkAvailable = Test-NetworkConnection
+if ($networkAvailable) {
+    Write-SubStep "Network connected" "success"
 }
-Write-SubStep "Network connected" "success"
+else {
+    Write-SubStep "No network connection!" "warning"
+}
 
 # Step 2: Check Spicetify
 Write-Step 2 7 "Checking Spicetify installation..." "running"
 
 if (-not (Test-SpicetifyInstalled)) {
+    if (-not $networkAvailable) { exit 1 }
     Write-SubStep "Spicetify is not installed!" "warning"
     Write-Host ""
     Write-Colored "  Spicetify is required to use ivLyrics." $Colors.Warning
@@ -563,15 +879,6 @@ if (-not (Test-SpicetifyInstalled)) {
             if (Test-SpicetifyInstalled) {
                 Write-Host ""
                 Write-SubStep "Spicetify installed successfully!" "success"
-
-                # Close Spotify if it was opened during Spicetify installation
-                Start-Sleep -Seconds 2
-                $spotifyAfterInstall = Get-Process -Name "Spotify" -ErrorAction SilentlyContinue
-                if ($spotifyAfterInstall) {
-                    Write-SubStep "Closing Spotify opened by Spicetify..." "info"
-                    Stop-Process -Name "Spotify" -Force -ErrorAction SilentlyContinue
-                    Start-Sleep -Seconds 1
-                }
             }
             else {
                 Write-Host ""
@@ -604,281 +911,97 @@ else {
     Write-SubStep "Spicetify found" "success"
 }
 
-# Resolve the install directory from the active Spicetify config. Do this only
-# after Spicetify is available, and reuse the result for the entire installation.
+# Step 3: Resolve the active Spicetify profile
+Write-Step 3 7 "Finding the active Spicetify app directory..." "running"
 try {
-    $TARGET_DIR = Get-SpicetifyInstallerCustomAppsDir
-    Write-SubStep "Using Spicetify app directory: $TARGET_DIR" "info"
+    $targetDir = Get-SpicetifyInstallerCustomAppsDir
+    Write-SubStep "Using Spicetify app directory: $targetDir" "success"
 }
 catch {
-    Write-SubStep "Could not find the active Spicetify config directory" "error"
-    Write-Colored "  $($_.Exception.Message)" $Colors.Error
-    Write-Colored "  Run 'spicetify -c' and verify that it prints a valid config-xpui.ini path." $Colors.Warning
-    Write-Host ""
+    Write-SubStep "Could not locate the active config with 'spicetify -c'." "error"
+    Write-SubStep $_.Exception.Message "error"
     exit 1
 }
 
-# Check if this is an update after the active app directory has been resolved.
-$script:CurrentVersion = Get-CurrentVersion
-$script:IsUpdate = $null -ne $script:CurrentVersion
-
-$modeText = if ($IsUpdate) { "UPDATING" } else { "INSTALLING" }
-$modeColor = if ($IsUpdate) { $Colors.Warning } else { $Colors.Success }
-
-Write-Host ""
-Write-Colored "                    [ $modeText ]" $modeColor
-if ($IsUpdate) {
-    Write-Colored "              Current version: $CurrentVersion" $Colors.Muted
-}
-Write-Host ""
-
-# Step 3: Close Spotify
-Write-Step 3 7 "Checking Spotify process..." "running"
-
-$spotifyProcesses = Get-Process -Name "Spotify" -ErrorAction SilentlyContinue
-if ($spotifyProcesses) {
-    Write-SubStep "Spotify is running, closing..." "warning"
-    Stop-Process -Name "Spotify" -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-    Write-SubStep "Spotify closed" "success"
-}
-else {
-    Write-SubStep "Spotify is not running" "success"
-}
-
-# Step 4: Check target directory
-Write-Step 4 7 "Checking target directory..." "running"
-
-if (-not (Test-Path $TARGET_DIR)) {
-    Write-SubStep "Creating directory..." "info"
-    New-Item -Path $TARGET_DIR -ItemType Directory -Force | Out-Null
-}
-Write-SubStep "Directory ready" "success"
-
-# Step 5: Fetch version info
-Write-Section "DOWNLOADING"
-Write-Step 5 7 "Fetching latest version..." "running"
-
-$DOWNLOAD_URL = $null
-$VERSION_TAG = "unknown"
-$EXPECTED_SHA256 = $null
-$CHECKSUM_URL = $null
-
+$lock = $null
 try {
-    $versionResult = Invoke-WithRetry -MaxRetries $MAX_RETRIES -ScriptBlock {
-        $response = Invoke-RestMethod -Uri "https://api.github.com/repos/$REPO/releases/latest" -ErrorAction Stop
-        $archive = @($response.assets | Where-Object { $_.name -eq "ivLyrics.zip" }) | Select-Object -First 1
-        $checksum = @($response.assets | Where-Object { $_.name -eq "ivLyrics.zip.sha256" }) | Select-Object -First 1
-        if (-not $archive -or -not $checksum) {
-            throw "Verified release archive is unavailable"
-        }
-        return @{
-            Url         = $archive.browser_download_url
-            ChecksumUrl = $checksum.browser_download_url
-            Version     = $response.tag_name
-            Source      = "github"
-        }
-    }
-
-    $DOWNLOAD_URL = $versionResult.Url
-    $CHECKSUM_URL = $versionResult.ChecksumUrl
-    $VERSION_TAG = $versionResult.Version
-    Write-SubStep "Found version: $VERSION_TAG (via GitHub)" "success"
-}
-catch {
-    Write-SubStep "GitHub unavailable, trying proxy..." "warning"
-
+    # Step 4: Lock the active installation until its files and config agree.
+    Write-Step 4 7 "Checking target directory..." "running"
+    New-Item -ItemType Directory -Path $targetDir -Force -ErrorAction Stop | Out-Null
+    $lockPath = Join-Path $targetDir ".ivLyrics-install.lock"
     try {
-        $versionResult = Invoke-WithRetry -MaxRetries $MAX_RETRIES -ScriptBlock {
-            $response = Invoke-RestMethod -Uri "$PROXY_URL`?action=version" -TimeoutSec 10 -ErrorAction Stop
-
-            if ($response.zip_available -and "$($response.sha256)" -match '^[A-Fa-f0-9]{64}$') {
-                return @{
-                    Url      = "$PROXY_URL`?action=download"
-                    Checksum = "$($response.sha256)".ToLowerInvariant()
-                    Version  = $response.tag_name
-                    Source   = "proxy"
-                }
-            }
-            throw "Zip not available"
-        }
-
-        $DOWNLOAD_URL = $versionResult.Url
-        $EXPECTED_SHA256 = $versionResult.Checksum
-        $VERSION_TAG = $versionResult.Version
-        Write-SubStep "Found version: $VERSION_TAG (via proxy)" "success"
+        $lock = [IO.FileStream]::new(
+            $lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite,
+            [IO.FileShare]::None, 4096, [IO.FileOptions]::DeleteOnClose
+        )
     }
     catch {
-        Write-Step 5 7 "Failed to fetch version info" "error"
-        Write-SubStep "Could not connect after $MAX_RETRIES attempts" "error"
-        exit 1
+        throw "Could not lock the active ivLyrics installation at $lockPath. $($_.Exception.Message)"
     }
-}
+    Write-SubStep "Directory ready" "success"
 
-# Check if already up to date
-$currentVersionNormalized = Get-NormalizedVersion -Version $CurrentVersion
-$latestVersionNormalized = Get-NormalizedVersion -Version $VERSION_TAG
-if ([string]::IsNullOrWhiteSpace($latestVersionNormalized)) {
-    Write-SubStep "Latest version is invalid" "error"
-    exit 1
-}
-
-if ($IsUpdate -and $currentVersionNormalized -eq $latestVersionNormalized -and -not $Force) {
-    Write-Host ""
-    Write-Colored "  Already up to date! (v$latestVersionNormalized)" $Colors.Success
-    Write-Colored "  Use -Force to reinstall anyway." $Colors.Muted
-    Write-Host ""
-    Write-SubStep "Checking updater protocol..." "info"
-    if (-not (Register-IvLyricsUpdaterProtocol)) {
-        Write-Colored "  The active Spicetify app directory could not be updated." $Colors.Error
-        exit 1
+    $appDir = Join-Path $targetDir $FINAL_APP_NAME
+    $stage = Join-Path $targetDir ".ivLyrics-install.transaction"
+    if ($null -ne (Get-IvLyricsInstallerPathEntry -Path $stage)) {
+        Complete-IvLyricsInstallRecovery -Stage $stage -AppDir $appDir -Restart
+        Write-SubStep "Recovered interrupted ivLyrics installation" "success"
+    }
+    if (-not $networkAvailable) { exit 1 }
+    $currentVersion = Get-CurrentVersion $appDir
+    $isUpdate = -not [string]::IsNullOrWhiteSpace($currentVersion)
+    $mode = if ($isUpdate) { "UPDATING" } else { "INSTALLING" }
+    $modeColor = if ($isUpdate) { $Colors.Warning } else { $Colors.Success }
+    Write-Colored "                    [ $mode ]" $modeColor
+    if ($isUpdate) {
+        Write-Colored "              Current version: $currentVersion" $Colors.Muted
     }
     Write-Host ""
-    exit 0
-}
 
-# Step 6: Download and extract
-Write-Step 6 7 "Downloading ivLyrics..." "running"
-
-$TEMP_ROOT = $null
-$TEMP_ZIP = $null
-$TEMP_CHECKSUM = $null
-$TEMP_EXTRACT = $null
-
-try {
-    $TEMP_ROOT = Join-Path (Get-IvLyricsInstallerTempDirectory) (
-        "ivLyrics_install_" + [Guid]::NewGuid().ToString("N")
-    )
-    New-Item -ItemType Directory -Path $TEMP_ROOT -Force -ErrorAction Stop | Out-Null
-    $TEMP_ZIP = Join-Path $TEMP_ROOT "ivLyrics_latest.zip"
-    $TEMP_CHECKSUM = Join-Path $TEMP_ROOT "ivLyrics_latest.zip.sha256"
-    $TEMP_EXTRACT = Join-Path $TEMP_ROOT "ivLyrics_extract"
-
-    # Download with retry
-    Invoke-WithRetry -MaxRetries $MAX_RETRIES -ScriptBlock {
-        # Progress simulation
-        for ($i = 0; $i -le 80; $i += 20) {
-            Write-ProgressBar $i
-            Start-Sleep -Milliseconds 50
-        }
-
-        $progressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -Uri $DOWNLOAD_URL -OutFile $TEMP_ZIP -UseBasicParsing -ErrorAction Stop
-
-        if (-not (Test-Path -LiteralPath $TEMP_ZIP -PathType Leaf) -or
-            (Get-Item -LiteralPath $TEMP_ZIP).Length -lt 1000) {
-            throw "Download failed or file too small"
-        }
-
-        if ($CHECKSUM_URL) {
-            Invoke-WebRequest `
-                -Uri $CHECKSUM_URL `
-                -OutFile $TEMP_CHECKSUM `
-                -UseBasicParsing `
-                -ErrorAction Stop
-
-            $checksumText = Get-Content -LiteralPath $TEMP_CHECKSUM -Raw -ErrorAction Stop
-            $checksumMatch = [regex]::Match($checksumText, '(?i)\b[a-f0-9]{64}\b')
-            if (-not $checksumMatch.Success) {
-                throw "Release checksum file is invalid"
-            }
-            $EXPECTED_SHA256 = $checksumMatch.Value.ToLowerInvariant()
-        }
-        if ($EXPECTED_SHA256 -notmatch '^[a-f0-9]{64}$') {
-            throw "Release checksum is missing or invalid"
-        }
-        $actualSha256 = (Get-FileHash -LiteralPath $TEMP_ZIP -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($actualSha256 -ne $EXPECTED_SHA256) {
-            throw "Release checksum verification failed"
-        }
+    # Step 5: Fetch version info
+    Write-Section "DOWNLOADING"
+    Write-Step 5 7 "Fetching latest version..." "running"
+    $release = Get-IvLyricsRelease
+    $latestVersion = Get-NormalizedVersion $release.Version
+    $installedVersion = Get-NormalizedVersion $currentVersion
+    if (-not $Force -and $installedVersion -match $RELEASE_VERSION_PATTERN -and
+        (Test-IvLyricsVersionIsNewer -InstalledVersion $installedVersion -ReleaseVersion $latestVersion)) {
+        Write-SubStep "Installed version $installedVersion is newer than the available release $latestVersion." "info"
+        exit 0
     }
 
-    Write-ProgressBar 100
-    Write-Host ""
-    Write-SubStep "Download complete" "success"
-
-    # Extract
-    Write-SubStep "Extracting files..." "info"
-
-    Expand-Archive -LiteralPath $TEMP_ZIP -DestinationPath $TEMP_EXTRACT -Force
-
-    $EXTRACTED_DIR = Get-ChildItem -LiteralPath $TEMP_EXTRACT -Directory | Select-Object -First 1
-
-    if (-not $EXTRACTED_DIR) {
-        throw "Extraction failed"
+    if (-not $Force -and $installedVersion -eq $latestVersion -and
+        (Test-Installation -AppDir $appDir -Version $latestVersion)) {
+        Write-Host ""
+        if (Test-IvLyricsRegistered) {
+            Write-Colored "  Already up to date! (v$latestVersion)" $Colors.Success
+            Write-Colored "  Use -Force to reinstall anyway." $Colors.Muted
+        }
+        else {
+            Repair-IvLyricsRegistration -Stage $stage -AppDir $appDir
+        }
+        Write-SubStep "Checking updater protocol..." "info"
+        if (-not (Register-IvLyricsUpdaterProtocol -AppDir $appDir)) {
+            throw "Updater registration could not be repaired."
+        }
+        exit 0
     }
 
-    # Remove the active installation and old fixed-location installations without
-    # following directory links.
-    $FINAL_APP_DIR = Join-Path $TARGET_DIR $FINAL_APP_NAME
-    $installPaths = @($FINAL_APP_DIR) + @(
-        $LEGACY_TARGET_DIRS | ForEach-Object { Join-Path $_ $FINAL_APP_NAME }
-    )
-    foreach ($installPath in @($installPaths | Select-Object -Unique)) {
-        Remove-IvLyricsInstallerPath -Path $installPath
+    # Step 6: Download and validate the package before touching the installation.
+    Write-Step 6 7 "Downloading ivLyrics..." "running"
+    Install-IvLyricsApp -Release $release -Stage $stage -AppDir $appDir -IsUpdate $isUpdate
+    Write-SubStep "Registering updater protocol..." "info"
+    if (-not (Register-IvLyricsUpdaterProtocol -AppDir $appDir)) {
+        throw "ivLyrics was applied, but updater protocol registration failed. Run the installer again to retry registration."
     }
-
-    # Install new version
-    New-Item -Path $FINAL_APP_DIR -ItemType Directory -Force | Out-Null
-    Copy-Item "$($EXTRACTED_DIR.FullName)\*" $FINAL_APP_DIR -Recurse -Force
-
-    Write-SubStep "Extraction complete" "success"
-
 }
 catch {
-    Write-Step 6 7 "Download failed after $MAX_RETRIES attempts" "error"
     Write-SubStep $_.Exception.Message "error"
     exit 1
 }
 finally {
-    Remove-IvLyricsInstallerTemporaryPath -Path $TEMP_ROOT
+    if ($null -ne $lock) { $lock.Dispose() }
 }
 
-# Verify installation
-Write-SubStep "Verifying installation..." "info"
-if (Test-Installation) {
-    Write-SubStep "Installation verified" "success"
-}
-else {
-    Write-SubStep "Installation verification failed!" "error"
-    Write-Colored "  Some required files are missing. Please try again." $Colors.Error
-    exit 1
-}
-
-Write-Section "CONFIGURING"
-
-# Register one-click updater protocol
-Write-SubStep "Registering updater protocol..." "info"
-if (-not (Register-IvLyricsUpdaterProtocol)) {
-    Write-Colored "  Installation stopped because the active Spicetify app directory could not be updated." $Colors.Error
-    exit 1
-}
-
-# Step 7: Apply Spicetify
-Write-Step 7 7 "Applying Spicetify configuration..." "running"
-
-try {
-    $configResult = Invoke-IvLyricsSpicetifyCommand -Arguments @("config", "custom_apps", "ivLyrics")
-    $configOutput = @($configResult.Output)
-    if ($configResult.ExitCode -ne 0) {
-        throw "spicetify config failed: $($configOutput -join [Environment]::NewLine)"
-    }
-    Write-SubStep "Custom app registered" "success"
-
-    $applyResult = Invoke-IvLyricsSpicetifyCommand -Arguments @("apply")
-    $applyOutput = @($applyResult.Output)
-    if ($applyResult.ExitCode -ne 0) {
-        throw "spicetify apply failed: $($applyOutput -join [Environment]::NewLine)"
-    }
-    Write-SubStep "Spicetify applied" "success"
-}
-catch {
-    Write-SubStep "Spicetify apply may require manual run" "warning"
-}
-
-# Done!
-Write-Success -Version $VERSION_TAG -IsUpdate $IsUpdate
-Write-Footer $VERSION_TAG
-
-# Launch Spotify
+Write-Success -Version $release.Version -IsUpdate $isUpdate
+Write-Footer $release.Version
 Start-Process "spotify://ivLyrics/?alert=Update%20Completed"

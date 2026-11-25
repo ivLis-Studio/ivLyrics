@@ -1,3 +1,4 @@
+import { readClassicLanguageFixture } from "./language-source.mjs";
 // Usage: node tests/fixtures/vinyl_player_server.mjs /path/to/node_modules [port]
 // Requires local React 18 UMD files. Serves only the fixture and production
 // LP sources on loopback; it never connects to Spotify or changes app settings.
@@ -7,6 +8,9 @@ import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
+import { sourceUrl } from "./source-paths.mjs";
+import { readPcStylesheet } from "../../.github/scripts/pc_stylesheet.mjs";
+import { bundleFixtureImports, readCdVisualizerFixture, readPlaylistPickerFixture, readFullscreenOverlayFixture, readPagesFixture, readVinylPlayerFixture, readVinylActiveLyricRendererFixture, readWordSegmenterFixture } from "./legacy-page-source.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const reactRoot = process.argv[2];
@@ -14,14 +18,40 @@ if (!reactRoot) throw new Error("Pass a node_modules directory containing React 
 const port = Number(process.argv[3] || 48173);
 const readSource = (path, baseline) => baseline
   ? execFileSync("git", ["show", `44c0625:${path}`], { cwd: root, encoding: "utf8", maxBuffer: 2 * 1024 * 1024 })
-  : readFileSync(resolve(root, path), "utf8");
+  : path === "style.css" ? readPcStylesheet()
+  : path === "Pages.js" ? readPagesFixture()
+  : path === "CdVisualizer.js" ? readCdVisualizerFixture()
+  : path === "VinylActiveLyricRenderer.js" ? readVinylActiveLyricRendererFixture()
+  : path === "VinylPlayerMode.js" ? readVinylPlayerFixture()
+  : path === "FullscreenOverlay.js" ? readFullscreenOverlayFixture()
+  : path === "PlaylistPicker.js" ? readPlaylistPickerFixture()
+  : readFileSync(sourceUrl(path), "utf8");
 const section = (source, start, end) => {
   const from = source.indexOf(start), to = source.indexOf(end, from);
   if (from < 0 || to <= from) throw new Error(`Missing fixture source: ${start}`);
   return source.slice(from, to);
 };
 const metadataSource = baseline => {
-  const source = readSource("FullscreenOverlay.js", baseline);
+  if (!baseline) return bundleFixtureImports(
+    `import { createFullscreenTrackMetadata } from "#ivlyrics/features/fullscreen/fullscreenTrackMetadata.mjs";
+import { getFullscreenVinylSettings } from "#ivlyrics/features/fullscreen/fullscreenOverlaySettings.mjs";
+window.fixtureLiveTrack = (config, trackUri, translatedMetadata, item) => {
+  Spicetify.Player.data.item = item;
+  const { readTrackPresentation } = createFullscreenTrackMetadata({
+    readCurrentItem: () => Spicetify.Player.data.item,
+    getTrackArtwork: item => Utils.getTrackArtwork(item),
+    readVisualSettings: () => config.visual,
+  });
+  return readTrackPresentation({
+    trackUri, translatedMetadata, title: item.metadata.title, artist: item.metadata.artist_name,
+    coverUrl: item.metadata.image_url, trimTitleEnabled: config.visual["fullscreen-trim-title"] === true,
+    trackAccentUri: item.uri, trackAccent: "#f9a0b3",
+  }).liveVinylTrack;
+};
+window.fixtureVinylSettings = config => getFullscreenVinylSettings(config.visual);`,
+    "fixtureFullscreenTrackMetadata",
+  );
+  const source = readSource("FullscreenOverlay.js", true);
   return `${section(source, "    const trimTitle =", "    const isUnknownTrackMetadata =")}
 window.fixtureLiveTrack = (CONFIG, trackUri, translatedMetadata, item) => {
   const title = item.metadata.title, artist = item.metadata.artist_name, coverUrl = item.metadata.image_url;
@@ -30,6 +60,7 @@ window.fixtureLiveTrack = (CONFIG, trackUri, translatedMetadata, item) => {
   const getFirstSpotifyUri = (...values) => values.find(value => String(value || "").startsWith("spotify:"));
   const getCurrentArtistUri = () => "spotify:artist:fixture";
   const getCurrentAlbumUri = () => "spotify:album:fixture";
+  const overlayTrackIdentity = { getTrackArtwork: item => Utils.getTrackArtwork(item) };
   Spicetify.Player.data.item = item;
   ${section(source, "        const computeLiveVinylTrack =", "        const {\n            currentPlayerItem, currentPlayerMetadata, currentTrackUri,")}
   return computeLiveVinylTrack().liveVinylTrack;
@@ -40,12 +71,16 @@ window.fixtureVinylSettings = CONFIG => {
 };`;
 };
 const settingsSource = baseline => {
-  const source = readSource("Settings.js", baseline);
+  const source = baseline
+    ? readSource("Settings.js", true)
+    : readFileSync(resolve(root, "src/features/settings/settingsFullscreenTab.mjs"), "utf8");
   const from = source.indexOf("const renderFullscreenVinylSection =");
   const items = section(source.slice(from), "            items: [", "            onChange: saveVinylSetting,")
     .replace(/^\s*items:\s*/, "").trim().replace(/,$/, "");
   return `window.fixtureSettingItems = CONFIG => {
-    const ConfigSlider = "toggle", ConfigSliderRange = "range";
+    const ConfigSlider = "toggle", ConfigSliderRange = "range", ConfigSelection = "selection";
+    const t = key => I18n.t(key);
+    const getVisualSettings = () => CONFIG.visual;
     return (${items});
   };`;
 };
@@ -77,6 +112,8 @@ const server = createServer((request, response) => {
     } else if (files.has(path)) body = readFileSync(files.get(path));
     else if (path === "/metadata.js") body = metadataSource(baseline);
     else if (path === "/settings.js") body = settingsSource(baseline);
+    else if (path === "/LyricsWordSegmenter.js" && !baseline) body = readWordSegmenterFixture();
+    else if (path === "/langs/LangEn.js" && !baseline) body = readClassicLanguageFixture("LangEn.js");
     else if (["/style.css", "/CdVisualizer.js", "/PlaylistPicker.js", "/FullscreenOverlay.js", "/VinylPlayerMode.js", "/VinylActiveLyricRenderer.js", "/Pages.js", "/LyricsWordSegmenter.js", "/langs/LangEn.js"].includes(path)) {
       body = readSource(path.slice(1), baseline);
       if (path.endsWith(".css")) { type = "text/css"; body = body.replace(/^@import\s+[^;]+;/gm, ""); }

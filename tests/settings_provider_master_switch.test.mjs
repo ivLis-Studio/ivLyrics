@@ -1,16 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
-
-const source = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
-const settingsStyles = readFileSync(new URL("../SettingsStyles.js", import.meta.url), "utf8");
-const section = (start, end) => {
-	const from = source.indexOf(start);
-	const to = source.indexOf(end, from);
-	assert.ok(from >= 0 && to > from);
-	return source.slice(from, to);
-};
+import { createSettingsProviderCards } from "#ivlyrics/features/settings/settingsProviderCards.mjs";
 
 // Mirror tests/settings_component_identity.test.mjs: real render functions with
 // hook state kept between renders. The fake AIAddonManager exposes only the
@@ -44,42 +34,23 @@ const createHarness = (masterFlags) => {
 		useLayoutEffect: () => { cursor++; },
 	};
 	const writes = [];
-	const context = vm.createContext({
-		react, ...react,
-		CONFIG: { visual: { "line-spacing": 8 } },
-		APP_NAME: "ivLyrics",
-		I18n: { t: (key) => key },
-		Utils: { currentVersion: "test" },
-		window: {
-			AIAddonManager: {
-				isCapabilityEnabled: (id, capability) => masterFlags[`${id}:${capability}`] !== false,
-				setCapabilityEnabled: (id, capability, enabled) => {
-					masterFlags[`${id}:${capability}`] = enabled;
-					writes.push([id, capability, enabled]);
-				},
-			},
+	const manager = {
+		isCapabilityEnabled: (id, capability) => masterFlags[`${id}:${capability}`] !== false,
+		setCapabilityEnabled: (id, capability, enabled) => {
+			masterFlags[`${id}:${capability}`] = enabled;
+			writes.push([id, capability, enabled]);
 		},
-		document: { getElementById: () => null },
-		localStorage: { getItem: () => null },
-		Spicetify: { LocalStorage: { get: () => null } },
-		OptionList: () => null,
-		ConfigSelection: () => null,
-		ConfigSlider: () => null,
-		ConfigSliderRange: () => null,
-		ConfigButton: () => null,
-		OverlaySettings: () => null,
-		SettingsOutlineIcon: () => null,
-		ProviderSupportIconChip: () => null,
+	};
+	const { AddonSettingsCard } = createSettingsProviderCards({
+		react, translate: key => key, getSettingsText: (_key, fallback) => fallback, SettingsUiIcon: () => null,
+		readAiManager: () => manager,
+		readAiLanguage: () => null, readCurrentLanguage: () => "en",
 	});
-	vm.runInContext(settingsStyles, context);
-	vm.runInContext(`${section("const getEffectiveReducedMotionPreference =", "function openConfig(")}
-		${section("const AddonSettingsCard =", "// 가사 제공자 설정 탭 컴포넌트")}
-		globalThis.AddonSettingsCard = AddonSettingsCard;`, context);
 	return {
 		writes,
 		render(props = {}) {
 			cursor = 0;
-			return context.AddonSettingsCard(props);
+			return AddonSettingsCard(props);
 		},
 	};
 };

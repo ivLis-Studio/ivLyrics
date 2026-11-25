@@ -1,7 +1,7 @@
+import { readLanguageTable } from "./fixtures/language-source.mjs";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
 import { assertNoInternals, button, createHarness, deferred, settle, texts } from "./local_model_harness.mjs";
 
 const allNodes = (tree) => tree && typeof tree === "object" ? [tree, ...tree.children.flatMap(allNodes)] : [];
@@ -121,12 +121,10 @@ test("changing tier, processor, target language or freeing memory cancels a test
 });
 
 test("all 22 locales translate the metric and retain every required placeholder", () => {
-    const files = readdirSync(new URL("../langs/", import.meta.url)).filter((name) => /^Lang.*\.js$/.test(name));
+    const files = readdirSync(new URL("../src/i18n/langs/", import.meta.url)).filter((name) => /^Lang.*\.js$/.test(name));
     assert.equal(files.length, 22);
     for (const file of files) {
-        const context = vm.createContext({ window: {} });
-        vm.runInContext(readFileSync(new URL(`../langs/${file}`, import.meta.url), "utf8"), context);
-        const root = Object.values(context.window).find((value) => value?.settings?.aiProviders?.localModel);
+        const root = readLanguageTable(file);
         assert.ok(root, file);
         const strings = root.settings.aiProviders.localModel;
         for (const [key, params] of [["testTotalTime", ["seconds"]], ["testSpeed", ["speed", "tokens", "seconds"]],

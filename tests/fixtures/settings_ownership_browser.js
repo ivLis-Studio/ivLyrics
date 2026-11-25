@@ -41,7 +41,7 @@ async (page) => {
     for (const tab of await page.evaluate(() => window.settingsFixture.tabs.filter(tab => tab !== "about"))) {
       await open(tab);
       const visible = await page.locator(".tab-content.active [data-setting-key]").evaluateAll(nodes => [...new Set(
-        nodes.map(node => node.dataset.settingKey).filter(key => hasSettingDefault(key))
+        nodes.map(node => node.dataset.settingKey).filter(key => FIXTURE_RESETTABLE_SETTINGS.has(key))
       )]);
       for (const key of visible) (owners[key] ||= []).push(tab);
     }
@@ -79,6 +79,23 @@ async (page) => {
       await settle();
     }
     assert(JSON.stringify(await counts()) === JSON.stringify(baseline), `${label}: reset did not restore menu counts`);
+    const publishConfig = (values) => page.evaluate((values) => {
+      Object.assign(CONFIG.visual, values);
+      for (const [name, value] of Object.entries(values)) {
+        window.dispatchEvent(new CustomEvent("ivLyrics", { detail: { type: "config", name, value } }));
+      }
+    }, values);
+    const first = "prefetch-video-enabled", second = "prefetch-word-details-enabled";
+    const changedRow = key => page.locator(`.tab-content[data-tab-id="changed"] [data-setting-key="${key}"]`);
+    await publishConfig({ [first]: false });
+    await changedRow(first).waitFor();
+    const previousCounts = await counts();
+    await publishConfig({ [first]: true, [second]: false });
+    await changedRow(second).waitFor();
+    assert(await changedRow(first).count() === 0, `${label}: an old changed row remains after a same-count preset`);
+    assert(JSON.stringify(await counts()) === JSON.stringify(previousCounts), `${label}: a same-count preset changed menu counts`);
+    await publishConfig({ [second]: true });
+    await changedRow(second).waitFor({ state: "detached" });
     for (const [text, key] of [[labels.motion, "reduce-motion"], [labels.prefetch, "prefetch-enabled"]]) {
       const search = page.locator(".settings-search-input");
       await search.fill(text);
@@ -100,13 +117,13 @@ async (page) => {
     await settle();
     const videoCounts = await counts();
     assert(videoCounts[labels.performance] === baseline[labels.performance], `${label}: video counts as Performance editor`);
-    assert(await page.evaluate(() => getCurrentSettingsBackgroundMode()) === "video-background", `${label}: video preset did not save`);
+    assert(await page.evaluate(() => window.ivLyricsGetCurrentSettingsBackgroundMode()) === "video-background", `${label}: video preset did not save`);
     await page.locator(".settings-changed-chip").click();
     // Keep the CLI's native-dialog interception from pausing this batch.
     await page.evaluate(() => { window.confirm = () => true; });
     await page.locator(".settings-changed-tools button").click();
     await settle();
-    assert(await page.evaluate(() => getCurrentSettingsBackgroundMode()) === "gradient-background", `${label}: background reset lost default`);
+    assert(await page.evaluate(() => window.ivLyricsGetCurrentSettingsBackgroundMode()) === "gradient-background", `${label}: background reset lost default`);
     await open("performance", "video-background", "appearance");
     await open("performance");
     const metrics = await page.evaluate(() => {

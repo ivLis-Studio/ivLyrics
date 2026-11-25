@@ -1,3 +1,10 @@
+import { createSettingsServices } from "#ivlyrics/spicetify/settingsServices.mjs";
+import { createSettingsHelperToggles } from "#ivlyrics/features/settings/settingsHelperToggles.mjs";
+import { createSettingsProviderListView } from "#ivlyrics/features/settings/settingsProviderListView.mjs";
+import { createSettingsLyricsProviderTab } from "#ivlyrics/features/settings/settingsLyricsProviderTab.mjs";
+import { createSettingsAiProviderTab } from "#ivlyrics/features/settings/settingsAiProviderTab.mjs";
+import { getSettingsResultContainer } from "#ivlyrics/features/settings/settingsResultContainer.mjs";
+import { readSettingsFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -5,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const current = readFileSync(new URL('../Settings.js', import.meta.url), 'utf8');
+const current = readSettingsFixture();
 // Optional historical comparison; normal runs do not require Git history.
 const revision = process.env.IVLYRICS_REFACTOR_TEST_REVISION;
 const baseline = revision ? execFileSync('git', ['show', `${revision}:Settings.js`], {
@@ -44,15 +51,29 @@ function createHarness(source, component, options = {}) {
       effects.push(() => { slots[index].cleanup?.(); slots[index].cleanup = effect(); });
     }
   };
-  const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) };
-  const makeManager = label => ({
-    getAddons: () => options.providers || [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }],
-    getProviderOrder: () => ['b', 'missing', 'a'],
-    isProviderEnabled: id => id !== 'b',
-    setProviderOrder: order => calls.push([label, 'order', Array.from(order)]),
-    setProviderEnabled: (...args) => calls.push([label, 'enabled', ...args]),
-    on: event => { calls.push([label, 'subscribe', event]); return () => calls.push([label, 'unsubscribe', event]); },
-  });
+  const react = { useState, useEffect, createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) };
+  const makeManager = label => {
+    let providers = options.providers || [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }];
+    let order = ['b', 'missing', 'a'];
+    const enabled = new Map([['b', false]]);
+    const events = new Map();
+    const emit = type => { for (const listener of events.get(type) || []) listener(); };
+    return {
+      getAddons: () => providers,
+      getProviderOrder: () => order,
+      isProviderEnabled: id => enabled.get(id) !== false,
+      setProviderOrder(next) { order = Array.from(next); calls.push([label, 'order', order]); emit('provider:order:changed'); },
+      setProviderEnabled(id, value) { enabled.set(id, value); calls.push([label, 'enabled', id, value]); emit('provider:enabled:changed'); },
+      register(provider) { providers = [...providers, provider]; emit('addon:registered'); },
+      unregister(id) { providers = providers.filter(provider => provider.id !== id); emit('addon:unregistered'); },
+      on(type, listener) {
+        if (!events.has(type)) events.set(type, new Set());
+        events.get(type).add(listener);
+        calls.push([label, 'subscribe', type]);
+        return () => { events.get(type).delete(listener); calls.push([label, 'unsubscribe', type]); };
+      },
+    };
+  };
   const health = label => { calls.push([label, 'health']); return new Promise(resolve => pendingHealth.push(resolve)); };
   const window = {
     LyricsAddonManager: makeManager('lyrics'), AIAddonManager: makeManager('ai'),
@@ -68,6 +89,7 @@ function createHarness(source, component, options = {}) {
   }
   const context = vm.createContext({
     react, useState, useEffect, window,
+    readSettingsService: (name) => window[name],
     I18n: { t: key => options.emptyTranslations ? '' : `${language}:${key}` },
     CONFIG: { visual: {} },
     StorageManager: { saveConfig: (...args) => calls.push(['save', ...args]) },
@@ -84,16 +106,72 @@ function createHarness(source, component, options = {}) {
     LyricsProviderCard: named('LyricsProviderCard'), AddonSettingsCard: named('AddonSettingsCard'),
     createTextOutlineSettingItems: () => [],
   });
-  const providerStart = source.includes('const createSettingsProviderOrderControls =')
-    ? 'const createSettingsProviderOrderControls =' : 'const LyricsProvidersTab =';
-  const helperStart = source.includes('const renderSettingsHelperToggle =')
-    ? 'const renderSettingsHelperToggle =' : 'const VideoHelperToggle =';
-  vm.runInContext([
-    section(source, 'function buildOrderedProviderList(', 'const SETTINGS_OUTLINE_ICONS ='),
-    section(source, providerStart, 'const getSafeSettingsLocale ='),
-    section(source, helperStart, 'const ConfigSelection ='),
-    `globalThis.component = ${component};`,
-  ].join('\n'), context);
+  const services = createSettingsServices(window);
+  const providerTab = component === 'LyricsProvidersTab' || component === 'AIProvidersTab';
+  if (providerTab && source === current) {
+    const translate = key => context.I18n.t(key);
+    const listView = createSettingsProviderListView({ react, translate });
+    const tabOptions = {
+      react, translate, listView, OptionList: context.OptionList,
+      schedule: context.setTimeout, cancel: context.clearTimeout,
+    };
+    context.component = component === 'LyricsProvidersTab'
+      ? createSettingsLyricsProviderTab({
+        ...tabOptions,
+        readManager: services.readLyricsSettingsManager,
+        getVisualSettings: () => context.CONFIG.visual,
+        saveSetting: context.StorageManager.saveConfig,
+        notifyConfigChange: (name, value) => window.dispatchEvent(new context.CustomEvent("ivLyrics", {
+          detail: { type: "config", name, value },
+        })),
+        LyricsProviderCard: context.LyricsProviderCard,
+        ConfigSlider: context.ConfigSlider,
+      })
+      : createSettingsAiProviderTab({
+        ...tabOptions,
+        readManager: services.readAiSettingsManager,
+        requestFrame: (callback) => window.requestAnimationFrame?.(callback),
+        findConnectionCard: (id) => context.document.getElementById?.(`ivlyrics-ai-connection-${id}`),
+        AddonSettingsCard: context.AddonSettingsCard,
+        ConfigSliderRange: context.ConfigSliderRange,
+      });
+  } else if (providerTab) {
+    const providerStart = source.includes('const createSettingsProviderOrderControls =')
+      ? 'const createSettingsProviderOrderControls =' : 'const LyricsProvidersTab =';
+    vm.runInContext([
+      section(source, 'function buildOrderedProviderList(', 'const SETTINGS_OUTLINE_ICONS ='),
+      section(source, providerStart, source.includes('const readSettingsService =')
+        ? 'const readSettingsService =' : 'const getSafeSettingsLocale ='),
+      `globalThis.component = ${component};`,
+    ].join('\n'), context);
+  } else if (source === current) {
+    context.component = createSettingsHelperToggles({
+      react, translate: key => context.I18n.t(key),
+      getCheckIcon: () => context.Spicetify.SVGIcons.check,
+      getVideoHelper: () => context.VideoHelperService,
+      getLyricsHelper: services.getSettingsLyricsHelper,
+      isSettingsOpen: () => true,
+      openDownload: () => window.open("https://ivlis.kr/ivLyrics/extensions/#helper", "_blank"),
+      saveLyricsHelperSetting: (name, value) => {
+        context.CONFIG.visual[name] = value;
+        context.StorageManager.saveConfig(name, value);
+      },
+      publish: (type, detail) => window.dispatchEvent(new context.CustomEvent(type, { detail })),
+      listenForLyricsHelperConnection: (listener) => {
+        window.addEventListener("ivLyrics:lyrics-helper-connection", listener);
+        return () => window.removeEventListener("ivLyrics:lyrics-helper-connection", listener);
+      },
+      scheduleCheck: context.setInterval,
+      cancelCheck: context.clearInterval,
+    })[component];
+  } else {
+    const helperStart = source.includes('const renderSettingsHelperToggle =')
+      ? 'const renderSettingsHelperToggle =' : 'const VideoHelperToggle =';
+    const helperEnd = source.includes('\nconst ConfigSelection =')
+      ? 'const ConfigSelection =' : 'const SettingsInterludeIndicator =';
+    vm.runInContext(`${section(source, helperStart, helperEnd)}
+      globalThis.component = ${component};`, context);
+  }
   return {
     calls, window, context, intervals, timeouts, listeners, pendingHealth,
     makeManager,
@@ -125,8 +203,35 @@ const downloadButton = tree => elements(tree).find(node => node.props.className 
 const treeContract = (before, after) => {
   if (after) assert.deepEqual(normalize(after), normalize(before));
 };
+const comparableCalls = calls => normalize(calls.filter(([, operation, event]) =>
+  !(['subscribe', 'unsubscribe'].includes(operation) && ['addon:registered', 'addon:unregistered',
+    'provider:order:changed', 'provider:enabled:changed', 'addon:setting:changed', 'provider:capability:changed',
+    'provider:sync-data-priority:changed', 'provider:lyrics-type-priority:changed'].includes(event))));
 
 for (const component of ['LyricsProvidersTab', 'AIProvidersTab']) {
+  test(`${component}: live manager updates reconcile the list and a drop onto a removed provider is ignored`, () => {
+    const h = createHarness(current, component);
+    const manager = h.window[component === 'LyricsProvidersTab' ? 'LyricsAddonManager' : 'AIAddonManager'];
+    const order = tree => elements(tree).filter(node => node.props.role === 'listitem').map(node => node.props.key);
+    h.render(); h.flushEffects();
+    manager.register({ id: 'late-provider', name: 'Late provider' });
+    manager.setProviderEnabled('late-provider', false);
+    manager.setProviderOrder(['late-provider', 'c', 'a', 'b']);
+    let tree = h.render();
+    assert.deepEqual(order(tree), ['late-provider', 'c', 'a', 'b']);
+    assert.equal(card(tree, 'late-provider').isEnabled, false);
+    handle(tree, 'c').onDragStart(event(), 'c');
+    const staleRow = row(h.render(), 'a');
+    manager.unregister('a');
+    const writesBeforeDrop = h.calls.filter(([, operation]) => operation === 'order').length;
+    staleRow.props.onDrop(event(80));
+    tree = h.render();
+    assert.equal(h.calls.filter(([, operation]) => operation === 'order').length, writesBeforeDrop);
+    assert.deepEqual(order(tree), ['late-provider', 'c', 'b']);
+    h.unmount();
+    assert.ok(h.calls.some(([, operation, type]) => operation === 'unsubscribe' && type === 'addon:registered'));
+  });
+
   test(`${component}: leaving before addon registration cancels readiness polling`, () => {
     const h = createHarness(current, component, { managerReady: false });
     h.render(); h.flushEffects();
@@ -146,7 +251,7 @@ for (const component of ['LyricsProvidersTab', 'AIProvidersTab']) {
     const check = () => {
       trees = pair.map(harness => harness.render());
       treeContract(...trees);
-      if (before) assert.deepEqual(normalize(after.calls), normalize(before.calls));
+      if (before) assert.deepEqual(comparableCalls(after.calls), comparableCalls(before.calls));
       return trees;
     };
     check();
@@ -175,7 +280,7 @@ for (const component of ['LyricsProvidersTab', 'AIProvidersTab']) {
     assert.equal(after.calls.at(-1)[0], 'replacement', 'event handlers must use the current manager');
     pair.forEach(harness => harness.language('zh-TW')); check();
     pair.forEach(harness => harness.unmount());
-    if (before) assert.deepEqual(normalize(after.calls), normalize(before.calls));
+    if (before) assert.deepEqual(comparableCalls(after.calls), comparableCalls(before.calls));
   });
 
   test(`${component}: late user addon registration retains arbitrary ids, object props and manager calls`, () => {
@@ -196,7 +301,7 @@ for (const component of ['LyricsProvidersTab', 'AIProvidersTab']) {
     const check = () => {
       trees = pair.map(harness => harness.render());
       treeContract(...trees);
-      if (baseline) assert.deepEqual(normalize(pair.at(-1).calls), normalize(pair[0].calls));
+      if (baseline) assert.deepEqual(comparableCalls(pair.at(-1).calls), comparableCalls(pair[0].calls));
     };
     check();
     assert.strictEqual(card(trees.at(-1), addon.id)[providerProp], addon);
@@ -212,7 +317,7 @@ for (const component of ['LyricsProvidersTab', 'AIProvidersTab']) {
     trees.forEach(tree => row(tree, 'another-custom-id').props.onDrop(event(90))); check();
     assert.deepEqual(pair.at(-1).calls.at(-1), ['community-manager', 'order', ['b', 'another-custom-id', addon.id]]);
     pair.forEach(harness => harness.unmount());
-    if (baseline) assert.deepEqual(normalize(pair.at(-1).calls), normalize(pair[0].calls));
+    if (baseline) assert.deepEqual(comparableCalls(pair.at(-1).calls), comparableCalls(pair[0].calls));
   });
 }
 
@@ -220,20 +325,20 @@ test('result panels preserve retained container ids, sibling insertion and row m
   // Personal sync bulk export was removed; compare every remaining panel
   // against its historical counterpart without retaining the retired action.
   const blocks = baseline ? [...baseline.matchAll(/const settingRow = button\.closest\("\.setting-row"\);\n\s*let resultContainer = settingRow\?\.nextElementSibling;\n\n\s*if \(\n\s*!resultContainer \|\|\n\s*!resultContainer.id \|\|\n\s*resultContainer.id !== "([a-z-]+)"\n\s*\) \{\n[\s\S]*?\n\s*\}/g)].filter(block => block[1] !== 'my-syncs-export-result-container') : null;
-  const calls = [...current.matchAll(/const resultContainer = getSettingsResultContainer\(button, "([a-z-]+)"(?:, "([a-z-]+)")?\);/g)];
-  const ids = ['export-result-container', 'export-result-container', 'export-result-container', 'export-result-container',
-    'db-export-result-container', 'db-export-result-container',
-    'db-import-result-container', 'db-import-result-container',
-    'reset-result-container', 'update-result-container'];
-  assert.deepEqual(calls.map(call => call[1]), ids);
-  assert.deepEqual(calls.map(call => call[2]), [...Array(ids.length - 1).fill(undefined), 'has-update-result']);
-  if (blocks) assert.deepEqual(blocks.map(block => block[1]), ids);
-  const helper = section(current, 'const getSettingsResultContainer =', 'const ConfigModal =');
-  for (let i = 0; i < calls.length; i++) {
+  const panels = [
+    ['export-result-container'],
+    ['db-export-result-container'],
+    ['db-import-result-container'],
+    ['reset-result-container'],
+    ['update-result-container', 'has-update-result'],
+  ];
+  for (const [id, rowClass] of panels) {
+    const historicalBlock = blocks?.find(block => block[1] === id);
+    if (blocks) assert.ok(historicalBlock, `Missing historical panel: ${id}`);
     for (const state of ['missing', 'matching', 'other-id', 'empty-id', 'no-row', 'detached-row']) {
       const run = (code) => {
         const operations = [];
-        const existing = { id: state === 'matching' ? calls[i][1] : state === 'other-id' ? 'unrelated-panel' : '', style: { cssText: 'preserved' } };
+        const existing = { id: state === 'matching' ? id : state === 'other-id' ? 'unrelated-panel' : '', style: { cssText: 'preserved' } };
         const nextSibling = { type: 'text-node-before-next-element' };
         const row = state === 'no-row' ? null : {
           nextElementSibling: state === 'missing' ? null : existing,
@@ -247,23 +352,23 @@ test('result panels preserve retained container ids, sibling insertion and row m
           button: { closest(selector) { operations.push(['closest', selector]); return row; } },
           document: { createElement(tag) { operations.push(['create', tag]); return { style: {} }; } },
         });
-        const result = vm.runInContext(code, context);
+        const result = code ? vm.runInContext(code, context) : getSettingsResultContainer(context.button, id, rowClass, context.document);
         return { result: normalize(result), reused: result === existing, operations };
       };
-      const before = blocks && run(`(() => { ${blocks[i][0]} return resultContainer; })()`);
-      const after = run(`${helper}\ngetSettingsResultContainer(button, ${JSON.stringify(calls[i][1])}, ${JSON.stringify(calls[i][2])});`);
+      const before = historicalBlock && run(`(() => { ${historicalBlock[0]} return resultContainer; })()`);
+      const after = run();
       const reused = state === 'matching';
       const operations = [['closest', '.setting-row']];
       if (!reused) {
         operations.push(['create', 'div']);
-        if (!['no-row', 'detached-row'].includes(state)) operations.push(['insert', calls[i][1], true]);
-        if (calls[i][2] && state !== 'no-row') operations.push(['class', calls[i][2]]);
+        if (!['no-row', 'detached-row'].includes(state)) operations.push(['insert', id, true]);
+        if (rowClass && state !== 'no-row') operations.push(['class', rowClass]);
       }
       assert.deepEqual(after, {
-        result: { id: calls[i][1], style: { cssText: reused ? 'preserved' : 'margin-top: -1px;' } },
+        result: { id: id, style: { cssText: reused ? 'preserved' : 'margin-top: -1px;' } },
         reused, operations,
-      }, `${calls[i][1]} / ${state}`);
-      if (before) assert.deepEqual(after, before, `${calls[i][1]} / ${state}`);
+      }, `${id} / ${state}`);
+      if (before) assert.deepEqual(after, before, `${id} / ${state}`);
     }
   }
 });

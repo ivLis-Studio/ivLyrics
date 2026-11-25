@@ -1,10 +1,9 @@
+import { createFixtureWordSupplementService } from "./fixtures/word-supplement-service.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
 
-const source = readFileSync(new URL("../WordLevelSupplements.js", import.meta.url), "utf8");
-const pagesSource = readFileSync(new URL("../Pages.js", import.meta.url), "utf8");
+const hookSource = readFileSync(new URL("../src/lyrics/karaokeWordSupplementHook.mjs", import.meta.url), "utf8");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const DEBOUNCE = 350;
@@ -38,12 +37,7 @@ const loadSupplements = ({ globalLang = "auto", visual = null } = {}) => {
 			return new Promise((resolve, reject) => { glossResponders.push({ resolve, reject }); });
 		},
 	};
-	const context = vm.createContext({
-		window,
-		console: { log: () => {}, warn: () => {}, error: () => {} },
-		setTimeout, clearTimeout,
-	});
-	vm.runInContext(source, context);
+	createFixtureWordSupplementService(window);
 	return { api: window.ivLyricsWordSupplements, glossCalls, glossResponders };
 };
 
@@ -89,6 +83,6 @@ test("an all-empty AI reply is not cached, so the retry resends", async () => {
 });
 
 test("karaoke line re-resolves the source language when detection lands", () => {
-	assert.match(pagesSource, /globalLangTick/);
-	assert.match(pagesSource, /\[supplementsApi, timedText, globalLangTick, settingsRevision\]/);
+	assert.match(hookSource, /globalLangTick/);
+	assert.match(hookSource, /\[supplementsApi, timedText, globalLangTick, settingsRevision\]/);
 });

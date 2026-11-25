@@ -1,3 +1,4 @@
+import { createKaraokeHarnessFactory } from "./fixtures/karaoke-page-modules.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -13,7 +14,7 @@ const helperUrl = new URL('./renderer_settings_equivalence.test.mjs', import.met
 const helper = readFileSync(helperUrl, 'utf8');
 const harness = helper.slice(helper.indexOf('const repoRoot'), helper.indexOf('test("renderer output'))
 	.replaceAll('import.meta.url', JSON.stringify(helperUrl.href));
-const { createEngine, currentSource, makeLyrics, lyric } = new Function(
+const { createEngine, currentSource, makeLyrics, lyric } = createKaraokeHarnessFactory(
 	'assert', 'execFileSync', 'readFileSync', 'fileURLToPath', 'vm', harness +
 	'\nreturn { createEngine, currentSource, makeLyrics, lyric };'
 )(assert, execFileSync, readFileSync, fileURLToPath, vm);

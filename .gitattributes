@@ -1,7 +1,3 @@
-# Keep build inputs and reference notices in Git, not in release archives.
-# The compiled local database runtime and README license notices stay included.
-/.github/scripts/lrclib_local_database_worker.mjs export-ignore
-/third_party export-ignore
-/third_party/** export-ignore
-/mobile export-ignore
-/mobile/** export-ignore
+# GitHub source archives contain the complete build inputs. The installer ZIP
+# is generated separately and includes only the explicit runtime payload.
+*.sh text eol=lf

@@ -1,9 +1,18 @@
+import { readSettingsFixture } from "./fixtures/legacy-page-source.mjs";
+import { createSettingsTextControls } from "../src/features/settings/settingsTextControls.mjs";
+import { createSettingsOptionList } from "../src/features/settings/settingsOptionList.mjs";
+import { createSettingsLayerMatrix } from "../src/features/settings/settingsLayerMatrix.mjs";
+import { createChangedSettingsView } from "../src/features/settings/settingsChangedView.mjs";
+import { SETTINGS_BACKGROUND_MODE_KEY, SETTINGS_DEFAULT_VALUES, SETTINGS_FALLBACK_DEFAULT_VALUES } from "../src/features/settings/settingsDefaults.mjs";
+import { createChangedSettingsTracker } from "../src/features/settings/createChangedSettingsTracker.mjs";
+import { useChangedSettingsCounts } from "../src/features/settings/settingsChangedView.mjs";
+import { useSettingsSearchIndex } from "../src/features/settings/settingsSearchIndex.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const source = readFileSync(new URL("../Settings.js", import.meta.url), "utf8");
+const source = readSettingsFixture();
 const performanceKeys = [
   "reduce-motion", "performance-frame-rate", "karaoke-bounce",
   "karaoke-line-transition", "karaoke-text-effects", "fade-blur",
@@ -21,6 +30,161 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
 const elements = (node) => Array.isArray(node) ? node.flatMap(elements)
   : node?.props ? [node, ...elements(node.props.children)] : [];
 
+test("config notifications replace the changed setting keys when the menu counts stay the same", () => {
+  const [first, second] = ["prefetch-video-enabled", "prefetch-word-details-enabled"];
+  const registry = [first, second].map(key => ({ key, tabId: "performance" }));
+  const states = [registry], effects = [], frames = new Map();
+  let nextFrame = 0;
+  const host = Object.assign(new EventTarget(), {
+    requestAnimationFrame(callback) { frames.set(++nextFrame, callback); return nextFrame; },
+    cancelAnimationFrame: id => frames.delete(id),
+  });
+  let stateIndex = 0;
+  const react = {
+    useState(initial) {
+      const index = stateIndex++;
+      states[index] ??= typeof initial === "function" ? initial() : initial;
+      return [states[index], update => { states[index] = update(states[index]); }];
+    },
+    useEffect: effect => effects.push(effect),
+  };
+  let changedKey = first;
+  useChangedSettingsCounts(react, {
+    host, readSettingsRegistry: () => registry, isSettingChanged: key => key === changedKey, isChangedView: false,
+  });
+  const dispose = effects.at(-1)();
+  try {
+    const before = states[1];
+    changedKey = second;
+    for (const name of [first, second]) {
+      host.dispatchEvent(new CustomEvent("ivLyrics", { detail: { type: "config", name } }));
+    }
+    assert.equal(frames.size, 1);
+    frames.get(1)();
+    assert.equal(states[1].total, before.total);
+    assert.deepEqual(states[1].byTab, before.byTab);
+    assert.deepEqual(states[1].keys, [second]);
+  } finally {
+    dispose();
+  }
+});
+
+test("named settings changes only reread the affected values and aliases", () => {
+  const reads = [];
+  const changed = new Set();
+  const registry = [
+    { key: "font-size", tabId: "appearance" },
+    { key: SETTINGS_BACKGROUND_MODE_KEY, tabId: "appearance" },
+    { key: "prefetch-enabled", tabId: "performance" },
+  ];
+  const tracker = createChangedSettingsTracker(registry, key => {
+    reads.push(key);
+    return changed.has(key);
+  });
+  assert.equal(tracker.readCounts().total, 0);
+  assert.deepEqual(reads.splice(0), registry.map(entry => entry.key));
+
+  changed.add("prefetch-enabled");
+  changed.add(SETTINGS_BACKGROUND_MODE_KEY);
+  for (const key of ["prefetch-enabled", "video-background", "background-mode", "prefetch-enabled"]) {
+    tracker.invalidate(key);
+  }
+  const counts = tracker.readCounts();
+  assert.deepEqual(reads.splice(0), ["prefetch-enabled", SETTINGS_BACKGROUND_MODE_KEY]);
+  assert.deepEqual(counts, {
+    total: 2, byTab: { appearance: 1, performance: 1 }, keys: [SETTINGS_BACKGROUND_MODE_KEY, "prefetch-enabled"],
+  });
+  assert.equal(tracker.readCounts(), counts);
+  assert.equal(reads.length, 0);
+
+  changed.clear();
+  tracker.invalidate("extension-bulk-settings");
+  assert.equal(tracker.readCounts().total, 0);
+  assert.deepEqual(reads, registry.map(entry => entry.key));
+});
+
+test("search updates live text and aliases without rebuilding the catalog across settings tabs", () => {
+  let nextFrame = 0;
+  const frames = new Map();
+  let observer;
+  const host = {
+    requestAnimationFrame(callback) { frames.set(++nextFrame, callback); return nextFrame; },
+    cancelAnimationFrame(id) { frames.delete(id); },
+    MutationObserver: class {
+      constructor(callback) { this.notify = callback; observer = this; }
+      observe(_element, options) { this.options = options; }
+      disconnect() { this.disconnected = true; }
+    },
+  };
+  const refSlots = [];
+  let refIndex;
+  let activate;
+  let results;
+  const react = {
+    useState: () => [results || [], value => { results = value; }],
+    useRef: initial => refSlots[refIndex++] ??= { current: initial },
+    useEffect: effect => { activate = effect; },
+  };
+  const attributes = new Map([["data-setting-key", "font-size"]]);
+  const label = { textContent: "Live font", closest: () => row };
+  const row = {
+    classList: { contains: key => key === "setting-row" },
+    getAttribute: key => attributes.get(key),
+    querySelectorAll: selector => selector.includes(".setting-name") ? [label] : [],
+  };
+  const panel = { getAttribute: () => "appearance", querySelectorAll: () => [row] };
+  const containerRef = { current: { querySelectorAll: () => [panel] } };
+  const searchableSettings = [{ sectionKey: "appearance", settingKey: "font-size", name: "Catalog font" }];
+  const declaredIndex = { entries: [], routing: new Map() };
+  let translations = 0;
+  const render = activeTab => {
+    refIndex = 0;
+    useSettingsSearchIndex(react, {
+      host, activeTab, containerRef, searchableSettings, getDeclaredSearchIndex: () => declaredIndex,
+      translate: key => { translations++; return key; },
+    });
+    return activate();
+  };
+  const flush = () => {
+    const callbacks = [...frames.values()];
+    frames.clear();
+    callbacks.forEach(callback => callback());
+  };
+  const entry = () => results.find(result => result.resultKey === "appearance:font-size");
+
+  const dispose = render("appearance");
+  assert.equal(observer.options.characterData, true);
+  assert.ok(observer.options.attributeFilter.includes("data-search-text"));
+  flush();
+  assert.equal(entry().name, "Live font");
+  const initialTranslations = translations;
+  const first = results;
+  observer.notify();
+  observer.notify();
+  assert.equal(frames.size, 1);
+  flush();
+  assert.equal(results, first);
+
+  label.textContent = "Live font revised";
+  attributes.set("data-search-text", "new alias");
+  observer.notify();
+  flush();
+  assert.equal(entry().name, "Live font revised");
+  assert.ok(entry().directKeywords.includes("new alias"));
+
+  observer.notify();
+  dispose();
+  assert.equal(observer.disconnected, true);
+  assert.equal(frames.size, 0);
+  attributes.set("data-search-exclude", "true");
+  const disposeNext = render("performance");
+  flush();
+  assert.equal(entry().name, "Catalog font");
+  assert.equal(entry().directKeywords.includes("new alias"), false);
+  assert.equal(translations, initialTranslations);
+  disposeNext();
+});
+
 function harness(overrides = {}, initial = {}, options = {}) {
   // Only the modal's final return is instrumented. All menu definitions,
   // catalog/search construction, registry traversal and save/reset handlers
@@ -30,11 +194,12 @@ function harness(overrides = {}, initial = {}, options = {}) {
   assert.ok(end > rootReturn && rootReturn > source.indexOf("const ConfigModal ="));
   const modalApi = `
     return { sidebarTabs, renderTabContent, buildSettingsRegistry,
-      resetChangedEntries, renderChangedView, searchableSettings,
-      getDeclaredSearchSettings, getDeclaredSearchRouting,
-      searchResults, handleSearchChange,
+      resetChangedEntries: changedSettings.resetChangedEntries, renderChangedView: changedSettings.renderChangedView,
+      searchableSettings: search.searchableSettings,
+      getDeclaredSearchIndex,
+      searchResults: search.searchResults, handleSearchChange: search.handleSearchChange,
       tree: globalThis.__settingsTree,
-      navigateToDestination, pickSearchResult, pendingTabScrollRef, activeTab,
+      navigateToDestination, pickSearchResult: search.pickSearchResult, pendingNavigationRef: navigation.pendingNavigationRef, activeTab,
       handlePerformanceSettingChange, handleVisualConfigChange,
       handleAppearancePreviewChange };
   `;
@@ -88,10 +253,14 @@ function harness(overrides = {}, initial = {}, options = {}) {
   };
   const saves = [], events = [], errors = [], updates = [];
   const context = vm.createContext({
+    SETTINGS_DEFAULT_VALUES, SETTINGS_FALLBACK_DEFAULT_VALUES,
     react, ...react, CONFIG: { visual: {} }, APP_NAME: "ivLyrics",
     I18n: { t: (key) => key, getAvailableLanguages: () => [] },
     StorageManager: {
       saveConfig: (key, value) => saves.push({ method: "saveConfig", key, value }),
+      saveConfigs(values) {
+        for (const [key, value] of Object.entries(values)) this.saveConfig(key, value);
+      },
       setItem: (key, value) => saves.push({ method: "setItem", key, value }),
     },
     Spicetify: { LocalStorage: { get: () => null }, Player: { data: {} } },
@@ -99,6 +268,10 @@ function harness(overrides = {}, initial = {}, options = {}) {
     window: {
       dispatchEvent: (event) => events.push(event),
       addEventListener() {}, removeEventListener() {}, confirm: () => true,
+      requestAnimationFrame(callback) { callback(); return 0; },
+      cancelAnimationFrame() {},
+      MutationObserver: class { observe() {} disconnect() {} },
+      lyricContainer: { refreshLyricsView: () => updates.push("lyrics") },
     },
     document: {
       getElementById: () => null,
@@ -116,7 +289,6 @@ function harness(overrides = {}, initial = {}, options = {}) {
     requestAnimationFrame: (callback) => { callback(); return 0; },
     cancelAnimationFrame: () => {},
     thresholdSizeLimit: { min: 0, max: 100, step: 5 },
-    lyricContainerUpdate: () => updates.push("lyrics"),
     SETTINGS_MODAL_CSS: "",
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     console: { warn: (...args) => errors.push(args), error: (...args) => errors.push(args) },
@@ -163,10 +335,10 @@ function harness(overrides = {}, initial = {}, options = {}) {
 test("search index reaches every setting from any tab", () => {
   const h = harness();
   const indexed = new Map(
-    [...h.api.searchableSettings, ...h.api.getDeclaredSearchSettings()]
+    [...h.api.searchableSettings, ...h.api.getDeclaredSearchIndex().entries]
       .map((entry) => [`${entry.sectionKey}:${entry.settingKey}`, entry])
   );
-  const routing = h.api.getDeclaredSearchRouting();
+  const routing = h.api.getDeclaredSearchIndex().routing;
   const missing = [...new Set(allDeclarations(h)
     .filter(({ item }) => item.key && item.searchable !== false && h.hasSettingDefault(item.key))
     .filter(({ item, tabId }) => {
@@ -182,8 +354,8 @@ test("search index reaches every setting from any tab", () => {
 
 test("every layer table collapses into one search entry per layer", () => {
   const h = harness();
-  const entries = Array.from(h.api.getDeclaredSearchSettings());
-  const routing = h.api.getDeclaredSearchRouting();
+  const entries = Array.from(h.api.getDeclaredSearchIndex().entries);
+  const routing = h.api.getDeclaredSearchIndex().routing;
   const tables = [
     { tabId: "appearance", sectionKey: "lyric-layers" },
     { tabId: "fullscreen", sectionKey: "vinyl-typography" },
@@ -221,7 +393,7 @@ test("every layer table collapses into one search entry per layer", () => {
 
 test("layer table search entries use the table title and selected layer", () => {
   const h = harness();
-  const entries = new Map(Array.from(h.api.getDeclaredSearchSettings())
+  const entries = new Map(Array.from(h.api.getDeclaredSearchIndex().entries)
     .map((entry) => [entry.settingKey, entry]));
   assert.equal(entries.get("pronunciation-style").name, "Lyric layers - Pronunciation");
   assert.equal(entries.get("furigana-style").name, "Lyric layers - Furigana");
@@ -269,7 +441,7 @@ test("search panel lists one result per layer and still matches property words",
 
 test("off-tab search entries carry a readable name, section and destination", () => {
   const h = harness();
-  const entries = new Map(h.api.getDeclaredSearchSettings()
+  const entries = new Map(h.api.getDeclaredSearchIndex().entries
     .map((entry) => [`${entry.sectionKey}:${entry.settingKey}`, entry]));
   for (const key of ["synced-pronunciation", "pronunciation-karaoke-fill"]) {
     const entry = entries.get(`lyrics:${key}`);
@@ -283,7 +455,7 @@ test("off-tab search entries carry a readable name, section and destination", ()
 test("manual and generated search entries merge into one result per destination", () => {
   const h = harness();
   const resultKeysByDestination = new Map();
-  for (const entry of [...h.api.searchableSettings, ...h.api.getDeclaredSearchSettings()]) {
+  for (const entry of [...h.api.searchableSettings, ...h.api.getDeclaredSearchIndex().entries]) {
     if (!entry.settingKey) continue;
     const destination = h.canonical(entry.sectionKey, entry.settingKey);
     const destinationKey = `${destination.tabId}:${destination.settingKey}`;
@@ -418,7 +590,7 @@ test("Song Controls groups visibility and appearance under one searchable sectio
   h.api.pickSearchResult(search[0]);
   h.render();
   assert.equal(h.api.activeTab, "fullscreen");
-  assert.equal(h.api.pendingTabScrollRef.current, "controller-style");
+  assert.equal(h.api.pendingNavigationRef.current?.settingKey, "controller-style");
   const changed = h.api.renderChangedView();
   const group = elements(changed).find((node) =>
     node.props.className === "settings-changed-menu" && node.props.key === "fullscreen");
@@ -429,7 +601,7 @@ test("Song Controls groups visibility and appearance under one searchable sectio
     row.jump.onClick();
     h.render();
     assert.equal(h.api.activeTab, "fullscreen");
-    assert.equal(h.api.pendingTabScrollRef.current, row.key);
+    assert.equal(h.api.pendingNavigationRef.current?.settingKey, row.key);
   }
   h.clearCalls();
   h.api.resetChangedEntries(registry);
@@ -494,7 +666,7 @@ test("shared catalog, actual Performance rows and manual search agree on canonic
     h.api.pickSearchResult(entries[0]);
     h.render();
     assert.equal(h.api.activeTab, "performance");
-    assert.equal(h.api.pendingTabScrollRef.current, key);
+    assert.equal(h.api.pendingNavigationRef.current?.settingKey, key);
   }
   assert.ok(!Array.from(h.api.searchableSettings).some((entry) =>
     entry.settingKey === "video-background-settings" || entry.settingKey === "prefetch"));
@@ -512,14 +684,14 @@ test("legacy prefetch and stale owner links resolve through real navigation and 
     h.api.navigateToDestination(incomingTab, "prefetch");
     h.render();
     assert.equal(h.api.activeTab, "performance");
-    assert.equal(h.api.pendingTabScrollRef.current, "performance-background-work");
+    assert.equal(h.api.pendingNavigationRef.current?.settingKey, "performance-background-work");
   }
   for (const [initialTab, initialSettingKey] of [
     ["lyrics", "prefetch"], ["appearance", "reduce-motion"], ["lyrics", "prefetch-enabled"],
   ]) {
     const linked = harness({}, { initialTab, initialSettingKey });
     assert.equal(linked.api.activeTab, "performance");
-    assert.equal(linked.api.pendingTabScrollRef.current,
+    assert.equal(linked.api.pendingNavigationRef.current?.settingKey,
       initialSettingKey === "prefetch" ? "performance-background-work" : initialSettingKey);
   }
   for (const key of [...appearanceKeys, "video-background", "__background-mode"]) {
@@ -529,7 +701,7 @@ test("legacy prefetch and stale owner links resolve through real navigation and 
     { tabId: "appearance", settingKey: "video-background" });
   const linkedVideo = harness({}, { initialTab: "performance", initialSettingKey: "video-background" });
   assert.equal(linkedVideo.api.activeTab, "appearance");
-  assert.equal(linkedVideo.api.pendingTabScrollRef.current, "video-background");
+  assert.equal(linkedVideo.api.pendingNavigationRef.current?.settingKey, "video-background");
   assert.deepEqual(plain(h.canonical("lyrics", "karaoke-motion-style")),
     { tabId: "lyrics", settingKey: "karaoke-motion-style" });
 });
@@ -563,7 +735,7 @@ test("registry and Changed settings retain real owners, jump targets and reset s
       item.jump.onClick();
       h.render();
       assert.equal(h.api.activeTab, tabId);
-      assert.equal(h.api.pendingTabScrollRef.current, item.key);
+      assert.equal(h.api.pendingNavigationRef.current?.settingKey, item.key);
     }
   }
   // Exercise the actual OptionList row-reset button for the FPS control.
@@ -618,7 +790,7 @@ test("video row only navigates and is excluded from both the registry and render
   button.props.onClick({ target: {} });
   h.render();
   assert.equal(h.api.activeTab, "appearance");
-  assert.equal(h.api.pendingTabScrollRef.current, "video-background");
+  assert.equal(h.api.pendingNavigationRef.current?.settingKey, "video-background");
   assert.deepEqual(plain(h.visual), before);
   assert.deepEqual(h.saves, []);
   assert.deepEqual(h.events, []);
@@ -670,24 +842,172 @@ test("changed rows retain setting identities when preceding rows disappear", () 
   assert.deepEqual(rowKeys(items.slice(1)), performanceKeys.slice(1));
 });
 
+test("an already mounted option list uses the new declarations in the same render", () => {
+  let cursor = 0;
+  const slots = [];
+  const react = {
+    useState(initial) {
+      const index = cursor++;
+      if (!(index in slots)) slots[index] = initial;
+      return [slots[index], next => { slots[index] = next; }];
+    },
+    useEffect() {},
+    createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
+  };
+  const optionList = createSettingsOptionList({
+    react, controls: {}, ownRowControls: [], getSettingsText: key => key,
+  });
+  const render = keys => {
+    cursor = 0;
+    return optionList({ items: keys.map(key => ({ type: "info", key, desc: key })) });
+  };
+  assert.deepEqual(render(["first", "second"]).props.children.map(row => row.props.key), ["first", "second"]);
+  assert.deepEqual(render(["second"]).props.children.map(row => row.props.key), ["second"]);
+});
+
+test("typography table and narrow list use the same setting owner and reset failure handling", context => {
+  context.mock.method(console, "error", () => {});
+  const calls = [], refreshes = [], errors = [];
+  const ConfigColorPicker = () => null;
+  const ConfigSlider = () => null;
+  const OptionList = () => null;
+  const controls = { ConfigColorPicker, ConfigSlider, OptionList };
+  const visual = { "show-layer": true };
+  let layout = "table";
+  let currentColor = "#123456";
+  let saveFails = false;
+  const react = {
+    useRef: current => ({ current }),
+    useState: initial => [initial === "table" ? layout : initial, () => {}],
+    useEffect() {},
+    createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
+  };
+  const matrix = createSettingsLayerMatrix({
+    react, getControls: () => controls, getVisualSettings: () => visual, useSettingsConfigRevision() {},
+    getSettingsText: key => key, getSettingDefaultValue: () => "#ffffff",
+    hasSettingDefault: () => true, isSettingChanged: () => true,
+    publishSettingsRefresh: key => refreshes.push(key), onSaveError: error => errors.push(error.message),
+  });
+  const item = {
+    key: "original-outline-color", type: ConfigColorPicker, row: "outlineColor",
+    readConfiguredValue: () => currentColor,
+    onChange(key, value) {
+      if (saveFails) throw new Error("storage unavailable");
+      calls.push([key, value]);
+      currentColor = value;
+    },
+  };
+  const props = {
+    columns: [{ id: "original", label: "Original", toggle: { key: "show-layer" }, items: [item] }],
+    rows: [{ id: "outlineColor", label: "Outline color" }],
+    onChange: () => assert.fail("the cell's save handler owns the setting"),
+  };
+  const rows = () => elements(matrix(props));
+  const colorEditor = rows().find(node => node.type === ConfigColorPicker);
+  colorEditor.props.onChange("#001122");
+  assert.deepEqual(calls, [[item.key, "#001122"]]);
+  const reset = rows().find(node => node.props.className === "settings-reset-btn is-cell");
+  saveFails = true;
+  reset.props.onClick();
+  assert.equal(currentColor, "#001122");
+  assert.deepEqual(refreshes, []);
+  assert.deepEqual(errors, ["storage unavailable"]);
+  saveFails = false;
+  reset.props.onClick();
+  assert.equal(currentColor, "#ffffff");
+  assert.deepEqual(refreshes, [item.key]);
+
+  visual["show-layer"] = false;
+  const disabledEditor = rows().find(node => node.type === ConfigColorPicker);
+  assert.equal(disabledEditor.props.disabled, true);
+  assert.equal(disabledEditor.props.onChange("#334455"), false);
+  layout = "tabs";
+  assert.equal(rows().find(node => node.type === OptionList).props.items[1].when(), false);
+  visual["show-layer"] = true;
+  const narrowItem = rows().find(node => node.type === OptionList).props.items[1];
+  assert.equal(narrowItem.when(), true);
+  assert.equal(narrowItem.defaultValue, "#ffffff");
+  assert.equal(narrowItem.onChange, item.onChange);
+});
+
+test("resetting changed settings reports storage errors once and keeps other successful writes", context => {
+  context.mock.method(console, "error", () => {});
+  const saved = [], errors = [];
+  let refreshes = 0;
+  const view = createChangedSettingsView({}, {
+    publishReset: () => { refreshes++; },
+    onSaveError: error => errors.push(error.message),
+  });
+  const entry = (key, { onChange, ...attributes } = {}) => ({
+    key, item: { key, ...attributes }, onChange: onChange || ((name, value) => saved.push([name, value])),
+  });
+  const failed = () => { throw new Error("write rejected"); };
+  const resettable = entry("performance-frame-rate");
+  const untouched = [
+    entry("prefetch-enabled", { disabled: () => true }),
+    entry("highlight-mode", { noReset: true }),
+    entry("fade-blur", { onChange: () => false }),
+    entry("karaoke-line-transition", { onChange: failed }),
+    entry("karaoke-text-effects", { onChange: failed }),
+  ];
+
+  view.resetChangedEntries(untouched);
+  assert.deepEqual(saved, []);
+  assert.deepEqual(errors, ["write rejected"]);
+  assert.equal(refreshes, 0);
+  errors.length = 0;
+  view.resetChangedEntries([...untouched, resettable]);
+  assert.deepEqual(saved, [["performance-frame-rate", 60]]);
+  assert.deepEqual(errors, ["write rejected"]);
+  assert.equal(refreshes, 1);
+});
+
 test("toggles persist once per input event without replayable state-updater side effects", () => {
   const calls = [], states = [], effects = [];
-  const context = vm.createContext({
-    react: { memo: (component) => component, createElement: (type, props) => ({ type, props }) },
+  const react = {
+    memo: (component) => component,
+    createElement: (type, props) => ({ type, props }),
     useState: (initial) => [initial, (next) => states.push(next)],
     useRef: (current) => ({ current }), useEffect: (effect) => effects.push(effect),
-    useCallback: (callback) => callback, ButtonSVG: "ButtonSVG", Spicetify: { SVGIcons: { check: "check" } },
-  });
-  vm.runInContext(source.slice(source.indexOf("const ConfigSlider ="), source.indexOf("const ConfigSliderRange ="))
-    + "\nglobalThis.toggle = ConfigSlider;", context);
-  const button = context.toggle({ defaultValue: false, onChange: (value) => calls.push(value) });
+    useCallback: (callback) => callback,
+  };
+  const { ConfigSlider } = createSettingsTextControls({ react, getCheckIcon: () => "check" });
+  const button = ConfigSlider({ defaultValue: false, onChange: (value) => calls.push(value) });
   effects.splice(0).forEach((effect) => effect());
   states.length = 0;
   button.props.onClick();
   button.props.onClick();
   assert.deepEqual(calls, [true, false], "rapid inputs use the latest toggle state");
   assert.deepEqual(states, [true, false], "queued state updates contain values, not persistence callbacks");
-  const disabled = context.toggle({ defaultValue: false, disabled: true, onChange: (value) => calls.push(value) });
+  const disabled = ConfigSlider({ defaultValue: false, disabled: true, onChange: (value) => calls.push(value) });
   disabled.props.onClick();
   assert.deepEqual(calls, [true, false]);
+});
+
+test("a toggle keeps its last saved value when a write fails and retries the same change", (context) => {
+  const calls = [], states = [], errors = [];
+  const react = {
+    memo: component => component,
+    createElement: (type, props) => ({ type, props }),
+    useState: initial => [initial, next => states.push(next)],
+    useRef: current => ({ current }),
+    useEffect: () => {},
+    useCallback: callback => callback,
+  };
+  const failure = new Error("Storage is full");
+  context.mock.method(console, "error", () => {});
+  const { ConfigSlider } = createSettingsTextControls({
+    react, getCheckIcon: () => "check", onSaveError: error => errors.push(error),
+  });
+  const button = ConfigSlider({ defaultValue: false, onChange(value) {
+    calls.push(value);
+    if (calls.length === 1) throw failure;
+  } });
+
+  button.props.onClick();
+  assert.deepEqual(states, []);
+  assert.deepEqual(errors, [failure]);
+  button.props.onClick();
+  assert.deepEqual(calls, [true, true]);
+  assert.deepEqual(states, [true]);
 });

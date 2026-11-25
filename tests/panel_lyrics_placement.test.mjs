@@ -1,16 +1,14 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
+import { createNowPlayingPanelPlacement } from "../src/lyrics/nowPlayingPanelPlacement.mjs";
 
-const source = readFileSync(new URL("../NowPlayingPanelLyrics.js", import.meta.url), "utf8");
-
-const slice = (startMarker, endMarker) => {
-	const start = source.indexOf(startMarker);
+const slice = (startMarker, endMarker, sourceText) => {
+	const start = sourceText.indexOf(startMarker);
 	assert.notEqual(start, -1, `start marker not found: ${startMarker}`);
-	const end = source.indexOf(endMarker, start + startMarker.length);
+	const end = sourceText.indexOf(endMarker, start + startMarker.length);
 	assert.notEqual(end, -1, `end marker not found: ${endMarker}`);
-	return source.slice(start, end);
+	return sourceText.slice(start, end);
 };
 
 // Small DOM stand-in with the operations the placement helpers rely on.
@@ -77,17 +75,6 @@ class FakeElement {
 	}
 }
 
-const loadPlacementHelpers = () => {
-	const helpers = slice("    const PANEL_HEADER_VISUAL_SELECTOR =", "    // Starry Night 테마 감지");
-	const context = vm.createContext({ panelDebug() {}, console });
-	vm.runInContext(
-		`${helpers}
-globalThis.helpers = { findPanelContextItemInfo, getPanelLyricsSlot, isPanelContainerPlaced, placePanelContainer, ensurePanelContainerPlacement };`,
-		context
-	);
-	return context.helpers;
-};
-
 // Builds the Spotify 1.3.x Now Playing panel. With mapped=false only hashed
 // class names exist, as when the Spicetify CSS map lacks the NPV mappings.
 const buildPanel = ({ mapped, withHeader = true } = {}) => {
@@ -118,20 +105,23 @@ const buildPanel = ({ mapped, withHeader = true } = {}) => {
 
 for (const mapped of [true, false]) {
 	test(`panel lyrics are placed right under the track info (${mapped ? "mapped" : "unmapped"} NPV classes)`, () => {
-		const { findPanelContextItemInfo, placePanelContainer, getPanelLyricsSlot, isPanelContainerPlaced } = loadPlacementHelpers();
 		const { panel, grid, info } = buildPanel({ mapped });
-		assert.equal(findPanelContextItemInfo(panel), info);
+		const document = new FakeElement().append(panel);
+		const { findNowPlayingPanel, placePanelContainer, getPanelLyricsSlot } = createNowPlayingPanelPlacement({
+			document, debug() {},
+		});
+		assert.equal(findNowPlayingPanel(), panel);
+		assert.deepEqual(getPanelLyricsSlot(panel), { parent: grid, after: info, before: null });
 
 		const container = new FakeElement({ name: "ivlyrics" });
 		assert.equal(placePanelContainer(panel, container), true);
 		assert.equal(container.parentElement, grid);
 		assert.equal(container.previousElementSibling, info);
-		assert.equal(isPanelContainerPlaced(container, getPanelLyricsSlot(panel)), true);
 	});
 }
 
 test("a card appended at the bottom moves under the track info once the header is rendered", () => {
-	const { ensurePanelContainerPlacement } = loadPlacementHelpers();
+	const { ensurePanelContainerPlacement } = createNowPlayingPanelPlacement({ debug() {} });
 	const { panel, grid, info, queue } = buildPanel({ mapped: false });
 	const container = new FakeElement({ name: "ivlyrics" });
 	panel.appendChild(container);
@@ -147,13 +137,12 @@ test("a card appended at the bottom moves under the track info once the header i
 });
 
 test("no slot is reported while the track info is not rendered yet", () => {
-	const { getPanelLyricsSlot, placePanelContainer, isPanelContainerPlaced } = loadPlacementHelpers();
+	const { getPanelLyricsSlot, placePanelContainer } = createNowPlayingPanelPlacement({ debug() {} });
 	const { panel, aboutArtist } = buildPanel({ mapped: false, withHeader: false });
 	assert.equal(getPanelLyricsSlot(panel), null, "hashed section classes are not a reliable anchor");
 	const container = new FakeElement({ name: "ivlyrics" });
 	assert.equal(placePanelContainer(panel, container), false);
 	assert.equal(container.parentElement, null);
-	assert.equal(isPanelContainerPlaced(container, null), true);
 
 	const mapped = buildPanel({ mapped: true, withHeader: false });
 	const mappedContainer = new FakeElement({ name: "ivlyrics" });
@@ -162,19 +151,8 @@ test("no slot is reported while the track info is not rendered yet", () => {
 	assert.notEqual(aboutArtist, null);
 });
 
-test("insertion waits for the track info instead of appending to the panel end immediately", () => {
-	const insert = slice("    const insertPanelLyrics = () => {", "    const removePanelLyrics = () => {");
-	assert.match(insert, /if \(!slot && panelSlotRetryCount < PANEL_SLOT_MAX_RETRIES\)/);
-	assert.match(insert, /scheduleInsertPanelLyrics\(PANEL_SLOT_RETRY_DELAY\)/);
-	assert.match(insert, /ensurePanelContainerPlacement\(panel, existingContainer\)/);
-	const observer = slice("    const setupObserver = () => {", "    const teardownObserver =");
-	assert.match(observer, /ensurePanelContainerPlacement\(panel, container\)/);
-});
-
-test("panel shows 'lyrics not found' instead of loading forever when lookup finds nothing", () => {
-	const emptyState = slice("        const renderPanelEmptyState = () =>", "        const renderPanelLyricsTree = () =>");
+test("panel renders a distinct message when a completed lookup found no lyrics", () => {
+	const view = readFileSync(new URL("../src/lyrics/createNowPlayingLyricsView.mjs", import.meta.url), "utf8");
+	const emptyState = slice("        const renderPanelEmptyState = () =>", "        const renderPanelLyricsTree = () =>", view);
 	assert.match(emptyState, /lyricsNotFound\s*\?\s*translatePanelText\("syncCreator\.noLyrics"/);
-	const loader = slice("        const loadLyricsFromExtension = useCallback(", "        const loadTranslationAsync = useCallback(");
-	assert.equal((loader.match(/setLyricsNotFound\(true\)/g) || []).length, 3, "every no-lyrics branch marks the lookup as finished");
-	assert.match(loader, /setLyricsNotFound\(false\);/);
 });

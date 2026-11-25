@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import test from 'node:test';
-import vm from 'node:vm';
+import test from "node:test";
+import { createSettingsKaraokeFillCurveEditor } from "../src/features/settings/settingsKaraokeFillCurveEditor.mjs";
 
-const source = readFileSync(new URL('../Settings.js', import.meta.url), 'utf8');
-const code = source.slice(source.indexOf('const KARAOKE_FILL_CURVE_DEFAULT_POINTS'), source.indexOf('const SETTINGS_HOTKEY_LABELS'));
 const elements = node => Array.isArray(node) ? node.flatMap(elements) : node?.props ? [node, ...elements(node.children)] : [];
 function harness(changed = false) {
   const hooks = [], effects = [], listeners = new Map(), commits = [];
@@ -22,17 +19,18 @@ function harness(changed = false) {
       effects.push(() => { hooks[i].cleanup?.(); hooks[i].cleanup = effect(); });
     }
   };
-  const context = vm.createContext({
-    useRef, useState, useEffect,
-    react: { createElement: (type, props, ...children) => ({ type, props: props || {}, children }) },
-    window: { addEventListener: (type, cb) => listeners.set(type, cb), removeEventListener: type => listeners.delete(type) },
+  const renderEditor = createSettingsKaraokeFillCurveEditor({
+    react: {
+      useRef, useState, useEffect,
+      createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+    },
+    host: { addEventListener: (type, cb) => listeners.set(type, cb), removeEventListener: type => listeners.delete(type) },
     getSettingsText: (_, fallback) => fallback,
     isSettingChanged: () => changed,
   });
-  vm.runInContext(code + '\nglobalThis.render = ConfigKaraokeFillCurveEditor;', context);
   const render = (props = {}) => {
     cursor = 0;
-    const tree = context.render({ name: 'Fill', onChange: (...args) => commits.push(args), ...props });
+    const tree = renderEditor({ name: 'Fill', onChange: (...args) => commits.push(args), ...props });
     elements(tree).find(node => node.type === 'svg').props.ref.current = { getBoundingClientRect: () => ({ top: 0, height: 180 }) };
     effects.splice(0).forEach(effect => effect());
     return elements(tree);
