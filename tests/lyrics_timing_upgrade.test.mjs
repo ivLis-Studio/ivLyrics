@@ -11,6 +11,7 @@ import { mergeLyricsTiming } from "../src/lyrics/lyricsTimingMerge.mjs";
 import { installLyricsReadySnapshotListener } from "../src/lyrics/installLyricsReadySnapshotListener.mjs";
 import { publishLyricsReady } from "../src/lyrics/lyricsReadyPublisher.mjs";
 import { createLyricsPresentationStore } from "../src/lyrics/lyricsPresentationStore.mjs";
+import { readPageLyricsSource, writePageLyricsSource } from "#ivlyrics/lyrics/pageLyricsSourceCache.mjs";
 
 const source = readFileSync(new URL('../src/spicetify/index.js', import.meta.url), 'utf8');
 const section = (start, end) => {
@@ -92,7 +93,7 @@ function setup() {
         scheduleTimer: context.setTimeout, cancelTimer: context.clearTimeout,
         publishReady: (detail, options) => publishLyricsReady(detail, window, options),
     });
-    return { app, CACHE, snapshots, presentations, timers, pendingTranslation, readings, store };
+    return { app, CACHE, snapshots, presentations, timers, pendingTranslation, readings, store, service: window.LyricsService };
 }
 
 const upgrade = () => ({ uri, provider: 'lrcred', karaokeSource: 'lrcred', karaoke: [word], synced: [word], lrcred: { syncType: 'word' } });
@@ -118,6 +119,15 @@ test('timing upgrade preserves translated text, phonetics, cache and in-flight r
     assert.equal(h.snapshots[0].source, 'lrcred-word-sync');
     assert.equal(h.snapshots[0].timingUpgradeApplied, true);
     assert.equal(h.snapshots[0].displayLyrics[0].text2, 'translation');
+});
+
+test('a page timing merge keeps cache ownership through the next provider selection', async () => {
+    const h = setup();
+    h.service.getLyricsRequestRevision = () => 3;
+    writePageLyricsSource(h.CACHE, uri, { uri, provider: 'lrcred', synced: [line] }, 3);
+    assert.equal(await h.app.applyLyricsTimingUpgrade(upgrade()), true);
+    assert.equal(readPageLyricsSource(h.CACHE, uri, 3).karaokeSource, 'lrcred');
+    assert.equal(readPageLyricsSource(h.CACHE, uri, 4), undefined);
 });
 
 test('a page timing commit retains the shared translation and the original timing revision', async () => {
@@ -164,7 +174,7 @@ test('the page and cache reject incompatible timing versions before changing the
     assert.equal(h.snapshots.length, 0);
 });
 
-for (const interrupt of [false, 'track', 'cleanup', 'same-track replacement', 'request invalidated', 'cache version changed']) {
+for (const interrupt of [false, 'track', 'cleanup', 'same-track replacement', 'request invalidated', 'cache version changed', 'provider selection changed']) {
     test(`a queued React timing update is acknowledged only after commit (interrupt ${interrupt})`, async () => {
         const h = setup();
         let commit, settled = false;
@@ -184,6 +194,7 @@ for (const interrupt of [false, 'track', 'cleanup', 'same-track replacement', 'r
         if (interrupt === 'track') h.app.state = { ...h.app.state, uri: 'track-b' };
         if (interrupt === 'same-track replacement') h.app.state = { ...h.app.state, synced: [{ text: 'New source' }] };
         if (interrupt === 'cache version changed') h.app.state = { ...h.app.state, cacheVersion: 'latest' };
+        if (interrupt === 'provider selection changed') h.service.getLyricsRequestRevision = () => 1;
         if (interrupt === 'request invalidated') ownsRequest = false;
         if (interrupt === 'cleanup') {
             h.app.clearPendingLyricsUpdates();

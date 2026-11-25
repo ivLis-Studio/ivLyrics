@@ -2,6 +2,7 @@ import {
   buildLrcRedTimingSnapshot, hasMatchingLyricsTimingSource, LRC_RED_WORD_SYNC_SOURCE, mergeLyricsTiming, readLyricsTimingSourceLines,
 } from "./lyricsTimingMerge.mjs";
 import { hasCompatibleLrcRedTimingSource, retainLrcRedWordTiming } from "../providers/lyrics/lrcRedWordTiming.mjs";
+import { updatePageLyricsSource } from "./pageLyricsSourceCache.mjs";
 
 const TIMING_UPGRADE = Symbol("lyrics timing upgrade");
 const readSource = result => result.synced?.length ? result.synced : result.unsynced;
@@ -48,6 +49,8 @@ export function createPageLyricsTimingUpgrade({ cache, getLyricsService, getLyri
     const source = readSource(state);
     const lines = readLyricsTimingSourceLines(upgraded.karaoke);
     if (!hasMatchingLyricsTimingSource(source, lines)) return false;
+    const readProviderRevision = () => getLyricsService()?.getLyricsRequestRevision?.(state.uri);
+    const providerRevision = readProviderRevision();
     const upgrade = {
       uri: state.uri, provider: state.provider, requestSeq: state.lyricsRequestSeq,
       karaoke: upgraded.karaoke, lines,
@@ -64,6 +67,7 @@ export function createPageLyricsTimingUpgrade({ cache, getLyricsService, getLyri
       };
       page._pendingTimingUpgradeResolve = finish;
       const isCurrent = current => ownsUpgrade() && page._pendingTimingUpgradeResolve === finish
+        && readProviderRevision() === providerRevision
         && page.isCurrentLyricsState(current) && current.uri === upgraded.uri
         && current.provider === upgraded.provider && current.lyricsRequestSeq === upgrade.requestSeq
         && hasCompatibleLrcRedTimingSource(current, upgraded)
@@ -79,10 +83,9 @@ export function createPageLyricsTimingUpgrade({ cache, getLyricsService, getLyri
           return;
         }
         try {
-          const cached = cache[state.uri];
-          const cachedTiming = cached ? retainLrcRedWordTiming(cached, upgraded) : upgraded;
-          if (cachedTiming !== cached) cache[state.uri] = cachedTiming;
-          const rawResult = cachedTiming.karaoke === upgraded.karaoke ? cachedTiming : upgraded;
+          const cachedTiming = updatePageLyricsSource(cache, state.uri, providerRevision,
+            cached => cached ? retainLrcRedWordTiming(cached, upgraded) : upgraded);
+          const rawResult = cachedTiming?.karaoke === upgraded.karaoke ? cachedTiming : upgraded;
           const service = getLyricsService();
           const snapshot = service?.getLyricsSnapshot?.(state.uri);
           const mode = page.getCurrentMode();

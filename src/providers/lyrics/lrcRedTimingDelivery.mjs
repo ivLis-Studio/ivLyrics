@@ -1,4 +1,5 @@
 import { buildLrcRedTimingSnapshot, LRC_RED_WORD_SYNC_SOURCE, mergeLyricsTiming } from "../../lyrics/lyricsTimingMerge.mjs";
+import { updatePageLyricsSource } from "../../lyrics/pageLyricsSourceCache.mjs";
 import { hasCompatibleLrcRedTimingSource, retainLrcRedWordTiming } from "./lrcRedWordTiming.mjs";
 
 export function createLrcRedTimingDelivery({
@@ -14,11 +15,9 @@ export function createLrcRedTimingDelivery({
     };
 
     function rememberUpgrade(info, upgrade, updateDisplay) {
-        const cache = getPageCache();
-        const cached = cache?.[info.uri];
-        const nextCached = adoptTiming(cached, upgrade);
-        if (nextCached !== cached) cache[info.uri] = nextCached;
         const service = getService();
+        const providerRevision = service?.getLyricsRequestRevision?.(info.uri);
+        updatePageLyricsSource(getPageCache(), info.uri, providerRevision, cached => adoptTiming(cached, upgrade));
         const snapshot = service?.getLyricsSnapshot?.(info.uri);
         if (!service?.publishLyricsSnapshot) return false;
         const rawResult = adoptTiming(snapshot?.rawResult, upgrade);

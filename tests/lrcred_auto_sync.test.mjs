@@ -2,6 +2,7 @@ import { publishRuntimeService } from "#ivlyrics/spicetify/runtimeServices.mjs";
 import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
 import { createLyricsProviderCandidateLoader } from "#ivlyrics/providers/lyrics/loadLyricsProviderCandidate.mjs";
 import { LYRICS_TYPES, SYNC_DATA_RENDERER_VERSION } from "#ivlyrics/providers/lyrics/lyricsProviderTypes.mjs";
+import { readPageLyricsSource, writePageLyricsSource } from "#ivlyrics/lyrics/pageLyricsSourceCache.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
@@ -144,6 +145,35 @@ test('line lyrics return immediately, then a bodyless POST upgrades cache and th
     assert.deepEqual(h.statuses.map(status => status.phase), ['generating', 'complete']);
     assert.equal(h.statuses[0].uri, info.uri);
     assert.equal(result.karaoke, null, 'the returned line result is not mutated later');
+});
+
+test('startup word timing keeps the route cache tied to its provider selection revision', async () => {
+    const h = createProvider({ hold: true });
+    h.window.lyricContainer = null;
+    const result = await h.lookup(info);
+    await flush();
+    writePageLyricsSource(h.window.CACHE, info.uri, result, 0);
+    h.gates[0].resolve();
+    await flush();
+    assert.equal(readPageLyricsSource(h.window.CACHE, info.uri, 0).karaokeSource, 'lrcred');
+    h.revisions.set(info.uri, 1);
+    assert.equal(readPageLyricsSource(h.window.CACHE, info.uri, 1), undefined,
+        'a provider selection change must retire word-timed lyrics as well');
+});
+
+test('startup word timing cannot renew an old route cache entry for the same lyrics', async () => {
+    const h = createProvider({ hold: true });
+    h.window.lyricContainer = null;
+    const oldResult = await h.addon.getLyrics(info);
+    writePageLyricsSource(h.window.CACHE, info.uri, oldResult, 0);
+    h.revisions.set(info.uri, 1);
+
+    await h.lookup(info);
+    await flush();
+    h.gates[0].resolve();
+    await flush();
+    assert.equal(h.writes[0].value.karaokeSource, 'lrcred', 'the current provider can still store its timing');
+    assert.equal(readPageLyricsSource(h.window.CACHE, info.uri, 1), undefined);
 });
 
 test('existing word timing never submits a generation request', async () => {
