@@ -174,6 +174,28 @@ test('word readings and glosses run together for the captured track and fail ind
   assert.deepEqual((await pending).get(3), [{ w: '日本', reading: '', gloss: 'Japan' }]);
 });
 
+test('word export preserves line pronunciation when neither word annotation is available', async () => {
+  const [line] = normalizeShareImageLyrics([
+    { text: '青空', phoneticText: 'aozora', translationText: 'blue sky' },
+  ]);
+  const details = await resolveShareWordDetails([line], {
+    segmenter: { segmentLyrics: () => ['青', '空'] },
+    sourceLanguage: 'ja',
+    supplements: {
+      resolveReadingMode: () => 'gemini_romaji',
+      isGlossModeActive: () => true,
+      getWordReadings: async () => { throw new Error('Pronunciation unavailable'); },
+      getWordGlosses: async () => ['', '  '],
+    },
+  });
+  assert.equal(details.has(line.idx), false);
+  const { api, calls } = loadRenderer();
+  await api.generateImage({ lyrics: [line], template: 'word', output: 'dataUrl' });
+  for (const expected of ['青空', 'aozora', 'blue sky']) {
+    assert.ok(calls.fillText.includes(expected), `expected canvas text ${expected}`);
+  }
+});
+
 test('word export uses the captured song language and skips hidden annotations', async () => {
   const fixture = {
     Utils: { getDetectedLanguage: () => 'zh' },

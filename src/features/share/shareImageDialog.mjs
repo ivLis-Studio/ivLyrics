@@ -101,7 +101,7 @@ export function createShareImageModal({
     const sourceLanguage = trackInfo?.sourceLanguage || 'auto';
     const showPronunciation = Boolean(currentSettings.showPronunciation);
     const showTranslation = Boolean(currentSettings.showTranslation);
-    const wordRequest = react.useMemo(() => isWordExport && selectedLinesBase.length ? {
+    const wordRequest = react.useMemo(() => isWordExport && selectedLinesBase.length && (showPronunciation || showTranslation) ? {
       lines: selectedLinesBase, trackId: supplementTrackId, sourceLanguage, showPronunciation, showTranslation,
     } : null, [isWordExport, selectedLinesBase, supplementTrackId, sourceLanguage, showPronunciation, showTranslation]);
     const [wordDetails, setWordDetails] = react.useState(null);

@@ -47,11 +47,12 @@ export async function resolveShareWordDetails(lines, {
           }
         })(),
       ]);
-      details.set(line.idx, units.map((unit, index) => ({
+      const words = units.map((unit, index) => ({
         w: unit.surface,
-        reading: String(readings.value?.[index] || ''),
-        gloss: String(glosses.value?.[index] || ''),
-      })));
+        reading: String(readings.value?.[index] || '').trim(),
+        gloss: String(glosses.value?.[index] || '').trim(),
+      }));
+      if (words.some(({ reading, gloss }) => reading || gloss)) details.set(line.idx, words);
     } catch { /* per-line failure falls back to line rendering */ }
   }));
   return details;
