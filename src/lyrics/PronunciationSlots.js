@@ -15,7 +15,7 @@ import {
 	VERSION, normalizeLine, splitUnits, hasSound, join, deriveSyllableParts,
 	sourceLinesOf, readRecordLines, buildRecordSlots,
 } from "./pronunciationSlotFormat.mjs";
-import { isEstimatedPronunciationTiming } from "./pronunciationTimingSource.mjs";
+import { getPronunciationTimingContextKey, isEstimatedPronunciationTiming } from "./pronunciationTimingSource.mjs";
 
 export default function initializePronunciationSlots() {
 	const host = window;
@@ -37,8 +37,9 @@ export default function initializePronunciationSlots() {
 	 * Remembers the slots of a phonetic cache record made for the request
 	 * text. Display code looks them up by line text.
 	 */
-	const remember = (trackId, text, record) => {
+	const remember = (trackId, text, record, context = null) => {
 		if (!trackId || !record?.slots) return false;
+		const contextKey = context ? getPronunciationTimingContextKey(context, record.userEdited === true) : null;
 		const recordLines = readRecordLines(text, record);
 		const previous = tracks.get(trackId);
 		const lines = new Map(previous?.lines || []);
@@ -50,10 +51,13 @@ export default function initializePronunciationSlots() {
 			const key = normalizeLine(line);
 			const reading = pronunciationKey(join(entry.units, entry.parts));
 			const existing = variants.get(key);
-			const known = existing?.get(reading);
+			const contexts = new Map(existing?.get(reading));
+			const known = contexts.get(contextKey);
 			if (known && partsKey(known.parts) === partsKey(entry.parts)) return;
+			contexts.delete(contextKey);
+			contexts.set(contextKey, entry);
 			const readings = new Map(existing);
-			readings.set(reading, entry);
+			readings.set(reading, contexts);
 			variants.set(key, readings);
 			lines.set(key, entry);
 			changed = true;
@@ -71,11 +75,15 @@ export default function initializePronunciationSlots() {
 	/** { revision, lines: Map<line text, { units, parts }> } of a track. */
 	const getTrack = (trackId) => (trackId ? tracks.get(trackId) || null : null);
 
-	const lookup = (trackId, lineText, pronunciation = null) => {
+	const lookup = (trackId, lineText, pronunciation = null, context = null) => {
 		const track = getTrack(trackId);
 		const source = normalizeLine(lineText);
-		return (pronunciation === null ? track?.lines.get(source)
-			: track?.variants.get(source)?.get(pronunciationKey(pronunciation))) || null;
+		if (pronunciation === null) return track?.lines.get(source) || null;
+		const contexts = track?.variants.get(source)?.get(pronunciationKey(pronunciation));
+		if (!contexts) return null;
+		if (!context) return Array.from(contexts.values()).at(-1) || null;
+		return contexts.get(getPronunciationTimingContextKey(context, true))
+			?? contexts.get(getPronunciationTimingContextKey(context)) ?? contexts.get(null) ?? null;
 	};
 
 	const forget = (trackId) => {

@@ -231,12 +231,13 @@ test("the page and panel clocks add the lead outside the sync offsets", () => {
 test("the page times only the current committed pronunciation revision", () => {
 	const timers = new Set();
 	const calls = [];
+	let sourceLang = "ja";
 	let state = { uri: "spotify:track:abc", currentLyrics: [{ text: "before" }] };
 	const presentation = createPagePronunciationPresentation({
 		readApi: () => ({ ensureTimed: (request) => calls.push(request) }),
 		readState: () => state,
 		isMounted: () => true,
-		getTargetLanguage: () => "ko", getSourceLanguage: () => "ja", getNotation: () => "translation",
+		getTargetLanguage: () => "ko", getSourceLanguage: () => sourceLang, getNotation: () => "translation",
 		scheduleTimer: (callback, delay) => {
 			assert.equal(delay, 700);
 			timers.add(callback);
@@ -273,11 +274,47 @@ test("the page times only the current committed pronunciation revision", () => {
 		targetLang: "ko", sourceLang: "ja", notation: "translation",
 		consumer: "page",
 	}]);
+	sourceLang = "zh";
+	presentation.scheduleTiming(state);
+	assert.equal(timers.size, 1, "changing the source language re-times the same lyrics");
+	flushTimers();
+	assert.equal(calls.at(-1).sourceLang, "zh");
 	presentation.invalidateTiming();
 	presentation.scheduleTiming(state);
 	assert.equal(timers.size, 1);
 	presentation.dispose();
 	assert.equal(timers.size, 0);
+});
+
+test("the page only displays timing from matching pronunciation settings", async () => {
+	const { api } = load({ manager: {
+		generateTimedPronunciation: async ({ sourceLang }) => new Map([[0, sourceLang === "ja" ? ["A", "B"] : ["AB", ""]]]),
+	} });
+	const uri = "spotify:track:context";
+	const lyrics = [{ originalText: "ab", phoneticText: "AB", syllables: [syllable("a", 0, 1), syllable("b", 1, 2)] }];
+	const japanese = { sourceLang: "ja", targetLang: "ko", notation: "translation" };
+	let context = japanese;
+	const presentation = createPagePronunciationPresentation({
+		readApi: () => api, readDisplayMode: () => "line",
+		getTargetLanguage: () => context.targetLang, getSourceLanguage: () => context.sourceLang,
+		getNotation: () => context.notation,
+	});
+	const options = { lyricsState: { uri, currentLyrics: lyrics }, mode: KARAOKE, displayMode1: "gemini_romaji" };
+	const untimed = presentation.render(options).lyrics;
+	api.ensureTimed({ trackUri: uri, lines: lyrics, consumer: "panel", ...japanese });
+	await tick();
+	const panelTiming = presentation.render(options).lyrics;
+	assert.notEqual(panelTiming, untimed, "the page can share matching timing from the panel");
+	for (const change of [{ sourceLang: "zh" }, { targetLang: "en" }, { notation: "latin" }]) {
+		context = { ...japanese, ...change };
+		assert.equal(api.getTimed(uri, lyrics, "panel", context), null);
+		assert.deepEqual(presentation.render(options).lyrics, untimed);
+	}
+	context = { ...japanese, sourceLang: "zh" };
+	api.ensureTimed({ trackUri: uri, lines: lyrics, ...context });
+	await tick();
+	assert.deepEqual(plain(presentation.render(options).lyrics[0].syllables.map(part => part.text)), ["AB", ""]);
+	assert.equal(api.getTimed(uri, lyrics, "panel", japanese).get("0:line")[0], "A");
 });
 
 test("AI timing is requested once per pronunciation revision and cached", async () => {

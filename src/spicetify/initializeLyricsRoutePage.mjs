@@ -204,7 +204,7 @@ export function initializeLyricsRoutePage(page, {
     readState: () => page.state,
     isPronunciationPending: () => page.generationStatus.hasRequests("pronunciation"),
     getTargetLanguage: () => page.getTranslationTargetLanguage(),
-    getSourceLanguage: (lyrics) => page.provideLanguageCode(lyrics),
+    getSourceLanguage: (lyrics) => page.provideLanguageCode(lyrics, { publish: false }),
     getNotation: getCurrentLyricsPronunciationNotation,
   });
   page._sharedPresentationKeys = new LRUCache();

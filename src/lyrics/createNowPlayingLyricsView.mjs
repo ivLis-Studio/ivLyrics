@@ -10,10 +10,11 @@ import { readInitialPanelLyrics } from "./panelLyricPresentation.mjs";
 import { createPanelTrackEffects } from "./panelTrackEffects.mjs";
 import { buildPanelDisplayRows, preparePanelDisplayRows } from "./panelDisplayRows.mjs";
 import { createPanelStackLayout } from "./panelStackLayout.mjs";
-import { PRONUNCIATION_TIMING_DELAY_MS, isEstimatedPronunciationTiming } from "./pronunciationTimingSource.mjs";
+import {
+    PRONUNCIATION_TIMING_DELAY_MS, getPronunciationTimingContextKey, isEstimatedPronunciationTiming,
+} from "./pronunciationTimingSource.mjs";
 import { createPronunciationTimingClient } from "./createPronunciationTimingClient.mjs";
 
-const PSEUDO_KARAOKE_SOURCES = new Set(['audio-analysis-pseudo', 'spotify-audio-analysis', 'line-timing-pseudo']);
 const DEFAULT_LINES = 9; // Four context lines either side of the active line.
 
 export function createNowPlayingLyricsView({
@@ -110,33 +111,36 @@ export function createNowPlayingLyricsView({
         }, []);
         const trackUri = readCurrentTrackUri();
         const [pronunciationTiming] = useState(() => createPronunciationTimingClient(() => readPronunciationFirst(host), "panel"));
+        const pronunciationEnabled = readPronunciationFirst(host)?.isEnabled?.() === true;
+        const hasPronunciationContext = pronunciationEnabled && hasKaraokeTiming && !!trackUri;
+        const snapshot = hasPronunciationContext ? getSharedLyricsSnapshot(trackUri) : null;
+        const trackLanguage = snapshot?.trackInfo?.languageOverride;
+        const detectedLanguage = snapshot?.detectedLanguage;
+        const configuredLanguage = hasPronunciationContext ? getVisualSetting("translate:detect-language-override") : null;
+        const targetLang = hasPronunciationContext ? translationPreferences.getTranslationTargetLanguage() : "";
+        const notation = hasPronunciationContext ? translationPreferences.getPronunciationNotation() : "";
+        const pronunciationContext = useMemo(() => ({
+            sourceLang: hasPronunciationContext ? resolveLyricSourceLanguage(
+                trackLanguage, configuredLanguage, () => detectedLanguage || getPanelLyricsService()?.detectLanguage?.(lyrics),
+            ) || "auto" : "auto",
+            targetLang,
+            notation,
+        }), [hasPronunciationContext, trackLanguage, configuredLanguage, detectedLanguage, targetLang, notation, lyrics]);
         useEffect(() => pronunciationTiming.release, [pronunciationTiming]);
         useEffect(() => {
-            const api = readPronunciationFirst(host);
-            if (!isEnabled || !trackUri || !api?.isEnabled?.() || !hasKaraokeTiming
-                || isEstimatedPronunciationTiming(karaokeSource)) {
+            if (!isEnabled || !hasPronunciationContext || isEstimatedPronunciationTiming(karaokeSource)) {
                 pronunciationTiming.release();
                 return;
             }
-            pronunciationTiming.releaseUnless(trackUri);
+            pronunciationTiming.releaseUnless(trackUri, getPronunciationTimingContextKey(pronunciationContext));
             const timer = setTimeout(() => {
                 const ownsLyrics = (currentLyricsState.trackUri === trackUri && currentLyricsState.lyrics === lyrics)
                     || (initial.loadedUri === trackUri && initial.lyrics === lyrics);
-                if (!api.isEnabled() || readCurrentTrackUri() !== trackUri || !ownsLyrics) return;
-                const snapshot = getSharedLyricsSnapshot(trackUri);
-                const sourceLang = resolveLyricSourceLanguage(
-                    snapshot?.trackInfo?.languageOverride,
-                    getVisualSetting("translate:detect-language-override"),
-                    () => snapshot?.detectedLanguage || getPanelLyricsService()?.detectLanguage?.(lyrics),
-                ) || "auto";
-                pronunciationTiming.ensure({
-                    trackUri, lines: lyrics, karaokeSource, sourceLang,
-                    targetLang: translationPreferences.getTranslationTargetLanguage(),
-                    notation: translationPreferences.getPronunciationNotation(),
-                });
+                if (!readPronunciationFirst(host)?.isEnabled?.() || readCurrentTrackUri() !== trackUri || !ownsLyrics) return;
+                pronunciationTiming.ensure({ trackUri, lines: lyrics, karaokeSource, ...pronunciationContext });
             }, PRONUNCIATION_TIMING_DELAY_MS);
             return () => clearTimeout(timer);
-        }, [isEnabled, trackUri, lyrics, hasKaraokeTiming, karaokeSource, pronunciationFirstRevision, pronunciationTiming]);
+        }, [isEnabled, trackUri, lyrics, hasPronunciationContext, karaokeSource, pronunciationContext, pronunciationFirstRevision, pronunciationTiming]);
         const displayLyrics = useMemo(() => {
             const api = readPronunciationFirst(host);
             if (!api?.isEnabled?.() || !Array.isArray(lyrics) || lyrics.length === 0) return lyrics;
@@ -145,9 +149,9 @@ export function createNowPlayingLyricsView({
             return api.applyToLines(lyrics, {
                 karaoke: hasKaraokeTiming,
                 lineLevel,
-                timed: hasKaraokeTiming && trackUri ? api.getTimed(trackUri, lyrics, "panel") : null,
+                timed: hasPronunciationContext ? pronunciationTiming.read(trackUri, lyrics, pronunciationContext) : null,
             });
-        }, [lyrics, trackUri, hasKaraokeTiming, pronunciationFirstRevision]);
+        }, [lyrics, trackUri, hasKaraokeTiming, hasPronunciationContext, pronunciationContext, pronunciationFirstRevision, pronunciationTiming]);
         // While rows show pronunciation first, the panel clock reads ahead like the page.
         playback.pronunciationLead = displayLyrics !== lyrics
             ? (readPronunciationFirst(host)?.LEAD_MS || 0)
@@ -184,7 +188,7 @@ export function createNowPlayingLyricsView({
             reduceMotion: reducePanelMotion, startIndex: currentIndex, startVisualIndex: visualIndex,
             offsetMs: {
                 track: trackOffset, global: globalOffset,
-                pseudo: PSEUDO_KARAOKE_SOURCES.has(karaokeSource) ? pseudoKaraokeAdvanceMs : 0,
+                pseudo: isEstimatedPronunciationTiming(karaokeSource) ? pseudoKaraokeAdvanceMs : 0,
             },
             transitionMs: transitionDurationMs,
             resolveTrailingInterlude: createTrailingKaraokeInterludeResolver(lyrics, panelPlaybackTimeline),

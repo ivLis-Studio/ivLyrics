@@ -194,6 +194,7 @@ export function createTranslator({
                 }
             })();
             const sourceLanguage = normalizeLyricSourceLanguage(resolvedSourceLang);
+            const pronunciationContext = { sourceLang: sourceLanguage, targetLang: lang, notation };
 
             // The editable disk entry has one key per track, text and output
             // configuration. A different source language takes over that request.
@@ -210,7 +211,7 @@ export function createTranslator({
                     if (!isCurrent()) return null;
                     if (matchesTranslationSourceLanguage(cached, sourceLanguage)
                         && hasValidTranslationLines(cached, text, wantSmartPhonetic)) {
-                        if (wantSmartPhonetic) getPronunciationSlots()?.remember?.(id, text, cached);
+                        if (wantSmartPhonetic) getPronunciationSlots()?.remember?.(id, text, cached, pronunciationContext);
                         getApiTracker()?.logCacheHit?.(type, `${id}:${lang}:${sourceHash}`, {
                             lineCount: cached.phonetic?.length || cached.translation?.length || 0,
                         });
@@ -250,7 +251,7 @@ export function createTranslator({
                                 result = edited;
                             }
                         }
-                        if (wantSmartPhonetic && isCurrent()) slots?.remember?.(id, text, result);
+                        if (wantSmartPhonetic && isCurrent()) slots?.remember?.(id, text, result, pronunciationContext);
                     }
                     return result || null;
                 } catch (error) {

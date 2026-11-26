@@ -34,7 +34,8 @@ export function createPageTranslation({
     getCache: () => getService('LyricsCache'),
     getTranslationStyle: preferences.getTranslationStyle,
     getPronunciationCacheTag: preferences.getPronunciationCacheTag,
-    rememberPronunciationSlots: (trackId, text, result) => getPronunciationSlots()?.remember?.(trackId, text, result),
+    getPronunciationNotation: preferences.getCurrentLyricsPronunciationNotation,
+    rememberPronunciationSlots: (...args) => getPronunciationSlots()?.remember?.(...args),
   });
   const cacheIdentity = createPageLyricsCacheIdentity({
     readVisualSettings,

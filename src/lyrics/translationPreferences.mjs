@@ -25,8 +25,8 @@ function createTranslationPreferences({ getVisualSetting, readLocalSetting, getA
   );
 
   const getTranslationStyle = () => getProviderStyle() || "natural";
-  const getPronunciationCacheTag = () =>
-    `phonetic-prompt=${LYRICS_PHONETIC_PROMPT_CACHE_VERSION}:notation=${getCurrentLyricsPronunciationNotation()}`;
+  const getPronunciationCacheTag = (notation = getCurrentLyricsPronunciationNotation()) =>
+    `phonetic-prompt=${LYRICS_PHONETIC_PROMPT_CACHE_VERSION}:notation=${notation}`;
 
   return {
     getCurrentTranslationTargetLanguage,

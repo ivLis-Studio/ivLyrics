@@ -142,7 +142,7 @@ function harness(mode = "gemini_ko") {
   });
   return {
     app, calls, reloads, progress, completions, writes, context, cache: context.cache, lines, window, detectedOnPage,
-    usePersistentTranslator() {
+    usePersistentTranslator(pronunciationSlots = null) {
       window.AIAddonManager.translateLyrics = window.Translator.callGemini;
       window.Translator = createTranslator({
         LocalLanguageConverter: class {},
@@ -150,7 +150,7 @@ function harness(mode = "gemini_ko") {
         getTargetLanguage: context.targetLanguage,
         getPronunciationNotation: () => config.visual["translate:pronunciation-notation"],
         getAIManager: () => window.AIAddonManager,
-        getPronunciationSlots: () => null,
+        getPronunciationSlots: () => pronunciationSlots,
         getApiTracker: () => null,
         detectLyricsLanguage: () => "ja",
         debug() {},
@@ -421,8 +421,10 @@ test("switching only the source language cannot reuse the previous pronunciation
 
 test("the shared translator does not return cached pronunciation generated for another source language", async () => {
   const h = harness();
+  const remembered = [];
   h.window.LyricsCache.getTranslation = async () => ({ phonetic: ["previous reading"], sourceLanguage: "ja" });
-  h.usePersistentTranslator();
+  h.setNotation("latin");
+  h.usePersistentTranslator({ remember: (...args) => remembered.push(args) });
   const pending = h.window.Translator.callGemini({
     trackId: "race", text: "自由", wantSmartPhonetic: true, sourceLang: "zh",
   });
@@ -431,6 +433,36 @@ test("the shared translator does not return cached pronunciation generated for a
   h.resolve(h.calls[0], "new reading");
   assert.equal((await pending).phonetic[0], "new reading");
   assert.equal(h.writes[0][3].sourceLanguage, "zh");
+  h.window.LyricsCache.getTranslation = async () => h.writes[0][3];
+  await h.window.Translator.callGemini({ trackId: "race", text: "自由", wantSmartPhonetic: true, sourceLang: "zh" });
+  assert.equal(h.calls.length, 1);
+  assert.deepEqual(remembered.map(([, , , context]) => context), [
+    { sourceLang: "zh", targetLang: "en", notation: "latin" },
+    { sourceLang: "zh", targetLang: "en", notation: "latin" },
+  ]);
+});
+
+test("the page hydrates cached slots with the settings used to read the entry", async () => {
+  const remembered = [];
+  const cacheRead = deferred();
+  const record = { phonetic: ["reading"], sourceLanguage: "ja", slots: {} };
+  let notation = "latin";
+  const host = {
+    LyricsCache: { getTranslation: (...args) => {
+      assert.match(args.at(-1), /:notation=latin$/);
+      return cacheRead.promise;
+    } },
+    ivLyricsPronunciationSlots: { remember: (...args) => remembered.push(args) },
+  };
+  const { getCachedTranslationForText } = createPageTranslation({
+    host, readVisualSettings: () => ({ "translate:pronunciation-notation": notation }),
+    readLocalSetting: () => null,
+  });
+  const pending = getCachedTranslationForText({ trackId: "race", lang: "en", isPhonetic: true, text: "自由", sourceLanguage: "ja" });
+  notation = "ipa";
+  cacheRead.resolve(record);
+  assert.equal(await pending, record);
+  assert.deepEqual(remembered, [["race", "自由", record, { sourceLang: "ja", targetLang: "en", notation: "latin" }]]);
 });
 
 test("a legacy user edit still wins when the source language changes", async () => {

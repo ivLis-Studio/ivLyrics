@@ -1,4 +1,4 @@
-import { isEstimatedPronunciationTiming } from "./pronunciationTimingSource.mjs";
+import { getPronunciationTimingContextKey, isEstimatedPronunciationTiming } from "./pronunciationTimingSource.mjs";
 import { supersededAiRequest } from "../providers/ai/aiRequestCancellation.mjs";
 
 const CACHE_KIND = "timed-pronunciation-v1";
@@ -57,25 +57,25 @@ export function createPronunciationTiming({
 	const getCacheId = uri => getService("LyricsService")?.extractTrackId?.(uri) || uri;
 	const getTranslationId = uri => getService("LyricsService")?.getTranslationCacheId?.(uri) || getCacheId(uri);
 
-	function getSlotParts(trackUri, lines) {
+	function getSlotParts(trackUri, lines, context, contextKey) {
 		const slots = getSlots();
 		const trackId = getTranslationId(trackUri);
 		const track = slots?.getTrack?.(trackId);
 		if (!track) return null;
 		const cached = slotPartsByLines.get(lines);
-		if (cached?.track === track) return cached.parts;
+		if (cached?.track === track && cached.contextKey === contextKey) return cached.parts;
 		const parts = new Map();
 		for (const item of getLayout(lines).items) {
 			const texts = item.u.map(unit => unit[0]);
 			const source = texts.join("");
-			const slot = slots.lookup(trackId, source, item.r);
+			const slot = slots.lookup(trackId, source, item.r, context);
 			if (!slot) continue;
 			const derived = slots.deriveSyllableParts(texts, slot.parts, distribute);
 			const aligned = derived && alignParts(derived, item.r);
 			if (aligned) parts.set(item.key, aligned);
 		}
 		const result = parts.size ? parts : null;
-		slotPartsByLines.set(lines, { track, parts: result });
+		slotPartsByLines.set(lines, { track, contextKey, parts: result });
 		return result;
 	}
 
@@ -87,18 +87,20 @@ export function createPronunciationTiming({
 		return false;
 	}
 
-	function getTimed(trackUri, lines = null, consumer = "page") {
+	function getTimed(trackUri, lines = null, consumer = "page", context = null) {
+		if (!trackUri) return null;
 		const track = tracks.get(trackUri);
-		if (!Array.isArray(lines)) return track?.consumers.get(consumer)?.parts
-			?? entriesOf(track).findLast(entry => entry.status === "ready")?.parts ?? null;
-		if (!trackUri || !track) return trackUri ? getSlotParts(trackUri, lines) : null;
-		const hash = getLayout(lines).hash;
+		const contextKey = context ? getPronunciationTimingContextKey(context) : null;
+		const hasLines = Array.isArray(lines);
+		const hash = hasLines && track ? getLayout(lines).hash : null;
 		const own = track?.consumers.get(consumer);
-		const matchesLayout = entry => entry.itemsHash === hash;
-		const entry = own && matchesLayout(own) ? own
-			: entriesOf(track).findLast(candidate => candidate.status === "ready" && matchesLayout(candidate));
+		const matches = entry => (hash === null || entry.itemsHash === hash)
+			&& (contextKey === null || entry.contextKey === contextKey);
+		const entry = own && matches(own) && (hasLines || own.parts) ? own
+			: entriesOf(track).findLast(candidate => candidate.status === "ready" && matches(candidate));
 		const aiParts = entry?.status === "ready" ? entry.parts : null;
-		const slotParts = getSlotParts(trackUri, lines);
+		if (!hasLines) return aiParts;
+		const slotParts = getSlotParts(trackUri, lines, context, contextKey);
 		if (!slotParts || !aiParts) return slotParts || aiParts;
 		const cached = combinedByLines.get(lines);
 		if (cached?.aiParts === aiParts && cached.slotParts === slotParts) return cached.parts;
@@ -177,7 +179,9 @@ export function createPronunciationTiming({
 	function ensureTimed({ trackUri, lines, karaokeSource = null, targetLang = "", sourceLang = "auto", notation = "", consumer = "page" } = {}) {
 		if (!trackUri || !needsTiming() || isEstimatedPronunciationTiming(karaokeSource) || !Array.isArray(lines)) return null;
 		const layout = getLayout(lines);
-		const slots = getSlotParts(trackUri, lines);
+		const context = { sourceLang, targetLang, notation };
+		const contextKey = getPronunciationTimingContextKey(context);
+		const slots = getSlotParts(trackUri, lines, context, contextKey);
 		const items = slots ? layout.items.filter(item => !slots.has(item.key)) : layout.items;
 		let track = tracks.get(trackUri);
 		if (items.length === 0) {
@@ -188,8 +192,7 @@ export function createPronunciationTiming({
 		tracks.delete(trackUri);
 		tracks.set(trackUri, track);
 		if (tracks.size > MAX_REMEMBERED_TRACKS) clearTrack(tracks.keys().next().value);
-		const context = JSON.stringify([layout.hash, sourceLang, targetLang, notation]);
-		const existing = entriesOf(track).find(entry => entry.context === context
+		const existing = entriesOf(track).find(entry => entry.itemsHash === layout.hash && entry.contextKey === contextKey
 			&& items.every(item => entry.requestedKeys.has(item.key)));
 		if (existing) {
 			assign(trackUri, track, consumer, existing);
@@ -197,7 +200,7 @@ export function createPronunciationTiming({
 		}
 
 		const entry = {
-			context, itemsHash: layout.hash, requestedKeys: new Set(items.map(item => item.key)),
+			contextKey, itemsHash: layout.hash, requestedKeys: new Set(items.map(item => item.key)),
 			requestId: `pronunciation-sync-${++requestSequence}`, status: "pending", announced: false, parts: null,
 			controller: new AbortController(),
 		};

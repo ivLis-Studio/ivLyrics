@@ -119,6 +119,30 @@ test("each vocal keeps its own slots when the same source has different readings
 	assert.equal(first.ensureTimed({ trackUri: uri, lines, consumer: "panel" }), null);
 });
 
+test("identical readings retain their own unit splits across source languages and output settings", () => {
+	const { slots, first } = load();
+	const uri = "spotify:track:abc";
+	const source = "明日";
+	const japanese = { sourceLang: "ja", targetLang: "ko", notation: "translation" };
+	const chinese = { ...japanese, sourceLang: "zh" };
+	const latin = { ...japanese, notation: "latin" };
+	const remember = (context, parts, userEdited = false) => slots.remember("abc", source, {
+		slots: slots.buildRecordSlots(1, [parts]), userEdited,
+	}, context);
+	const lines = [{ originalText: source, phoneticText: "ABC", syllables: [syllable("明", 0, 1), syllable("日", 1, 2)] }];
+	const timing = context => plain(first.getTimed(uri, lines, "page", context)?.get("0:line") || null);
+	remember(japanese, ["A", "BC"]);
+	assert.deepEqual(timing(japanese), ["A", "BC"]);
+	assert.equal(timing(chinese), null);
+	remember(chinese, ["AB", "C"]);
+	assert.deepEqual(timing(chinese), ["AB", "C"]);
+	assert.deepEqual(timing(japanese), ["A", "BC"]);
+	assert.equal(timing(latin), null);
+	remember(latin, ["AB", "C"], true);
+	assert.deepEqual(timing({ ...latin, sourceLang: "zh" }), ["AB", "C"]);
+	assert.deepEqual(timing(japanese), ["A", "BC"]);
+});
+
 test("only lines without slots are sent for AI timing", async () => {
 	const requests = [];
 	const manager = {

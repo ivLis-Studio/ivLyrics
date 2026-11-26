@@ -52,11 +52,13 @@ export function hasValidTranslationLines(record, text, isPhonetic = false) {
     && sourceLines.every((line, index) => !hasText(line) || hasText(resultLines[index]));
 }
 
-function createTranslationCache({ getCache, getTranslationStyle, getPronunciationCacheTag, rememberPronunciationSlots }) {
-  const getTranslationResultCacheHash = (text, isPhonetic = false) => {
+function createTranslationCache({
+  getCache, getTranslationStyle, getPronunciationCacheTag, getPronunciationNotation, rememberPronunciationSlots,
+}) {
+  const getTranslationResultCacheHash = (text, isPhonetic = false, notation) => {
     const sourceHash = getTranslationSourceCacheHash(text);
     if (isPhonetic) {
-      return `${sourceHash}:${getPronunciationCacheTag()}`;
+      return `${sourceHash}:${getPronunciationCacheTag(notation)}`;
     }
 
     const translationStyle =
@@ -81,12 +83,13 @@ function createTranslationCache({ getCache, getTranslationStyle, getPronunciatio
     }
 
     try {
-      const sourceHash = getTranslationResultCacheHash(text, isPhonetic);
+      const notation = isPhonetic ? getPronunciationNotation() : null;
+      const sourceHash = getTranslationResultCacheHash(text, isPhonetic, notation);
       const cached = await cacheApi.getTranslation(trackId, lang, isPhonetic, provider, sourceHash);
       if (!canUse() || !matchesTranslationSourceLanguage(cached, sourceLanguage)
           || !hasValidTranslationLines(cached, text, isPhonetic)) return null;
       if (isPhonetic) {
-        rememberPronunciationSlots(trackId, text, cached);
+        rememberPronunciationSlots(trackId, text, cached, { sourceLang: cached.sourceLanguage, targetLang: lang, notation });
       }
       return cached;
     } catch (error) {
