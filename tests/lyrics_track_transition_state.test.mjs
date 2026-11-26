@@ -16,6 +16,8 @@ import { createPageLyricsLoad } from "../src/lyrics/createPageLyricsLoad.mjs";
 import { createPageTrackPreferences } from "../src/lyrics/pageTrackPreferences.mjs";
 import { createToolbarTranslationPreferences } from "../src/app/toolbar/toolbarTranslationPreferences.mjs";
 import { buildLyricsLoadingState, emptyLyricsState as emptyState, hasLyricsLayout } from "../src/lyrics/pageLyricsLoadState.mjs";
+import { createSettingsCacheActions } from "../src/features/settings/settingsCacheActions.mjs";
+import { reloadPageLyrics } from "../src/lyrics/reloadPageLyrics.mjs";
 
 const source = readFileSync(new URL("../src/spicetify/index.js", import.meta.url), "utf8");
 const { resolveStablePlayerItem } = createRequire(import.meta.url)("../src/core/PlaybackClock.js");
@@ -243,6 +245,7 @@ test("late provider loading cannot clear a title translation that already commit
   h.container.pageLyricsDataLoader = {
     begin() {
       return {
+        signal: new AbortController().signal,
         async read({ onProviderLoad }) {
           await providerStart.promise;
           onProviderLoad();
@@ -340,6 +343,63 @@ test("a cache clear during a page lookup triggers a fresh lookup without display
   assert.equal(h.publications.length, 1);
 });
 
+for (const scope of ["track", "all"]) {
+  test(`a failed settings cache clear (${scope}) only resumes the current interrupted lyrics load`, async () => {
+    for (const changeTrack of [false, true]) {
+      const h = createHarness(), current = track("interrupted-cache-clear"), next = track("new-song");
+      const disk = deferred();
+      const translationCache = { clear() {}, clearByUri() {} };
+      const service = h.context.window.LyricsService;
+      let revision = 0;
+      service.getLyricsRequestRevision = () => revision;
+      service.clearLyricsSnapshot = () => { revision++; };
+      const getService = name => h.context.window[name];
+      const readPlayerItem = () => h.context.Spicetify.Player.data.item;
+      const page = h.container;
+      page.forceUpdate = () => {};
+      page.clearCulturalAnnotationsForTrack = () => {};
+      page.reloadLyrics = (clearCache, expectedTrackUri) => reloadPageLyrics(page, clearCache, {
+        readPlayerItem, expectedTrackUri, getService, translationCache,
+        extractTrackId: h.context.Utils.extractTrackId, memoryCache: h.context.CACHE, debug() {},
+      });
+      const actions = createSettingsCacheActions({
+        storage: { getItem: () => null },
+        getLyricsPage: () => page,
+        services: {
+          getLyricsService: () => service, getSyncDataService: () => null, getTranslator: () => null,
+          getLyricsCache: () => ({ clearAll: () => disk.promise, clearTrack: () => disk.promise }),
+        },
+      });
+      h.play(current);
+      const pending = page.fetchLyrics(current);
+      await flush();
+      const clearing = scope === "track" ? actions.clearTrack(current.uri, current.title, false) : actions.clearAll();
+      const failed = assert.rejects(clearing, /Could not clear/);
+      assert.equal(h.requests[0].signal.aborted, true);
+      h.requests[0].resolve({ uri: current.uri, provider: "old", synced: lines("Retired lyric") });
+      await pending;
+      assert.deepEqual(h.publications, []);
+
+      if (changeTrack) {
+        h.play(next);
+        void page.fetchLyrics(next);
+        await flush();
+      }
+      disk.resolve(false);
+      await failed;
+      await flush();
+      assert.equal(h.requests.length, 2);
+      const expected = changeTrack ? next : current;
+      assert.equal(h.requests[1].info.uri, expected.uri);
+      assert.equal(h.requests[1].signal.aborted, false);
+      h.requests[1].resolve({ uri: expected.uri, provider: "fixture", synced: lines("Ready lyric") });
+      await flush();
+      assert.equal(page.state.currentLyrics[0].text, "Ready lyric");
+      assert.equal(page.state.isLoading, false);
+    }
+  });
+}
+
 test("a page revisiting a cached track selects lyrics again after a provider settings change", async () => {
   const h = createHarness(), current = track("provider-settings-cache");
   let revision = 0;
@@ -408,6 +468,24 @@ test("provider results cannot reach the page after their revision changes during
   assert.equal(h.container.state.currentLyrics[0].text, "New provider");
   assert.deepEqual(h.publications.map(snapshot => snapshot.provider), ["new"]);
   assert.equal(h.context.CACHE[current.uri].provider, "new");
+});
+
+test("a cancelled page load cannot publish a resolved provider result after language startup", async () => {
+  const h = createHarness(), current = track("cancel-during-language-startup");
+  const model = deferred();
+  let waiting = false;
+  h.context.window.LyricsService.whenLanguageModelReady = () => { waiting = true; return model.promise; };
+  h.play(current);
+  const pending = h.container.fetchLyrics(current);
+  await flush();
+  h.requests[0].resolve({ uri: current.uri, provider: "fixture", synced: lines("Retired lyric") });
+  await flush();
+  assert.equal(waiting, true);
+  h.container.pageLyricsDataLoader.cancelForUri(current.uri);
+  model.resolve();
+  await pending;
+  assert.deepEqual(h.publications, []);
+  assert.equal(h.container.state.currentLyrics.length, 0);
 });
 
 for (const [storedProvider, expected] of [["removed-provider", null], ["open-lyrics", "open-lyrics"]]) {

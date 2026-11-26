@@ -1,27 +1,6 @@
-import {
-    getLyricDisplayModes, getLyricLanguageMode, matchesLyricPresentation, readLyricPlaybackPreferences, resolveLyricSourceLanguage,
-} from "./lyricPresentationIdentity.mjs";
 import { loadLyricsForPresentation, readReusableLyricSource } from "./loadLyricsForPresentation.mjs";
 import { readPageLyricsSource, writePageLyricsSource } from "./pageLyricsSourceCache.mjs";
 import { retainLrcRedWordTiming } from "../providers/lyrics/lrcRedWordTiming.mjs";
-
-export function getPageLyricsSnapshotDisplay({
-    snapshot, displayLyrics, lyrics, modeKey, visual, trackLanguageOverride,
-    detectLanguage, getTargetLanguage, getPronunciationNotation, getTranslationStyle, getSourceText,
-}) {
-    if (!displayLyrics || snapshot?.presentationComplete !== true || snapshot.lyricsType !== modeKey) return null;
-
-    const language = resolveLyricSourceLanguage(
-        trackLanguageOverride, visual["translate:detect-language-override"], () => detectLanguage(lyrics || [])
-    );
-    const [displayMode1, displayMode2] = getLyricDisplayModes(visual, getLyricLanguageMode(language));
-    return matchesLyricPresentation(snapshot, {
-        lyricsType: modeKey, displayMode1, displayMode2, detectedLanguage: language,
-        playbackPreferences: readLyricPlaybackPreferences(key => visual[key], trackLanguageOverride),
-        getTargetLanguage, getPronunciationNotation, getTranslationStyle,
-        getSourceText: () => getSourceText(lyrics || []),
-    }) ? displayLyrics : null;
-}
 
 export function createPageLyricsDataLoader({
     cache, getLyricsService, getPseudoKaraoke, getMarketplaceReady,
@@ -42,6 +21,7 @@ export function createPageLyricsDataLoader({
         inFlight.set(uri, controller);
 
         return {
+            signal,
             close() {
                 if (inFlight.get(uri) === controller) inFlight.delete(uri);
             },
@@ -123,5 +103,5 @@ export function createPageLyricsDataLoader({
         for (const controller of retired) controller.abort();
     }
 
-    return { begin, cancelForUri, cancelPending };
+    return { begin, cancelForUri, cancelPending, hasPending: uri => inFlight.has(uri) };
 }

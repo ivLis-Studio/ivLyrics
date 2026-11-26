@@ -1,8 +1,28 @@
-import { getPageLyricsSnapshotDisplay } from "./pageLyricsDataLoader.mjs";
+import {
+  getLyricDisplayModes, getLyricLanguageMode, matchesLyricPresentation, readLyricPlaybackPreferences, resolveLyricSourceLanguage,
+} from "./lyricPresentationIdentity.mjs";
 import { emptyLyricsState } from "./pageLyricsLoadState.mjs";
 import { retainLrcRedWordTiming } from "../providers/lyrics/lrcRedWordTiming.mjs";
 
 const { currentLyrics: _display, ...emptyRawLyrics } = emptyLyricsState;
+
+function readSnapshotDisplay({
+  snapshot, lyrics, modeKey, visual, trackLanguageOverride,
+  detectLanguage, getTargetLanguage, getPronunciationNotation, getTranslationStyle, getSourceText,
+}) {
+  if (!snapshot?.displayLyrics || snapshot.presentationComplete !== true || snapshot.lyricsType !== modeKey) return null;
+
+  const language = resolveLyricSourceLanguage(
+    trackLanguageOverride, visual["translate:detect-language-override"], () => detectLanguage(lyrics),
+  );
+  const [displayMode1, displayMode2] = getLyricDisplayModes(visual, getLyricLanguageMode(language));
+  return matchesLyricPresentation(snapshot, {
+    lyricsType: modeKey, displayMode1, displayMode2, detectedLanguage: language,
+    playbackPreferences: readLyricPlaybackPreferences(key => visual[key], trackLanguageOverride),
+    getTargetLanguage, getPronunciationNotation, getTranslationStyle,
+    getSourceText: () => getSourceText(lyrics),
+  }) ? snapshot.displayLyrics : null;
+}
 
 function hasInstrumentalMarker(lyrics) {
   return Array.isArray(lyrics) && lyrics.length <= 3 && lyrics.some(line => {
@@ -46,9 +66,8 @@ export function createPageLyricsLoadPresentation({
     }
     const lyrics = page.resolveLyricsForMode(rawResult, selectedMode);
     const hasLyrics = Array.isArray(lyrics) && lyrics.length > 0;
-    const display = reusesSharedSnapshot && hasLyrics && getPageLyricsSnapshotDisplay({
+    const display = reusesSharedSnapshot && hasLyrics && readSnapshotDisplay({
       snapshot: sharedSnapshot,
-      displayLyrics: sharedSnapshot?.displayLyrics,
       lyrics, modeKey: getModeKey(selectedMode), visual: getVisualSettings(), trackLanguageOverride,
       detectLanguage, getTargetLanguage, getPronunciationNotation, getTranslationStyle, getSourceText,
     });

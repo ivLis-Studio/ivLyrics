@@ -57,6 +57,7 @@ export function createPageLyricsLoad({
       page.pageLyricsDataLoader ??= page.createPageLyricsDataLoader();
       dataRequest = page.pageLyricsDataLoader.begin(uri);
       isCurrent = () => page._isComponentMounted
+        && !dataRequest.signal.aborted
         && page._activeLyricsFetchSeq === requestSeq
         && page.currentTrackUri === uri
         && page.isPlaybackUriCurrent(uri);
