@@ -10,28 +10,23 @@ export function readReusableLyricSource(snapshot, uri, providerOverride) {
     return raw;
 }
 
-// A caller may retry with the same inputs if it still owns the current view.
-// Callers that must reread inputs restart from their presentation entry point.
-export async function loadLyricsForPresentation(service, info, mode, providerOverride, { shouldRetry = () => false, signal } = {}) {
-    do {
-        if (signal?.aborted) return null;
-        const revision = service.getLyricsRequestRevision?.(info.uri);
-        const revisionMatches = () => revision === service.getLyricsRequestRevision?.(info.uri);
-        try {
-            const result = await service.getLyricsFromProviders(info, [], mode, providerOverride, { signal });
-            if (signal?.aborted) return null;
-            if (!revisionMatches()) continue;
-            const validResult = result && (!result.uri || result.uri === info.uri);
-            return {
-                revision,
-                result: validResult
-                    ? (result.uri ? result : { ...result, uri: info.uri })
-                    : { uri: info.uri, error: 'No lyrics found' },
-            };
-        } catch (error) {
-            if (signal?.aborted) return null;
-            if (revisionMatches()) throw error;
-        }
-    } while (shouldRetry());
-    return null;
+// The caller owns retries so a new revision can read the latest provider choice.
+export async function loadLyricsForPresentation(service, info, mode, providerOverride, { signal } = {}) {
+    if (signal?.aborted) return null;
+    const revision = service.getLyricsRequestRevision?.(info.uri);
+    const isCurrent = () => !signal?.aborted && revision === service.getLyricsRequestRevision?.(info.uri);
+    try {
+        const result = await service.getLyricsFromProviders(info, [], mode, providerOverride, { signal });
+        if (!isCurrent()) return null;
+        const validResult = result && (!result.uri || result.uri === info.uri);
+        return {
+            revision,
+            result: validResult
+                ? (result.uri ? result : { ...result, uri: info.uri })
+                : { uri: info.uri, error: 'No lyrics found' },
+        };
+    } catch (error) {
+        if (isCurrent()) throw error;
+        return null;
+    }
 }

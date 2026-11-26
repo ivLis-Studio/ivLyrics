@@ -27,9 +27,10 @@ export function createPageLyricsDataLoader({
             },
             async read({
                 info, mode, refresh, hasSpotifyTrackId, sharedSnapshot, providerOverride,
-                lyricsSaved, getSavedLocalLyrics, isCurrent, onTrackPrepared, onProviderLoad,
+                lyricsSaved, getSavedLocalLyrics, isCurrent, isSourceCurrent = () => true, onTrackPrepared, onProviderLoad,
             }) {
-                const canContinue = () => !signal.aborted && isCurrent();
+                const canUseSource = () => !signal.aborted && isSourceCurrent();
+                const canContinue = () => canUseSource() && isCurrent();
                 if (!canContinue()) return null;
                 const readRevision = () => getLyricsService()?.getLyricsRequestRevision?.(uri);
                 const cachedProvider = readPageLyricsSource(cache, uri, readRevision())?.trackLyricsProviderOverride || null;
@@ -44,7 +45,7 @@ export function createPageLyricsDataLoader({
                         const localResult = { ...saved, provider: "local", uri, trackLyricsProviderOverride: null };
                         const pseudoKaraoke = getPseudoKaraoke();
                         if (pseudoKaraoke?.applyToResult) await pseudoKaraoke.applyToResult(localResult, info);
-                        if (!signal.aborted) cache[uri] = localResult;
+                        if (canUseSource()) cache[uri] = localResult;
                         isCached = true;
                     }
                 }
@@ -63,7 +64,7 @@ export function createPageLyricsDataLoader({
 
                 const cached = cache[uri];
                 if (cached && (mode === -1 || cached[getModeKey(mode)])) {
-                    return { result: cached, providerRevision: cacheRevision, fromCache: true, isCached, reusesSharedSnapshot: reusable };
+                    return { result: cached, isCached, reusesSharedSnapshot: reusable };
                 }
 
                 onProviderLoad();
@@ -75,8 +76,7 @@ export function createPageLyricsDataLoader({
                 }
                 const service = getLyricsService();
                 const lookup = await loadLyricsForPresentation(
-                    service, info, getDataMode(mode), providerOverride,
-                    { shouldRetry: canContinue, signal },
+                    service, info, getDataMode(mode), providerOverride, { signal },
                 );
                 if (!lookup) return null;
                 const { result: response, revision: providerRevision } = lookup;
@@ -86,13 +86,13 @@ export function createPageLyricsDataLoader({
                     : response;
                 // A superseded request for a different song may warm its own
                 // cache. An earlier request for this URI cannot replace it.
-                if (result.provider && !result.error && !signal.aborted && revisionMatches) {
+                if (result.provider && !result.error && canUseSource() && revisionMatches) {
                     writePageLyricsSource(cache, uri, { ...result, trackLyricsProviderOverride: providerOverride || null }, providerRevision);
                 }
 
                 if (!canContinue()) return null;
                 isCached = lyricsSaved(response.uri);
-                return { result, providerRevision, fromCache: false, isCached, reusesSharedSnapshot: reusable && revisionMatches };
+                return { result, isCached, reusesSharedSnapshot: reusable && revisionMatches };
             },
         };
     }

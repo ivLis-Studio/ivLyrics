@@ -90,9 +90,9 @@ const createHarness = () => {
       LyricsService: {
         getLyricsSnapshot: uri => snapshots.get(uri),
         publishLyricsSnapshot: snapshot => publications.push(snapshot),
-        getLyricsFromProviders(info, _order, _mode, _override, options) {
+        getLyricsFromProviders(info, _order, _mode, override, options) {
           const pending = deferred();
-          requests.push({ info, signal: options?.signal, ...pending });
+          requests.push({ info, override, signal: options?.signal, ...pending });
           return pending.promise;
         },
       },
@@ -420,6 +420,54 @@ test("a page revisiting a cached track selects lyrics again after a provider set
   await updated;
   assert.equal(h.container.state.currentLyrics[0].text, "Second provider");
 });
+
+for (const phase of ["reading the override", "starting the marketplace", "fetching lyrics", "starting the language model"]) {
+  test(`the page rereads the chosen provider after invalidation while ${phase}`, async () => {
+    const h = createHarness(), song = track("provider-choice-change");
+    const service = h.context.window.LyricsService;
+    const originalOverride = deferred(), marketplace = deferred(), languageModel = deferred();
+    const settle = () => new Promise(setImmediate);
+    let revision = 0, storedOverride = "old", reads = 0, waitsForLanguage = false;
+    h.context.window.TrackLyricsProviderDB.getProvider = () => {
+      reads++;
+      return phase === "reading the override" && reads === 1 ? originalOverride.promise : storedOverride;
+    };
+    service.getLyricsRequestRevision = () => revision;
+    if (phase === "starting the marketplace") h.context.window.MarketplaceManager = { readyPromise: marketplace.promise };
+    if (phase === "starting the language model") {
+      service.whenLanguageModelReady = () => { waitsForLanguage = true; return languageModel.promise; };
+    }
+    h.play(song);
+    const pending = h.container.fetchLyrics(song);
+    await settle();
+    if (phase === "reading the override" || phase === "starting the marketplace") assert.equal(h.requests.length, 0);
+    else assert.equal(h.requests[0].override, "old");
+    if (phase === "starting the language model") {
+      h.requests[0].resolve({ uri: song.uri, provider: "old", synced: lines("Old provider") });
+      await settle();
+      assert.equal(waitsForLanguage, true);
+    }
+
+    storedOverride = "new";
+    revision++;
+    if (phase === "reading the override") originalOverride.resolve("old");
+    if (phase === "starting the marketplace") marketplace.resolve();
+    if (phase === "fetching lyrics") h.requests[0].resolve({ uri: song.uri, provider: "old", synced: lines("Old provider") });
+    if (phase === "starting the language model") languageModel.resolve();
+    await settle();
+
+    assert.equal(reads, 2);
+    assert.equal(h.requests.at(-1).override, "new");
+    assert.deepEqual(h.publications, []);
+    assert.equal(h.context.CACHE[song.uri], undefined);
+    h.requests.at(-1).resolve({ uri: song.uri, provider: "new", synced: lines("New provider") });
+    await pending;
+    assert.equal(h.container.state.currentLyrics[0].text, "New provider");
+    assert.equal(h.container.state.trackLyricsProviderOverride, "new");
+    assert.equal(h.context.CACHE[song.uri].trackLyricsProviderOverride, "new");
+    assert.equal(h.publications.at(-1).trackLyricsProviderOverride, "new");
+  });
+}
 
 test("late word timing stays attached when the page was still waiting for language detection", async () => {
   const h = createHarness(), current = track("late-timing");

@@ -38,8 +38,8 @@ export function createPageLyricsLoad({
     let loadingToken = null;
     let completed = false;
 
-    function updateCurrent(patch) {
-      page.setState(() => isCurrent() ? patch : null);
+    function updateCurrent(patch, isSourceCurrent = () => true) {
+      page.setState(() => isCurrent() && isSourceCurrent() ? patch : null);
     }
 
     try {
@@ -75,35 +75,31 @@ export function createPageLyricsLoad({
 
       const languageRevision = page._trackLanguagePreferenceRevision;
       const backgroundRevision = page._trackBackgroundPreferenceRevision;
-      let trackLanguageOverride, trackLyricsProviderOverride, backgroundOverride;
+      const readProviderRevision = () => getLyricsService()?.getLyricsRequestRevision?.(uri);
+      let providerRevision = readProviderRevision();
+      let trackLanguageOverride, storedProvider, backgroundOverride;
       try {
-        [trackLanguageOverride, trackLyricsProviderOverride, backgroundOverride] = await Promise.all([
+        [trackLanguageOverride, storedProvider, backgroundOverride] = await Promise.all([
           readStoredTrackLanguage(uri), readStoredTrackProvider(uri), readStoredTrackBackground(uri),
         ]);
       } catch (error) {
         console.warn("[ivLyrics] Failed to load track overrides:", error);
-        trackLanguageOverride = trackLyricsProviderOverride = backgroundOverride = null;
+        trackLanguageOverride = storedProvider = backgroundOverride = null;
       }
       if (!isCurrent()) return;
 
-      const manager = getLyricsAddonManager();
-      if (!hasSpotifyTrackId || (trackLyricsProviderOverride && manager?.getAddon
-        && !manager.getAddon(trackLyricsProviderOverride))) {
-        trackLyricsProviderOverride = null;
-      }
       if (languageRevision === page._trackLanguagePreferenceRevision) {
         page.trackLanguageOverride = trackLanguageOverride;
       }
-      page.trackLyricsProviderOverride = trackLyricsProviderOverride;
       if (backgroundRevision === page._trackBackgroundPreferenceRevision) {
         page.trackBackgroundOverride = backgroundOverride;
       }
-      updateCurrent({ trackLyricsProviderOverride, trackBackgroundOverride: page.trackBackgroundOverride });
+      updateCurrent({ trackBackgroundOverride: page.trackBackgroundOverride });
       page.fetchMetadataTranslation(uri, info.title, info.artist);
 
       let trackPrepared = false;
       const readOptions = {
-        info, mode, refresh, hasSpotifyTrackId, sharedSnapshot, providerOverride: trackLyricsProviderOverride,
+        info, mode, hasSpotifyTrackId,
         lyricsSaved: (uri) => page.lyricsSaved(uri),
         getSavedLocalLyrics: (uri) => page.getSavedLocalLyrics(uri),
         isCurrent,
@@ -122,49 +118,77 @@ export function createPageLyricsLoad({
           if (provisional) updateCurrent({ currentLyrics: [] });
         },
       };
-      const readProviderRevision = () => getLyricsService()?.getLyricsRequestRevision?.(uri);
-      let resolved = await dataRequest.read(readOptions);
-      if (!resolved || !isCurrent()) return;
+      let refreshSource = refresh;
+      let sourceSnapshot = sharedSnapshot;
+      let waitedForLanguageModel = false;
+      while (isCurrent()) {
+        const revision = readProviderRevision();
+        const isSourceCurrent = () => readProviderRevision() === revision;
+        if (revision !== providerRevision) {
+          providerRevision = revision;
+          sourceSnapshot = null;
+          storedProvider = hasSpotifyTrackId ? await readStoredTrackProvider(uri) : null;
+          if (!isCurrent()) return;
+          if (!isSourceCurrent()) continue;
+        }
 
-      const prepare = () => preparePresentation(page, {
-        info, mode, refresh, requestSeq, trackLyricsProviderOverride, trackLanguageOverride: page.trackLanguageOverride,
-        sharedSnapshot, resolved, latestSnapshot: getLyricsService()?.getLyricsSnapshot?.(uri),
-      });
-      // Matching warm presentations already contain the language and display
-      // configuration. Cold loads wait briefly for first-use language detection.
-      let presentation = resolved.reusesSharedSnapshot ? prepare() : null;
-      if (!presentation?.reusedDisplay) {
-        const service = getLyricsService();
-        if (typeof service?.whenLanguageModelReady === "function") await service.whenLanguageModelReady(1200);
-        presentation = null;
-      }
-      while (isCurrent() && resolved.providerRevision !== readProviderRevision()) {
-        resolved = await dataRequest.read({ ...readOptions, refresh: false, sharedSnapshot: null });
-        if (!resolved) return;
-        presentation = null;
-      }
-      if (!isCurrent()) return;
-      const { rawResult, languagePatch, patch, hasLyrics } = presentation ?? prepare();
+        const manager = getLyricsAddonManager();
+        const trackLyricsProviderOverride = hasSpotifyTrackId && storedProvider
+          && (!manager?.getAddon || manager.getAddon(storedProvider)) ? storedProvider : null;
+        page.trackLyricsProviderOverride = trackLyricsProviderOverride;
+        updateCurrent({ trackLyricsProviderOverride }, isSourceCurrent);
 
-      getLyricsService()?.publishLyricsSnapshot?.({
-        trackUri: uri,
-        trackInfo: info,
-        rawResult,
-        provider: rawResult.provider || null,
-        karaokeSource: rawResult.karaokeSource || null,
-        trackLyricsProviderOverride: trackLyricsProviderOverride || null,
-        source: "ivlyrics-page-base",
-      });
-      if (!isCurrent()) return;
-      updateCurrent({
-        ...rawResult,
-        ...languagePatch,
-        ...page.applyTranslationStates(rawResult),
-        ...patch,
-        trackBackgroundOverride: page.trackBackgroundOverride,
-        lyricsTransitionSeq: transitionSeq,
-      });
-      completed = hasLyrics;
+        try {
+          const resolved = await dataRequest.read({
+            ...readOptions, refresh: refreshSource, sharedSnapshot: sourceSnapshot,
+            providerOverride: trackLyricsProviderOverride, isSourceCurrent,
+          });
+          refreshSource = false;
+          if (!isCurrent()) return;
+          if (!isSourceCurrent()) continue;
+          if (!resolved) return;
+
+          const prepare = () => preparePresentation(page, {
+            info, mode, refresh, requestSeq, trackLyricsProviderOverride, trackLanguageOverride: page.trackLanguageOverride,
+            sharedSnapshot: sourceSnapshot, resolved, latestSnapshot: getLyricsService()?.getLyricsSnapshot?.(uri),
+          });
+          // A matching warm display already has its language and presentation settings.
+          let presentation = resolved.reusesSharedSnapshot ? prepare() : null;
+          if (!presentation?.reusedDisplay && !waitedForLanguageModel) {
+            const service = getLyricsService();
+            waitedForLanguageModel = true;
+            if (typeof service?.whenLanguageModelReady === "function") await service.whenLanguageModelReady(1200);
+            presentation = null;
+          }
+          if (!isCurrent()) return;
+          if (!isSourceCurrent()) continue;
+          const { rawResult, languagePatch, patch, hasLyrics } = presentation ?? prepare();
+
+          getLyricsService()?.publishLyricsSnapshot?.({
+            trackUri: uri,
+            trackInfo: info,
+            rawResult,
+            provider: rawResult.provider || null,
+            karaokeSource: rawResult.karaokeSource || null,
+            trackLyricsProviderOverride,
+            source: "ivlyrics-page-base",
+          });
+          if (!isCurrent()) return;
+          if (!isSourceCurrent()) continue;
+          updateCurrent({
+            ...rawResult,
+            ...languagePatch,
+            ...page.applyTranslationStates(rawResult),
+            ...patch,
+            trackBackgroundOverride: page.trackBackgroundOverride,
+            lyricsTransitionSeq: transitionSeq,
+          }, isSourceCurrent);
+          completed = hasLyrics;
+          return;
+        } catch (error) {
+          if (isSourceCurrent()) throw error;
+        }
+      }
     } catch (error) {
       if (!isCurrent()) return;
       updateCurrent({
