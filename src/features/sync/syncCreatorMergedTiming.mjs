@@ -82,14 +82,16 @@ export function restoreSyncCreatorDraftMergeTiming(syncData, lyricsText, {
 
 		const savedLayout = createSyncCreatorMergedLayout(lyricDocument, {}, restored);
 		const endIndex = nextMergedLineIndexes.at(-1);
+		const end = getLineEndAtIndex(endIndex);
 		const sourceOwners = new Set(nextMergedLineIndexes.map(index => {
 			const owner = savedLayout.findMergedOwnerLineIndex(index);
 			return owner < 0 ? index : owner;
 		}));
 		const sourceGroups = [...sourceOwners].map(index => savedLayout.getMergedLineIndexesForStart(index));
-		if (sourceGroups.some(group => group[0] < lineIndex || group.at(-1) > endIndex)) continue;
+		if (sourceGroups.some(group => group[0] < lineIndex || group.at(-1) > endIndex
+			|| savedLayout.getSavedLineAtIndex(group[0])?.end > end)) continue;
 		const separateRows = nextMergedLineIndexes.slice(1).some(index => savedLayout.getSavedLineAtIndex(index));
-		const alreadyGrouped = sourceGroups.length === 1 && savedLayout.getSavedLineAtIndex(lineIndex)?.end === getLineEndAtIndex(endIndex);
+		const alreadyGrouped = sourceGroups.length === 1 && savedLayout.getSavedLineAtIndex(lineIndex)?.end === end;
 		if (alreadyGrouped && !separateRows) continue;
 
 		const plan = prepareMergedTiming({
@@ -219,7 +221,7 @@ export function mergeSyncCreatorLineTiming(prev, {
 }
 
 export function unmergeSyncCreatorLineTiming(prev, {
-	lineStart, currentMergedLineIndexes, lineCharOffsets, getLineEndAtIndex, editingVersion,
+	lineStart, lineIndex, lineCharOffsets, getLineEndAtIndex, editingVersion,
 }, {
 	sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
 	sanitizeSyncCreatorSpeakerFallback, sanitizeSyncCreatorSpeakerColor, normalizeSyncCreatorKind,
@@ -228,40 +230,37 @@ export function unmergeSyncCreatorLineTiming(prev, {
 	const linesByStart = new Map(prev.lines.map(line => [line.start, line]));
 	const mergedLine = linesByStart.get(lineStart);
 	const savedEnd = Number(mergedLine?.end);
-	if (!Number.isInteger(savedEnd) || savedEnd <= getLineEndAtIndex(currentMergedLineIndexes[0])) return prev;
+	if (!Number.isInteger(savedEnd) || savedEnd <= getLineEndAtIndex(lineIndex)) return prev;
 
-	const restoredLines = currentMergedLineIndexes
-		.map((lineIndex) => {
-			const start = lineCharOffsets[lineIndex];
-			const end = getLineEndAtIndex(lineIndex);
-			if (!Number.isInteger(start) || end < start || start > savedEnd) return null;
-
-			const restored = sliceSyncCreatorLineTiming(mergedLine, start, Math.min(end, savedEnd));
-			// Older work could retain an independent continuation when recording
-			// the parent. Keep that row if the parent has no recorded vocal for it.
-			if (!restored) return start === lineStart ? null : linesByStart.get(start);
-			const part = mergedLine.parallel?.parts?.find(item =>
-				Array.isArray(item?.ranges)
-				&& item.ranges.some(range =>
-					Number(range?.start) <= start
-					&& Number(range?.end) >= end
-				)
-			);
-			const speaker = normalizeSyncCreatorSpeaker(part?.speaker || mergedLine.speaker) || SYNC_CREATOR_DEFAULT_SPEAKER;
-			const kind = normalizeSyncCreatorKind(part?.kind || mergedLine.kind) || SYNC_CREATOR_DEFAULT_KIND;
-			const granularity = part ? normalizeSyncCreatorGranularity(part.granularity || mergedLine.granularity) : 'character';
-			const speakerFallback = sanitizeSyncCreatorSpeakerFallback(speaker, part?.['speaker-fallback'] || mergedLine['speaker-fallback'], true, part?.speaker || mergedLine.speaker);
-			const speakerColor = sanitizeSyncCreatorSpeakerColor(speaker, part?.['speaker-color'] || mergedLine['speaker-color'], true, speakerFallback);
-			return {
-				...restored, granularity: restored.parallel ? restored.granularity : granularity, speaker, kind,
-				'speaker-fallback': speakerFallback || undefined,
-				'speaker-color': speakerColor || undefined
-			};
-		})
-		.filter(Boolean);
 	const lines = prev.lines
 		.filter(line => line.start < lineStart || line.start > savedEnd);
-	lines.push(...restoredLines);
+	// Slice the stored span so even a partial row outside the editor's group
+	// survives removal of the parent record.
+	for (let index = lineIndex; index < lineCharOffsets.length && lineCharOffsets[index] <= savedEnd; index++) {
+		const start = lineCharOffsets[index];
+		const end = Math.min(getLineEndAtIndex(index), savedEnd);
+		const restored = sliceSyncCreatorLineTiming(mergedLine, start, end);
+		if (!restored) {
+			// Older work could retain an independent row beside an unrecorded vocal.
+			const independent = start !== lineStart && linesByStart.get(start);
+			if (independent) lines.push(independent);
+			continue;
+		}
+		const part = mergedLine.parallel?.parts?.find(item =>
+			Array.isArray(item?.ranges)
+			&& item.ranges.some(range => Number(range?.start) <= start && Number(range?.end) >= end)
+		);
+		const speaker = normalizeSyncCreatorSpeaker(part?.speaker || mergedLine.speaker) || SYNC_CREATOR_DEFAULT_SPEAKER;
+		const kind = normalizeSyncCreatorKind(part?.kind || mergedLine.kind) || SYNC_CREATOR_DEFAULT_KIND;
+		const granularity = part ? normalizeSyncCreatorGranularity(part.granularity || mergedLine.granularity) : 'character';
+		const speakerFallback = sanitizeSyncCreatorSpeakerFallback(speaker, part?.['speaker-fallback'] || mergedLine['speaker-fallback'], true, part?.speaker || mergedLine.speaker);
+		const speakerColor = sanitizeSyncCreatorSpeakerColor(speaker, part?.['speaker-color'] || mergedLine['speaker-color'], true, speakerFallback);
+		lines.push({
+			...restored, granularity: restored.parallel ? restored.granularity : granularity, speaker, kind,
+			'speaker-fallback': speakerFallback || undefined,
+			'speaker-color': speakerColor || undefined
+		});
+	}
 	lines.sort((a, b) => a.start - b.start);
 	return lines.length > 0
 		? { ...prev, version: lines.some(line => line.parallel) ? editingVersion : (prev.version || 1), lines }

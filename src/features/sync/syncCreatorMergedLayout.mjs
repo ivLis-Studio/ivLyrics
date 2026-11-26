@@ -31,41 +31,21 @@ export function createSyncCreatorMergedLayout(lyricDocument, mergedLineDrafts, s
 	const { lyricsLines, lineCharOffsets, lineChars, lineIndexByStart, getLineEndAtIndex } = lyricDocument;
 	const savedLinesByStart = new Map((Array.isArray(syncData?.lines) ? syncData.lines : []).map(line => [line.start, line]));
 
-	function getMergedLineIndexesForStart(startIndex, linesByStartOverride = null) {
-		if (startIndex < 0 || startIndex >= lyricsLines.length) return [];
-		const lineStart = lineCharOffsets[startIndex];
-		if (!Number.isInteger(lineStart)) return [startIndex];
-
-		const getIndexesFromMergedStarts = (mergedStarts) => {
-			const indexes = [startIndex];
-			for (let index = startIndex + 1; index < lyricsLines.length && indexes.length < SYNC_CREATOR_MAX_MERGED_LINES; index++) {
-				const nextStart = lineCharOffsets[index];
-				if (mergedStarts.includes(nextStart)) {
-					indexes.push(index);
-					continue;
-				}
-				break;
-			}
-			return indexes;
-		};
-
-		const draftStarts = normalizeMergedLineDraftStarts(mergedLineDrafts[lineStart]);
-		if (draftStarts.length > 0) return getIndexesFromMergedStarts(draftStarts);
-
-		const linesByStart = linesByStartOverride || savedLinesByStart;
-		const lineData = linesByStart.get(lineStart);
-		if (!lineData) return [startIndex];
-
-		const persistedMergedStarts = normalizeMergedLineDraftStarts(lineData.mergedLineContinuationStarts);
-		if (persistedMergedStarts.length > 0) {
-			const indexes = getIndexesFromMergedStarts(persistedMergedStarts);
-			if (indexes.length > 1) return indexes;
-		}
-
-		if (!Array.isArray(lineData.parallel?.parts)) return [startIndex];
-
+	function getIndexesFromMergedStarts(startIndex, mergedStarts) {
+		const starts = normalizeMergedLineDraftStarts(mergedStarts);
 		const indexes = [startIndex];
 		for (let index = startIndex + 1; index < lyricsLines.length && indexes.length < SYNC_CREATOR_MAX_MERGED_LINES; index++) {
+			if (!starts.includes(lineCharOffsets[index])) break;
+			indexes.push(index);
+		}
+		return indexes;
+	}
+
+	function getSavedMergedIndexes(startIndex, lineData) {
+		const indexes = getIndexesFromMergedStarts(startIndex, lineData?.mergedLineContinuationStarts);
+		if (!Array.isArray(lineData?.parallel?.parts)) return indexes;
+
+		for (let index = indexes.at(-1) + 1; index < lyricsLines.length && indexes.length < SYNC_CREATOR_MAX_MERGED_LINES; index++) {
 			const nextStart = lineCharOffsets[index];
 			const nextEnd = getLineEndAtIndex(index);
 			if (!Number.isInteger(nextStart) || nextEnd < nextStart || Number(lineData.end) < nextEnd) break;
@@ -73,6 +53,18 @@ export function createSyncCreatorMergedLayout(lyricDocument, mergedLineDrafts, s
 			indexes.push(index);
 		}
 		return indexes;
+	}
+
+	function getMergedLineIndexesForStart(startIndex, linesByStartOverride = null) {
+		if (startIndex < 0 || startIndex >= lyricsLines.length) return [];
+		const lineStart = lineCharOffsets[startIndex];
+		if (!Number.isInteger(lineStart)) return [startIndex];
+
+		const draftIndexes = getIndexesFromMergedStarts(startIndex, mergedLineDrafts[lineStart]);
+		const savedIndexes = getSavedMergedIndexes(startIndex, (linesByStartOverride || savedLinesByStart).get(lineStart));
+		// An older draft may describe fewer rows than the saved timing covers.
+		// The editor only shrinks a group once the saved timing has been split.
+		return draftIndexes.length > savedIndexes.length ? draftIndexes : savedIndexes;
 	}
 	function findMergedOwnerLineIndex(index, linesByStartOverride = null) {
 		if (index <= 0 || index >= lyricsLines.length) return -1;

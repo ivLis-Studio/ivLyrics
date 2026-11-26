@@ -137,7 +137,9 @@ export function useSyncCreatorLineActions({
 		const mergedEnd = getLineEndAtIndex(currentMergedLineIndexes[currentMergedLineIndexes.length - 1]);
 
 		const layout = { lineStart, mergedEnd, currentMergedLineIndexes, lineCharOffsets, getLineEndAtIndex };
-		setSyncData(prev => unmergeSyncCreatorLineTiming(prev, { ...layout, editingVersion }, {
+		setSyncData(prev => unmergeSyncCreatorLineTiming(prev, {
+			lineStart, lineIndex: currentLineIndex, lineCharOffsets, getLineEndAtIndex, editingVersion,
+		}, {
 			sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
 			sanitizeSyncCreatorSpeakerFallback, sanitizeSyncCreatorSpeakerColor, normalizeSyncCreatorKind,
 		}));

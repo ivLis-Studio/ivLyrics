@@ -466,6 +466,7 @@ for (const replacement of ['none', 'edit', 'source switch']) {
 function checkpoints(h, {
 	apply = noop, build = () => sourceA, isEditorOpen = () => true,
 	history = [], cursor = 'old',
+	logger = console,
 	lifetime = createSyncCreatorEditorLifetime(isEditorOpen),
 } = {}) {
 	return useSyncCreatorSessionCheckpoints({
@@ -474,7 +475,7 @@ function checkpoints(h, {
 		source: { activeSessionDraftKey: 'A', lyricsLines: ['First lyric'], lyricsText: 'First lyric' },
 		editor: { currentLineIndex: 0, activeParallelTargetId: 'full', syncData: null, mode: 'idle', isKeyboardSyncingRef: ref(false) },
 		state: { sessionHistory: history, sessionHistoryCursorId: cursor },
-		refs: h.refs, ui: h.ui, cancelTimer: h.cancelTimer, i18n: h.i18n, toast: h.toast,
+		refs: h.refs, ui: h.ui, cancelTimer: h.cancelTimer, i18n: h.i18n, toast: h.toast, logger,
 		buildSyncCreatorSessionRecord: build, applySyncCreatorSessionRecord: apply,
 		...h.actions, lifetime,
 	});
@@ -536,6 +537,27 @@ test('manual checkpoints use only the active source baseline', async () => {
 	await checkpoints(h).addManualCheckpoint();
 	assert.equal(saved.length, 1);
 	assert.equal(saved[0].baselineSnapshot, undefined);
+});
+
+test('an unbuildable manual checkpoint leaves the active autosave and recovery alone', async () => {
+	for (const build of [() => null, () => { throw new Error('Invalid timing'); }]) {
+		const h = createSession({ appendCheckpoint: assert.fail });
+		h.refs.activeSessionDraftKeyRef.current = 'A';
+		h.refs.sessionAutosaveTimerRef.current = 42;
+		const pending = { draftKey: 'A', buildRecord: () => sourceA };
+		h.refs.sessionPendingSnapshotRef.current = pending;
+		const ownsDraft = h.actions.captureDraftOwnership();
+		const writeGeneration = h.refs.sessionWriteGenerationRef.current;
+
+		await checkpoints(h, { build, logger: { warn: noop } }).addManualCheckpoint();
+
+		assert.equal(h.refs.sessionAutosaveTimerRef.current, 42);
+		assert.equal(h.refs.sessionPendingSnapshotRef.current, pending);
+		assert.equal(h.refs.sessionWriteGenerationRef.current, writeGeneration);
+		assert.equal(h.refs.sessionAutoRecoveryBlockedRef.current, false);
+		assert.equal(ownsDraft(), true);
+		assert.deepEqual(h.events, []);
+	}
 });
 
 test('manual checkpoint captures the active line and the original source baseline', async () => {

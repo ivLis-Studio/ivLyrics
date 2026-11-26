@@ -31,9 +31,6 @@ export function useSyncCreatorSessionCheckpoints({
 
 	const addManualCheckpoint = useCallback(async () => {
 		if (!canStartOperation() || !syncCreatorDraftStore || !activeSessionDraftKey || !lyricsText) return;
-		claimSessionForLocalEditing();
-		cancelSyncCreatorAutosave(sessionAutosaveTimerRef, cancelTimer);
-		const writeGeneration = ++sessionWriteGenerationRef.current;
 		let record;
 		try {
 			record = buildSyncCreatorSessionRecord(syncData, {
@@ -46,6 +43,9 @@ export function useSyncCreatorSessionCheckpoints({
 		}
 		if (!record) return;
 
+		claimSessionForLocalEditing();
+		cancelSyncCreatorAutosave(sessionAutosaveTimerRef, cancelTimer);
+		const writeGeneration = ++sessionWriteGenerationRef.current;
 		sessionPendingSnapshotRef.current = null;
 		const ownsSave = () => isEditorOpen() && ownsSyncCreatorDraftSave(refs, record, writeGeneration);
 		latestSessionRecordRef.current = record;

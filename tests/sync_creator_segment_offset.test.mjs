@@ -1049,6 +1049,60 @@ test('restoring an older unmaterialized merge draft keeps continuations with ind
     assert.equal(exported.lines[1].parallel.parts[0].chars, undefined);
 });
 
+test('shorter recovered merge metadata cannot hide or erase the last recorded source row', async () => {
+    const rows = ['PRE', 'ABCD', 'EFGH', 'IJKL', 'TAIL'];
+    const editor = createEditor({ rows });
+    const expected = plain(editor.context.syncData.lines.map(row => row.chars));
+    editor.context.syncData.lines[3].lastCharEnd = 33;
+    editor.api.mergeCurrentLineWithNext(); editor.render();
+    editor.api.mergeCurrentLineWithNext(); editor.render();
+    for (const legacy of [false, true]) {
+        const session = editor.record();
+        session.draft.editor.mergedLineDrafts = { 3: [7] };
+        if (legacy) {
+            session.draft.syncData = plain(editor.context.syncData);
+            session.draft.syncData.lines[1].mergedLineContinuationStarts = [7];
+        }
+
+        const reopened = createEditor({ rows });
+        reopened.recover(session);
+        const recoveredGroup = plain(reopened.api.getMergedLineIndexesForStart(1));
+        reopened.api.unmergeCurrentLine(); reopened.render();
+        assert.deepEqual(plain(reopened.context.syncData.lines.map(row => row.chars)), expected);
+        assert.deepEqual(recoveredGroup, [1, 2, 3]);
+        const exported = await reopened.export();
+        assert.deepEqual(plain(exported.lines.map(row => row.start)), [0, 3, 7, 11, 15]);
+        assert.equal(exported.lines[3].lastCharEnd, 33);
+        assert.deepEqual((await reopened.submit()).lines, exported.lines);
+    }
+});
+
+test('unmerging restores timing that reaches only partway into the final source row', () => {
+    const rows = ['PRE', 'ABCD', 'EFGH', 'IJKL', 'TAIL'];
+    const editor = createEditor({ rows });
+    editor.api.mergeCurrentLineWithNext(); editor.render();
+    editor.api.mergeCurrentLineWithNext(); editor.render();
+    const session = editor.record();
+    session.draft.editor.mergedLineDrafts = { 3: [7] };
+    session.draft.syncData = plain(editor.context.syncData);
+    const parent = session.draft.syncData.lines[1];
+    parent.mergedLineContinuationStarts = [7];
+    parent.end = 12;
+    parent.chars = parent.chars.slice(0, 10);
+    const part = parent.parallel.parts[2];
+    part.ranges[0].end = 12;
+    part.chars = part.chars.slice(0, 2);
+
+    const reopened = createEditor({ rows });
+    reopened.recover(session);
+    assert.deepEqual(plain(reopened.api.getMergedLineIndexesForStart(1)), [1, 2]);
+    reopened.api.unmergeCurrentLine(); reopened.render();
+    const restored = reopened.context.syncData.lines.find(row => row.start === 11);
+    assert.equal(restored?.end, 12);
+    assert.deepEqual(plain(restored.chars), [31, 31.25]);
+    reopened.api.assertValidSyncCreatorSyncData(reopened.context.syncData);
+});
+
 test('unmerging a partially recorded group never saves the unrecorded row with placeholder marks', () => {
     const editor = createEditor();
     editor.context.syncData.lines = editor.context.syncData.lines.filter(line => line.start !== 7);
