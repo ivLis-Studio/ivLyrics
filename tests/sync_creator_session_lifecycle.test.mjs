@@ -418,6 +418,21 @@ test('a capture belongs to the unchanged draft, even when a newer operation uses
 	assert.equal(beforeSourceChange(), false);
 });
 
+test('a loaded source survives same-source editing and imports, but replacement retires it before render', () => {
+	const h = createSession();
+	h.refs.activeSessionDraftKeyRef.current = 'A';
+	const ownsSource = h.actions.captureSourceOwnership();
+	h.actions.claimSessionForLocalEditing();
+	h.actions.beginDraftImport('A');
+	assert.equal(ownsSource(), true);
+	h.actions.beginDraftImport('B');
+	assert.equal(ownsSource(), false);
+
+	const reloaded = h.actions.captureSourceOwnership();
+	h.actions.beginDraftSourceChange();
+	assert.equal(reloaded(), false, 'reloading the same key starts a new source request');
+});
+
 test('new edits during post-publication deletion can still autosave and retain the editor', async () => {
 	const removal = deferred();
 	const h = createSession({ deleteDraft: () => removal.promise });

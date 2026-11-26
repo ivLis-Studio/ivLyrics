@@ -22,31 +22,37 @@ export function createSyncCreatorPublicationRunner({ isEditorOpen, captureDraftO
 
 export function createSyncCreatorPublicationActions({
 	runPublication, track, canEdit, isRecording, hasHeldInput, lyrics, syncData, hasUnsubmittedSync,
-	timing, vocals, draft, layout, editor, isEditorOpen, dialog, transport, clearPublishedCaches,
+	timing, vocals, draft, published, layout, editor, isEditorOpen, dialog, transport, clearPublishedCaches,
 }) {
 	const { text, ...submissionLyrics } = lyrics;
-	const canStillSubmit = () => track.getProvider() === track.provider && !hasHeldInput();
+	const isProviderCurrent = () => track.getProvider() === track.provider;
+	const canStillSubmit = () => isProviderCurrent() && !hasHeldInput();
 	return {
 		revert: () => runPublication(isDraftCurrent => revertSyncCreatorEdits({
 			track, canEdit, recording: isRecording, lyricsText: text,
 			hasLocalWork: hasUnsubmittedSync || Boolean(syncData?.lines?.length),
-			readBaseline: () => draft.serverBaselineSyncDataRef.current,
+			readBaseline: published.readBaseline,
 			getSyncService: transport.getSyncService, timing: { getCodec: timing.getCodec, sanitize: timing.sanitize },
 			dialog: { ...dialog, setBusy: dialog.setReverting },
 			isDraftCurrent,
 			onReverted: data => restoreSyncCreatorPublishedSession(data, {
-				isEditorOpen, isDraftCurrent, draft, layout, editor,
+				isEditorOpen, isDraftCurrent, draft, layout, editor, updatePublishedBaseline: published.updateBaseline,
 			}),
 		})),
-		submit: () => runPublication(isDraftCurrent => submitSyncCreatorEdits({
-			track, canEdit, syncData, lyrics: submissionLyrics, timing, vocals, transport,
-			dialog: { ...dialog, setBusy: dialog.setSubmitting },
-			isDraftCurrent,
-			onPublished: (isrc, data, provider) => finishSyncCreatorPublication(isrc, data, {
-				clearPublishedCaches: resolvedIsrc => clearPublishedCaches(resolvedIsrc, provider),
-				isDraftCurrent, isEditorOpen, draft, editor,
-			}),
-		}), canStillSubmit),
+		submit: () => runPublication(isDraftCurrent => {
+			const ownsSource = draft.captureSourceOwnership();
+			return submitSyncCreatorEdits({
+				track, canEdit, syncData, lyrics: submissionLyrics, timing, vocals, transport,
+				dialog: { ...dialog, setBusy: dialog.setSubmitting },
+				isDraftCurrent,
+				onPublished: (isrc, data, provider) => finishSyncCreatorPublication(isrc, data, {
+					clearPublishedCaches: resolvedIsrc => clearPublishedCaches(resolvedIsrc, provider),
+					isDraftCurrent, isEditorOpen, draft, editor,
+					isSourceCurrent: () => ownsSource() && isProviderCurrent(),
+					updatePublishedBaseline: published.updateBaseline,
+				}),
+			});
+		}, canStillSubmit),
 	};
 }
 

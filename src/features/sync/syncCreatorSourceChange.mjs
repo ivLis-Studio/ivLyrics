@@ -21,9 +21,9 @@ export function useSyncCreatorSourceChange({
 		setLrclibSearchMeta, setIsLoadingLrclibId, setLrclibIdInput, searchRequests,
 	} = lrclib;
 	const {
-		pendingMultiVocalDecision, serverBaselineSyncDataRef,
+		pendingMultiVocalDecision, updatePublishedBaseline,
 		setManualParallelSplitDrafts, setParentheticalLayoutDrafts, setPendingParentheticalLayoutDecision, setMergedLineDrafts,
-		setLyrics, setLyricsText, setSyncData, setProviderValue, setAddonId, setHasPublishedSync,
+		setLyrics, setLyricsText, setSyncData, setProviderValue, setAddonId,
 		setPendingMultiVocalDecision, setMultiVocalMode, setActiveParallelPartId, setError, setIsLoading, setCurrentLineIndex, setMode,
 	} = editor;
 	const {
@@ -121,12 +121,6 @@ export function useSyncCreatorSourceChange({
 			getCodec: readSyncCreatorCodec, sanitize: sanitizeSyncCreatorSyncData, debug: debugSyncCreatorSource,
 		})
 	);
-	const updatePublishedBaseline = (matching) => {
-		serverBaselineSyncDataRef.current = matching
-			? (syncCreatorDraftStore?.cloneValue?.(matching) || matching)
-			: null;
-		setHasPublishedSync(hasPublishedSyncLines(matching));
-	};
 
 	const applyLoadedLyricsResult = useCallback(async (result, usedProvider, sourceChangeRequestId, { publishedSync } = {}) => {
 		const ownsEditor = () => ownsSourceDraft(sourceChangeRequestId);
@@ -223,8 +217,7 @@ export function useSyncCreatorSourceChange({
 		setLyrics(null);
 		setLyricsText('');
 		setSyncData(null);
-		serverBaselineSyncDataRef.current = null;
-		setHasPublishedSync(false);
+		updatePublishedBaseline(null);
 		if (resetProvider) {
 			setAddonId(SYNC_CREATOR_SOURCE_ADDON_ID);
 			setProviderValue('');
@@ -235,7 +228,7 @@ export function useSyncCreatorSourceChange({
 		setPendingMultiVocalDecision(null);
 		setActiveParallelPartId('full');
 		setMode('idle');
-	}, [setProviderValue, clearVocalDrafts]);
+	}, [setProviderValue, clearVocalDrafts, updatePublishedBaseline]);
 
 	const prepareImportedLyricsSource = useCallback(async (result, text, isCurrent) => {
 		const source = describeSyncCreatorLoadedSource(result, SYNC_CREATOR_SOURCE_ADDON_ID);

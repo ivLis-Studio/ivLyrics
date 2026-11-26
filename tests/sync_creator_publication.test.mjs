@@ -99,10 +99,9 @@ test('starting to close during submit cancels the old work even when saving the 
 	});
 	const actions = createSyncCreatorPublicationActions({
 		...options, track, runPublication, isEditorOpen: attached.isOpen, hasHeldInput: () => false,
-		draft: {
-			deleteActiveSyncCreatorDraft: () => true, serverBaselineSyncDataRef: { current: null },
-		},
-		editor: { setHasUnsubmittedSync() {}, setHasPublishedSync() {}, onClose: () => calls.push('published and closed') },
+		draft: { deleteActiveSyncCreatorDraft: () => true, captureSourceOwnership: () => () => true },
+		published: { updateBaseline() {} },
+		editor: { setHasUnsubmittedSync() {}, onClose: () => calls.push('published and closed') },
 		clearPublishedCaches: () => calls.push('cache'),
 		dialog: { ...options.dialog, setSubmitting() {} },
 	});
@@ -327,11 +326,13 @@ test('the sync service checks editor ownership after its own asynchronous prepar
 });
 
 test('a published response still clears its track cache without touching a replacement editor', async () => {
-	for (const change of ['during cache cleanup', 'during deletion', 'closed during deletion']) {
+	for (const change of ['replaced before response', 'during cache cleanup', 'during deletion', 'closed during deletion', 'source changed during deletion']) {
 		const calls = [];
 		const pending = deferred();
+		const deleting = deferred();
 		let current = true;
 		let open = true;
+		let currentSource = change !== 'replaced before response';
 		const result = finishSyncCreatorPublication(track.isrc, syncData, {
 			async clearPublishedCaches(isrc) {
 				calls.push(['cache', isrc]);
@@ -339,17 +340,53 @@ test('a published response still clears its track cache without touching a repla
 			},
 			isDraftCurrent: () => current,
 			isEditorOpen: () => open,
+			isSourceCurrent: () => currentSource,
+			updatePublishedBaseline: data => calls.push(['baseline', data]),
 			draft: {
-				async deleteActiveSyncCreatorDraft() { calls.push(['delete']); return pending.promise; },
+				async deleteActiveSyncCreatorDraft() {
+					calls.push(['delete']);
+					deleting.resolve();
+					return pending.promise;
+				},
 			},
 			editor: new Proxy({}, { get() { assert.fail('the old result must not update the editor'); } }),
 		});
 		if (change === 'during cache cleanup') current = false;
+		if (change.endsWith('during deletion')) await deleting.promise;
 		if (change === 'closed during deletion') open = false;
+		if (change === 'source changed during deletion') currentSource = false;
 		pending.resolve(change !== 'during deletion');
 		await result;
-		assert.deepEqual(calls, change === 'during cache cleanup' ? [['cache', track.isrc]] : [['cache', track.isrc], ['delete']]);
+		assert.deepEqual(calls, [
+			...(change === 'replaced before response' ? [] : [['baseline', syncData]]),
+			['cache', track.isrc],
+			...(change.endsWith('during deletion') ? [['delete']] : []),
+		]);
 	}
+});
+
+test('an acknowledged submission becomes the revert baseline while newer edits are kept', async () => {
+	const pending = deferred();
+	const calls = [];
+	const local = { version: 5, lines: [{ start: 0, end: 0, chars: [3] }] };
+	let baseline = { version: 5, lines: [{ start: 0, end: 0, chars: [1] }] };
+	let currentDraft = true;
+	const posted = { version: 5, lines: [{ start: 0, end: 0, chars: [2] }] };
+	const result = finishSyncCreatorPublication(track.isrc, posted, {
+		async clearPublishedCaches(isrc) { calls.push(['cache', isrc]); await pending.promise; },
+		isDraftCurrent: () => currentDraft,
+		isEditorOpen: () => true,
+		isSourceCurrent: () => true,
+		updatePublishedBaseline(data) { baseline = data; calls.push(['baseline', data]); },
+		draft: { deleteActiveSyncCreatorDraft: () => assert.fail('must keep the newer edits') },
+		editor: new Proxy({}, { get() { assert.fail('the result must not reset newer edits'); } }),
+	});
+	currentDraft = false;
+	pending.resolve();
+	await result;
+	assert.equal(baseline, posted);
+	assert.deepEqual(local.lines[0].chars, [3]);
+	assert.deepEqual(calls, [['baseline', posted], ['cache', track.isrc]]);
 });
 
 test('a revert fetched for a previous source cannot read the new baseline or replace the editor', async () => {

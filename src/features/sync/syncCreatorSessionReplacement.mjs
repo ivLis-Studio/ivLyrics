@@ -18,12 +18,6 @@ function setReplacementVocalMode(data, layout) {
 	layout.setActiveParallelPartId(hasParallel ? '' : 'full');
 }
 
-function rememberPublishedSync(data, draft, editor) {
-	draft.serverBaselineSyncDataRef.current = draft.syncCreatorDraftStore?.cloneValue?.(data) || data;
-	editor.setHasUnsubmittedSync(false);
-	editor.setHasPublishedSync(true);
-}
-
 export function applySyncCreatorImportedSession(data, target, { draft, layout, editor }) {
 	const lrclibSource = target.lrclibSource || (data.source?.provider === 'lrclib' ? data.source : null);
 	const draftKey = draft.syncCreatorDraftStore?.createDraftKey?.({
@@ -56,7 +50,9 @@ export function commitSyncCreatorFileImport(data, target, { draft, layout, edito
 	applySyncCreatorImportedSession(data, target, { draft, layout, editor });
 }
 
-export async function restoreSyncCreatorPublishedSession(data, { draft, layout, editor, isEditorOpen, isDraftCurrent }) {
+export async function restoreSyncCreatorPublishedSession(data, {
+	draft, layout, editor, isEditorOpen, isDraftCurrent, updatePublishedBaseline,
+}) {
 	const ownsDraft = await draft.deleteActiveSyncCreatorDraft({ resumeAutosave: true, isDraftCurrent });
 	if (!ownsDraft || !isEditorOpen()) return false;
 	editor.resetCurrentSyncInput();
@@ -66,18 +62,25 @@ export async function restoreSyncCreatorPublishedSession(data, { draft, layout, 
 	editor.setCurrentLineIndex(0);
 	editor.setSyncData(data);
 	editor.setMode('idle');
-	rememberPublishedSync(data, draft, editor);
+	updatePublishedBaseline(data);
+	editor.setHasUnsubmittedSync(false);
 	return true;
 }
 
 export async function finishSyncCreatorPublication(isrc, data, {
-	clearPublishedCaches, draft, editor, isDraftCurrent, isEditorOpen,
+	clearPublishedCaches, draft, editor, isDraftCurrent, isEditorOpen, isSourceCurrent, updatePublishedBaseline,
 }) {
-	// A successful request still changes the published song after the editor moves on.
-	await clearPublishedCaches(isrc);
-	if (!isDraftCurrent()) return;
-	const ownsDraft = await draft.deleteActiveSyncCreatorDraft({ isDraftCurrent });
-	if (!ownsDraft || !isEditorOpen()) return;
-	rememberPublishedSync(data, draft, editor);
+	const ownsSource = () => isEditorOpen() && isSourceCurrent();
+	const canDiscardDraft = () => ownsSource() && isDraftCurrent();
+	try {
+		if (ownsSource()) updatePublishedBaseline(data);
+	} finally {
+		// A committed submission still changes playback after its editor moves on.
+		await clearPublishedCaches(isrc);
+	}
+	if (!canDiscardDraft()) return;
+	const ownsDraft = await draft.deleteActiveSyncCreatorDraft({ isDraftCurrent: canDiscardDraft });
+	if (!ownsDraft || !ownsSource()) return;
+	editor.setHasUnsubmittedSync(false);
 	await editor.onClose?.();
 }

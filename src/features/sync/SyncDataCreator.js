@@ -96,6 +96,7 @@ import {
 	clearSyncCreatorPublishedCaches, createSyncCreatorPublicationActions, createSyncCreatorPublicationRunner,
 } from '#ivlyrics/features/sync/syncCreatorPublication.mjs';
 import { createSyncCreatorEditorLifetime } from '#ivlyrics/features/sync/syncCreatorEditorLifetime.mjs';
+import { hasPublishedSyncLines } from '#ivlyrics/features/sync/syncCreatorLoadedSource.mjs';
 import { createSyncCreatorEditorCommands } from '#ivlyrics/features/sync/syncCreatorEditorCommands.mjs';
 import { exportSyncCreatorFile } from '#ivlyrics/features/sync/syncCreatorFileTransfer.mjs';
 import { commitSyncCreatorFileImport } from '#ivlyrics/features/sync/syncCreatorSessionReplacement.mjs';
@@ -304,7 +305,8 @@ export function createSyncDataCreator({
 		const setPosition = positionStore.set;
 		const [isSubmitting, setIsSubmitting] = useState(false);
 		const [hasUnsubmittedSync, setHasUnsubmittedSync] = useState(false);
-		const [hasPublishedSync, setHasPublishedSync] = useState(false);
+		const [publishedBaseline, setPublishedBaseline] = useState(null);
+		const hasPublishedSync = hasPublishedSyncLines(publishedBaseline);
 		const [isReverting, setIsReverting] = useState(false);
 		const [, setRecordingCharIndex] = useState(-1);
 		const [recordingLockIndex, setRecordingLockIndex] = useState(-1);
@@ -359,6 +361,11 @@ export function createSyncDataCreator({
 		const selectedLrclibSourceRef = useRef(selectedLrclibSource);
 		const customSpeakerMetaMemoryRef = useRef(new Map());
 		const serverBaselineSyncDataRef = useRef(null);
+		const updatePublishedBaseline = useCallback(data => {
+			const baseline = data ? (syncCreatorDraftStore?.cloneValue?.(data) || data) : null;
+			serverBaselineSyncDataRef.current = baseline;
+			setPublishedBaseline(baseline);
+		}, [syncCreatorDraftStore]);
 		const historyListRef = useRef(null);
 		const score = useSyncCreatorScoreState({
 			react, containerRef, readSyncCreatorCodec, syncCreatorDraftStore, utils: Utils, i18n: I18n, spicetify: Spicetify,
@@ -381,7 +388,7 @@ export function createSyncDataCreator({
 				nextSessionClientRevision, claimSessionForLocalEditing: claimDraftForLocalEditing, toggleSessionAutosave,
 				isCurrentSyncCreatorSourceChange, beginDraftSourceChange,
 				syncSessionUiFromRecord, announceHistoryStatus, announceRecoveredSession,
-				captureDraftOwnership, deleteActiveSyncCreatorDraft, beginDraftImport, adoptImportedDraftKey, markDraftDirty, flushDraftBeforeClose,
+				captureDraftOwnership, captureSourceOwnership, deleteActiveSyncCreatorDraft, beginDraftImport, adoptImportedDraftKey, markDraftDirty, flushDraftBeforeClose,
 				readSourceDraft, readTrackDrafts,
 			},
 		} = useSyncCreatorSessionLifecycle({
@@ -473,9 +480,9 @@ export function createSyncDataCreator({
 				setLrclibSearchMeta, setIsLoadingLrclibId, setLrclibIdInput, searchRequests: lrclibSearchRequests,
 			},
 			editor: {
-				pendingMultiVocalDecision, serverBaselineSyncDataRef,
+				pendingMultiVocalDecision, updatePublishedBaseline,
 				setManualParallelSplitDrafts, setParentheticalLayoutDrafts, setPendingParentheticalLayoutDecision, setMergedLineDrafts,
-				setLyrics, setLyricsText, setSyncData, setProviderValue, setAddonId, setHasPublishedSync,
+				setLyrics, setLyricsText, setSyncData, setProviderValue, setAddonId,
 				setPendingMultiVocalDecision, setMultiVocalMode, setActiveParallelPartId, setError, setIsLoading, setCurrentLineIndex, setMode,
 			},
 			session: {
@@ -1027,13 +1034,13 @@ export function createSyncDataCreator({
 			const previous = latestSessionRecordRef.current;
 			setHasUnsubmittedSync(hasSyncCreatorUnsubmittedChanges({
 				syncData,
-				baseline: serverBaselineSyncDataRef.current,
+				baseline: publishedBaseline,
 				timingCleared: previous?.draftKey === activeSessionDraftKey && isSyncCreatorDraftTimingCleared(previous),
 				materialize: materializeSyncCreatorParallelDrafts,
 				layoutDrafts: [manualParallelSplitDrafts, parentheticalLayoutDrafts, mergedLineDrafts],
 			}));
 		}, [
-			syncData, activeSessionDraftKey, hasPublishedSync, materializeSyncCreatorParallelDrafts,
+			syncData, activeSessionDraftKey, publishedBaseline, materializeSyncCreatorParallelDrafts,
 			manualParallelSplitDrafts, parentheticalLayoutDrafts, mergedLineDrafts,
 		]);
 
@@ -1053,10 +1060,11 @@ export function createSyncDataCreator({
 				provider, getProvider: () => providerRef.current, info: trackInfo, durationMs: trackDurationMs,
 			},
 			lyrics: { text: lyricsText, lines: lyricsLines, offsets: lineCharOffsets, chars: lyricsFullTextChars, language: lyricsLanguage },
-			draft: { deleteActiveSyncCreatorDraft, syncCreatorDraftStore, serverBaselineSyncDataRef },
+			draft: { deleteActiveSyncCreatorDraft, captureSourceOwnership },
+			published: { readBaseline: () => serverBaselineSyncDataRef.current, updateBaseline: updatePublishedBaseline },
 			layout: sessionReplacementLayout,
 			editor: {
-				setCurrentLineIndex, setSyncData, setMode, resetCurrentSyncInput, setHasUnsubmittedSync, setHasPublishedSync,
+				setCurrentLineIndex, setSyncData, setMode, resetCurrentSyncInput, setHasUnsubmittedSync,
 				onClose: closeEditor,
 			},
 			timing: {

@@ -93,7 +93,7 @@ const createEditor = ({ progress = 0, playing = true, draftStore = null } = {}) 
 	Object.assign(context, sessionRefs);
 	const setters = new Set([
 		...Array.from(callbackSources.matchAll(/\b(set[A-Z]\w*)\b/g), ([, name]) => name),
-		'setLyrics', 'setLyricsText', 'setSyncData', 'setHasPublishedSync', 'setCurrentLineIndex',
+		'setLyrics', 'setLyricsText', 'setSyncData', 'setCurrentLineIndex',
 		'setLrclibCandidates', 'setSelectedLrclibCandidateKey', 'setSelectedLrclibSourceValue', 'setPreviewLrclibCandidateKey',
 		'setLrclibSearchMeta', 'setIsLoadingLrclibId', 'setLrclibIdInput', 'setProviderValue', 'setAddonId',
 		'setPendingMultiVocalDecision', 'setMultiVocalMode', 'setActiveParallelPartId', 'setError', 'setIsLoading', 'setMode',
@@ -116,6 +116,10 @@ const createEditor = ({ progress = 0, playing = true, draftStore = null } = {}) 
 	const { beginDraftSourceChange, isCurrentSyncCreatorSourceChange, claimSessionForLocalEditing } = session;
 	Object.assign(context, { beginDraftSourceChange, isCurrentSyncCreatorSourceChange, claimSessionForLocalEditing });
 	context.setPosition = value => { context.position = value; calls.positions.push(value); };
+	context.updatePublishedBaseline = data => {
+		context.serverBaselineSyncDataRef.current = data ? structuredClone(data) : null;
+		context.hasPublishedSync = Boolean(data?.lines?.length);
+	};
 	vm.runInContext(helpersSource, context);
 	context.api = { buildSyncCreatorPlaybackTimeline, getSyncCreatorPlaybackLineIndex };
 	context.react = context;

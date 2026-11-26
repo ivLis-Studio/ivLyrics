@@ -166,6 +166,11 @@ export function createSyncCreatorSessionLifecycle({
 		const generation = sessionWriteGenerationRef.current;
 		return () => draftKey === activeSessionDraftKeyRef.current && generation === sessionWriteGenerationRef.current;
 	};
+	const captureSourceOwnership = () => {
+		const draftKey = activeSessionDraftKeyRef.current;
+		const requestId = sessionSourceChangeRequestRef.current;
+		return () => draftKey === activeSessionDraftKeyRef.current && isCurrentSyncCreatorSourceChange(requestId);
+	};
 
 	const commitDraftDeletion = async (deletion, resumeAutosave, isDraftCurrent) => {
 		const { draftKey } = deletion;
@@ -219,9 +224,11 @@ export function createSyncCreatorSessionLifecycle({
 		return deletion.done;
 	};
 
-	const beginDraftImport = (draftKey) => retireWorkingDraft(
-		!!draftKey && draftKey !== activeSessionDraftKeyRef.current,
-	);
+	const beginDraftImport = (draftKey) => {
+		const replacesSource = Boolean(draftKey && draftKey !== activeSessionDraftKeyRef.current);
+		if (replacesSource) sessionSourceChangeRequestRef.current++;
+		retireWorkingDraft(replacesSource);
+	};
 
 	const adoptImportedDraftKey = (draftKey) => {
 		if (!draftKey) return;
@@ -266,7 +273,7 @@ export function createSyncCreatorSessionLifecycle({
 		nextSessionClientRevision, claimSessionForLocalEditing, toggleSessionAutosave,
 		isCurrentSyncCreatorSourceChange, beginDraftSourceChange,
 		syncSessionUiFromRecord, announceHistoryStatus, announceRecoveredSession,
-		captureDraftOwnership, deleteActiveSyncCreatorDraft, beginDraftImport, adoptImportedDraftKey, markDraftDirty, flushDraftBeforeClose,
+		captureDraftOwnership, captureSourceOwnership, deleteActiveSyncCreatorDraft, beginDraftImport, adoptImportedDraftKey, markDraftDirty, flushDraftBeforeClose,
 		readSourceDraft: outgoingDrafts.readDraft, readTrackDrafts: outgoingDrafts.readTrackDrafts,
 	};
 }

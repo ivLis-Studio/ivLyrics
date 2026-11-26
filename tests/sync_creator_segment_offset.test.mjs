@@ -97,6 +97,8 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
         hasUnsubmittedSync: false, resetCurrentSyncInput() {},
         runPublication: (operation, canContinue) => operation(canContinue), isEditorOpen: () => true,
         captureEditorDraftOwnership: () => () => true,
+        captureSourceOwnership: () => () => true,
+        updatePublishedBaseline() {},
         clearLyricsCachesAfterSyncSubmit() {}, deleteActiveSyncCreatorDraft() { return true; },
         serverBaselineSyncDataRef: { current: null },
         openImportPicker: createSyncCreatorImportPicker({ isEditorOpen: () => true, captureDraftOwnership: () => () => true }).open,

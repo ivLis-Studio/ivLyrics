@@ -112,7 +112,7 @@ test('deleting the final published line stays marked as unsubmitted', () => {
 	let result;
 	const context = vm.createContext({
 		window: {}, structuredClone, console,
-		useEffect: callback => callback(), serverBaselineSyncDataRef: { current: baseline },
+		useEffect: callback => callback(), publishedBaseline: baseline,
 		syncData: { lines: [] }, setHasUnsubmittedSync: value => { result = value; },
 		activeSessionDraftKey: 'fixture', hasPublishedSync: true,
 		latestSessionRecordRef: { current: null },
@@ -123,7 +123,7 @@ test('deleting the final published line stays marked as unsubmitted', () => {
 	assert.equal(result, true);
 });
 
-test('submit clears the unsubmitted flag, clones the baseline and closes the editor', async () => {
+test('submit updates the baseline, clears the unsubmitted flag and closes the editor', async () => {
 	const data = { lines: [line(0, [1])] };
 	const serverBaselineSyncDataRef = { current: null };
 	const calls = [];
@@ -131,18 +131,20 @@ test('submit clears the unsubmitted flag, clones the baseline and closes the edi
 		clearPublishedCaches: async isrc => { calls.push(['clear', isrc]); },
 		isDraftCurrent: () => true,
 		isEditorOpen: () => true,
+		isSourceCurrent: () => true,
+		updatePublishedBaseline: value => {
+			serverBaselineSyncDataRef.current = structuredClone(value);
+			calls.push(['published', true]);
+		},
 		draft: {
-			serverBaselineSyncDataRef,
-			syncCreatorDraftStore: { cloneValue: structuredClone },
 			deleteActiveSyncCreatorDraft: async () => { calls.push('delete'); return true; },
 		},
 		editor: {
 			setHasUnsubmittedSync: value => calls.push(['unsubmitted', value]),
-			setHasPublishedSync: value => calls.push(['published', value]),
 			onClose: () => calls.push('close'),
 		},
 	});
-	assert.deepEqual(calls, [['clear', 'GBARL1901205'], 'delete', ['unsubmitted', false], ['published', true], 'close']);
+	assert.deepEqual(calls, [['published', true], ['clear', 'GBARL1901205'], 'delete', ['unsubmitted', false], 'close']);
 	assert.deepEqual(serverBaselineSyncDataRef.current, data);
 	assert.notEqual(serverBaselineSyncDataRef.current, data);
 });
@@ -299,7 +301,8 @@ test('revert prefers the published sync, falls back to the cached baseline, and 
 				provider: '', getProvider: () => 'lrclib' },
 			canEdit: true, isRecording: () => false, lyrics: { text: 'ABC\\nDEF' },
 			syncData: cached, hasUnsubmittedSync: true, isEditorOpen: () => true,
-			draft: { serverBaselineSyncDataRef, deleteActiveSyncCreatorDraft, syncCreatorDraftStore },
+			draft: { deleteActiveSyncCreatorDraft },
+			published: { readBaseline: () => serverBaselineSyncDataRef.current, updateBaseline: updatePublishedBaseline },
 			layout, editor, transport: { getSyncService: readSyncCreatorSyncService },
 			timing: { getCodec: readSyncCreatorCodec, sanitize: sanitizeSyncCreatorSyncData },
 			dialog: { confirm: window.confirm, setReverting, translate: key => key, toast },
@@ -325,11 +328,15 @@ test('revert prefers the published sync, falls back to the cached baseline, and 
 			toast: { success: key => calls.push(['success', key]), error: key => calls.push(['error', key]) },
 		});
 		const record = (...names) => Object.fromEntries(names.map(name => [name, value => calls.push([name, value])]));
+		context.updatePublishedBaseline = value => {
+			context.serverBaselineSyncDataRef.current = structuredClone(value);
+			calls.push(['setHasPublishedSync', Boolean(value?.lines?.length)]);
+		};
 		context.layout = record('setParallelPartMetaDrafts', 'setManualParallelSplitDrafts', 'setParentheticalLayoutDrafts',
 			'setMergedLineDrafts', 'setLineMetaDrafts', 'setLineStyleDrafts', 'setPendingParentheticalLayoutDecision',
 			'setPendingMultiVocalDecision', 'setMultiVocalMode', 'setActiveParallelPartId', 'setGlobalOffset');
 		context.editor = {
-			...record('setCurrentLineIndex', 'setSyncData', 'setMode', 'setHasUnsubmittedSync', 'setHasPublishedSync'),
+			...record('setCurrentLineIndex', 'setSyncData', 'setMode', 'setHasUnsubmittedSync'),
 			resetCurrentSyncInput: () => calls.push(['resetRecordingInput']),
 		};
 		context.setReverting = value => calls.push(['setIsReverting', value]);
