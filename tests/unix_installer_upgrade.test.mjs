@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join, relative } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -208,6 +208,10 @@ esac`);
     command('sleep', 'exit 0\n');
     command('clear', 'exit 0\n');
     command('xdg-mime', String.raw`
+if [ "$*" = 'query default x-scheme-handler/ivlyrics-updater' ]; then
+    printf '%s\n' 'ivlyrics-updater.desktop'
+    exit 0
+fi
 [ "$*" = 'default ivlyrics-updater.desktop x-scheme-handler/ivlyrics-updater' ] || exit 1
 printf 'register\n' >> "$IVL_TEST_ROOT/events"
 `);
@@ -830,10 +834,13 @@ test('Unix removal deletes files and unregisters the protocol after a successful
     assert.equal(existsSync(join(fx.apps, '.ivLyrics-install.lock')), false);
 });
 
-function runUnixProtocolFixture(context, registered, uri = 'ivlyrics-updater://update', { linked = false, missingConfig = false } = {}) {
+function runUnixProtocolFixture(context, registered, uri = 'ivlyrics-updater://update', {
+    linked = false, missingConfig = false, profileName = 'custom Spicetify', relativeRegistration = false,
+    desktopOwner = 'ivlyrics-updater.desktop', previousLauncher = null,
+} = {}) {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'ivlyrics-unix-protocol-')));
     context.after(() => rmSync(root, { recursive: true, force: true }));
-    const profile = join(root, 'custom Spicetify');
+    const profile = join(root, profileName);
     const app = join(profile, 'CustomApps', 'ivLyrics');
     const updater = join(app, 'updater', 'unix');
     if (linked) {
@@ -852,12 +859,23 @@ function runUnixProtocolFixture(context, registered, uri = 'ivlyrics-updater://u
     const bootstrap = join(root, 'installer.sh');
     writeFileSync(bootstrap, '# ivLyrics Installer for macOS/Linux\n#' + ' '.repeat(512) +
         '\nprintf "%s\\n" "$SPICETIFY_CONFIG" "${SPICETIFY_STATE:-}" "${XDG_STATE_HOME:-}" > "$IVL_TEST_ROOT/installer-environment"\n');
+    const desktopFile = join(root, 'desktop', 'applications', 'ivlyrics-updater.desktop');
+    if (previousLauncher !== null) {
+        mkdirSync(dirname(desktopFile), { recursive: true });
+        writeFileSync(desktopFile, previousLauncher);
+    }
 
     const result = spawnSync('bash', ['-c', String.raw`
 set -e
 uname() { printf 'Linux\n'; }
 curl() { [ "$1" = -fsSLo ] && cp "$IVL_TEST_INSTALLER" "$2"; }
-xdg-mime() { :; }
+xdg-mime() {
+    case "$*" in
+        'default ivlyrics-updater.desktop x-scheme-handler/ivlyrics-updater') return 0 ;;
+        'query default x-scheme-handler/ivlyrics-updater') printf '%s\n' "$IVL_TEST_DESKTOP_OWNER" ;;
+        *) return 1 ;;
+    esac
+}
 update-desktop-database() { :; }
 export -f uname curl xdg-mime update-desktop-database
 if [ "$IVL_TEST_REGISTER" = true ]; then
@@ -865,7 +883,7 @@ if [ "$IVL_TEST_REGISTER" = true ]; then
 fi
 unset SPICETIFY_CONFIG
 export SPICETIFY_STATE="$IVL_TEST_ROOT/launcher state"
-exec bash "$1" "$4"`, 'protocol-fixture', handler, register, app, uri], {
+exec bash "$1" "$4"`, 'protocol-fixture', handler, register, relativeRegistration ? relative(root, app) : app, uri], {
         encoding: 'utf8',
         timeout: 15000,
         cwd: root,
@@ -876,11 +894,13 @@ exec bash "$1" "$4"`, 'protocol-fixture', handler, register, app, uri], {
             IVL_TEST_ROOT: root,
             IVL_TEST_INSTALLER: bootstrap,
             IVL_TEST_REGISTER: String(registered),
+            IVL_TEST_DESKTOP_OWNER: desktopOwner,
         },
     });
     const marker = join(root, 'installer-environment');
     const environment = existsSync(marker) ? readFileSync(marker, 'utf8').trimEnd().split('\n') : null;
-    return { root, profile, environment, result };
+    const launcher = existsSync(desktopFile) ? readFileSync(desktopFile, 'utf8') : null;
+    return { root, profile, environment, result, launcher };
 }
 
 test('an older Unix protocol registration still finds the installed config', { skip: !canRun }, context => {
@@ -899,6 +919,28 @@ test('a Unix protocol update follows the profile that owns a linked app', { skip
     const { root, profile, environment, result } = runUnixProtocolFixture(context, true, undefined, { linked: true });
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.deepEqual(environment, [profile, join(root, 'backup $(literal) path'), join(root, 'custom XDG state')]);
+});
+
+test('Linux launcher keeps a linked profile path with literal desktop entry characters', { skip: !canRun }, context => {
+    const profileName = 'Mix 100% $Archive \\2026 "Disc" `take`';
+    const { root, profile, result, launcher } = runUnixProtocolFixture(context, true, undefined, {
+        linked: true, profileName, relativeRegistration: true,
+    });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const escaped = ['Mix 100%%', String.raw`\\$Archive`, String.raw`\\\\2026`, String.raw`\\"Disc\\"`, '\\\\`take\\\\`'].join(' ');
+    assert.ok(launcher.includes(`Exec=/bin/bash "${root}/${escaped}/CustomApps/ivLyrics/updater/unix/ivlyrics-updater.sh" %u\n`), launcher);
+    assert.equal(profile, join(root, profileName));
+});
+
+test('Linux protocol registration reports and rolls back an unselected handler', { skip: !canRun }, context => {
+    const previousLauncher = '[Desktop Entry]\nName=Existing updater\n';
+    const { result, environment, launcher } = runUnixProtocolFixture(context, true, undefined, {
+        desktopOwner: 'other.desktop', previousLauncher,
+    });
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, /Linux has not selected ivLyrics Updater/);
+    assert.equal(launcher, previousLauncher);
+    assert.equal(environment, null);
 });
 
 test('a Unix protocol update stops when its registered profile config is gone', { skip: !canRun }, context => {

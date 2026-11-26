@@ -5,9 +5,8 @@ APP_DIR="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OS_NAME="$(uname -s)"
 
-if [[ -z "$APP_DIR" ]]; then
-    APP_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-fi
+# Keep the configured profile path for launchers even when its app is linked.
+APP_DIR="$(CDPATH= cd -L -- "${APP_DIR:-${SCRIPT_DIR}/../..}" && pwd -L)"
 
 SOURCE_UPDATER="${SCRIPT_DIR}/ivlyrics-updater.sh"
 if [[ ! -f "$SOURCE_UPDATER" ]]; then
@@ -223,42 +222,86 @@ EOF
     echo "Registered ivlyrics-updater:// protocol for macOS."
 )
 
-register_linux() {
+desktop_exec_argument() {
+    local value="$1"
+    # Quote for Exec first, then escape those backslashes for the desktop file.
+    value=${value//\\/\\\\}
+    value=${value//\"/\\\"}
+    value=${value//\$/\\\$}
+    value=${value//\`/\\\`}
+    value=${value//\\/\\\\}
+    value=${value//%/%%}
+    value=${value//$'\t'/\\t}
+    value=${value//$'\n'/\\n}
+    value=${value//$'\r'/\\r}
+    printf '"%s"' "$value"
+}
+
+register_linux() (
     local data_home="${XDG_DATA_HOME:-${HOME}/.local/share}"
     local updater_script="${APP_DIR}/updater/unix/ivlyrics-updater.sh"
     local desktop_dir="${data_home}/applications"
-    local desktop_file="${desktop_dir}/ivlyrics-updater.desktop"
+    local desktop_id="ivlyrics-updater.desktop"
+    local mime_type="x-scheme-handler/ivlyrics-updater"
+    local desktop_file="${desktop_dir}/${desktop_id}"
+    local staging selected registered=false installed_entry=false
 
     if [[ ! -f "$updater_script" ]]; then
         echo "Updater script not found in app directory: $updater_script" >&2
-        exit 1
+        return 1
+    fi
+    if ! command -v xdg-mime >/dev/null 2>&1; then
+        echo "xdg-mime is required to register ivlyrics-updater:// on Linux." >&2
+        return 1
     fi
 
     mkdir -p "$desktop_dir"
-    chmod +x "$updater_script"
+    staging=$(mktemp -d "${desktop_dir}/.ivlyrics-updater.XXXXXX")
+    cleanup_linux_registration() {
+        if [[ "$installed_entry" == true && "$registered" == false ]]; then
+            if [[ -e "$staging/previous" || -L "$staging/previous" ]]; then
+                mv -f -- "$staging/previous" "$desktop_file" || return 1
+            else
+                rm -f -- "$desktop_file" || return 1
+            fi
+            if command -v update-desktop-database >/dev/null 2>&1; then
+                update-desktop-database "$desktop_dir" >/dev/null 2>&1 || true
+            fi
+        fi
+        rm -rf -- "$staging"
+    }
+    trap cleanup_linux_registration EXIT
+    if [[ -e "$desktop_file" || -L "$desktop_file" ]]; then
+        cp -pP -- "$desktop_file" "$staging/previous"
+    fi
 
-    cat > "$desktop_file" <<EOF
+    cat > "$staging/launcher" <<EOF
 [Desktop Entry]
 Type=Application
 Name=ivLyrics Updater
-Exec=/bin/bash "${updater_script}" %u
-MimeType=x-scheme-handler/ivlyrics-updater;
+Exec=/bin/bash $(desktop_exec_argument "$updater_script") %u
+MimeType=${mime_type};
 Terminal=true
 NoDisplay=true
 EOF
 
-    chmod +x "$desktop_file"
-
-    if command -v xdg-mime >/dev/null 2>&1; then
-        xdg-mime default ivlyrics-updater.desktop x-scheme-handler/ivlyrics-updater
-    fi
+    chmod +x "$updater_script" "$staging/launcher"
+    mv -f -- "$staging/launcher" "$desktop_file"
+    installed_entry=true
 
     if command -v update-desktop-database >/dev/null 2>&1; then
         update-desktop-database "$desktop_dir" >/dev/null 2>&1 || true
     fi
 
+    if ! xdg-mime default "$desktop_id" "$mime_type" ||
+        ! selected=$(xdg-mime query default "$mime_type") || [[ "$selected" != "$desktop_id" ]]; then
+        echo "Linux has not selected ivLyrics Updater for ivlyrics-updater://." >&2
+        return 1
+    fi
+
+    registered=true
     echo "Registered ivlyrics-updater:// protocol for Linux."
-}
+)
 
 case "$OS_NAME" in
     Darwin) remember_spicetify_state; register_macos ;;
