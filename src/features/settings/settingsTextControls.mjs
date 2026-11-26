@@ -29,11 +29,11 @@ export function createSettingsTextControls({ react, translate, SettingsUiIcon, g
     }
   );
 
-  const ConfigButton = ({ name, settingKey, info, text, disabled = false, searchable = true, onChange = () => { } }) => {
+  const ConfigButton = ({ name, settingKey, info, text, rowClassName, disabled = false, searchable = true, onChange = () => { } }) => {
     return react.createElement(
       "div",
       {
-        className: "setting-row",
+        className: rowClassName ? `setting-row ${rowClassName}` : "setting-row",
         "data-setting-key": settingKey,
         "data-search-exclude": searchable === false ? "true" : undefined,
       },

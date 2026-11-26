@@ -77,7 +77,7 @@ import { createIndexedDbBackup } from "#ivlyrics/core/indexedDbBackup.mjs";
 import { createSettingsBackupActions } from "#ivlyrics/features/settings/settingsBackupActions.mjs";
 import { createSettingsBackupButton } from "#ivlyrics/features/settings/settingsBackupButton.mjs";
 import { renderAdvancedSettingsTab } from "#ivlyrics/features/settings/settingsAdvancedTab.mjs";
-import { getSettingsResultContainer } from "#ivlyrics/features/settings/settingsResultContainer.mjs";
+import { createSettingsUpdateButton } from "#ivlyrics/features/settings/settingsUpdateButton.mjs";
 
 export function createSettingsPage({
   host: window, react, appName: APP_NAME, i18n: I18n, config: CONFIG,
@@ -352,6 +352,9 @@ export function createSettingsPage({
     getCheckIcon: () => Spicetify.SVGIcons.check,
   });
   const SettingsBackupButton = createSettingsBackupButton({ react, ConfigButton, actions: backupActions });
+  const SettingsUpdateButton = createSettingsUpdateButton({
+    react, ConfigButton, translate: settingsInputContext.translate, checkForUpdates: () => Utils.checkForUpdates(),
+  });
   const { SettingsSegmented, SettingsChoiceCards, ConfigSelection } = createSettingsChoiceControls({
     ...settingsInputContext, SettingsStepper,
   });
@@ -387,7 +390,7 @@ export function createSettingsPage({
     ...settingsInputContext,
     controls: { ConfigSlider, ConfigFontWeightSlider, ConfigSliderRange, ConfigSelection, ConfigColorPicker, ColorPresetSelector },
     ownRowControls: [
-      ConfigButton, SettingsBackupButton, ConfigInput, ConfigHotkey, ConfigWarning, ConfigInfo, ConfigKeyList, ConfigFontSelector,
+      ConfigButton, SettingsBackupButton, SettingsUpdateButton, ConfigInput, ConfigHotkey, ConfigWarning, ConfigInfo, ConfigKeyList, ConfigFontSelector,
       ConfigInstrumentalBreakIconPicker, ConfigKaraokeFillCurveEditor, VideoHelperToggle, LyricsHelperToggle,
     ],
     readVisualSettings: () => CONFIG.visual,
@@ -949,13 +952,8 @@ export function createSettingsPage({
     const renderFullscreenTab = () => createFullscreenTabRenderers().renderFullscreenTab();
 
     const renderAboutUpdateSection = () => renderSettingsAboutUpdateSection(react, {
-      OptionList, ConfigButton, translate: (key) => I18n.t(key),
+      OptionList, ConfigButton, SettingsUpdateButton, translate: (key) => I18n.t(key),
       getCurrentVersion: () => Utils.currentVersion,
-      checkForUpdates: () => Utils.checkForUpdates(),
-      getSettingsResultContainer,
-      escapeHtml: (value) => Utils.escapeHtml(value),
-      escapeAttribute: (value) => Utils.escapeAttribute(value),
-      sanitizeHttpUrl: (url) => Utils.sanitizeHttpUrl(url),
       openUpdaterProtocol: (action) => Utils.openUpdaterProtocol(action),
       notifySuccess: (message) => Toast.success(message),
       notifyError: (message) => Toast.error(message),

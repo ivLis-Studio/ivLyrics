@@ -27,7 +27,7 @@ import { createSettingsLyricsPreview, getSettingsPreviewSupplementVisibility } f
 import { createSettingsBackupActions } from "../../src/features/settings/settingsBackupActions.mjs";
 import { createSettingsPanelPreview } from "../../src/features/settings/createSettingsPanelPreview.mjs";
 import { renderAdvancedSettingsTab } from "../../src/features/settings/settingsAdvancedTab.mjs";
-import { getSettingsResultContainer } from "../../src/features/settings/settingsResultContainer.mjs";
+import { createSettingsUpdateButton } from "../../src/features/settings/settingsUpdateButton.mjs";
 import { createChangedSettingsView, useChangedSettingsCounts } from "../../src/features/settings/settingsChangedView.mjs";
 import { useSettingsTabNavigation } from "../../src/features/settings/useSettingsTabNavigation.mjs";
 import { createSettingsMenuMetadata } from "../../src/features/settings/settingsMenuMetadata.mjs";
@@ -75,7 +75,7 @@ export const settingsTabModules = {
   getSettingsPreviewSupplementVisibility,
   SettingsInterludeIndicator: () => null,
   renderAdvancedSettingsTab,
-  getSettingsResultContainer,
+  createSettingsUpdateButton,
   createSettingsLyricDisplayResolver,
   SYNC_CREATOR_SHORTCUT_DEFAULTS,
   SYNC_CREATOR_AUTO_BOUNDARY_CHARS_KEY,

@@ -3,7 +3,6 @@ import { createSettingsHelperToggles } from "#ivlyrics/features/settings/setting
 import { createSettingsProviderListView } from "#ivlyrics/features/settings/settingsProviderListView.mjs";
 import { createSettingsLyricsProviderTab } from "#ivlyrics/features/settings/settingsLyricsProviderTab.mjs";
 import { createSettingsAiProviderTab } from "#ivlyrics/features/settings/settingsAiProviderTab.mjs";
-import { getSettingsResultContainer } from "#ivlyrics/features/settings/settingsResultContainer.mjs";
 import { readSettingsFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -320,58 +319,6 @@ for (const component of ['LyricsProvidersTab', 'AIProvidersTab']) {
     if (baseline) assert.deepEqual(comparableCalls(pair.at(-1).calls), comparableCalls(pair[0].calls));
   });
 }
-
-test('result panels preserve retained container ids, sibling insertion and row marker timing', () => {
-  // Personal sync bulk export was removed; compare every remaining panel
-  // against its historical counterpart without retaining the retired action.
-  const blocks = baseline ? [...baseline.matchAll(/const settingRow = button\.closest\("\.setting-row"\);\n\s*let resultContainer = settingRow\?\.nextElementSibling;\n\n\s*if \(\n\s*!resultContainer \|\|\n\s*!resultContainer.id \|\|\n\s*resultContainer.id !== "([a-z-]+)"\n\s*\) \{\n[\s\S]*?\n\s*\}/g)].filter(block => block[1] !== 'my-syncs-export-result-container') : null;
-  const panels = [
-    ['export-result-container'],
-    ['db-export-result-container'],
-    ['db-import-result-container'],
-    ['reset-result-container'],
-    ['update-result-container', 'has-update-result'],
-  ];
-  for (const [id, rowClass] of panels) {
-    const historicalBlock = blocks?.find(block => block[1] === id);
-    if (blocks) assert.ok(historicalBlock, `Missing historical panel: ${id}`);
-    for (const state of ['missing', 'matching', 'other-id', 'empty-id', 'no-row', 'detached-row']) {
-      const run = (code) => {
-        const operations = [];
-        const existing = { id: state === 'matching' ? id : state === 'other-id' ? 'unrelated-panel' : '', style: { cssText: 'preserved' } };
-        const nextSibling = { type: 'text-node-before-next-element' };
-        const row = state === 'no-row' ? null : {
-          nextElementSibling: state === 'missing' ? null : existing,
-          nextSibling,
-          parentNode: state === 'detached-row' ? null : {
-            insertBefore(node, sibling) { operations.push(['insert', node.id, sibling === nextSibling]); },
-          },
-          classList: { add(name) { operations.push(['class', name]); } },
-        };
-        const context = vm.createContext({
-          button: { closest(selector) { operations.push(['closest', selector]); return row; } },
-          document: { createElement(tag) { operations.push(['create', tag]); return { style: {} }; } },
-        });
-        const result = code ? vm.runInContext(code, context) : getSettingsResultContainer(context.button, id, rowClass, context.document);
-        return { result: normalize(result), reused: result === existing, operations };
-      };
-      const before = historicalBlock && run(`(() => { ${historicalBlock[0]} return resultContainer; })()`);
-      const after = run();
-      const reused = state === 'matching';
-      const operations = [['closest', '.setting-row']];
-      if (!reused) {
-        operations.push(['create', 'div']);
-        if (!['no-row', 'detached-row'].includes(state)) operations.push(['insert', id, true]);
-        if (rowClass && state !== 'no-row') operations.push(['class', rowClass]);
-      }
-      assert.deepEqual(after, {
-        result: { id: id, style: { cssText: reused ? 'preserved' : 'margin-top: -1px;' } },
-        reused, operations,
-      }, `${id} / ${state}`);
-      if (before) assert.deepEqual(after, before, `${id} / ${state}`);
-    }
-  }
-});
 
 for (const component of ['VideoHelperToggle', 'LyricsHelperToggle']) {
   test(`${component}: connection states, styles, disabled toggles and distinct storage contracts`, async () => {

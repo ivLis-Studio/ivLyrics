@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { renderSettingsAboutUpdateSection } from "../src/features/settings/settingsAboutUpdateSection.mjs";
+import { createSettingsUpdateButton } from "../src/features/settings/settingsUpdateButton.mjs";
 import { createAppUpdateMethods } from "../src/features/updates/appUpdates.mjs";
 import { schedulePageUpdateCheck, waitForPageUpdateCheck } from "../src/features/updates/pageUpdateCheck.mjs";
 import { waitForAppUpdateDialogClose } from "../src/features/updates/updateDialogState.mjs";
@@ -279,36 +280,58 @@ test('route remounts wait for the same startup update check until it settles', a
   assert.equal(callbacks.length, 0);
 });
 
-test('settings update check displays an available release and restores its button in strict mode', async () => {
-  const resultContainer = { innerHTML: '' };
-  const button = { textContent: 'Check for updates', disabled: false };
-  let resolveUpdate;
-  const update = new Promise(resolve => { resolveUpdate = resolve; });
-  const react = { createElement: (type, props) => ({ type, props }) };
+test('the About update check retains its pending state and result when the settings window reopens', async () => {
+  const lookup = Promise.withResolvers();
+  let requests = 0;
+  let state, mountEffect;
+  const react = {
+    Fragment: Symbol('Fragment'),
+    createElement: (type, props, ...children) => ({ type, props, children }),
+    useState: (initial) => [state ??= initial(), (value) => { state = value; }],
+    useLayoutEffect: (effect) => { mountEffect = effect; },
+  };
+  const ConfigButton = () => null;
+  const translate = key => key;
+  const SettingsUpdateButton = createSettingsUpdateButton({
+    react, ConfigButton, translate,
+    checkForUpdates: () => { requests++; return lookup.promise; },
+  });
   const view = renderSettingsAboutUpdateSection(react, {
     OptionList: () => null,
-    ConfigButton: () => null,
-    translate: key => key,
+    ConfigButton, SettingsUpdateButton, translate,
     getCurrentVersion: () => '6.6.24',
-    checkForUpdates: () => update,
-    escapeHtml: String,
-    escapeAttribute: String,
-    sanitizeHttpUrl: String,
-    getSettingsResultContainer: () => resultContainer,
   });
-  const updateSetting = view.props.items.find(item => item.key === "check-update");
-  const pending = updateSetting.onChange(null, { target: {}, currentTarget: button });
-  assert.equal(button.disabled, true);
-  assert.equal(button.textContent, 'settingsAdvanced.aboutTab.update.checkUpdate.checking');
-  await updateSetting.onChange(null, { currentTarget: button });
-  resolveUpdate({ hasUpdate: true, currentVersion: '6.6.24', latestVersion: '6.6.25' });
+  const setting = view.props.items.find(item => item.key === 'check-update');
+  const render = () => setting.type({ settingKey: setting.key, text: setting.text }).children;
+  const [button] = render();
+  assert.equal(button.type, ConfigButton);
+  const unmount = mountEffect();
+  const pending = button.props.onChange();
+  assert.equal(render()[0].props.disabled, true);
+  assert.equal(render()[0].props.text, 'settingsAdvanced.aboutTab.update.checkUpdate.checking');
+  unmount();
+
+  state = undefined;
+  const [reopenedButton, pendingResult] = render();
+  const closeReopened = mountEffect();
+  assert.equal(reopenedButton.props.disabled, true);
+  assert.equal(pendingResult.props['aria-busy'], true);
+  assert.equal(pendingResult.props.id, 'update-result-container');
+  await reopenedButton.props.onChange();
+  assert.equal(requests, 1);
+  lookup.resolve({ hasUpdate: true, currentVersion: '6.6.24', latestVersion: '6.6.25' });
   await pending;
 
-  assert.match(resultContainer.innerHTML, /notifications\.updateAvailable/);
-  assert.match(resultContainer.innerHTML, /6\.6\.24 → 6\.6\.25/);
-  assert.match(resultContainer.innerHTML, /href="https:\/\/lyrics\.ivl\.is\/update"/);
-  assert.match(resultContainer.innerHTML, /href="https:\/\/github\.com\/ivLis-Studio\/ivLyrics\/releases\/tag\/v6\.6\.25"/);
-  assert.doesNotMatch(resultContainer.innerHTML, /notifications\.updateCheckFailed/);
-  assert.equal(button.disabled, false);
-  assert.equal(button.textContent, 'Check for updates');
+  const [restoredButton, result] = render();
+  const walk = node => Array.isArray(node?.children) ? [node, ...node.children.flatMap(walk)] : [node];
+  const content = walk(result);
+  assert.ok(content.includes('notifications.updateAvailable'));
+  assert.ok(content.includes('update.versionChange 6.6.24 → 6.6.25'));
+  assert.deepEqual(content.filter(node => node?.type === 'a').map(node => node.props.href), [
+    'https://lyrics.ivl.is/update', 'https://github.com/ivLis-Studio/ivLyrics/releases/tag/v6.6.25',
+  ]);
+  assert.equal(result.props.role, 'status');
+  assert.equal(restoredButton.props.disabled, false);
+  assert.equal(restoredButton.props.text, setting.text);
+  closeReopened();
 });
