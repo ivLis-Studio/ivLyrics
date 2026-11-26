@@ -47,10 +47,10 @@ test("ISRC lookup for the playing track still uses the player's ISRC", () => {
     assert.equal(getTrackIsrc(null, {}), PLAYING_ISRC);
 });
 
-function loadPrefetcher({ responseIsrc, responseVideo = null, communityVideos = [], beforeResponse, fetchVideoLookup, makeLookupRequest, lyricsCache, prefetchDownload, matchSession }) {
+function loadPrefetcher({ responseIsrc, responseVideo = null, communityVideos = [], beforeResponse, fetchVideoLookup, makeLookupRequest, lyricsCache, prefetchDownload, matchSession, visual = {} }) {
     const calls = { resolveMetadata: null, remembered: [], urls: [], headers: [], downloads: [] };
     const context = vm.createContext({
-        CONFIG: { visual: {} },
+        CONFIG: { visual },
         Utils: {
             currentVersion: "6.6.30",
             extractTrackId: uri => uri.split(":")[2] || null,
@@ -220,6 +220,21 @@ test("a cancelled queue entry can warm video metadata without starting a helper 
     await prefetcher.loadVideo(NEXT_URI, nextTrackInfo);
     assert.equal(calls.urls.length, 1);
     assert.deepEqual(calls.downloads, ["video-id"]);
+});
+
+test("turning off video preload ignores the pending video response", async () => {
+    let releaseResponse;
+    const response = new Promise(resolve => { releaseResponse = resolve; });
+    const visual = { "prefetch-video-enabled": true };
+    const { prefetcher, calls } = loadPrefetcher({ responseIsrc: NEXT_ISRC, beforeResponse: () => response, visual });
+    const pending = prefetcher.loadVideo(NEXT_URI, nextTrackInfo);
+    await new Promise(setImmediate);
+    assert.equal(calls.urls.length, 1);
+    visual["prefetch-video-enabled"] = false;
+    releaseResponse();
+    assert.equal(await pending, null);
+    assert.equal(prefetcher.cache.size, 0);
+    assert.deepEqual(calls.downloads, []);
 });
 
 async function runVideoResponse(data, cacheMode = "ready") {

@@ -1,11 +1,22 @@
 import { isUserEditedTranslation, readTranslationResultLines } from "./translationCache.mjs";
-import { getLyricDisplayModes, getLyricLanguageMode } from "./lyricPresentationIdentity.mjs";
+import { getLyricDisplayModes, getLyricLanguageMode, resolveLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
 import { isAiMode, isPronunciationMode } from "./lyricTranslationModes.mjs";
 import { readPageLyricsSource, writePageLyricsSource } from "./pageLyricsSourceCache.mjs";
 import { getWordSupplementTrackId } from "./wordSupplementRuntime.mjs";
+import { isKaraokeRenderMode, resolveModeSpecificLyrics } from "./lyricsRenderModes.mjs";
+import { isKaraokePlaybackEnabled, selectPlaybackLyrics } from "./selectPlaybackLyrics.mjs";
+
+function selectPrefetchLyrics(lyrics, mode, visual) {
+  if (!lyrics) return [];
+  const karaokeEnabled = isKaraokePlaybackEnabled(visual["karaoke-mode-enabled"]);
+  const preferred = karaokeEnabled || !isKaraokeRenderMode(mode) ? resolveModeSpecificLyrics(lyrics, mode) : null;
+  return preferred?.length ? preferred : selectPlaybackLyrics(lyrics, karaokeEnabled).lyrics;
+}
+
+const getSourceLanguageSetting = visual => visual["translate:detect-language-override"] || "off";
 
 export function createLyricPrefetcher({
-  requests, sourceCache, translationCache, readVisual, getService, getWordSupplementPrefetcher, getPronunciationSlots, getMarketplaceReady, extractTrackId,
+  requests, sourceCache, translationCache, readVisual = () => ({}), getService, getWordSupplementPrefetcher, getPronunciationSlots, getMarketplaceReady,
   getTranslationCacheId, getDisplayModeCacheKey, getDisplayModeGenerationOptions,
   getNonSectionLyricsText, getLegacyNonSectionLyricsText, getCurrentTranslationTargetLanguage,
   getCachedTranslationForText, mapTranslationLinesToLyrics, debug, warn = console.warn,
@@ -52,18 +63,30 @@ export function createLyricPrefetcher({
     }
   }
 
-  async function loadTranslations(trackInfo, lyrics, { wanted = () => true } = {}) {
-    const lyricsArray = lyrics?.karaoke || lyrics?.synced || lyrics?.unsynced;
-    if (!Array.isArray(lyricsArray) || lyricsArray.length === 0) return;
-    const detectedLanguage = getService("LyricsService").detectLanguage(lyricsArray);
-    if (!detectedLanguage) return;
-    const modes = [...new Set(getLyricDisplayModes(readVisual(), getLyricLanguageMode(detectedLanguage)).filter(isAiMode))];
-    if (modes.length === 0 || !wanted()) return;
+  async function loadTranslations(trackInfo, lyrics, { wanted = () => true, mode = -1 } = {}) {
+    const uri = trackInfo.uri;
+    const initial = readVisual();
+    if (!wanted() || initial["prefetch-enabled"] === false || !selectPrefetchLyrics(lyrics, mode, initial).length) return;
+    const lyricsService = getService("LyricsService");
+    const getSourceRevision = () => lyricsService?.getLyricsRequestRevision?.(uri);
+    const sourceRevision = getSourceRevision();
+    const trackOverride = await lyricsService?.getTrackLanguageOverride?.(uri);
+    if (!wanted() || getSourceRevision() !== sourceRevision) return;
+    const visual = readVisual();
+    const lyricsArray = selectPrefetchLyrics(lyrics, mode, visual);
+    if (!lyricsArray.length || visual["prefetch-enabled"] === false) return;
+    const configuredLanguage = getSourceLanguageSetting(visual);
+    const sourceLanguage = resolveLyricSourceLanguage(trackOverride, configuredLanguage, () => lyricsService.detectLanguage(lyricsArray));
+    if (!sourceLanguage) return;
+    const languageMode = getLyricLanguageMode(sourceLanguage);
+    const readModes = settings => [...new Set(getLyricDisplayModes(settings, languageMode).filter(isAiMode))];
+    const modes = readModes(visual);
+    if (modes.length === 0) return;
 
     const text = getNonSectionLyricsText(lyricsArray);
     if (!text.trim()) return;
     const inputs = modes.map((mode) => ({
-      mode, key: getDisplayModeCacheKey(lyrics, mode), options: getDisplayModeGenerationOptions(mode),
+      mode, key: getDisplayModeCacheKey({ ...lyrics, currentLyrics: lyricsArray }, mode), options: getDisplayModeGenerationOptions(mode),
     }));
     const needed = inputs.filter(({ key }) => !translationCache.get(key));
     if (needed.length === 0) return true;
@@ -71,7 +94,7 @@ export function createLyricPrefetcher({
     const trackId = getTranslationCacheId(trackInfo.uri);
     const getTranslationRevision = () => getService("Translator")?.getCacheRevision?.(trackId);
     const cacheRevision = getTranslationRevision();
-    const requestKey = `prefetch:translation:${JSON.stringify([cacheRevision, inputs.map(({ key }) => key).sort()])}`;
+    const requestKey = `prefetch:translation:${JSON.stringify([sourceRevision, sourceLanguage, cacheRevision, inputs.map(({ key }) => key).sort()])}`;
     const pending = requests.get(requestKey);
     if (pending) {
       pending.interested.add(wanted);
@@ -81,12 +104,16 @@ export function createLyricPrefetcher({
     const targetLanguage = getCurrentTranslationTargetLanguage();
     const legacyText = getLegacyNonSectionLyricsText(lyricsArray);
     const request = { interested: new Set([wanted]), promise: null };
-    const isCurrentRequest = () =>
-      requests.get(requestKey) === request &&
-      getTranslationRevision() === cacheRevision &&
-      inputs.every(({ mode, options }) => getDisplayModeGenerationOptions(mode) === options);
-    const shouldStart = () =>
-      isCurrentRequest() && readVisual()["prefetch-enabled"] !== false && [...request.interested].some(isWanted => isWanted());
+    const currentInputs = group => {
+      if (requests.get(requestKey) !== request || getSourceRevision() !== sourceRevision
+          || getTranslationRevision() !== cacheRevision) return [];
+      const current = readVisual();
+      if (current["prefetch-enabled"] === false
+          || (!trackOverride && getSourceLanguageSetting(current) !== configuredLanguage)
+          || selectPrefetchLyrics(lyrics, mode, current) !== lyricsArray) return [];
+      const currentModes = readModes(current);
+      return group.filter(({ mode, options }) => currentModes.includes(mode) && getDisplayModeGenerationOptions(mode) === options);
+    };
 
     const mapOutput = (record, field, splitVocalParts = true) => {
       const lines = readTranslationResultLines(record, field === "phonetic");
@@ -98,13 +125,15 @@ export function createLyricPrefetcher({
 
     async function prefetchOutput(group, phonetic) {
       if (group.length === 0) return true;
+      const canUse = () => currentInputs(group).length > 0;
+      const shouldStart = () => canUse() && [...request.interested].some(isWanted => isWanted());
       if (!shouldStart()) return false;
       const field = phonetic ? "phonetic" : "translation";
       const label = phonetic ? "Phonetic" : "Translation";
       const readStored = async (source, splitVocalParts) => {
         const cached = await getCachedTranslationForText({
           trackId, lang: targetLanguage, isPhonetic: phonetic, provider: lyrics.provider, text: source,
-          canUse: isCurrentRequest,
+          canUse,
         });
         return mapOutput(cached, field, splitVocalParts);
       };
@@ -116,18 +145,18 @@ export function createLyricPrefetcher({
           if (group.every(({ key }) => translationCache.get(key))) return true;
           const options = {
             trackId, artist: trackInfo.artist, title: trackInfo.title, text,
-            wantSmartPhonetic: phonetic, provider: lyrics.provider, ignoreCache: false,
+            wantSmartPhonetic: phonetic, provider: lyrics.provider, ignoreCache: false, sourceLang: sourceLanguage,
           };
           if (phonetic) {
-            options.sourceLang = detectedLanguage;
             options.pronunciationSlots = !!getPronunciationSlots?.()?.isRequested?.(lyricsArray, lyrics.karaokeSource);
           }
           const result = await getService("Translator").callGemini(options);
           mapped = mapOutput(result, field);
         }
-        if (!mapped || !isCurrentRequest()) return false;
+        const current = currentInputs(group);
+        if (!mapped || current.length === 0) return false;
         // A current foreground calculation may win while prefetch is waiting.
-        for (const { key } of group) {
+        for (const { key } of current) {
           if (!translationCache.get(key)) translationCache.set(key, mapped);
         }
         return true;
@@ -168,11 +197,20 @@ export function createLyricPrefetcher({
       if (karaoke.length === 0) return null;
       const prefetch = getWordSupplementPrefetcher?.();
       if (typeof prefetch !== "function") return null;
-      const detected = getService("LyricsService").detectLanguage(karaoke);
+      const service = getService("LyricsService");
+      const getSourceRevision = () => service?.getLyricsRequestRevision?.(trackInfo.uri);
+      const sourceRevision = getSourceRevision();
+      const trackOverride = await service?.getTrackLanguageOverride?.(trackInfo.uri);
+      const settings = readVisual();
+      const configuredLanguage = getSourceLanguageSetting(settings);
+      const isCurrent = () => (!wanted || wanted()) && getSourceRevision() === sourceRevision
+        && (trackOverride || getSourceLanguageSetting(readVisual()) === configuredLanguage);
+      if (!isCurrent()) return null;
+      const sourceLang = resolveLyricSourceLanguage(trackOverride, configuredLanguage, () => service.detectLanguage(karaoke));
       // Target track must be explicit: supplements cached while prefetching B
       // must not be keyed by whichever track (A) is still playing.
       const trackId = getWordSupplementTrackId(trackInfo?.uri);
-      const loaded = await prefetch(karaoke, { sourceLang: detected, trackId, ...(wanted && { wanted }) });
+      const loaded = await prefetch(karaoke, { sourceLang, trackId, wanted: isCurrent });
       return loaded ? true : null;
     } catch (error) {
       warn(`[Prefetcher] Word details prefetch failed:`, error?.message || error);

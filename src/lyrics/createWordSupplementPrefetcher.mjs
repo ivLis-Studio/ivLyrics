@@ -16,10 +16,8 @@ export function createWordSupplementPrefetcher({ getService, getVisualSettings, 
 		// prefetch passes the target track so its warm caches hit on mount.
 		const supplementOptions = trackId ? { trackId: String(trackId) } : {};
 		if (wanted) {
-			supplementOptions.wanted = () => wanted() && (force || (
-				getVisualSettings()?.["prefetch-enabled"] !== false
-				&& getVisualSettings()?.["prefetch-word-details-enabled"] !== false
-			));
+			supplementOptions.wanted = () => wanted()
+				&& (force || getVisualSettings()?.["prefetch-word-details-enabled"] !== false);
 			if (!supplementOptions.wanted()) return Promise.resolve(false);
 		}
 		const jobs = [];

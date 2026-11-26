@@ -89,6 +89,25 @@ test("a failed video lookup leaves the independently loaded lyrics available for
     assert.deepEqual(calls, ["[Prefetcher] Video prefetch failed:", "translation"]);
 });
 
+test("word details preload independently of the translation preload toggle", async () => {
+    const timers = createTimers();
+    const calls = [];
+    const visual = { "prefetch-enabled": false, "prefetch-word-details-enabled": true, "karaoke-mode-enabled": true };
+    const { createSession } = createNextTrackPrefetch({
+        ...timers, readVisual: () => visual, wordMode: 3,
+        lyrics: {
+            async loadLyrics() { return { karaoke: [{ text: "A line" }] }; },
+            async loadTranslations() { calls.push("translation"); },
+            async loadWordSupplements() { calls.push("word details"); },
+        },
+        debug() {},
+    });
+    const session = createSession(() => 3);
+    session.schedule({ uri: "spotify:track:next" });
+    await timers.run();
+    assert.deepEqual(calls, ["word details"]);
+});
+
 test("changing or clearing the queue prevents stale work without retaining a previous page", async () => {
     const fakeTimers = createTimers();
     const pending = deferred();
@@ -296,6 +315,25 @@ test("leaving the queue while checking helper availability does not start a vide
     queued = false;
     available.resolve(true);
     await result;
+    assert.equal(requests.size, 0);
+});
+
+test("turning off the video helper while checking availability skips the download", async () => {
+    const available = deferred();
+    const visual = { "video-helper-enabled": true };
+    const requests = new Map();
+    const prefetch = createVideoDownloadPrefetcher({
+        ...createTimers(), cache: new Map(), requests, readVisual: () => visual,
+        getService: () => ({
+            isHelperAvailable: () => available.promise,
+            requestVideo: () => assert.fail("a disabled helper must not start a download"),
+        }),
+        debug() {}, warn: (_message, error) => assert.fail(error),
+    });
+    const pending = prefetch("queued-video");
+    visual["video-helper-enabled"] = false;
+    available.resolve(true);
+    await pending;
     assert.equal(requests.size, 0);
 });
 

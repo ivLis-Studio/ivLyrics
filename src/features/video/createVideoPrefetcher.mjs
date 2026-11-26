@@ -1,5 +1,8 @@
 import { describeVideoTrack } from "./videoTrackMetadata.mjs";
 
+const isVideoPrefetchEnabled = visual => visual["video-background"] !== false
+  && visual["prefetch-video-enabled"] !== false && visual["community-video-random"] !== true;
+
 function createPrefetchInterests(onEmpty) {
   const consumers = new Map();
   function add(interest) {
@@ -36,12 +39,12 @@ export function createVideoPrefetcher({
   }
 
   async function loadVideo(uri, trackInfo = null, { wanted = () => true, signal } = {}) {
-    if (signal?.aborted || !wanted() || readVisual()["community-video-random"] === true) return null;
+    if (signal?.aborted || !wanted() || !isVideoPrefetchEnabled(readVisual())) return null;
 
     const trackId = extractTrackId(uri);
     if (!trackId) return;
     const revision = getRevision(trackId);
-    const cacheCurrent = () => getRevision(trackId) === revision;
+    const cacheCurrent = () => getRevision(trackId) === revision && isVideoPrefetchEnabled(readVisual());
     const metadata = describeTrack(uri, trackId, trackInfo);
     const isrc = await getService("SyncDataService")?.resolveTrackIsrc?.(trackId, metadata)
       || getService("SyncDataService")?.getTrackIsrc?.(trackId, metadata)
@@ -147,11 +150,13 @@ export function createVideoDownloadPrefetcher({
   cache, requests, readVisual, getService, scheduleTimer, cancelTimer, debug, warn = console.warn,
   readVideoHelper = () => getService("VideoHelperService"),
 }) {
-  return async function prefetchDownload(videoId, { wanted = () => true, signal } = {}) {
-    if (signal?.aborted || !wanted()) return;
+  const isDownloadEnabled = () => {
     const visual = readVisual();
-    if (visual["prefetch-video-enabled"] === false) return;
-    if (visual["video-helper-enabled"] !== true && visual["video-helper-enabled"] !== "true") return;
+    return isVideoPrefetchEnabled(visual)
+      && (visual["video-helper-enabled"] === true || visual["video-helper-enabled"] === "true");
+  };
+  return async function prefetchDownload(videoId, { wanted = () => true, signal } = {}) {
+    if (signal?.aborted || !wanted() || !isDownloadEnabled()) return;
     const helper = readVideoHelper();
     if (!helper) return;
 
@@ -182,7 +187,7 @@ export function createVideoDownloadPrefetcher({
     try {
       const available = await helper.isHelperAvailable();
       if (!ownsRequest()) return;
-      if (!interests.active().length) {
+      if (!isDownloadEnabled() || !interests.active().length) {
         finish();
         return;
       }
@@ -200,7 +205,7 @@ export function createVideoDownloadPrefetcher({
           }
         },
         onComplete: (url) => {
-          if (!finish()) return;
+          if (!finish() || !isDownloadEnabled()) return;
           debug(`[Prefetcher] Helper prefetch complete for: ${videoId}`);
           cache.set(key, { videoId, url, timestamp: Date.now() });
         },

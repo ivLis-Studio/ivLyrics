@@ -1,4 +1,4 @@
-import { hasLyricsRows } from "./selectPlaybackLyrics.mjs";
+import { hasLyricsRows, isKaraokePlaybackEnabled } from "./selectPlaybackLyrics.mjs";
 
 export function createNextTrackPrefetch({
   cache, maxAgeMs, readVisual, wordMode, lyrics, loadVideo, scheduleTimer, cancelTimer,
@@ -43,6 +43,13 @@ export function createNextTrackPrefetch({
       const { signal } = request.controller;
       const wanted = () => selection === request;
       const wantedForPlayback = () => wanted() || promoted === request;
+      const readRequestedMode = () => request.mode >= 0 ? request.mode : readMode?.() ?? -1;
+      const wantsWordDetails = () => {
+        if (!wanted()) return false;
+        const visual = readVisual();
+        return visual["prefetch-word-details-enabled"] !== false
+          && isKaraokePlaybackEnabled(visual["karaoke-mode-enabled"]) && readRequestedMode() === wordMode;
+      };
 
       async function prefetchVideo() {
         try {
@@ -65,11 +72,10 @@ export function createNextTrackPrefetch({
         if (wanted() && hasLyricsRows(rows)) {
           const currentSettings = readVisual();
           if (currentSettings["prefetch-enabled"] !== false) {
-            jobs.push(lyrics.loadTranslations(trackInfo, rows, { wanted }));
-            const mode = request.mode >= 0 ? request.mode : readMode?.();
-            if (currentSettings["prefetch-word-details-enabled"] !== false && mode === wordMode) {
-              jobs.push(lyrics.loadWordSupplements(trackInfo, rows, { wanted }));
-            }
+            jobs.push(lyrics.loadTranslations(trackInfo, rows, { wanted, mode: readRequestedMode() }));
+          }
+          if (wantsWordDetails()) {
+            jobs.push(lyrics.loadWordSupplements(trackInfo, rows, { wanted: wantsWordDetails }));
           }
         }
       } catch (error) {

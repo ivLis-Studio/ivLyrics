@@ -32,7 +32,6 @@ export function createLyricsRoutePrefetch({
     getMarketplaceReady: () => readMarketplaceManager(host)?.readyPromise,
     sourceCache: CACHE,
     translationCache: CacheManager,
-    extractTrackId: (uri) => readUtils().extractTrackId(uri),
     getTranslationCacheId: (uri) => readUtils().getTranslationCacheId(uri),
     getDisplayModeCacheKey,
     getDisplayModeGenerationOptions,

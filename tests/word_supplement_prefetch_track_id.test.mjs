@@ -91,14 +91,38 @@ test("word supplement prefetch uses the requested track id", async () => {
 	const prefetcher = createLyricPrefetcher({
 		getService: (name) => services[name],
 		getWordSupplementPrefetcher: () => (...args) => calls.push(args),
-		extractTrackId: (uri) => {
-			assert.equal(uri, trackUri);
-			return null; // Preserve the fallback for an ID the Spotify parser does not recognize.
-		},
 	});
 	assert.equal(await prefetcher.loadWordSupplements({ uri: trackUri }, lyrics), true);
-	assert.deepEqual(calls, [[lyrics.karaoke, { sourceLang: "ja", trackId: "QUEUED" }]]);
+	assert.equal(calls.length, 1);
+	const [[rows, { sourceLang, trackId, wanted }]] = calls;
+	assert.equal(rows, lyrics.karaoke);
+	assert.equal(sourceLang, "ja");
+	assert.equal(trackId, "QUEUED");
+	assert.equal(wanted(), true);
 
+});
+
+test("word lookahead rechecks its own toggle, independent of lyric translation lookahead", async () => {
+	const visual = { "prefetch-enabled": false, "prefetch-word-details-enabled": true };
+	let stillWanted;
+	const prefetch = createWordSupplementPrefetcher({
+		getService: () => ({
+			getWordUnits: () => [{ wordKey: 0, surface: "生" }],
+			isSuitableSourceLanguage: lang => lang === "ja",
+			resolveReadingMode: () => null,
+			getWordGlosses: async (_units, _text, _lang, { wanted }) => {
+				stillWanted = wanted;
+				return ["life"];
+			},
+		}),
+		getVisualSettings: () => visual,
+		getDetectedLanguage: () => "ja",
+		prepareTimedChars: () => [{ char: "生" }],
+	});
+	assert.equal(await prefetch([{}], { sourceLang: "ja", wanted: () => true }), true);
+	assert.equal(stillWanted(), true);
+	visual["prefetch-word-details-enabled"] = false;
+	assert.equal(stillWanted(), false);
 });
 
 test("both word prefetch outputs warm the cache for the queued track", async () => {

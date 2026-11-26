@@ -163,6 +163,7 @@ function harness(mode = "gemini_ko") {
     setStyle: value => { style = value; },
     setNotation: value => { config.visual["translate:pronunciation-notation"] = value; },
     setDisplayMode: value => { config.visual["translation-mode:japanese"] = value; },
+    visual: config.visual,
     resolve(request, text) {
       request.resolve(request.params.wantSmartPhonetic ? { phonetic: [text] } : { translation: [text] });
     },
@@ -545,6 +546,46 @@ test("queued language detection stays local and traditional conversion never inv
   assert.deepEqual(h.detectedOnPage, []);
   h.resolve(h.calls[0], "konnichiwa");
   assert.equal(await prefetch, true);
+});
+
+test("queued translation honors the track language override and the selected line mode", async () => {
+  const h = harness("none");
+  h.context.LyricsService.getTrackLanguageOverride = async () => "zh";
+  h.visual["translate:detect-language-override"] = "ko";
+  h.visual["translation-mode:chinese"] = "gemini_romaji";
+  h.app.state.karaoke = [{ text: "Karaoke variant" }];
+  const pending = h.prefetch({ mode: 1 });
+  await flush();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].params.sourceLang, "zh");
+  assert.equal(h.calls[0].params.text, "こんにちは");
+  h.resolve(h.calls[0], "fixture pronunciation");
+  assert.equal(await pending, true);
+});
+
+test("queued translation ignores an output after its display mode has been disabled", async () => {
+  const h = harness();
+  const pending = h.prefetch();
+  await flush();
+  assert.equal(h.calls.length, 1);
+  h.setDisplayMode("none");
+  h.resolve(h.calls[0], "Old result");
+  assert.equal(await pending, null);
+  assert.equal(h.cache.get(h.key()), null);
+});
+
+test("queued pronunciation can finish while translation is switched off", async () => {
+  const h = harness("gemini_romaji");
+  h.visual["translation-mode-2:japanese"] = "gemini_ko";
+  const pending = h.prefetch();
+  await flush();
+  assert.equal(h.calls.length, 2);
+  h.visual["translation-mode-2:japanese"] = "none";
+  h.resolve(h.calls.find(call => !call.params.wantSmartPhonetic), "Disabled output");
+  h.resolve(h.calls.find(call => call.params.wantSmartPhonetic), "Kept pronunciation");
+  await pending;
+  assert.equal(h.cache.get(h.key("gemini_ko")), null);
+  assert.equal(h.cache.get(h.key("gemini_romaji"))[0].text, "Kept pronunciation");
 });
 
 test("cancelled lookahead cannot start AI after the shared cache lookup", async () => {
