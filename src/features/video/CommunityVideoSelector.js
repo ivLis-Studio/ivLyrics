@@ -1,10 +1,11 @@
 import { selectedVideoStore as selectorSelectedVideoStore } from "#ivlyrics/features/video/selectedVideoStore.mjs";
-import { normalizeVideoSkipSegments as normalizeSelectorVideoSkipSegments } from "./communityVideoTimeline.mjs";
-import { getCommunityVideoSelectionInfo } from "./communityVideoSelection.mjs";
+import { createCommunityVideoSelectionRequest, getCommunityVideoSelectionInfo } from "./communityVideoSelection.mjs";
+import { buildLocalCommunityVideoList, createCommunityVideoList, normalizeCommunityVideoList } from "./communityVideoList.mjs";
 import { createCommunityVideoPreviews } from "./communityVideoPreview.mjs";
 import { createCommunityVideoSubmission } from "./communityVideoSubmission.mjs";
 import { createCommunityVideoSubmissionForm } from "./communityVideoSubmissionForm.mjs";
 import { createCommunityVideoListItem } from "./communityVideoListItem.mjs";
+import { createCommunityVideoSelectorView } from "./communityVideoSelectorView.mjs";
 
 export function createCommunityVideoSelector({
   host: window, react, config: CONFIG, i18n: I18n, storage: StorageManager,
@@ -15,90 +16,6 @@ export function createCommunityVideoSelector({
    * 사용자들이 추천한 YouTube 영상 목록을 보여주고 투표할 수 있게 합니다.
    */
 
-  // 커스텀 확인 다이얼로그 컴포넌트
-  const ConfirmDialog = ({ isOpen, title, message, onConfirm, onCancel }) => {
-    const confirmButtonRef = react.useRef(null);
-
-    react.useEffect(() => {
-      if (!isOpen) return undefined;
-
-      const handleEscape = (event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          onCancel();
-        }
-      };
-
-      window.document.addEventListener("keydown", handleEscape);
-      const focusFrame = window.requestAnimationFrame(() => {
-        confirmButtonRef.current?.focus?.();
-      });
-
-      return () => {
-        window.document.removeEventListener("keydown", handleEscape);
-        window.cancelAnimationFrame(focusFrame);
-      };
-    }, [isOpen, onCancel]);
-
-    if (!isOpen) return null;
-
-    return react.createElement(
-      "div",
-      {
-        className: "confirm-dialog-overlay",
-        onClick: onCancel,
-      },
-      react.createElement(
-        "div",
-        {
-          className: "confirm-dialog",
-          onClick: (e) => e.stopPropagation(),
-          role: "dialog",
-          "aria-modal": "true",
-          "aria-labelledby": "ivlyrics-community-confirm-title",
-        },
-        react.createElement(
-          "h3",
-          {
-            id: "ivlyrics-community-confirm-title",
-            className: "confirm-dialog-title",
-          },
-          title || I18n.t("communityVideo.delete")
-        ),
-        react.createElement(
-          "p",
-          {
-            className: "confirm-dialog-message",
-          },
-          message
-        ),
-        react.createElement(
-          "div",
-          {
-            className: "confirm-dialog-buttons",
-          },
-          react.createElement(
-            "button",
-            {
-              className: "confirm-dialog-btn cancel",
-              onClick: onCancel,
-            },
-            I18n.t("cancel")
-          ),
-          react.createElement(
-            "button",
-            {
-              className: "confirm-dialog-btn confirm",
-              onClick: onConfirm,
-              ref: confirmButtonRef,
-            },
-            I18n.t("communityVideo.delete")
-          )
-        )
-      )
-    );
-  };
-
   const { SyncedVideoPreview, SimpleVideoPreview } = createCommunityVideoPreviews({
     host: window, react, config: CONFIG, i18n: I18n, spicetify: Spicetify, toast: Toast, videoHelper: VideoHelperService,
   });
@@ -106,21 +23,9 @@ export function createCommunityVideoSelector({
   const useSubmission = createCommunityVideoSubmission({ react, i18n: I18n, utils: Utils, toast: Toast });
   const SubmissionForm = createCommunityVideoSubmissionForm({ react, i18n: I18n, SimpleVideoPreview });
   const VideoListItem = createCommunityVideoListItem({ react, i18n: I18n, SyncedVideoPreview });
-
-  const requestSelection = async (isCurrent, action, errorKey = "messages.error") => {
-    if (!isCurrent()) return false;
-    try {
-      const result = await action();
-      // The track may have changed or a newer selection may have won.
-      if (!isCurrent() || result === null) return false;
-      if (result !== false) return true;
-    } catch (error) {
-      if (!isCurrent()) return false;
-      console.error("[ivLyrics] Could not update the video selection:", error);
-    }
-    Toast.error(I18n.t(errorKey));
-    return false;
-  };
+  const SelectorView = createCommunityVideoSelectorView({
+    host: window, react, i18n: I18n, VideoListItem, SubmissionForm,
+  });
 
   const TrackVideoSelector = ({
     trackUri,
@@ -135,11 +40,13 @@ export function createCommunityVideoSelector({
     const { useState, useEffect, useCallback, useRef } = react;
     const useCommitEffect = react.useLayoutEffect || useEffect;
     const [videos, setVideos] = useState([]);
-    const currentVideos = useRef(videos);
-    const pendingList = useRef(null);
     const mounted = useRef(false);
     const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const [hasLoadError, setHasLoadError] = useState(false);
+    const [videoList] = useState(() => createCommunityVideoList({
+      onList: setVideos, onLoading: setIsLoading, onError: setHasLoadError,
+    }));
+    const [selection] = useState(() => createCommunityVideoSelectionRequest(currentVideoId));
     const pendingVotes = useRef(new Set());
     const [votingIds, setVotingIds] = useState(pendingVotes.current);
     const [previewVideoId, setPreviewVideoId] = useState(null); // 목록에서 미리보기 중인 영상
@@ -162,75 +69,32 @@ export function createCommunityVideoSelector({
       mounted.current = true;
       return () => { mounted.current = false; };
     }, []);
+    useCommitEffect(() => { selection.setActiveVideo(currentVideoId); }, [selection, currentVideoId]);
 
-    const updateVideos = useCallback(update => {
-      const next = update(currentVideos.current);
-      currentVideos.current = next;
-      setVideos(next);
-      return next;
-    }, []);
-
+    const requestSelection = useCallback((videoInfo, action, errorKey = "messages.error") => selection.select({
+      videoInfo, action, isCurrent,
+      onError(error) {
+        if (error) console.error("[ivLyrics] Could not update the video selection:", error);
+        Toast.error(I18n.t(errorKey));
+      },
+    }), [selection, isCurrent]);
     const selectVideo = useCallback((videoInfo, errorKey) =>
-      requestSelection(isCurrent, () => onVideoSelect?.(videoInfo), errorKey), [isCurrent, onVideoSelect]);
+      requestSelection(videoInfo, () => onVideoSelect?.(videoInfo), errorKey), [requestSelection, onVideoSelect]);
     const closeAppliedSelection = useCallback(() => {
       if (closeOnSelection && isCurrent()) onClose?.();
     }, [closeOnSelection, isCurrent, onClose]);
 
-    const loadVideos = useCallback(
-      async () => {
-        if (!isCurrent()) return;
-        pendingList.current?.abort();
-        const controller = new AbortController();
-        pendingList.current = controller;
-        const lookupSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
-        const ownsList = () => pendingList.current === controller && !lookupSignal.aborted && isCurrent();
-        setIsLoading(true);
-        setError(null);
-
-        try {
-          if (isLocalVideoMode) {
-            const savedVideo = await selectorSelectedVideoStore.getSelectedVideo(trackUri);
-            if (!ownsList()) return;
-            updateVideos(() => savedVideo?.youtubeVideoId ? [{
-              id: "local",
-              youtubeVideoId: savedVideo.youtubeVideoId,
-              youtubeTitle: savedVideo.youtubeTitle,
-              startTime: savedVideo.captionStartTime ?? 0,
-              skipSegments: normalizeSelectorVideoSkipSegments(savedVideo.skipSegments),
-              submitterId: currentUserHash,
-              isLocalOnly: true,
-              isAutoGenerated: false,
-              likes: 0,
-              dislikes: 0,
-              score: 0,
-              userVote: null,
-            }] : []);
-            return;
-          }
-
-          const data = await Utils.getCommunityVideos(trackUri, { signal: lookupSignal });
-          if (!ownsList()) return;
-          updateVideos(() => Array.isArray(data?.videos)
-            ? data.videos.map((video) => ({
-              ...video,
-              skipSegments: normalizeSelectorVideoSkipSegments(video?.skipSegments),
-            })) : []);
-        } catch {
-          if (ownsList()) setError(I18n.t("communityVideo.loadError"));
-        } finally {
-          if (ownsList()) {
-            pendingList.current = null;
-            setIsLoading(false);
-          }
-        }
-      },
-      [trackUri, isLocalVideoMode, currentUserHash, isCurrent, signal, updateVideos]
-    );
+    const loadVideos = useCallback(() => videoList.load({
+      isCurrent, signal,
+      readVideos: async lookupSignal => isLocalVideoMode
+        ? buildLocalCommunityVideoList(await selectorSelectedVideoStore.getSelectedVideo(trackUri), currentUserHash)
+        : normalizeCommunityVideoList(await Utils.getCommunityVideos(trackUri, { signal: lookupSignal })),
+    }), [videoList, trackUri, isLocalVideoMode, currentUserHash, isCurrent, signal]);
 
     useEffect(() => {
       loadVideos();
-      return () => pendingList.current?.abort();
-    }, [loadVideos]);
+      return videoList.cancel;
+    }, [loadVideos, videoList]);
 
     const updateRandomSelection = useCallback((nextValue) => {
       setRandomSelectionEnabled(nextValue);
@@ -247,16 +111,10 @@ export function createCommunityVideoSelector({
     }, [randomSelectionEnabled, updateRandomSelection]);
 
     const replaceHiddenCurrentVideo = useCallback(async (nextVideos, hiddenVideoId) => {
-      if (!isCurrent() || !hiddenVideoId || currentVideoId !== hiddenVideoId) return;
-
-      const seenVideoIds = new Set([hiddenVideoId]);
+      if (!isCurrent() || !selection.canReplaceHiddenVideo(hiddenVideoId)) return;
       const replacement = nextVideos.find((video) => {
         const videoId = String(video?.youtubeVideoId || "").trim();
-        if (!videoId || seenVideoIds.has(videoId) || video.userVote === -1) {
-          return false;
-        }
-        seenVideoIds.add(videoId);
-        return true;
+        return videoId && videoId !== hiddenVideoId && video.userVote !== -1;
       });
 
       setPreviewVideoId(null);
@@ -278,7 +136,7 @@ export function createCommunityVideoSelector({
           )
           : null
       )) closeAppliedSelection();
-    }, [currentVideoId, isCurrent, selectVideo, trackUri, closeAppliedSelection]);
+    }, [selection, isCurrent, selectVideo, trackUri, closeAppliedSelection]);
 
     const toggleHideDislikedVideos = useCallback(async () => {
       const nextValue = !hideDislikedVideos;
@@ -286,14 +144,15 @@ export function createCommunityVideoSelector({
       CONFIG.visual["community-video-hide-disliked"] = nextValue;
       StorageManager.saveConfig("community-video-hide-disliked", nextValue);
       if (nextValue) {
-        const hiddenCurrentVideo = videos.find((video) =>
-          video.userVote === -1 && video.youtubeVideoId === currentVideoId
+        const latestVideos = videoList.getVideos();
+        const hiddenCurrentVideo = latestVideos.find((video) =>
+          video.userVote === -1 && selection.canReplaceHiddenVideo(video.youtubeVideoId)
         );
         if (hiddenCurrentVideo) {
-          await replaceHiddenCurrentVideo(videos, hiddenCurrentVideo.youtubeVideoId);
+          await replaceHiddenCurrentVideo(latestVideos, hiddenCurrentVideo.youtubeVideoId);
         }
       }
-    }, [currentVideoId, hideDislikedVideos, replaceHiddenCurrentVideo, videos]);
+    }, [hideDislikedVideos, replaceHiddenCurrentVideo, selection, videoList]);
 
     // 투표 처리
     const handleVote = async (videoEntryId, currentVote, newVote) => {
@@ -308,7 +167,7 @@ export function createCommunityVideoSelector({
         const result = await Utils.voteCommunityVideo(videoEntryId, voteType, trackUri);
         if (result && isCurrent()) {
           // 투표 결과로 목록 업데이트
-          const updatedVideos = updateVideos(latest => latest
+          const updatedVideos = videoList.update(latest => latest
             .map((v) => {
               if (v.id === videoEntryId) {
                 return {
@@ -403,9 +262,9 @@ export function createCommunityVideoSelector({
             if (!await selectorSelectedVideoStore.removeSelectedVideo(trackUri)) return false;
             return isCurrent() ? onVideoSelect?.(null) : null;
           });
-          if (!await requestSelection(isCurrent, remove, "communityVideo.deleteError")) return;
+          if (!await requestSelection(null, remove, "communityVideo.deleteError")) return;
           setPreviewVideoId(null);
-          updateVideos(() => []);
+          videoList.update(() => []);
           Toast.success(I18n.t("communityVideo.deleted"));
           closeAppliedSelection();
           return;
@@ -414,10 +273,10 @@ export function createCommunityVideoSelector({
         const result = await Utils.deleteCommunityVideo(videoEntryId, trackUri);
         if (!isCurrent()) return;
         if (result) {
-          const deletedVideo = currentVideos.current.find((v) => v.id === videoEntryId);
+          const deletedVideo = videoList.getVideos().find((v) => v.id === videoEntryId);
           Toast.success(I18n.t("communityVideo.deleted"));
           // 목록에서 제거
-          updateVideos(prev => prev.filter(v => v.id !== videoEntryId));
+          videoList.update(prev => prev.filter(v => v.id !== videoEntryId));
           // 미리보기 중이던 영상이면 미리보기 닫기
           setPreviewVideoId(preview => deletedVideo?.youtubeVideoId === preview ? null : preview);
         } else {
@@ -443,219 +302,14 @@ export function createCommunityVideoSelector({
       ? videos.filter((video) => video.userVote !== -1)
       : videos;
 
-    return react.createElement(
-      "div",
-      {
-        className: "community-video-selector",
-        onClick: (e) => e.stopPropagation(),
-      },
-      // Header
-      react.createElement(
-        "div",
-        {
-          className: "community-video-header",
-        },
-        react.createElement("h3", null, I18n.t("communityVideo.title")),
-        react.createElement(
-          "button",
-          {
-            className: "community-video-close",
-            onClick: onClose,
-            title: I18n.t("close"),
-          },
-          react.createElement(
-            "svg",
-            { width: 16, height: 16, viewBox: "0 0 16 16", fill: "currentColor" },
-            react.createElement("path", { d: "M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z" })
-          )
-        )
-      ),
-
-      // Content
-      react.createElement(
-        "div",
-        {
-          className: "community-video-content",
-        },
-        !isLocalVideoMode &&
-        react.createElement(
-          "div",
-          {
-            className: `community-video-random-setting${randomSelectionEnabled ? " enabled" : ""}`,
-          },
-          react.createElement(
-            "div",
-            { className: "community-video-random-row" },
-            react.createElement(
-              "div",
-              { className: "community-video-random-copy" },
-              react.createElement(
-                "div",
-                {
-                  id: "community-video-random-label",
-                  className: "community-video-random-label",
-                },
-                I18n.t("communityVideo.randomSelectionLabel")
-              ),
-              react.createElement(
-                "div",
-                { className: "community-video-random-description" },
-                I18n.t("communityVideo.randomSelectionDesc")
-              )
-            ),
-            react.createElement(
-              "button",
-              {
-                type: "button",
-                className: "community-video-random-switch",
-                role: "switch",
-                "aria-checked": randomSelectionEnabled,
-                "aria-labelledby": "community-video-random-label",
-                onClick: toggleRandomSelection,
-              },
-              react.createElement("span", {
-                className: "community-video-random-switch-thumb",
-                "aria-hidden": "true",
-              })
-            )
-          ),
-          react.createElement(
-            "div",
-            {
-              className: "community-video-random-warning",
-              role: "note",
-            },
-            I18n.t("communityVideo.randomSelectionWarning")
-          )
-        ),
-        !isLocalVideoMode &&
-        react.createElement(
-          "div",
-          {
-            className: `community-video-filter-setting${hideDislikedVideos ? " enabled" : ""}`,
-          },
-          react.createElement(
-            "div",
-            { className: "community-video-random-row" },
-            react.createElement(
-              "div",
-              { className: "community-video-random-copy" },
-              react.createElement(
-                "div",
-                {
-                  id: "community-video-hide-disliked-label",
-                  className: "community-video-random-label",
-                },
-                I18n.t("communityVideo.hideDislikedLabel")
-              ),
-              react.createElement(
-                "div",
-                { className: "community-video-random-description" },
-                I18n.t("communityVideo.hideDislikedDesc", { count: dislikedVideoCount })
-              )
-            ),
-            react.createElement(
-              "button",
-              {
-                type: "button",
-                className: "community-video-random-switch",
-                role: "switch",
-                "aria-checked": hideDislikedVideos,
-                "aria-labelledby": "community-video-hide-disliked-label",
-                onClick: toggleHideDislikedVideos,
-              },
-              react.createElement("span", {
-                className: "community-video-random-switch-thumb",
-                "aria-hidden": "true",
-              })
-            )
-          )
-        ),
-        isLoading
-          ? react.createElement(
-            "div",
-            {
-              className: "community-video-loading",
-            },
-            react.createElement("div", { className: "spinner" }),
-            I18n.t("communityVideo.loading")
-          )
-          : error
-            ? react.createElement(
-              "div",
-              {
-                className: "community-video-error",
-              },
-              error
-            )
-            : react.createElement(
-              react.Fragment,
-              null,
-              isLocalVideoMode &&
-              react.createElement(
-                "div",
-                {
-                  className: "community-video-local-note",
-                },
-                I18n.t("communityVideo.localTrackDesc") || "로컬 곡입니다. YouTube URL은 이 기기에만 저장되고 서버로 전송되지 않습니다."
-              ),
-              // Video List
-              visibleVideos.length > 0
-                ? react.createElement(
-                  "div",
-                  {
-                    className: "community-video-list",
-                  },
-                  visibleVideos.map((video, index) => react.createElement(VideoListItem, {
-                      key: video.id, video, index, currentVideoId, currentUserHash, previewVideoId,
-                      votingId: votingIds.has(video.id) ? video.id : null, deletingId,
-                      togglePreview, handleApply, handleEdit, handleVote, showDeleteConfirm,
-                    }))
-                )
-                : react.createElement(
-                  "div",
-                  {
-                    className: "community-video-empty",
-                  },
-                  hideDislikedVideos && videos.length > 0
-                    ? I18n.t("communityVideo.allDislikedHidden")
-                    : I18n.t("communityVideo.noVideos")
-                ),
-
-              // Submit Form Toggle
-              react.createElement(
-                "button",
-                {
-                  className: "community-video-add-btn",
-                  onClick: () => {
-                    if (showSubmitForm) {
-                      resetSubmitForm();
-                    } else {
-                      void openSubmitForm();
-                    }
-                  },
-                },
-                showSubmitForm
-                  ? I18n.t("cancel")
-                  : I18n.t("communityVideo.addVideoNoEmoji")
-              ),
-
-              // Submit Form
-              showSubmitForm &&
-              react.createElement(SubmissionForm, { form, isLocalVideoMode })
-            )
-      ),
-
-      // 삭제 확인 다이얼로그
-      react.createElement(ConfirmDialog, {
-        isOpen: deleteConfirmId !== null,
-        title: I18n.t("communityVideo.delete"),
-        message:
-          I18n.t("communityVideo.deleteConfirm") + "\n\n" + deleteConfirmTitle,
-        onConfirm: executeDelete,
-        onCancel: closeDeleteConfirm,
-      })
-    );
+    return react.createElement(SelectorView, {
+      onClose, isLocalVideoMode, randomSelectionEnabled, toggleRandomSelection,
+      hideDislikedVideos, toggleHideDislikedVideos, dislikedVideoCount, isLoading, hasLoadError,
+      visibleVideos, hasVideos: videos.length > 0, currentVideoId, currentUserHash, previewVideoId, votingIds, deletingId,
+      togglePreview, handleApply, handleEdit, handleVote, showDeleteConfirm,
+      showSubmitForm, resetSubmitForm, openSubmitForm, form,
+      deleteConfirmId, deleteConfirmTitle, executeDelete, closeDeleteConfirm,
+    });
   };
 
   const CommunityVideoSelector = props => react.createElement(TrackVideoSelector, { ...props, key: props.trackUri });

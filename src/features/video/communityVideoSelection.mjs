@@ -35,6 +35,40 @@ const getCommunityVideoSelectionInfo = (
   isLocalOnly: video?.isLocalOnly === true,
 });
 
+export function createCommunityVideoSelectionRequest(initialVideoId) {
+  let activeVideoId = initialVideoId;
+  let pending = null;
+
+  async function select({ videoInfo, action, isCurrent, onError }) {
+    if (!isCurrent()) return false;
+    const request = {};
+    pending = request;
+    let result;
+    let failure;
+    try {
+      result = await action();
+    } catch (error) {
+      failure = error;
+      result = false;
+    }
+    if (pending !== request) return false;
+    pending = null;
+    if (!isCurrent() || result === null) return false;
+    if (result === false) {
+      onError(failure);
+      return false;
+    }
+    activeVideoId = videoInfo?.youtubeVideoId ?? null;
+    return true;
+  }
+
+  return {
+    select,
+    setActiveVideo: videoId => { activeVideoId = videoId; },
+    canReplaceHiddenVideo: videoId => !pending && Boolean(videoId) && activeVideoId === videoId,
+  };
+}
+
 export {
   COMMUNITY_VIDEO_MAX_START_TIME_SECONDS,
   COMMUNITY_VIDEO_MAX_SKIP_SEGMENTS,

@@ -492,6 +492,7 @@ test("every retained toolbar action has exactly one place in the new layout", ()
   };
   const videoSource = [
     read("CommunityVideoSelector.js"),
+    readFileSync(new URL("../src/features/video/communityVideoSelectorView.mjs", import.meta.url), "utf8"),
     readFileSync(new URL("../src/features/video/communityVideoListItem.mjs", import.meta.url), "utf8"),
     readFileSync(new URL("../src/features/video/communityVideoSubmissionForm.mjs", import.meta.url), "utf8"),
   ].join("\n");

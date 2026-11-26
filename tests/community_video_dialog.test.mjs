@@ -2,7 +2,64 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createCommunityVideoSubmission } from "../src/features/video/communityVideoSubmission.mjs";
 import { createCommunityVideoService } from "../src/features/video/communityVideoService.mjs";
+import { createCommunityVideoList } from "../src/features/video/communityVideoList.mjs";
+import { createCommunityVideoSelectionRequest } from "../src/features/video/communityVideoSelection.mjs";
 import { createYouTubeVideoMetadata } from "../src/features/video/youtubeVideoMetadata.mjs";
+
+test("a list refresh keeps votes and deletions that completed after it started", async () => {
+  const entries = [{ id: 1, userVote: null }, { id: 2, userVote: null }];
+  const list = createCommunityVideoList({ onList() {}, onLoading() {}, onError: error => assert.equal(error, false) });
+  await list.load({ readVideos: () => entries, isCurrent: () => true });
+
+  const refresh = Promise.withResolvers();
+  const latest = list.load({ readVideos: () => refresh.promise, isCurrent: () => true });
+  list.update(videos => videos.map(video => video.id === 1 ? { ...video, userVote: -1 } : video));
+  list.update(videos => videos.filter(video => video.id !== 2));
+  refresh.resolve([...entries, { id: 3, userVote: null }]);
+  await latest;
+  assert.deepEqual(list.getVideos(), [{ id: 1, userVote: -1 }, { id: 3, userVote: null }]);
+
+  const previous = Promise.withResolvers();
+  let previousSignal;
+  const superseded = list.load({ readVideos: signal => { previousSignal = signal; return previous.promise; }, isCurrent: () => true });
+  await list.load({ readVideos: () => [{ id: 4 }], isCurrent: () => true });
+  assert.equal(previousSignal.aborted, true);
+  previous.resolve(entries);
+  await superseded;
+  assert.deepEqual(list.getVideos(), [{ id: 4 }]);
+});
+
+test("late automatic replacement cannot take over a newly selected video", async () => {
+  const selection = createCommunityVideoSelectionRequest("playing");
+  const pending = Promise.withResolvers();
+  const request = (id, action) => selection.select({
+    videoInfo: { youtubeVideoId: id }, action, isCurrent: () => true, onError: assert.fail,
+  });
+  assert.equal(selection.canReplaceHiddenVideo("playing"), true);
+  const manual = request("manual", () => pending.promise);
+  assert.equal(selection.canReplaceHiddenVideo("playing"), false);
+  pending.resolve(true);
+  assert.equal(await manual, true);
+  assert.equal(selection.canReplaceHiddenVideo("playing"), false);
+  assert.equal(selection.canReplaceHiddenVideo("manual"), true);
+});
+
+test("only the latest selection can report errors or commit its video", async () => {
+  const selection = createCommunityVideoSelectionRequest("playing");
+  const previous = Promise.withResolvers();
+  const errors = [];
+  const request = (id, action) => selection.select({
+    videoInfo: { youtubeVideoId: id }, action, isCurrent: () => true, onError: error => errors.push(error),
+  });
+  const superseded = request("automatic", () => previous.promise);
+  assert.equal(await request("manual", () => true), true);
+  previous.reject(new Error("obsolete failure"));
+  assert.equal(await superseded, false);
+  assert.deepEqual(errors, []);
+  assert.equal(await request("rejected", () => false), false);
+  assert.equal(errors.length, 1);
+  assert.equal(selection.canReplaceHiddenVideo("manual"), true);
+});
 
 function mountSubmission(utils) {
   const slots = [];
