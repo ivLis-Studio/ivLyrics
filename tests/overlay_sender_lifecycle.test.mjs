@@ -15,7 +15,12 @@ const baselineRevision = process.env.IVLYRICS_REFACTOR_TEST_REVISION;
 const baseline = baselineRevision ? execFileSync('git', ['show', `${baselineRevision}:LyricsService.js`], {
   cwd: new URL('..', import.meta.url), encoding: 'utf8',
 }) : null;
-const section = (text, from, to) => text.slice(text.indexOf(from), text.indexOf(to, text.indexOf(from)));
+const section = (text, from, to) => {
+  const start = text.indexOf(from);
+  const end = text.indexOf(to, start);
+  assert.ok(start >= 0 && end > start, `Missing baseline sender boundaries: ${from} / ${to}`);
+  return text.slice(start, end);
+};
 const sharedMethods = ['teardownOffsetListener', 'stopProgressSync', 'scheduleConnectionCheck', 'syncRuntimeState',
   'setupRuntimeListener', 'teardownRuntimeListener', 'destroy'];
 const serial = value => JSON.parse(JSON.stringify(value));
@@ -59,7 +64,7 @@ function load(text) {
     Date: class extends Date { static now() { return clock.now; } },
   });
   vm.runInContext(text === source ? source : section(text, '    const cleanupWorker =', '    serviceDebug("[LyricsService] Initializing')
-    + section(text, '    const LYRICS_SEND_RETRY_DELAYS =', '    if (window.__ivLyricsSnapshotReadyListener)')
+    + section(text, '    const LYRICS_SEND_RETRY_DELAYS =', '    window.LyricsService = LyricsService;')
     + '\nglobalThis.senders = [OverlaySender, lyricsHelperSender];', context);
   const [overlay, helper] = context.senders;
   const state = () => serial({
@@ -567,8 +572,24 @@ test('helper reuses lifecycle methods without changing its own property descript
     '_runtimeGeneration', '_connectionRecoveryTimer', '_connectionRecoveryBootstrapTimer']) {
     assert.equal(Object.getOwnPropertyDescriptor(after.helper, name)?.writable, true, `${name} must remain independently writable`);
   }
-  if (baseline) assert.deepEqual(Object.getOwnPropertyNames(after.helper).filter(name => name !== '_removeProgressSeekListener'),
-    Object.getOwnPropertyNames(load(baseline).helper));
+  if (baseline) {
+    const legacy = load(baseline).helper;
+    // Compare the helper's API and fixed methods with the release. Its private
+    // request and worker fields have their own ownership assertions above.
+    const names = ['DEFAULT_PORT', 'LOG_TAG', 'CONNECTION_EVENT', 'LYRICS_ENDPOINT', 'PROGRESS_ENDPOINT',
+      'PROBE_ENDPOINT', 'SOURCE_ID', 'USES_DISPLAY_METADATA', 'CONTINUOUS_PROGRESS', 'port', 'enabled', ...sharedMethods];
+    const descriptorShape = (sender, name) => {
+      const descriptor = Object.getOwnPropertyDescriptor(sender, name);
+      assert.ok(descriptor, name);
+      return {
+        ...descriptor,
+        ...(typeof descriptor.value === 'function' ? {value: 'function'} : {}),
+        ...(descriptor.get ? {get: 'function'} : {}),
+        ...(descriptor.set ? {set: 'function'} : {}),
+      };
+    };
+    for (const name of names) assert.deepEqual(descriptorShape(after.helper, name), descriptorShape(legacy, name), name);
+  }
 });
 
 test('teardown retains the detached-player exception path and missing-remove-listener behavior', () => {
