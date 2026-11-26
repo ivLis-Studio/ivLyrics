@@ -126,6 +126,32 @@ for (const kind of ["reading", "gloss"]) {
     assert.equal(h.events.at(-1).active, false);
     assert.deepEqual(shape(await fetch()), ["new"]);
   });
+
+  test(`clearing a track's ${kind} leaves another track's pending work intact`, async () => {
+    const old = deferred(), other = deferred(), fresh = deferred();
+    const responses = [old, other, fresh];
+    const respond = () => responses.shift().promise;
+    const h = load({ pronunciation: respond, gloss: respond });
+    const fetch = trackId => kind === "reading"
+      ? h.api.getWordReadings(units, "ja", "gemini_romaji", "人生", { trackId })
+      : h.api.getWordGlosses(units, "人生", "ja", { trackId });
+    const stale = fetch("T1");
+    const queued = fetch("T2");
+    await h.flush();
+    h.api.clearCaches("T1");
+    const replacement = fetch("T1");
+    await h.flush();
+    old.resolve(["old"]);
+    other.resolve(["other"]);
+    fresh.resolve(["fresh"]);
+    assert.deepEqual(shape(await stale), [""]);
+    assert.deepEqual(shape(await queued), ["other"]);
+    assert.deepEqual(shape(await replacement), ["fresh"]);
+    assert.deepEqual(h.writes.map(([trackId, , , , , values]) => [trackId, values]), [
+      ["T2", ["other"]], ["T1", ["fresh"]],
+    ]);
+    assert.deepEqual(shape(await fetch("T2")), ["other"]);
+  });
 }
 
 test("invalidation during a persistent read cannot restore old values or enqueue AI", async () => {
@@ -138,6 +164,20 @@ test("invalidation during a persistent read cannot restore old values or enqueue
   assert.deepEqual(shape(await pending), [""]);
   assert.equal(h.requests.length, 0);
   assert.equal(h.writes.length, 0);
+});
+
+test("local tracks with the same duration keep separate word detail entries", async () => {
+  const h = load();
+  const firstUri = "spotify:local:artist:album:track-a:205";
+  const secondUri = "spotify:local:artist:album:track-b:205";
+  h.window.Spicetify.Player.data.item.uri = firstUri;
+  const first = h.api.getWordGlosses(units, "人生", "ja");
+  h.window.Spicetify.Player.data.item.uri = secondUri;
+  const second = h.api.getWordGlosses(units, "人生", "ja");
+  await h.flush();
+  await Promise.all([first, second]);
+  assert.equal(h.requests.length, 2);
+  assert.deepEqual(h.writes.map(([trackId]) => trackId), [`local-uri:${firstUri}`, `local-uri:${secondUri}`]);
 });
 
 test("local reading caches respect track and notation and discard old conversions", async () => {

@@ -1,4 +1,6 @@
+import { LRUCache } from "../core/LRUCache.mjs";
 import { createWordSupplementBatcher } from "./createWordSupplementBatcher.mjs";
+import { getWordSupplementTrackId } from "./wordSupplementRuntime.mjs";
 
 // Fetch and cache per-word readings and glosses for karaoke and share images.
 export function createWordSupplementService({
@@ -8,10 +10,9 @@ export function createWordSupplementService({
 }) {
 	const SUITABLE_BASE_LANGS = new Set(["ja", "ko", "zh"]);
 
-	const readingCache = new Map();
-	const glossCache = new Map();
-	// Requests from before an invalidation may finish, but cannot restore
-	// stale results, settle new loading state or change the new breaker.
+	const readingCache = new LRUCache(400);
+	const glossCache = new LRUCache(200);
+	// Clearing every track also resets the shared batcher and breaker.
 	let cacheGeneration = 0;
 	// In-flight promises keyed like the memory caches. Caches only store
 	// completed results, so without sharing, the supplement retry effect
@@ -23,8 +24,8 @@ export function createWordSupplementService({
 	// arriving before settlement join it instead of enqueuing a duplicate
 	// batch (empty results are also the loading state, so the retry effect
 	// cannot tell them apart on its own). The token guard only removes our
-	// own entry, so clearCaches() emptying the map cannot delete a newer
-	// request's bookkeeping — a settled failure always frees the key again.
+	// own entry, so an invalidation retires that request without clearing a
+	// newer entry under the same key.
 	const sharePending = (map, cacheKey, wanted, start) => {
 		const existing = map.get(cacheKey);
 		if (existing) {
@@ -32,11 +33,12 @@ export function createWordSupplementService({
 			return existing.promise;
 		}
 		const request = { consumers: new Set([wanted]), promise: null };
-		const isWanted = () => Array.from(request.consumers).some(consumer => !consumer || consumer());
-		request.promise = start(isWanted).finally(() => {
-			if (map.get(cacheKey) === request) map.delete(cacheKey);
-		});
+		const isCurrent = () => map.get(cacheKey) === request;
+		const isWanted = () => isCurrent() && Array.from(request.consumers).some(consumer => !consumer || consumer());
 		map.set(cacheKey, request);
+		request.promise = start({ isCurrent, isWanted }).finally(() => {
+			if (isCurrent()) map.delete(cacheKey);
+		});
 		return request.promise;
 	};
 
@@ -399,7 +401,7 @@ export function createWordSupplementService({
 			}
 			if (isAiCoolingDown()) return units.map(() => "");
 			const cacheKey = JSON.stringify([
-				"ai", trackId, normalizeLanguage(language), String(mode).toLowerCase(),
+				trackId, "ai", normalizeLanguage(language), String(mode).toLowerCase(),
 				targetLang, notation, sourceText, units.map((unit) => unit.surface)
 			]);
 			const cacheExtra = JSON.stringify([mode, targetLang, sourceText, zhToneCacheFlag(language)]);
@@ -418,7 +420,7 @@ export function createWordSupplementService({
 				readingCache.set(cacheKey, skipped);
 				return skipped;
 			}
-			return sharePending(pendingReadings, cacheKey, options.wanted, async (isWanted) => {
+			return sharePending(pendingReadings, cacheKey, options.wanted, async ({ isCurrent, isWanted }) => {
 				const persisted = await persistentGet("reading", {
 					targetLang: notation,
 					sourceLang: language,
@@ -426,7 +428,7 @@ export function createWordSupplementService({
 					extra: cacheExtra,
 					trackId,
 				});
-				if (generation !== cacheGeneration) return units.map(() => "");
+				if (!isCurrent()) return units.map(() => "");
 				if (persisted) {
 					const restored = reinsertSkipped(units.length, coreIndexes, persisted.values);
 					readingCache.set(cacheKey, restored);
@@ -448,7 +450,7 @@ export function createWordSupplementService({
 						notation,
 					}),
 				});
-				if (!slice || generation !== cacheGeneration) return units.map(() => "");
+				if (!slice || !isCurrent()) return units.map(() => "");
 				const activeReadings = cores.map((core, corePosition) => {
 					const reading = String(slice[corePosition] ?? "").trim();
 					const surface = units[coreIndexes[corePosition]]?.surface;
@@ -459,10 +461,6 @@ export function createWordSupplementService({
 				// keep the retry path effective for this line.
 				if (!normalized.some((value) => String(value ?? "").trim())) return normalized;
 				readingCache.set(cacheKey, normalized);
-				if (readingCache.size > 400) {
-					const firstKey = readingCache.keys().next().value;
-					readingCache.delete(firstKey);
-				}
 				// Persist the active subset (same shape as the lookup key);
 				// the full-width array is only the render shape.
 				persistentSet("reading", {
@@ -479,7 +477,7 @@ export function createWordSupplementService({
 		const helper = getTranslationModes();
 		if (!helper?.convertTraditional) return units.map(() => "");
 		const cacheKey = JSON.stringify([
-			"local", trackId, normalizeLanguage(language), String(mode).toLowerCase(),
+			trackId, "local", normalizeLanguage(language), String(mode).toLowerCase(),
 			notation, units.map((unit) => unit.surface)
 		]);
 		if (readingCache.has(cacheKey)) return readingCache.get(cacheKey);
@@ -498,7 +496,7 @@ export function createWordSupplementService({
 			readingCache.set(cacheKey, skippedLocal);
 			return skippedLocal;
 		}
-		return sharePending(pendingReadings, cacheKey, options.wanted, async (isWanted) => {
+		return sharePending(pendingReadings, cacheKey, options.wanted, async ({ isCurrent, isWanted }) => {
 			const persistedLocal = await persistentGet("reading", {
 				targetLang: localNotation,
 				sourceLang: language,
@@ -506,7 +504,7 @@ export function createWordSupplementService({
 				extra: mode,
 				trackId,
 			});
-			if (generation !== cacheGeneration) return units.map(() => "");
+			if (!isCurrent()) return units.map(() => "");
 			if (persistedLocal) {
 				const restoredLocal = reinsertSkipped(units.length, localCoreIndexes, persistedLocal.values);
 				readingCache.set(cacheKey, restoredLocal);
@@ -519,7 +517,7 @@ export function createWordSupplementService({
 					mode,
 					texts: localCores,
 				});
-				if (generation !== cacheGeneration) return units.map(() => "");
+				if (!isCurrent()) return units.map(() => "");
 				const activeReadings = localCores.map((core, corePosition) => {
 					const reading = String(converted?.[corePosition] ?? "").trim();
 					// A no-op conversion (e.g. kana in -> kana out unchanged for a
@@ -531,10 +529,6 @@ export function createWordSupplementService({
 				// Same no-cache rule as the AI branch above.
 				if (!readings.some((value) => String(value ?? "").trim())) return readings;
 				readingCache.set(cacheKey, readings);
-				if (readingCache.size > 400) {
-					const firstKey = readingCache.keys().next().value;
-					readingCache.delete(firstKey);
-				}
 				persistentSet("reading", {
 					targetLang: localNotation,
 					sourceLang: language,
@@ -551,23 +545,16 @@ export function createWordSupplementService({
 		});
 	};
 
-	const getTrackId = () => {
-		try {
-			const uri = getTrackUri() || "";
-			return uri.includes(":") ? uri.split(":").pop() : uri;
-		} catch {
-			return "";
-		}
-	};
-
 	// Explicit target wins (prefetch knows which track it is warming);
 	// otherwise fall back to the currently playing track (render path).
 	const resolveTrackId = (options) => {
-		const explicit = options?.trackId;
-		if (explicit !== undefined && explicit !== null && String(explicit).trim() !== "") {
-			return String(explicit).trim();
+		const explicit = getWordSupplementTrackId(options?.trackId);
+		if (explicit) return explicit;
+		try {
+			return getWordSupplementTrackId(getTrackUri());
+		} catch {
+			return "";
 		}
-		return getTrackId();
 	};
 
 	const getWordGlosses = async (units, lineText, sourceLang, options = {}) => {
@@ -598,7 +585,7 @@ export function createWordSupplementService({
 			glossCache.set(cacheKey, empty);
 			return empty;
 		}
-		return sharePending(pendingGlosses, cacheKey, options.wanted, async (isWanted) => {
+		return sharePending(pendingGlosses, cacheKey, options.wanted, async ({ isCurrent, isWanted }) => {
 			const persisted = await persistentGet("gloss", {
 				targetLang,
 				sourceLang: sourceLangKey,
@@ -606,7 +593,7 @@ export function createWordSupplementService({
 				extra: sourceText,
 				trackId,
 			});
-			if (generation !== cacheGeneration) return empty;
+			if (!isCurrent()) return empty;
 			if (persisted) {
 				const restored = reinsertSkipped(units.length, glossCoreIndexes, persisted.values);
 				glossCache.set(cacheKey, restored);
@@ -627,7 +614,7 @@ export function createWordSupplementService({
 					sourceLang: sourceLangKey,
 				}),
 			});
-			if (!slice || generation !== cacheGeneration) return empty;
+			if (!slice || !isCurrent()) return empty;
 			const activeGlosses = glossCores.map((core, corePosition) => {
 				const gloss = String(slice[corePosition] ?? "").trim();
 				const surface = units[glossCoreIndexes[corePosition]]?.surface;
@@ -637,10 +624,6 @@ export function createWordSupplementService({
 			// Same no-cache rule as the reading branches above.
 			if (!normalized.some((value) => String(value ?? "").trim())) return normalized;
 			glossCache.set(cacheKey, normalized);
-			if (glossCache.size > 200) {
-				const firstKey = glossCache.keys().next().value;
-				glossCache.delete(firstKey);
-			}
 			persistentSet("gloss", {
 				targetLang,
 				sourceLang: sourceLangKey,
@@ -653,7 +636,24 @@ export function createWordSupplementService({
 		});
 	};
 
-	const api = Object.freeze({
+	function clearCaches(identifier) {
+		const trackId = getWordSupplementTrackId(identifier);
+		const caches = [readingCache, glossCache, pendingReadings, pendingGlosses];
+		if (trackId) {
+			const prefix = `[${JSON.stringify(trackId)},`;
+			for (const cache of caches) {
+				for (const key of cache.keys()) {
+					if (key.startsWith(prefix)) cache.delete(key);
+				}
+			}
+			return;
+		}
+		cacheGeneration += 1;
+		for (const cache of caches) cache.clear();
+		wordBatcher.clear();
+	}
+
+	return Object.freeze({
 		initialized: true,
 		isSuitableSourceLanguage,
 		getSourceLanguage,
@@ -669,26 +669,13 @@ export function createWordSupplementService({
 		getLineKey,
 		getWordReadings,
 		getWordGlosses,
-		// Drop all memory caches, resolve pending batches empty, and reset
-		// the breaker. Persistent entries are cleared separately per track.
-		clearCaches: () => {
-			cacheGeneration += 1;
-			readingCache.clear();
-			glossCache.clear();
-			pendingReadings.clear();
-			pendingGlosses.clear();
-			wordBatcher.clear();
-		},
-		// Clear memory caches and tell mounted karaoke lines to refetch.
-		invalidate: () => {
+		clearCaches,
+		invalidate: (identifier) => {
+			const trackId = getWordSupplementTrackId(identifier);
+			clearCaches(trackId);
 			try {
-				api.clearCaches();
-			} catch { /* ignore */ }
-			try {
-				emit("ivLyrics:word-supplements-invalidated");
+				emit("ivLyrics:word-supplements-invalidated", trackId ? { trackId } : undefined);
 			} catch { /* ignore */ }
 		},
 	});
-
-	return api;
 }

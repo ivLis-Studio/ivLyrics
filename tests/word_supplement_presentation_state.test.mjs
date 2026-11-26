@@ -51,7 +51,7 @@ function harness() {
   const render = patch => { input = { ...input, ...patch }; cursor = 0; return renderWordStack(input); };
   const commit = () => { effects.splice(0).forEach(effect => effect()); };
   return { settings, requests, render, commit, api,
-    invalidate: () => listeners.get('ivLyrics:word-supplements-invalidated')(),
+    invalidate: trackId => listeners.get('ivLyrics:word-supplements-invalidated')({ detail: { trackId } }),
     async ready() {
       render(); commit();
       requests[0].resolve(['kan', 'ji']); requests[1].resolve(['Chinese', 'character']); await tick();
@@ -76,6 +76,20 @@ test('same-source settings refresh and invalidation retain the mounted word stac
   assert.equal(h.render(), partial, 'explicit same-source regeneration does not blink');
   h.requests[4].resolve(['new kan', 'new ji']); h.requests[5].resolve(['new gloss', 'character']); await tick();
   assert.equal(h.render().supplementByKey.get(0).gloss, 'new gloss');
+});
+
+test('only the mounted track refetches after targeted word detail invalidation', async () => {
+  const h = harness();
+  h.settings.uri = 'spotify:local:artist:album:title:205';
+  await h.ready();
+  const trackId = 'local-uri:spotify:local:artist:album:title:205';
+  assert.equal(h.requests[0].args[4].trackId, trackId);
+  h.invalidate('local-uri:spotify:local:artist:album:other:205');
+  h.render(); h.commit();
+  assert.equal(h.requests.length, 2);
+  h.invalidate(trackId);
+  h.render(); h.commit();
+  assert.equal(h.requests.length, 4);
 });
 
 for (const change of ['uri', 'target', 'source', 'language', 'units']) {

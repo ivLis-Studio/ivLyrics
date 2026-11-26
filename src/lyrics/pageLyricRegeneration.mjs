@@ -1,4 +1,5 @@
 import { getLyricDisplayModes, getLyricLanguageMode } from "./lyricPresentationIdentity.mjs";
+import { getWordSupplementTrackId } from "./wordSupplementRuntime.mjs";
 
 const REGENERATION_TARGETS = new Set(["phonetic", "translation", "cultural-annotations", "word-supplements"]);
 
@@ -69,10 +70,10 @@ export async function runPageLyricRegeneration(page, target, uri = page.state.ur
 }
 
 export async function regeneratePageWordSupplements(page, {
-  playbackUri, extractTrackId, getLyricsService, getPrefetcher, getSupplements, toast, translate,
+  playbackUri, getLyricsService, getPrefetcher, getSupplements, toast, translate,
 }) {
   const uri = page.state.uri || playbackUri();
-  const trackId = extractTrackId(uri) || uri;
+  const trackId = getWordSupplementTrackId(uri);
   if (!uri || !trackId) {
     toast.error(translate("notifications.noTrackPlaying"));
     return;
@@ -107,14 +108,14 @@ export async function regeneratePageWordSupplements(page, {
 
   try {
     // Stop outstanding requests from restoring entries during deletion.
-    supplements.clearCaches?.();
+    supplements.clearCaches?.(trackId);
     const cacheCleared = await getLyricsService()?.clearWordSupplementsCache?.(trackId);
     if (cacheCleared === false) {
       throw new Error("Failed to clear word details cache.");
     }
     // Invalidate after the persistent clear so refetching lines cannot
     // re-read stale entries back into memory.
-    supplements.invalidate?.();
+    supplements.invalidate?.(trackId);
     if (!page.isCurrentLyricsUri(uri)) return;
 
     // Explicitly refetch instead of relying on mounted lines' invalidation

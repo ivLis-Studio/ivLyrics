@@ -547,7 +547,6 @@ export default function LyricsServiceExtension() {
          * 특정 트랙의 단어별 보조 가사 캐시만 삭제
          */
         async clearWordSupplementsCache(trackId) {
-            readPronunciationFirst(window)?.clearTrack?.(trackId);
             return await LyricsCache.clearWordSupplementsForTrack(trackId);
         },
 

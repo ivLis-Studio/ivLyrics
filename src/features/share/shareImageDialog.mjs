@@ -5,6 +5,7 @@ import { renderShareImageControls } from "./renderShareImageControls.mjs";
 import { normalizeShareImageLyrics, resolveShareWordDetails } from "./shareImageLyricSelection.mjs";
 import { useShareImagePreview } from "./useShareImagePreview.mjs";
 import { createShareImageExportActions } from "./shareImageExportActions.mjs";
+import { getWordSupplementTrackId } from "../../lyrics/wordSupplementRuntime.mjs";
 
 export function createShareImageModal({
   react, translate, notify, readSegmenter, readSupplements, image = lyricsShareImage,
@@ -96,7 +97,7 @@ export function createShareImageModal({
     // active, then merged into the selected lines so preview and export
     // (which both consume `selectedLines`) stay in sync.
     const isWordExport = currentSettings.lyricsDetail === 'word';
-    const supplementTrackId = trackInfo?.uri?.split(':').pop();
+    const supplementTrackId = getWordSupplementTrackId(trackInfo?.uri);
     const [wordDetails, setWordDetails] = react.useState(null);
     const activeWordDetails = isWordExport && wordDetails?.lines === selectedLinesBase
       && wordDetails.trackId === supplementTrackId

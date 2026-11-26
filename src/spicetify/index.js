@@ -523,7 +523,6 @@ class LyricsContainer extends react.Component {
   async regenerateWordSupplements() {
     return regeneratePageWordSupplements(this, {
       playbackUri: () => Spicetify.Player.data?.item?.uri,
-      extractTrackId: uri => Utils.extractTrackId(uri),
       getLyricsService: () => getAppService("LyricsService", window),
       getPrefetcher: getAppWordSupplementPrefetcher,
       getSupplements: getAppWordSupplementService,

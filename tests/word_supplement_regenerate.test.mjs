@@ -82,8 +82,8 @@ test("regenerateWordSupplements explicitly refetches with force after clearing t
 			detectLanguage: () => "ja",
 		}),
 		getAppWordSupplementService: () => ({
-			clearCaches: () => calls.push(["memory"]),
-			invalidate: () => calls.push(["invalidate"]),
+			clearCaches: id => calls.push(["memory", id]),
+			invalidate: id => calls.push(["invalidate", id]),
 		}),
 		getAppWordSupplementPrefetcher: () => async (lines, options) => {
 			assert.equal(lines, karaoke);
@@ -97,7 +97,7 @@ test("regenerateWordSupplements explicitly refetches with force after clearing t
 	app.isCurrentLyricsUri = uri => uri === app.state.uri;
 	await app.regenerateWordSupplements();
 	assert.deepEqual(calls, [
-		["memory"], ["persistent", "T1"], ["invalidate"],
+		["memory", "T1"], ["persistent", "T1"], ["invalidate", "T1"],
 		["prefetch", { sourceLang: "ja", trackId: "T1", force: true }], ["success"],
 	]);
 });
@@ -164,6 +164,35 @@ test("an aborted word cache deletion cannot report success", async () => {
 	await assert.rejects(pending, /transaction aborted/);
 });
 
+test("a local track's word clear preserves its translation and pronunciation", async () => {
+	const { service, request, transaction, ready } = loadPersistentClear();
+	const trackId = "local-uri:spotify:local:artist:album:word:205";
+	const other = "local-uri:spotify:local:artist:album:another:205";
+	service._getTrackCacheKeyRange = () => ({});
+	const pending = service.clearWordSupplementsForTrack(trackId);
+	await ready;
+	const deleted = [];
+	for (const [id, type, suffix] of [
+		[trackId, "translation", "en:translation"],
+		[trackId, undefined, "en:phonetic"],
+		[trackId, "word", "en:word:gloss:ja:hash"],
+		[trackId, undefined, "en:word:reading:ja:hash"],
+		[other, "word", "en:word:reading:ja:hash"],
+	]) {
+		request.onsuccess({ target: { result: {
+			value: { trackId: id, type, cacheKey: `${id}:${suffix}` },
+			delete: () => deleted.push([id, suffix]),
+			continue() {},
+		} } });
+	}
+	request.onsuccess({ target: { result: null } });
+	transaction.oncomplete();
+	assert.equal(await pending, true);
+	assert.deepEqual(deleted, [
+		[trackId, "en:word:gloss:ja:hash"], [trackId, "en:word:reading:ja:hash"],
+	]);
+});
+
 test("word prefetch reports success only when a supplement was actually returned", async () => {
 	let result = [];
 	const prefetch = createTestPrefetcher({ getWordGlosses: async () => result });
@@ -192,9 +221,10 @@ test("clearing persistent cache plus invalidate makes the next fetch resend the 
 	assert.equal(glossCalls.length, 1);
 
 	// Regenerate sequence: persistent clear, then memory invalidation.
+	api.clearCaches("T1");
 	const cleared = await window.LyricsService.clearWordSupplementsCache("T1");
 	assert.equal(cleared, true);
-	window.ivLyricsWordSupplements.invalidate();
+	api.invalidate("T1");
 
 	// Next fetch must miss both caches and resend the AI request.
 	const pending2 = api.getWordGlosses(units, "line", "ja", { trackId: "T1" });

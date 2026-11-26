@@ -1,3 +1,5 @@
+import { getWordSupplementTrackId } from "./wordSupplementRuntime.mjs";
+
 // Word-stack supplements (per-word gloss + per-word reading) for suitable
 // source languages. Units are the existing karaoke word units so the sung
 // highlight and the annotations share the same grouping. Returns null when
@@ -92,13 +94,15 @@ export function createKaraokeWordSupplementHook({
 		currentRequestRef.current = { api: supplementsApi, readingKey, glossKey };
 		const [wordRevision, setWordRevision] = useState(0);
 		const [wordRetry, setWordRetry] = useState(0);
-		useEffect(() => subscribeInvalidation(() => {
+		useEffect(() => subscribeInvalidation(event => {
+			const trackId = event?.detail?.trackId;
+			if (trackId && trackId !== getWordSupplementTrackId(getTrackUri())) return;
 			setWordRevision((revision) => revision + 1);
 		}), []);
 		useEffect(() => {
 			if (!readingKey && !glossKey) return undefined;
 			let cancelled = false;
-			const options = trackUri ? { trackId: trackUri.split(":").pop() } : undefined;
+			const options = trackUri ? { trackId: getWordSupplementTrackId(trackUri) } : undefined;
 			const publish = (slot, key, setter, values) => {
 				if (cancelled || !Array.isArray(values)
 					|| currentRequestRef.current?.api !== supplementsApi

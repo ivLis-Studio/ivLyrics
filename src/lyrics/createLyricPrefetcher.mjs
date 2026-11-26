@@ -2,6 +2,7 @@ import { isUserEditedTranslation, readTranslationResultLines } from "./translati
 import { getLyricDisplayModes, getLyricLanguageMode } from "./lyricPresentationIdentity.mjs";
 import { isAiMode, isPronunciationMode } from "./lyricTranslationModes.mjs";
 import { readPageLyricsSource, writePageLyricsSource } from "./pageLyricsSourceCache.mjs";
+import { getWordSupplementTrackId } from "./wordSupplementRuntime.mjs";
 
 export function createLyricPrefetcher({
   requests, sourceCache, translationCache, readVisual, getService, getWordSupplementPrefetcher, getPronunciationSlots, getMarketplaceReady, extractTrackId,
@@ -170,8 +171,7 @@ export function createLyricPrefetcher({
       const detected = getService("LyricsService").detectLanguage(karaoke);
       // Target track must be explicit: supplements cached while prefetching B
       // must not be keyed by whichever track (A) is still playing.
-      const uri = String(trackInfo?.uri || "");
-      const trackId = extractTrackId(uri) || (uri.includes(":") ? uri.split(":").pop() : uri);
+      const trackId = getWordSupplementTrackId(trackInfo?.uri);
       const loaded = await prefetch(karaoke, { sourceLang: detected, trackId, ...(wanted && { wanted }) });
       return loaded ? true : null;
     } catch (error) {

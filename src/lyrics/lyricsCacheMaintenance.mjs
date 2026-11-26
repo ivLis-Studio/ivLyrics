@@ -8,10 +8,15 @@ const hasStore = (db, name) => db.objectStoreNames.contains(name);
 const presentStores = db => LYRICS_CACHE_STORES.filter(name => hasStore(db, name));
 
 function deleteTrackRecords(source, trackId, keyRange, type) {
+    const prefix = `${trackId}:`;
     visitLyricsCacheRecords(source, keyRange, cursor => {
         const record = cursor.value;
-        if (!keyRange && record?.trackId !== trackId) return;
-        if (type && record?.type !== type && !String(record?.cacheKey || '').includes(`:${type}:`)) return;
+        if ((!keyRange || record?.trackId != null) && record?.trackId !== trackId) return;
+        if (type) {
+            const key = String(record?.cacheKey || '');
+            const recordType = record?.type || (key.startsWith(prefix) ? key.slice(prefix.length).split(':', 2)[1] : null);
+            if (recordType !== type) return;
+        }
         cursor.delete();
     });
 }
