@@ -901,7 +901,8 @@ xdg-mime() {
     esac
 }
 update-desktop-database() { :; }
-export -f uname curl xdg-mime update-desktop-database
+open() { printf '%s\n' "$1" > "$IVL_TEST_ROOT/opened-log"; }
+export -f uname curl xdg-mime update-desktop-database open
 if [ "$IVL_TEST_REGISTER" = true ]; then
     SPICETIFY_STATE='backup $(literal) path' XDG_STATE_HOME='custom XDG state' bash "$2" "$3"
 fi
@@ -946,6 +947,20 @@ test('a Unix protocol update uses the registered Spicetify and XDG state paths f
     const { root, profile, environment, result } = runUnixProtocolFixture(context, true);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.deepEqual(environment, [profile, join(root, 'backup $(literal) path'), join(root, 'custom XDG state')]);
+    const log = join(root, 'custom XDG state', 'ivLyrics', 'updater.log');
+    assert.match(readFileSync(log, 'utf8'), /ivLyrics update completed/);
+    assert.equal(existsSync(join(root, 'state', 'ivLyrics', 'updater.log')), false);
+});
+
+test('open-log opens the registered Linux log even after its Spicetify config was removed', { skip: !canRun }, context => {
+    const { root, environment, result } = runUnixProtocolFixture(context, true, 'ivlyrics-updater://open-log', {
+        missingConfig: true,
+    });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const log = join(root, 'custom XDG state', 'ivLyrics', 'updater.log');
+    assert.equal(readFileSync(join(root, 'opened-log'), 'utf8').trimEnd(), log);
+    assert.equal(existsSync(log), true);
+    assert.equal(environment, null);
 });
 
 test('a Unix protocol update follows the profile that owns a linked app', { skip: !canRun }, context => {

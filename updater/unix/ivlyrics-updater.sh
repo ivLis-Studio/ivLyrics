@@ -8,17 +8,19 @@ INSTALLER_URLS=(
 )
 export PATH="${HOME}/.spicetify:${HOME}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
-if [[ "$(uname -s)" == "Darwin" ]]; then
-    LOG_ROOT="${HOME}/Library/Logs/ivLyrics"
-else
-    STATE_HOME="${XDG_STATE_HOME:-${HOME}/.local/state}"
-    LOG_ROOT="${STATE_HOME}/ivLyrics"
-fi
+OS_NAME="$(uname -s)"
 
-LOG_PATH="${LOG_ROOT}/updater.log"
+configure_log_path() {
+    if [[ "$OS_NAME" == Darwin ]]; then
+        LOG_ROOT="${HOME}/Library/Logs/ivLyrics"
+    else
+        LOG_ROOT="${XDG_STATE_HOME:-${HOME}/.local/state}/ivLyrics"
+    fi
+    LOG_PATH="${LOG_ROOT}/updater.log"
+}
 
 notify_macos() {
-    if [[ "$(uname -s)" != "Darwin" ]]; then
+    if [[ "$OS_NAME" != Darwin ]]; then
         return 0
     fi
     if ! command -v osascript >/dev/null 2>&1; then
@@ -137,7 +139,6 @@ restore_spicetify_state() {
     local state_path xdg_state_path
     [[ -f "$saved_environment" ]] || return 0
     if ! { IFS= read -r -d '' state_path && IFS= read -r -d '' xdg_state_path; } < "$saved_environment"; then
-        log "Could not read the configured Spicetify state. Install ivLyrics again to repair the updater."
         return 1
     fi
 
@@ -153,25 +154,26 @@ restore_spicetify_state() {
     fi
 }
 
-restore_spicetify_profile() {
-    local script_dir profile
+find_registered_spicetify_profile() {
+    local script_dir
     # The launcher path identifies the profile even when CustomApps or ivLyrics is a link.
     script_dir="$(CDPATH= cd -L -- "$(dirname "${BASH_SOURCE[0]}")" && pwd -L)" || return 1
     case "$script_dir" in
         */CustomApps/ivLyrics/updater/unix)
-            profile="${script_dir%/CustomApps/ivLyrics/updater/unix}"
-            if [[ ! -f "$profile/config-xpui.ini" ]]; then
-                log "The registered Spicetify config is missing: $profile/config-xpui.ini"
-                return 1
-            fi
-            export SPICETIFY_CONFIG="$profile"
-            restore_spicetify_state "$script_dir"
+            printf '%s' "${script_dir%/CustomApps/ivLyrics/updater/unix}"
             ;;
     esac
 }
 
 run_update() {
-    restore_spicetify_profile || return 1
+    local profile="$1"
+    if [[ -n "$profile" ]]; then
+        if [[ ! -f "$profile/config-xpui.ini" ]]; then
+            log "The registered Spicetify config is missing: $profile/config-xpui.ini"
+            return 1
+        fi
+        export SPICETIFY_CONFIG="$profile"
+    fi
 
     log "Starting ivLyrics update."
     if command -v spicetify >/dev/null 2>&1; then
@@ -211,15 +213,30 @@ run_update() {
 }
 
 main() {
-    local action
-    if ! action="$(get_action "$URI")"; then
-        log "Unsupported updater action: $URI"
-        exit 1
+    local action profile='' state_ok=true
+    if action="$(get_action "$URI")"; then
+        profile="$(find_registered_spicetify_profile)" || return 1
+        if [[ -n "$profile" ]] && ! restore_spicetify_state "$profile/CustomApps/ivLyrics/updater/unix"; then
+            state_ok=false
+        fi
     fi
+    # A desktop launch may have a different XDG_STATE_HOME than registration.
+    # Both actions resolve the log after restoring the registered environment.
+    configure_log_path
 
     case "$action" in
-        update) run_update ;;
+        update)
+            if [[ "$state_ok" == false ]]; then
+                log "Could not read the configured Spicetify state. Install ivLyrics again to repair the updater."
+                return 1
+            fi
+            run_update "$profile"
+            ;;
         open-log) open_log ;;
+        *)
+            log "Unsupported updater action: $URI"
+            return 1
+            ;;
     esac
 }
 
