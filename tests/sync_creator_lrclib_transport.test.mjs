@@ -213,3 +213,55 @@ test('closing aborts the search without a late state update or toast', async () 
   assert.deepEqual(h.calls, before);
   assert.deepEqual(h.messages, []);
 });
+
+test('a newer source lookup aborts the old ranked and direct ID requests', async () => {
+  const ranked = deferred(), direct = deferred();
+  const received = [];
+  const h = harness(
+    { fetch: (_url, options) => { received.push(options.signal); return direct.promise; } },
+    { getAddon: () => ({ searchCandidates: (_info, options) => { received.push(options?.signal); return ranked.promise; } }) },
+  );
+  const automatic = h.api.loadLyrics();
+  const manual = h.api.loadLrclibById();
+  assert.equal(received[0]?.aborted, true);
+  assert.equal(received[1]?.aborted, false);
+  h.context.lrclibCandidates = [candidate];
+  await h.setUpActions().applySelectedLrclibCandidate(candidate.candidateKey);
+  assert.equal(received[1].aborted, true);
+  ranked.resolve({ success: false });
+  direct.resolve(Response.json(candidate));
+  await Promise.all([automatic, manual]);
+  assert.equal(h.calls.filter(([name]) => name === 'applyLoadedLyricsResult').length, 1);
+});
+
+test('starting close prevents a retired response from applying during or after the failed save', async () => {
+  for (const respondBeforeCloseSettles of [true, false]) {
+    const response = deferred(), saved = deferred();
+    const h = harness({ fetch: (_url, { signal }) => {
+      assert.equal(signal.aborted, false);
+      return response.promise.then(value => value.clone());
+    } });
+    const loading = h.api.loadLrclibById();
+    const closing = h.context.lifetime.requestClose({
+      stopRecording() {},
+      saveDraft: () => saved.promise,
+      onSaveError() {},
+      onClosed: () => assert.fail('a failed save keeps the editor open'),
+    });
+    if (respondBeforeCloseSettles) {
+      response.resolve(Response.json(candidate));
+      await loading;
+      saved.resolve(false);
+      await closing;
+    } else {
+      saved.resolve(false);
+      await closing;
+      response.resolve(Response.json(candidate));
+      await loading;
+    }
+    assert.equal(h.context.lifetime.canStartOperation(), true);
+    assert.equal(h.calls.some(([name]) => name === 'applyLoadedLyricsResult'), false);
+    await h.api.loadLrclibById();
+    assert.equal(h.calls.filter(([name]) => name === 'applyLoadedLyricsResult').length, 1);
+  }
+});

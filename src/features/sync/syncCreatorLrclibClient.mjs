@@ -17,7 +17,7 @@ export function createSyncCreatorLrclibClient({ getTransport, getLyricsSnapshot 
 		return response.json();
 	}
 
-	const getLrclibRecord = (id) => readLrclibJson(`https://lrclib.net/api/get/${encodeURIComponent(id)}`);
+	const getLrclibRecord = (id, signal) => readLrclibJson(`https://lrclib.net/api/get/${encodeURIComponent(id)}`, { signal });
 	const searchLrclibRecords = (query, signal) => {
 		const params = new URLSearchParams({ q: query });
 		return readLrclibJson(`https://lrclib.net/api/search?${params.toString()}`, { signal });

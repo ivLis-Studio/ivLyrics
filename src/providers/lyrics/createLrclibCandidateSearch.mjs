@@ -83,8 +83,13 @@ export function createLrclibCandidateSearch({
         };
     }
 
-    async function searchCandidates(info) {
+    async function searchCandidates(info, { signal } = {}) {
+        const request = signal ? (url, options, timeout) => {
+            signal.throwIfAborted();
+            return fetchWithTimeout(url, { ...options, signal }, timeout);
+        } : undefined;
         try {
+            signal?.throwIfAborted();
             const { title, artist, album, searchSettings, trackDurationSec, expectedArtists } = parseLrclibTrackMetadata(info);
 
             if (!title || !artist || !trackDurationSec) {
@@ -97,6 +102,7 @@ export function createLrclibCandidateSearch({
             }
 
             const { headers, syncDataLineCharCounts, syncDataSource } = await resolveLrclibTrackContext(info);
+            signal?.throwIfAborted();
 
             let sourceDirectLookupAttempted = false;
             let cachedSourceDirectPreviewCandidate = null;
@@ -108,12 +114,13 @@ export function createLrclibCandidateSearch({
 
                 try {
                     const directCandidate = decorateDirectCandidate(
-                        await fetchLrclibCandidateById(syncDataSource, headers),
+                        await fetchLrclibCandidateById(syncDataSource, headers, { request }),
                         syncDataSource,
                         trackDurationSec
                     );
                     cachedSourceDirectPreviewCandidate = buildDirectPreviewCandidate(directCandidate);
                 } catch (e) {
+                    signal?.throwIfAborted();
                     debug('[LR-DEBUG] Failed to restore LRCLIB sync-data source:', e?.message || e);
                     cachedSourceDirectPreviewCandidate = null;
                 }
@@ -136,10 +143,13 @@ export function createLrclibCandidateSearch({
             });
 
             const sourceDirectPreviewCandidate = await getSourceDirectPreviewCandidate();
+            signal?.throwIfAborted();
             if (sourceDirectPreviewCandidate) {
                 return buildSourceDirectSearchResult(sourceDirectPreviewCandidate);
             }
-            const runSearchFlow = createLrclibSearchFlowRunner({ headers, searchSettings, trackDurationSec, syncDataLineCharCounts, syncDataSource });
+            const runSearchFlow = createLrclibSearchFlowRunner({
+                headers, searchSettings, trackDurationSec, syncDataLineCharCounts, syncDataSource, request,
+            });
 
             const primaryMetadata = {
                 title,
@@ -149,6 +159,7 @@ export function createLrclibCandidateSearch({
             };
 
             const primarySearchFlow = await runSearchFlow(primaryMetadata, { includeAlbum: true });
+            signal?.throwIfAborted();
             if (primarySearchFlow.fatal) {
                 return {
                     success: false,
@@ -159,6 +170,7 @@ export function createLrclibCandidateSearch({
             }
 
             const { body, selectedFlow, selectedSource, englishSearchFlow, englishMetadata, englishSearchError } = await selectLrclibCandidate({ primarySearchFlow, runSearchFlow, syncDataLineCharCounts, syncDataSource, info });
+            signal?.throwIfAborted();
 
             if (!body && getSyncDataLrclibId(syncDataSource)) {
                 const directPreviewCandidate = await getSourceDirectPreviewCandidate();

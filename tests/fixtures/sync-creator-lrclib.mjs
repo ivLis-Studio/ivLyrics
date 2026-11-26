@@ -1,5 +1,7 @@
 import { useSyncCreatorLrclibActions } from '#ivlyrics/features/sync/syncCreatorLrclibActions.mjs';
 import { createSyncCreatorLrclibClient } from '#ivlyrics/features/sync/syncCreatorLrclibClient.mjs';
+import { createSyncCreatorSourceRequests } from '#ivlyrics/features/sync/syncCreatorSourceRequests.mjs';
+import { createSyncCreatorEditorLifetime } from '#ivlyrics/features/sync/syncCreatorEditorLifetime.mjs';
 import { createLrclibSearchRequests } from '#ivlyrics/providers/lyrics/lrclibSearchRequests.mjs';
 import { getRuntimeService } from '#ivlyrics/spicetify/runtimeServices.mjs';
 
@@ -18,6 +20,10 @@ export function setUpSyncCreatorLrclibActions(context, setState) {
         isOpen: () => context.isEditorOpen?.() ?? true,
         setPending: context.setIsSearchingLrclib,
     });
+    const lifetime = context.lifetime ??= createSyncCreatorEditorLifetime(() => context.isEditorOpen?.() ?? true);
+    context.sourceRequests ??= createSyncCreatorSourceRequests({
+        lifetime, isCurrentRevision: id => context.isCurrentSyncCreatorSourceChange(id),
+    });
     const client = createSyncCreatorLrclibClient({
         getTransport: () => getRuntimeService('IvLyricsLrclibTransport', context.window),
         getLyricsSnapshot: uri => getRuntimeService('LyricsService', context.window)?.getLyricsSnapshot?.(uri),
@@ -34,8 +40,10 @@ export function setUpSyncCreatorLrclibActions(context, setState) {
             ...context,
             beginSyncCreatorSourceChange() {
                 context.searchRequests.cancel();
-                return context.beginSyncCreatorSourceChange();
+                return context.sourceRequests.begin(() => context.beginSyncCreatorSourceChange());
             },
+            isCurrentSyncCreatorSourceChange: context.sourceRequests.isCurrent,
+            getSourceSignal: context.sourceRequests.getSignal,
             async readPublishedSync(provider) {
                 const service = getRuntimeService('SyncDataService', context.window);
                 return (await service?.getSyncData?.(context.trackId, provider))?.syncData ?? null;

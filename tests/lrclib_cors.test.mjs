@@ -471,3 +471,26 @@ test('ID lookup keeps missing/invalid response handling and malformed JSON outsi
     await assert.rejects(h.fetchCandidate(syncSource), SyntaxError);
     assert.equal(h.requests.length, 1);
 });
+
+for (const restoreById of [true, false]) {
+    test(`cancelling an automatic candidate lookup stops its ${restoreById ? 'saved ID request' : 'ranked search'} and its fallbacks`, async () => {
+        const controller = new AbortController();
+        const started = deferred();
+        const syncData = restoreById ? {
+            source: { provider: 'lrclib', lrclibId: String(candidate.id), preferredLyricsSource: 'synced' },
+        } : null;
+        const h = setup((_url, { signal }) => {
+            started.resolve(signal);
+            return waitForAbort(signal);
+        }, { syncData });
+        const lookup = h.addon.searchCandidates(track, { signal: controller.signal });
+        const fetchSignal = await started.promise;
+
+        controller.abort();
+        assert.equal((await lookup).success, false);
+        assert.equal(fetchSignal.aborted, true);
+        assert.equal(h.requests.length, 1);
+        assert.equal(h.requests[0].url === GET_URL, restoreById);
+        assert.equal(h.timers.size, 0);
+    });
+}

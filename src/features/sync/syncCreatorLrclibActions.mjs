@@ -18,7 +18,7 @@ export function useSyncCreatorLrclibActions({
 	},
 	client: { getLrclibRecord, searchLrclibRecords, getLoadedLrclibId: resolveSyncCreatorLoadedLyricsLrclibId },
 	sourceChange: {
-		applyLoadedLyricsResult, beginSyncCreatorSourceChange, isCurrentSyncCreatorSourceChange, readPublishedSync,
+		applyLoadedLyricsResult, beginSyncCreatorSourceChange, isCurrentSyncCreatorSourceChange, readPublishedSync, getSourceSignal,
 		resetSyncCreatorLyricsLoadingState, clearLrclibCandidateState, prepareImportedLyricsSource, captureOfflineDraftRecovery,
 	},
 	ui: {
@@ -134,7 +134,7 @@ export function useSyncCreatorLrclibActions({
 		clearLrclibCandidateState();
 
 		try {
-			const candidate = await getLrclibRecord(lrclibId);
+			const candidate = await getLrclibRecord(lrclibId, getSourceSignal(sourceChangeRequestId));
 			if (!isCurrentSyncCreatorSourceChange(sourceChangeRequestId)) return;
 			if (!candidate || (!candidate.syncedLyrics && !candidate.plainLyrics)) {
 				throw new Error('No lyrics found');
@@ -168,7 +168,7 @@ export function useSyncCreatorLrclibActions({
 		clearLrclibCandidateState,
 		isCurrentSyncCreatorSourceChange,
 		lrclibIdInput,
-		lyrics, getLrclibRecord, i18n, toast, logger, lrclibIdInputRevisionRef, selectedLrclibSourceRef, resetSyncCreatorLyricsLoadingState,
+		lyrics, getLrclibRecord, getSourceSignal, i18n, toast, logger, lrclibIdInputRevisionRef, selectedLrclibSourceRef, resetSyncCreatorLyricsLoadingState,
 		setError, setIsLoading, setIsLoadingLrclibId, readPublishedSync, searchRequests,
 	]);
 
@@ -297,7 +297,7 @@ export function useSyncCreatorLrclibActions({
 			debug?.('[SyncDataCreator] Trying fixed provider:', SYNC_CREATOR_SOURCE_ADDON_ID);
 
 			if (typeof lrclibAddon?.searchCandidates === 'function') {
-				const searchResult = await lrclibAddon.searchCandidates(info);
+				const searchResult = await lrclibAddon.searchCandidates(info, { signal: getSourceSignal(sourceChangeRequestId) });
 				if (!isCurrentSyncCreatorSourceChange(sourceChangeRequestId)) return;
 				if (!searchResult?.success) {
 					throw new Error(searchResult?.error || 'No lyrics found');
@@ -364,7 +364,7 @@ export function useSyncCreatorLrclibActions({
 		beginSyncCreatorSourceChange,
 		captureOfflineDraftRecovery,
 		clearLrclibCandidateState,
-		isCurrentSyncCreatorSourceChange, debug, getLegacyProviders, getLyricsAddonManager, i18n, logger, primaryArtist,
+		isCurrentSyncCreatorSourceChange, debug, getLegacyProviders, getLyricsAddonManager, getSourceSignal, i18n, logger, primaryArtist,
 		resolveSyncCreatorLoadedLyricsLrclibId, resetSyncCreatorLyricsLoadingState, lrclibIdInputEditedRef,
 		searchRequests,
 		setError, setIsLoading, setLrclibIdInput, setLrclibCandidates, setPreviewLrclibCandidateKey,
