@@ -177,64 +177,80 @@ body.${activeBodyClass} [data-testid="lyrics-npv-section"] {
   z-index: 2;
 }
 
+/* The blobs move with transform only: animating top/left re-ran layout for
+   the panel on every frame, wherever the Now Playing view was open. Each blob
+   starts at the container origin and its size is a fixed fraction of the
+   container, so translate = the former top/left / size. The blur sits on an
+   unanimated ::before, which is rasterized once with the blob's layer instead
+   of being re-blurred on the compositor every frame. Same pixels and path. */
 .ivlyrics-panel-bg-blob {
   position: absolute;
+  top: 0;
+  left: 0;
   border-radius: 50%;
-  filter: blur(34px);
   opacity: 0.82;
   mix-blend-mode: screen;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  will-change: transform, filter;
+  will-change: transform;
 }
 
-.ivlyrics-panel-bg-blob.blob-1 { width: 92%; height: 92%; background: rgba(var(--ivlyrics-panel-c2, 60, 40, 70), 1); animation: ivlyrics-panel-blob-1 18s ease-in-out infinite; }
-.ivlyrics-panel-bg-blob.blob-2 { width: 82%; height: 82%; background: rgba(var(--ivlyrics-panel-c3, 20, 50, 60), 0.95); animation: ivlyrics-panel-blob-2 22s ease-in-out infinite; }
-.ivlyrics-panel-bg-blob.blob-3 { width: 62%; height: 62%; background: rgba(var(--ivlyrics-panel-c2, 60, 40, 70), 0.82); filter: blur(28px); animation: ivlyrics-panel-blob-3 15s ease-in-out infinite; }
-.ivlyrics-panel-bg-blob.blob-4 { width: 84%; height: 84%; background: rgba(var(--ivlyrics-panel-c3, 20, 50, 60), 0.72); filter: blur(30px); animation: ivlyrics-panel-blob-4 25s ease-in-out infinite; }
-.ivlyrics-panel-bg-blob.blob-5 { width: 58%; height: 58%; background: rgba(var(--ivlyrics-panel-c2, 60, 40, 70), 0.68); filter: blur(26px); animation: ivlyrics-panel-blob-5 16s ease-in-out infinite; }
-.ivlyrics-panel-bg-blob.blob-6 { width: 100%; height: 100%; background: rgba(var(--ivlyrics-panel-c3, 20, 50, 60), 0.52); filter: blur(38px); animation: ivlyrics-panel-blob-6 20s ease-in-out infinite; }
+.ivlyrics-panel-bg-blob::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--ivlyrics-panel-blob-fill);
+  filter: blur(var(--ivlyrics-panel-blob-blur, 34px));
+}
+
+.ivlyrics-panel-bg-blob.blob-1 { width: 92%; height: 92%; --ivlyrics-panel-blob-fill: rgba(var(--ivlyrics-panel-c2, 60, 40, 70), 1); animation: ivlyrics-panel-blob-1 18s ease-in-out infinite; }
+.ivlyrics-panel-bg-blob.blob-2 { width: 82%; height: 82%; --ivlyrics-panel-blob-fill: rgba(var(--ivlyrics-panel-c3, 20, 50, 60), 0.95); animation: ivlyrics-panel-blob-2 22s ease-in-out infinite; }
+.ivlyrics-panel-bg-blob.blob-3 { width: 62%; height: 62%; --ivlyrics-panel-blob-fill: rgba(var(--ivlyrics-panel-c2, 60, 40, 70), 0.82); --ivlyrics-panel-blob-blur: 28px; animation: ivlyrics-panel-blob-3 15s ease-in-out infinite; }
+.ivlyrics-panel-bg-blob.blob-4 { width: 84%; height: 84%; --ivlyrics-panel-blob-fill: rgba(var(--ivlyrics-panel-c3, 20, 50, 60), 0.72); --ivlyrics-panel-blob-blur: 30px; animation: ivlyrics-panel-blob-4 25s ease-in-out infinite; }
+.ivlyrics-panel-bg-blob.blob-5 { width: 58%; height: 58%; --ivlyrics-panel-blob-fill: rgba(var(--ivlyrics-panel-c2, 60, 40, 70), 0.68); --ivlyrics-panel-blob-blur: 26px; animation: ivlyrics-panel-blob-5 16s ease-in-out infinite; }
+.ivlyrics-panel-bg-blob.blob-6 { width: 100%; height: 100%; --ivlyrics-panel-blob-fill: rgba(var(--ivlyrics-panel-c3, 20, 50, 60), 0.52); --ivlyrics-panel-blob-blur: 38px; animation: ivlyrics-panel-blob-6 20s ease-in-out infinite; }
 
 @keyframes ivlyrics-panel-blob-1 {
-  0%, 100% { top: -28%; left: -28%; transform: scale(1); }
-  20% { top: 4%; left: 46%; transform: scale(1.12); }
-  40% { top: 44%; left: 24%; transform: scale(0.9); }
-  60% { top: 20%; left: -10%; transform: scale(1.14); }
-  80% { top: -12%; left: 18%; transform: scale(0.96); }
+  0%, 100% { transform: translate(-30.4348%, -30.4348%) scale(1); }
+  20% { transform: translate(50%, 4.3478%) scale(1.12); }
+  40% { transform: translate(26.087%, 47.8261%) scale(0.9); }
+  60% { transform: translate(-10.8696%, 21.7391%) scale(1.14); }
+  80% { transform: translate(19.5652%, -13.0435%) scale(0.96); }
 }
 
 @keyframes ivlyrics-panel-blob-2 {
-  0%, 100% { top: 46%; left: 56%; transform: scale(1); }
-  25% { top: 16%; left: -18%; transform: scale(1.2); }
-  50% { top: -18%; left: 36%; transform: scale(0.86); }
-  75% { top: 40%; left: 68%; transform: scale(1.1); }
+  0%, 100% { transform: translate(68.2927%, 56.0976%) scale(1); }
+  25% { transform: translate(-21.9512%, 19.5122%) scale(1.2); }
+  50% { transform: translate(43.9024%, -21.9512%) scale(0.86); }
+  75% { transform: translate(82.9268%, 48.7805%) scale(1.1); }
 }
 
 @keyframes ivlyrics-panel-blob-3 {
-  0%, 100% { top: 58%; left: -12%; transform: scale(1); }
-  33% { top: -24%; left: 58%; transform: scale(1.28); }
-  66% { top: 36%; left: 38%; transform: scale(0.82); }
+  0%, 100% { transform: translate(-19.3548%, 93.5484%) scale(1); }
+  33% { transform: translate(93.5484%, -38.7097%) scale(1.28); }
+  66% { transform: translate(61.2903%, 58.0645%) scale(0.82); }
 }
 
 @keyframes ivlyrics-panel-blob-4 {
-  0%, 100% { top: -34%; left: 66%; transform: scale(1); }
-  20% { top: 58%; left: 48%; transform: scale(0.9); }
-  40% { top: 36%; left: -22%; transform: scale(1.18); }
-  60% { top: -12%; left: 28%; transform: scale(1.05); }
-  80% { top: 18%; left: 78%; transform: scale(0.86); }
+  0%, 100% { transform: translate(78.5714%, -40.4762%) scale(1); }
+  20% { transform: translate(57.1429%, 69.0476%) scale(0.9); }
+  40% { transform: translate(-26.1905%, 42.8571%) scale(1.18); }
+  60% { transform: translate(33.3333%, -14.2857%) scale(1.05); }
+  80% { transform: translate(92.8571%, 21.4286%) scale(0.86); }
 }
 
 @keyframes ivlyrics-panel-blob-5 {
-  0%, 100% { top: 68%; left: 48%; transform: scale(1); }
-  25% { top: 28%; left: 78%; transform: scale(1.24); }
-  50% { top: -12%; left: 18%; transform: scale(0.9); }
-  75% { top: 48%; left: -16%; transform: scale(1.1); }
+  0%, 100% { transform: translate(82.7586%, 117.2414%) scale(1); }
+  25% { transform: translate(134.4828%, 48.2759%) scale(1.24); }
+  50% { transform: translate(31.0345%, -20.6897%) scale(0.9); }
+  75% { transform: translate(-27.5862%, 82.7586%) scale(1.1); }
 }
 
 @keyframes ivlyrics-panel-blob-6 {
-  0%, 100% { top: 24%; left: 24%; transform: scale(1); }
-  33% { top: -24%; left: -22%; transform: scale(1.15); }
-  66% { top: 58%; left: 58%; transform: scale(0.92); }
+  0%, 100% { transform: translate(24%, 24%) scale(1); }
+  33% { transform: translate(-22%, -24%) scale(1.15); }
+  66% { transform: translate(58%, 58%) scale(0.92); }
 }
 
 .ivlyrics-panel-header,

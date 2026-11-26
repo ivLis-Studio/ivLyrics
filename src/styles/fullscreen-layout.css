@@ -38,7 +38,10 @@
   pointer-events: none;
 }
 
-.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyricsPage.scrolling-active .lyrics-lyricsContainer-LyricsLine {
+/* Browsing blur follows the row children too (see the fade-blur rule in
+   lyrics-layout.css); the scroll position supplies the index here. */
+.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyricsPage.scrolling-active .lyrics-lyricsContainer-SyncedLyrics
+  > .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) > * {
   filter: blur(calc(var(--manual-blur-index, var(--blur-index)) * 1.5px));
 }
 

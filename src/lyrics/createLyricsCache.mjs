@@ -19,10 +19,13 @@ async function readUnexpiredRecord(cache, db, storeName, key, expiryType) {
 }
 
 async function writeCacheRecord(cache, db, storeName, record) {
+    let sizeBytes = NaN;
     await writeLyricsCacheTransaction(db, storeName, tx => {
-        tx.objectStore(storeName).put(cache._withSize({ ...record, cachedAt: Date.now() }));
+        const sized = cache._withSize({ ...record, cachedAt: Date.now() });
+        sizeBytes = sized.sizeBytes;
+        tx.objectStore(storeName).put(sized);
     });
-    cache._scheduleSizeEnforcement();
+    cache._scheduleSizeEnforcement(sizeBytes);
 }
 
 function createLyricsRecord(cacheKey, trackId, provider, data) {
@@ -115,6 +118,12 @@ export function createLyricsCache({
         _db: null,
         _dbPromise: null,
         _sizeEnforcementTimer: null,
+        // Upper bound of the bytes held on this connection: measured by a full
+        // scan, then raised by every write. Deletes only lower the real total,
+        // so it is never below it. null until a scan has measured the cache.
+        _sizeEstimate: null,
+        // Running scans, each with the bytes written that it may not have seen.
+        _sizeScans: null,
         _persistentStorageRequested: false,
 
         getRevision: access.getRevision,
@@ -134,6 +143,8 @@ export function createLyricsCache({
                         this._dbPromise = null;
                     };
                     this._db = db;
+                    // A new connection can follow a restore or an upgrade.
+                    this._sizeEstimate = null;
                     db.onversionchange = () => {
                         db.close();
                         reset();
@@ -170,7 +181,22 @@ export function createLyricsCache({
             return sized;
         },
 
-        _scheduleSizeEnforcement() {
+        _noteCacheGrowth(addedBytes) {
+            const bytes = Number(addedBytes);
+            const known = Number.isFinite(bytes) && bytes >= 0;
+            for (const scan of this._sizeScans ?? []) scan.addedBytes += known ? bytes : Infinity;
+            if (!known) this._sizeEstimate = null;
+            else if (this._sizeEstimate !== null) this._sizeEstimate += bytes;
+        },
+
+        // A size scan reads every record of every store on the main thread
+        // (about a second for a few thousand records), and every write used to
+        // queue one. The limit can only be crossed by writes, so once a scan
+        // has measured the cache, the next one waits until the writes since
+        // could have reached the limit. Evictions happen exactly as before.
+        _scheduleSizeEnforcement(addedBytes) {
+            this._noteCacheGrowth(addedBytes);
+            if (this._sizeEstimate !== null && this._sizeEstimate <= this.MAX_TOTAL_BYTES) return;
             if (this._sizeEnforcementTimer) return;
             this._sizeEnforcementTimer = setTimeout(() => {
                 this._sizeEnforcementTimer = null;
@@ -180,9 +206,26 @@ export function createLyricsCache({
             }, 1000);
         },
 
+        // Runs a full pass that returns the bytes it saw, and records an upper
+        // bound of the cache size from it. Writes reported once the pass has
+        // begun may be counted twice; never left out. Returns that bound.
+        async _measureCache(pass) {
+            const scan = { addedBytes: 0 };
+            (this._sizeScans ??= new Set()).add(scan);
+            try {
+                const db = await this._openDB();
+                const total = (await pass(db)) + scan.addedBytes;
+                const bound = Number.isFinite(total) ? total : null;
+                if (this._db === db) this._sizeEstimate = bound;
+                return bound;
+            } finally {
+                this._sizeScans.delete(scan);
+            }
+        },
+
         async _enforceSizeLimit() {
-            const db = await this._openDB();
-            await enforceLyricsCacheSizeLimit(db, this.MAX_TOTAL_BYTES, record => this._withSize(record).sizeBytes);
+            await this._measureCache(db => enforceLyricsCacheSizeLimit(
+                db, this.MAX_TOTAL_BYTES, record => this._withSize(record).sizeBytes));
         },
 
         _isExpired(cachedAt, type) {
@@ -218,6 +261,7 @@ export function createLyricsCache({
         async updateLyrics(trackId, provider, update) {
             return runCacheOperation(this, trackId, 'lyrics', 'updateLyrics', false, async (db, isCurrent) => {
                 const cacheKey = this._getLyricsKey(trackId, provider);
+                let writtenBytes = NaN;
                 const written = await writeLyricsCacheTransaction(db, 'lyrics', tx => new Promise((resolve, reject) => {
                     const store = tx.objectStore('lyrics');
                     const request = store.get(cacheKey);
@@ -235,14 +279,16 @@ export function createLyricsCache({
                                 return;
                             }
                             const next = createLyricsRecord(cacheKey, trackId, provider, data);
-                            store.put(this._withSize({ ...next, cachedAt: Date.now() }));
+                            const sized = this._withSize({ ...next, cachedAt: Date.now() });
+                            writtenBytes = sized.sizeBytes;
+                            store.put(sized);
                             resolve(true);
                         } catch (error) {
                             reject(error);
                         }
                     };
                 }));
-                if (written) this._scheduleSizeEnforcement();
+                if (written) this._scheduleSizeEnforcement(writtenBytes);
                 return written;
             });
         },
@@ -273,13 +319,16 @@ export function createLyricsCache({
             return runCacheOperation(this, trackId, 'translation', 'setTranslation', false, async (db, isCurrent) => {
                 if (!canWrite()) return false;
                 let written = false;
+                let writtenBytes = 0;
                 const cachedAt = Date.now();
                 await writeLyricsCacheTransaction(db, 'translations', tx => {
                     const store = tx.objectStore('translations');
                     for (const { isPhonetic, sourceHash, data } of entries) {
                         const cacheKey = this._getTranslationKey(trackId, lang, isPhonetic, provider, sourceHash);
                         const write = () => {
-                            store.put(this._withSize({ cacheKey, trackId, lang, isPhonetic, provider, sourceHash, data, cachedAt }));
+                            const sized = this._withSize({ cacheKey, trackId, lang, isPhonetic, provider, sourceHash, data, cachedAt });
+                            writtenBytes += sized.sizeBytes;
+                            store.put(sized);
                             written = true;
                         };
                         if (!preserveUserEdits) {
@@ -298,7 +347,7 @@ export function createLyricsCache({
                         };
                     }
                 });
-                if (written) this._scheduleSizeEnforcement();
+                if (written) this._scheduleSizeEnforcement(writtenBytes);
                 return written;
             });
         },
@@ -423,9 +472,12 @@ export function createLyricsCache({
 
         async cleanup() {
             try {
-                const db = await this._openDB();
-                await removeExpiredLyricsCacheRecords(db, (cachedAt, type) => this._isExpired(cachedAt, type));
-                await this._enforceSizeLimit();
+                // The expiry pass already reads every record, so it measures
+                // them too. The eviction scan, a second read of everything,
+                // only runs when that total could be over the limit.
+                const keptBytes = await this._measureCache(db => removeExpiredLyricsCacheRecords(
+                    db, (cachedAt, type) => this._isExpired(cachedAt, type), record => this._withSize(record).sizeBytes));
+                if (keptBytes === null || keptBytes > this.MAX_TOTAL_BYTES) await this._enforceSizeLimit();
                 debug('[LyricsCache] Cleanup completed');
             } catch (error) {
                 console.error('[LyricsCache] cleanup error:', error);
@@ -453,9 +505,13 @@ export function createLyricsCache({
                 const rawUri = getLocalTrackUriFromCacheId(trackId);
                 const legacyTiming = rawUri ? { trackId: rawUri, range: this._getTrackCacheKeyRange(rawUri) } : null;
                 const keyRange = getKeyRange();
+                const blockLegacyVideo = trackIdentity.isSpotifyTrackId(trackId);
                 await deleteLyricsCacheTrack(db, trackId, this._getTrackCacheKeyRange(trackId), keyRange.only(trackId), {
-                    legacyTiming, blockLegacyVideo: trackIdentity.isSpotifyTrackId(trackId),
+                    legacyTiming, blockLegacyVideo,
                 });
+                // The small clear marker is the only record this adds; count
+                // it without queueing a scan, as before.
+                if (blockLegacyVideo) this._noteCacheGrowth(this._withSize({ trackId: [trackId], cachedAt: Date.now() }).sizeBytes);
             }, 'clearTrack');
         },
 

@@ -80,8 +80,11 @@ export function createLyricsBackgroundStyles({ getVisualSettings, isColorLight, 
     colors,
   }) => {
     const backgroundStyle = {};
+    // A static artwork blur is rasterized once with this layer. Naming filter
+    // in will-change kept it on the compositor, which re-ran the full-screen
+    // blur on every frame; the rasterized pixels are the same.
     const compositedBackgroundStyle = {
-      willChange: "filter, transform, opacity",
+      willChange: "transform, opacity",
       backfaceVisibility: "hidden",
       WebkitBackfaceVisibility: "hidden",
       transform: "translateZ(0)",

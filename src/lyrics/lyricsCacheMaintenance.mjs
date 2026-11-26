@@ -91,20 +91,28 @@ function expiryType(storeName, record) {
     return record.isPhonetic ? 'phonetic' : 'translation';
 }
 
-export async function removeExpiredLyricsCacheRecords(db, isExpired) {
+const measuredSize = (record, measure) => Number(record.sizeBytes) > 0 ? Number(record.sizeBytes) : measure(record);
+
+// With measure, also returns the bytes of the records it keeps, so the same
+// pass can stand in for a size scan.
+export async function removeExpiredLyricsCacheRecords(db, isExpired, measure = null) {
+    let keptBytes = 0;
     for (const name of presentStores(db)) {
         await writeLyricsCacheTransaction(db, name, tx => {
             visitLyricsCacheRecords(tx.objectStore(name), null, cursor => {
                 if (cursor.primaryKey === DATABASE_BACKUP_RECEIPT_KEY) return;
                 const record = cursor.value;
                 if (isExpired(record.cachedAt, expiryType(name, record))) cursor.delete();
+                else if (measure) keptBytes += measuredSize(record, measure);
             });
         });
     }
+    return measure ? keptBytes : null;
 }
 
+// Returns an upper bound of the bytes left after any eviction.
 export async function enforceLyricsCacheSizeLimit(db, limit, measure) {
-    const sizeOf = record => Number(record.sizeBytes) > 0 ? Number(record.sizeBytes) : measure(record);
+    const sizeOf = record => measuredSize(record, measure);
     const entries = [];
     let totalBytes = 0;
     for (const name of presentStores(db)) {
@@ -120,7 +128,7 @@ export async function enforceLyricsCacheSizeLimit(db, limit, measure) {
             request.onerror = () => reject(request.error);
         });
     }
-    if (totalBytes <= limit) return;
+    if (totalBytes <= limit) return totalBytes;
 
     const removalsByStore = new Map();
     for (const entry of entries.sort((a, b) => a.cachedAt - b.cachedAt)) {
@@ -138,8 +146,10 @@ export async function enforceLyricsCacheSizeLimit(db, limit, measure) {
                     const record = request.result;
                     // A refresh committed during the scan may now own this key.
                     if (record && (Number(record.cachedAt) || 0) === cachedAt && sizeOf(record) === sizeBytes) store.delete(key);
+                    else if (record) totalBytes += sizeOf(record);
                 };
             }
         });
     }
+    return totalBytes;
 }

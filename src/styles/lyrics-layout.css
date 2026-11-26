@@ -431,7 +431,16 @@ body.ivlyrics-page-active .main-topBar-container {
   will-change: transform;
 }
 
-.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine {
+/* Fade blur belongs to the row but is painted by its children. A filter on
+   the row itself stayed on the compositor (each row is its own layer for the
+   line travel) and re-blurred every visible row on every frame, which kept
+   the GPU saturated. On the children it is rasterized into the row's layer,
+   so rows still travel on the compositor. Rows paint nothing of their own and
+   their children do not overlap, so the pixels match. Only these direct
+   children read the row's index; it still does not reach the glyphs. */
+.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics
+  > .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) > * {
+  --blur-index: inherit;
   filter: blur(calc(var(--blur-index) * 1.5px));
 }
 

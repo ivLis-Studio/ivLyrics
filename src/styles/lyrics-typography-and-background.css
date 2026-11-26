@@ -128,7 +128,9 @@
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   transform: translateZ(0);
-  will-change: filter, transform, opacity;
+  /* No filter here: a will-change filter re-blurs the static artwork on the
+     compositor every frame instead of rasterizing it once (same pixels). */
+  will-change: transform, opacity;
   contain: paint;
 }
 
