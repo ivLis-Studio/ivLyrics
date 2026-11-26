@@ -76,7 +76,9 @@ const createHarness = (source, config = {}, initialLanguage = "ko") => {
   if (source === currentSource) {
     controlNames.push("ConfigSlider", "ConfigSliderRange", "ConfigFontWeightSlider", "ConfigSelection",
       "ConfigFontSelector", "ConfigColorPicker", "ColorPresetSelector", "SettingsSegmented", "SettingsChoiceCards",
-      "ConfigWarning", "ConfigInfo", "ConfigButton", "ConfigInput", "ConfigHotkey", "SettingsHotkeyTable", "SettingsTiles");
+      "ConfigWarning", "ConfigInfo", "ConfigButton", "ConfigInput", "ConfigHotkey", "SettingsHotkeyTable", "SettingsTiles",
+      "OverlaySettings", "ConfigKaraokeFillCurveEditor", "LocalCacheManager", "LyricsHelperToggle",
+      "DebugInfoPanel", "SettingsBackupButton", "ConfigCloudSync", "ConfigSettingsPresets", "SettingsUpdateButton", "AccountSection");
   }
   const placeholders = Object.fromEntries(controlNames.map((name) => {
     const component = () => null;
@@ -90,6 +92,7 @@ const createHarness = (source, config = {}, initialLanguage = "ko") => {
     CONFIG: { visual: { "line-spacing": 8, ...config } },
     I18n: { t: (key) => `${language}:${key}`, getAvailableLanguages: () => [] },
     Utils: { currentVersion: "test" },
+    thresholdSizeLimit: {}, backupActions: {},
     KaraokeLine: function KaraokeLine() {},
     window: { dispatchEvent: (event) => calls.push(["event", event.type, event.detail]) },
     document: {

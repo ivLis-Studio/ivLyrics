@@ -126,7 +126,7 @@ const numericCode = [
     react, host: window, getDocument: () => document, getLanguage: () => undefined,
     getSettingsText, SettingsUiIcon, hasSettingDefault, settingValuesEqual,
   });`,
-  section("  const {\n    saveLyricsTypographySetting,", "  const openLyricsHelperDownload ="),
+  section("  const {\n    saveLyricsTypographySetting,", "  const renderTabContent ="),
   "globalThis.saveTypography = saveLyricsTypographySetting;",
 ].join("\n");
 const pointer = (type, extra = {}) => ({

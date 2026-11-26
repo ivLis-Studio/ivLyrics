@@ -74,6 +74,14 @@ const createHarness = () => {
     ProviderSupportIconChip: placeholder,
     ConfigKaraokeFillCurveEditor: placeholder, SettingsHotkeyTable: placeholder, ConfigHotkey: placeholder,
     LocalCacheManager: placeholder, LyricsHelperToggle: placeholder, ConfigInfo: placeholder,
+    createTextOutlineSettingItems: () => [],
+    getInstrumentalBreakLabelStyleDefault: () => ({}), getMultiVocalRegistryItems: () => [],
+    buildLyricsTypographyColumns: () => [], getLyricsTypographyRows: () => [],
+    thresholdSizeLimit: {}, backupActions: {},
+    ConfigFontSelector: placeholder, ConfigFontWeightSlider: placeholder, ConfigInstrumentalBreakIconPicker: placeholder,
+    DebugInfoPanel: placeholder, ConfigMultiVocalColorSettings: placeholder,
+    SettingsBackupButton: placeholder, ConfigCloudSync: placeholder, ConfigSettingsPresets: placeholder,
+    SettingsUpdateButton: placeholder, AccountSection: placeholder,
   });
   installSettingsFixtureBindings(context);
   vm.runInContext(readSettingsStylesFixture(), context);

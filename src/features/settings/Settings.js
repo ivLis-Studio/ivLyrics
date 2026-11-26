@@ -1,3 +1,4 @@
+import { createSettingsTabContent } from "#ivlyrics/features/settings/settingsTabContent.mjs";
 import { createRuntimeDebugLogger, writeRuntimeDebug } from "#ivlyrics/spicetify/runtimeDebug.mjs";
 import { createSettingsModalCss } from "./SettingsStyles.js";
 import { LOCAL_LYRICS_UPDATED_EVENT as SETTINGS_LOCAL_LYRICS_UPDATED_EVENT } from "#ivlyrics/lyrics/localLyricsStore.mjs";
@@ -12,8 +13,6 @@ import { createSettingsLayerMatrix } from "#ivlyrics/features/settings/settingsL
 import { createSettingsLayoutControls } from "#ivlyrics/features/settings/settingsLayoutControls.mjs";
 import { createSettingsHelperToggles } from "#ivlyrics/features/settings/settingsHelperToggles.mjs";
 import { useSettingsReleaseNotes } from "#ivlyrics/features/settings/useSettingsReleaseNotes.mjs";
-import { renderSettingsAboutTab } from "#ivlyrics/features/settings/settingsAboutTab.mjs";
-import { renderSettingsAboutUpdateSection } from "#ivlyrics/features/settings/settingsAboutUpdateSection.mjs";
 import { isSettingsEditableField, useSettingsModalInteractions } from "#ivlyrics/features/settings/settingsModalInteractions.mjs";
 import { useSettingsModalSearch } from "#ivlyrics/features/settings/useSettingsModalSearch.mjs";
 import { createSettingsCloudSyncPanel } from "#ivlyrics/features/settings/settingsCloudSyncPanel.mjs";
@@ -42,11 +41,6 @@ import { createSettingsPresetsPanel } from '#ivlyrics/features/settings/settings
 import { createAccountSettingsPanel } from '#ivlyrics/features/settings/accountSettingsPanel.mjs';
 import { createSettingsUiTheme } from '#ivlyrics/features/settings/settingsUiTheme.mjs';
 import { createOverlaySettingsPanel } from '#ivlyrics/features/settings/overlaySettingsPanel.mjs';
-import { createPlaybackSettingsTabs } from '#ivlyrics/features/settings/settingsPlaybackTabs.mjs';
-import { createProviderSettingsTabs } from '#ivlyrics/features/settings/settingsProviderTabs.mjs';
-import { createPanelSettingsTab } from '#ivlyrics/features/settings/settingsPanelTab.mjs';
-import { createAppearanceSettingsTab } from '#ivlyrics/features/settings/settingsAppearanceTab.mjs';
-import { createFullscreenSettingsTab } from '#ivlyrics/features/settings/settingsFullscreenTab.mjs';
 import { createSettingsSaveEffects, publishAppliedSettingsPreset } from '#ivlyrics/features/settings/settingsSaveEffects.mjs';
 import { createSettingsEventChannel, createVisualSettingsActions } from '#ivlyrics/core/visualSettingsActions.mjs';
 import { collectSettingsRegistry, indexSettingsSearch } from '#ivlyrics/features/settings/settingsRegistry.mjs';
@@ -76,7 +70,6 @@ import { pageLyricsMemoryCache } from "#ivlyrics/lyrics/pageMemoryCache.mjs";
 import { createIndexedDbBackup } from "#ivlyrics/core/indexedDbBackup.mjs";
 import { createSettingsBackupActions } from "#ivlyrics/features/settings/settingsBackupActions.mjs";
 import { createSettingsBackupButton } from "#ivlyrics/features/settings/settingsBackupButton.mjs";
-import { renderAdvancedSettingsTab } from "#ivlyrics/features/settings/settingsAdvancedTab.mjs";
 import { createSettingsUpdateButton } from "#ivlyrics/features/settings/settingsUpdateButton.mjs";
 
 export function createSettingsPage({
@@ -852,138 +845,41 @@ export function createSettingsPage({
         if (sender) sender.enabled = enabled;
       },
     });
-    const openLyricsHelperDownload = openSettingsHelperDownload;
-
-    const createPlaybackTabRenderers = () => createPlaybackSettingsTabs({
-      react, t: (key) => I18n.t(key), activeTab,
-      getAvailableLanguages: () => I18n.getAvailableLanguages(),
-      getVisualSettings: () => CONFIG.visual,
-      changeInterfaceLanguage,
-      saveSettingsTranslationTargetLanguage,
-      getPerformanceSettingsSections,
-      navigateToDestination,
-      handlePerformanceSettingChange,
-      handleVisualConfigChange,
-      getSettingsText,
-      isFadActive,
-      openLyricsHelperDownload,
-      saveLyricsHelperSetting,
+    const renderTabContent = createSettingsTabContent({
+      react, translate: key => I18n.t(key), activeTab, fullscreenView, isFadActive,
+      getSettingsText, getVisualSettings: () => CONFIG.visual,
+      playback: {
+        getAvailableLanguages: () => I18n.getAvailableLanguages(),
+        changeInterfaceLanguage, saveSettingsTranslationTargetLanguage, getPerformanceSettingsSections,
+        navigateToDestination, handlePerformanceSettingChange,
+        openLyricsHelperDownload: openSettingsHelperDownload, saveLyricsHelperSetting,
+      },
+      visuals: {
+        createTextOutlineSettingItems, saveVinylSetting, handleNowPlayingPanelChange,
+        getInstrumentalBreakLabelStyleDefault, saveInstrumentalLabelSetting, getMultiVocalRegistryItems,
+        getBackgroundRegistryItems, buildLyricsTypographyColumns, saveLyricsTypographySetting,
+        handleAppearancePreviewChange, getLyricsTypographyRows, handleVisualConfigChange, getCdSettingsSections,
+      },
+      advanced: { thresholdSizeLimit, backupActions },
+      about: {
+        getCurrentVersion: () => Utils.currentVersion,
+        openUpdaterProtocol: action => Utils.openUpdaterProtocol(action),
+        readClientId: () => Spicetify.LocalStorage.get("ivLyrics:user-hash"),
+        copyText: text => window.navigator.clipboard.writeText(text),
+        openLink: (url, target) => window.open(url, target),
+        notifySuccess: message => Toast.success(message),
+        notifyError: message => Toast.error(message),
+      },
       controls: {
         SettingsSection, OptionList, ConfigSelection, OverlaySettings, SettingsLoadMeter, ConfigSlider,
         ConfigKaraokeFillCurveEditor, SettingsHotkeyTable, ConfigHotkey, ConfigSliderRange, LocalCacheManager,
-        LyricsHelperToggle, ConfigInfo,
+        LyricsHelperToggle, ConfigInfo, LyricsProvidersTab, ConfigFontSelector, ConfigFontWeightSlider,
+        SettingsLayerMatrix, AIProvidersTab, SettingsUiIcon, DebugInfoPanel, ConfigColorPicker,
+        ConfigInstrumentalBreakIconPicker, BackgroundExperienceSection, SettingsLineWindow,
+        ConfigMultiVocalColorSettings, SettingsBackupButton, ConfigCloudSync, ConfigSettingsPresets,
+        SettingsTiles, FullscreenPresentationPicker, ConfigButton, SettingsUpdateButton, AccountSection,
       },
     });
-    const renderGeneralTab = () => createPlaybackTabRenderers().renderGeneralTab();
-    const renderPerformanceTab = () => createPlaybackTabRenderers().renderPerformanceTab();
-    const renderLyricsTab = () => createPlaybackTabRenderers().renderLyricsTab();
-
-    const createProviderTabRenderers = () => createProviderSettingsTabs({
-      react, t: (key) => I18n.t(key), activeTab,
-      getSettingsText,
-      getVisualSettings: () => CONFIG.visual,
-      createTextOutlineSettingItems,
-      handleCulturalSettingChange: saveVinylSetting,
-      controls: {
-        LyricsProvidersTab, ConfigFontSelector, ConfigSliderRange, ConfigFontWeightSlider, SettingsLayerMatrix,
-        AIProvidersTab, SettingsSection, SettingsUiIcon, DebugInfoPanel, OptionList, ConfigSlider,
-      },
-    });
-    const renderLyricsProvidersTab = () => createProviderTabRenderers().renderLyricsProvidersTab();
-    const renderAiProvidersTab = () => createProviderTabRenderers().renderAiProvidersTab();
-    const renderDebugTab = () => createProviderTabRenderers().renderDebugTab();
-
-    const createPanelTabRenderers = () => createPanelSettingsTab({
-      react, t: (key) => I18n.t(key), activeTab,
-      getSettingsText,
-      getVisualSettings: () => CONFIG.visual,
-      createTextOutlineSettingItems,
-      handleNowPlayingPanelChange,
-      controls: {
-        ConfigFontSelector, ConfigSliderRange, SettingsSection, OptionList, ConfigSlider, SettingsLayerMatrix,
-        ConfigSelection, ConfigColorPicker,
-      },
-    });
-    const renderNowPlayingTab = () => createPanelTabRenderers().renderNowPlayingTab();
-
-    const createAppearanceTabRenderers = () => createAppearanceSettingsTab({
-      react, t: (key) => I18n.t(key), activeTab,
-      getVisualSettings: () => CONFIG.visual,
-      getInstrumentalBreakLabelStyleDefault,
-      createTextOutlineSettingItems,
-      saveInstrumentalLabelSetting,
-      getMultiVocalRegistryItems,
-      getBackgroundRegistryItems,
-      getSettingsText,
-      buildLyricsTypographyColumns,
-      saveLyricsTypographySetting,
-      handleAppearancePreviewChange,
-      getLyricsTypographyRows,
-      handleVisualConfigChange,
-      isFadActive,
-      controls: {
-        OptionList, ConfigSlider, ConfigInstrumentalBreakIconPicker, ConfigFontSelector, ConfigSliderRange,
-        ConfigFontWeightSlider, ConfigColorPicker, SettingsSection, SettingsUiIcon, BackgroundExperienceSection,
-        SettingsLayerMatrix, ConfigSelection, SettingsLineWindow, ConfigMultiVocalColorSettings,
-      },
-    });
-    const renderAppearanceTab = () => createAppearanceTabRenderers().renderAppearanceTab();
-
-    const renderAdvancedTab = () => renderAdvancedSettingsTab(react, {
-      activeTab, translate: key => I18n.t(key), thresholdSizeLimit, handleVisualConfigChange, actions: backupActions,
-      SettingsSection, OptionList, ConfigSliderRange, SettingsBackupButton, ConfigCloudSync, ConfigSettingsPresets,
-    });
-
-    const createFullscreenTabRenderers = () => createFullscreenSettingsTab({
-      react, t: (key) => I18n.t(key), activeTab,
-      getVisualSettings: () => CONFIG.visual,
-      fullscreenView,
-      createTextOutlineSettingItems,
-      handleVisualConfigChange,
-      getCdSettingsSections,
-      saveVinylSetting,
-      buildLyricsTypographyColumns,
-      getLyricsTypographyRows,
-      controls: {
-        ConfigSlider, ConfigSliderRange, SettingsTiles, OptionList, SettingsSection, ConfigHotkey,
-        FullscreenPresentationPicker, ConfigSelection, SettingsLayerMatrix, ConfigFontSelector, ConfigColorPicker,
-      },
-    });
-    const renderFullscreenTab = () => createFullscreenTabRenderers().renderFullscreenTab();
-
-    const renderAboutUpdateSection = () => renderSettingsAboutUpdateSection(react, {
-      OptionList, ConfigButton, SettingsUpdateButton, translate: (key) => I18n.t(key),
-      getCurrentVersion: () => Utils.currentVersion,
-      openUpdaterProtocol: (action) => Utils.openUpdaterProtocol(action),
-      notifySuccess: (message) => Toast.success(message),
-      notifyError: (message) => Toast.error(message),
-    });
-    const renderAboutTab = () => renderSettingsAboutTab(react, {
-      activeTab, SettingsSection, AccountSection, SettingsUiIcon,
-      translate: (key) => I18n.t(key), appVersion: Utils.currentVersion,
-      readClientId: () => Spicetify.LocalStorage.get("ivLyrics:user-hash"),
-      copyText: (text) => navigator.clipboard.writeText(text),
-      openLink: (url, target) => window.open(url, target),
-      notifySuccess: (message) => Toast.success(message), notifyError: (message) => Toast.error(message),
-      renderUpdate: renderAboutUpdateSection,
-    });
-
-    const renderTabContent = (tabId) => {
-      switch (tabId) {
-        case "general": return renderGeneralTab();
-        case "lyrics-providers": return renderLyricsProvidersTab();
-        case "ai-providers": return renderAiProvidersTab();
-        case "appearance": return renderAppearanceTab();
-        case "performance": return renderPerformanceTab();
-        case "lyrics": return renderLyricsTab();
-        case "fullscreen": return renderFullscreenTab();
-        case "nowplaying": return renderNowPlayingTab();
-        case "advanced": return renderAdvancedTab();
-        case "debug": return renderDebugTab();
-        case "about": return renderAboutTab();
-        default: return renderGeneralTab();
-      }
-    };
 
     // Use the same controls and save handlers for menus, search and reset.
     function buildSettingsRegistry(tabs = sidebarTabs) {
