@@ -313,6 +313,7 @@ export function createSettingsStorage({
       return runBackupOperation(async () => {
         await persistence?.ready;
         return runSettingsImportLocked(async () => {
+          assertSettingsImportRecovered(localStorage);
           const keys = collectLocalKeys(localStorage).filter(key =>
             key.startsWith(`${SETTINGS_NAMESPACE}:`) && key !== SETTINGS_RESET_RECORD_KEY);
           let finished;

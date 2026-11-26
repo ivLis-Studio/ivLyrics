@@ -338,14 +338,20 @@ test("a rolled-back track offset or video deletion remains in the next database 
     "ivLyrics-db": { "track-sync-offsets": [{ key: track, value: 25 }] },
     ivLyricsSelectedVideos: { selectedVideos: [{ key: track, value: video }] },
   });
+  const offsetRows = h.liveRows("ivLyrics-db", "track-sync-offsets");
+  offsetRows.delete(TRACK_SYNC_OFFSETS_RESTORED_KEY);
+  h.settings.set(TRACK_SYNC_OFFSETS_STORAGE_KEY, JSON.stringify({ [track]: 10 }));
   h.reject("ivLyrics-db");
   await assert.rejects(h.offsetStore.clearOffset(track), /fixture commit aborted/);
+  assert.equal(offsetRows.has(TRACK_SYNC_OFFSETS_RESTORED_KEY), false, "an aborted deletion must also roll back its marker");
   h.reject("ivLyricsSelectedVideos");
   t.mock.method(console, "error", () => {});
   assert.equal(await h.video.removeSelectedVideo(track), false);
   const exported = await h.backup.exportAllDBs();
   assert.deepEqual(exported["ivLyrics-db"]["track-sync-offsets"], [{ key: track, value: 25 }]);
   assert.deepEqual(exported.ivLyricsSelectedVideos.selectedVideos, [{ key: track, value: video }]);
+  await h.offsetStore.clearOffset(track);
+  assert.deepEqual((await h.backup.exportAllDBs())["ivLyrics-db"]["track-sync-offsets"], []);
 });
 
 test("rollback removes a newly written restore marker so legacy migration can still run", async () => {

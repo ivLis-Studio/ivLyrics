@@ -119,7 +119,24 @@ export function createTrackSyncOffsetStore({ getIndexedDB, debug, logger = conso
     async clearOffset(trackUri) {
       try {
         const db = await open();
-        return requestTrackPreference(db, storeName, "delete", [trackUri]);
+        return runIdbTransaction(db, storeName, "readwrite", transaction => new Promise((resolve, reject) => {
+          const store = transaction.objectStore(storeName);
+          const existing = store.get(trackUri);
+          existing.onerror = () => reject(existing.error);
+          existing.onsuccess = () => {
+            try {
+              if (existing.result !== undefined) {
+                store.delete(trackUri);
+                // An older install can have real rows without a marker. Deleting
+                // its last row must not make the legacy copy eligible again.
+                store.put(true, TRACK_SYNC_OFFSETS_RESTORED_KEY);
+              }
+              resolve();
+            } catch (error) {
+              reject(error);
+            }
+          };
+        }));
       } catch (error) {
         logger.error("[ivLyrics] Failed to clear offset:", error);
       }

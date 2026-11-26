@@ -2,7 +2,7 @@ import { createSettingsBackupDatabase } from "./settingsBackupDatabase.mjs";
 import { restoreSettingsSnapshot } from "./settingsRecoveryMerge.mjs";
 import { applyStorageBatch, noteStorageWrite } from "./settingsStorageBatch.mjs";
 import {
-  applyPendingSettingsImportBaseline, beginSettingsImportBatch, hasInterruptedSettingsImport,
+  applyPendingSettingsImportBaseline, assertSettingsImportRecovered, beginSettingsImportBatch, hasInterruptedSettingsImport,
   recoverInterruptedSettingsImport, runSettingsImportLocked,
 } from "./settingsImportJournal.mjs";
 import { readTrackSyncImportReceipt } from "./trackSyncOffsetStore.mjs";
@@ -432,6 +432,7 @@ export function createSettingsPersistence({
     },
     clear(additionalKeys = []) {
       const storage = getLocalStorage();
+      assertSettingsImportRecovered(storage);
       const namespace = getNamespace();
       refreshResetRevisions();
       const revisions = new Map(resetRevisions);

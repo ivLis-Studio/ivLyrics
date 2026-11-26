@@ -381,7 +381,7 @@ test("reset waits for startup recovery before clearing imported settings", async
   assert.deepEqual(harness.indexedRecord.settings, {});
 });
 
-test("settings backups leave a pending import alone when its receipt could not be read", async () => {
+test("settings backup and reset leave a pending import alone when its receipt could not be read", async () => {
   const journal = JSON.stringify({ id: "fixture-import", changes: [
     { key: settingKey, value: "32", previous: "24" },
   ] });
@@ -391,8 +391,11 @@ test("settings backups leave a pending import alone when its receipt could not b
   const storage = createSettingsStorage({ persistence: harness.api, localStorage: harness.localStorage });
   await assert.rejects(storage.exportCloudConfig(), /interrupted settings import/);
   await assert.rejects(storage.importCloudConfig({ [settingKey]: "52" }), /interrupted settings import/);
+  await assert.rejects(storage.clearConfig(), /interrupted settings import/);
+  assert.throws(() => harness.api.clear([pendingImportKey]), /interrupted settings import/);
   assert.equal(harness.values.get(pendingImportKey), journal);
   assert.equal(harness.values.get(settingKey), "32");
+  assert.equal(harness.values.has(resetKey), false);
 });
 
 test("a later explicit edit with the same value survives recovery from an interrupted import", async () => {

@@ -39,6 +39,14 @@ const createFakeIndexedDB = (initialData = {}) => {
       });
       return req;
     },
+    delete: key => {
+      const req = {};
+      queueMicrotask(() => {
+        data.delete(key);
+        req.onsuccess?.();
+      });
+      return req;
+    },
     getAllKeys: () => {
       const req = {};
       queueMicrotask(() => {
@@ -252,6 +260,33 @@ test("migration preserves offsets saved before its write transaction gets the st
 
   assert.equal(harness.indexedDBData.get(uri), 5000);
   assert.equal(harness.values.get("ivLyrics:track-sync-offsets"), legacyOffsets);
+});
+
+test("deleting the last IndexedDB offset cannot resurrect its superseded legacy value", async () => {
+  const track = "spotify:track:fixture";
+  const h = createHarness({
+    existingOffsets: { [track]: 320 },
+    legacyOffsets: JSON.stringify({ [track]: 190 }),
+  });
+  await h.migration;
+  assert.equal(await h.offsetStore.getOffset(track), 320);
+  await h.offsetStore.clearOffset(track);
+
+  const config = createSettingsStorage({ localStorage: h.localStorage, offsetStore: h.offsetStore });
+  assert.deepEqual(await config.exportConfig(), { [TRACK_SYNC_OFFSETS_STORAGE_KEY]: "{}" });
+  const restarted = getTrackSyncOffsetStore({ indexedDB: h.indexedDB, localStorage: h.localStorage });
+  assert.equal(await restarted.getOffset(track), 0);
+  assert.deepEqual(await restarted.getAllOffsets(), {});
+});
+
+test("clearing a missing track does not initialize a yet-unmigrated offset store", async () => {
+  const h = createHarness();
+  await h.migration;
+  await h.offsetStore.clearOffset("spotify:track:absent");
+  const track = "spotify:track:legacy";
+  h.localStorage.setItem(TRACK_SYNC_OFFSETS_STORAGE_KEY, JSON.stringify({ [track]: 190 }));
+  const restarted = getTrackSyncOffsetStore({ indexedDB: h.indexedDB, localStorage: h.localStorage });
+  assert.equal(await restarted.getOffset(track), 190);
 });
 
 test("an intentionally empty settings backup stays empty after startup migrates legacy offsets", async () => {
