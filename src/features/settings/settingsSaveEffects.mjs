@@ -1,14 +1,17 @@
 import { IV_LYRICS_DEFAULT_SPEAKER_COLOR_SETTINGS } from "../../lyrics/speakerColors.mjs";
 
 export function publishAppliedSettingsPreset(entries, {
-  setInterfaceLanguage, applySpeakerColors, publishConfigChange, refreshLyrics, publishEvent,
+  setInterfaceLanguage, applySpeakerColors, publishConfigChange, refreshLyrics, publishEvent, loadFont,
 }) {
   const language = entries.find(([name]) => name === "language");
-  if (language) setInterfaceLanguage(language[1]);
+  if (language) setInterfaceLanguage(language[1], { persist: false });
   if (entries.some(([name]) => Object.hasOwn(IV_LYRICS_DEFAULT_SPEAKER_COLOR_SETTINGS, name))) {
     applySpeakerColors();
   }
-  for (const [name, value] of entries) publishConfigChange(name, value);
+  for (const [name, value] of entries) {
+    if (name.endsWith("font-family") && typeof value === "string") loadFont(value);
+    publishConfigChange(name, value);
+  }
   refreshLyrics();
   publishEvent("ivLyrics:panel-preview-update", { source: "settings-preset" });
 }
@@ -45,7 +48,7 @@ export function createSettingsSaveEffects({
     },
     changeInterfaceLanguage(name, value) {
       saveVisualSetting(name, value);
-      setInterfaceLanguage(value);
+      setInterfaceLanguage(value, { persist: false });
       reopenLanguageSettings();
     },
     saveLyricsHelperSetting(name, value) {

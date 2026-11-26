@@ -3,7 +3,7 @@ import { createRuntimeDebugLogger, writeRuntimeDebug } from "#ivlyrics/spicetify
 import { createSettingsModalCss } from "./SettingsStyles.js";
 import { LOCAL_LYRICS_UPDATED_EVENT as SETTINGS_LOCAL_LYRICS_UPDATED_EVENT } from "#ivlyrics/lyrics/localLyricsStore.mjs";
 import { SETTINGS_BACKGROUND_PRESETS, getSettingsBackgroundPresetLabel } from "#ivlyrics/features/settings/settingsBackgroundPresets.mjs";
-import { useSettingsSignal, useSettingsConfigSignal } from "#ivlyrics/features/settings/settingsSignals.mjs";
+import { useSettingsSignal, useSettingsConfigSignal, useSettingsInterfaceLanguage } from "#ivlyrics/features/settings/settingsSignals.mjs";
 import { createSettingsSectionNavigation } from "#ivlyrics/features/settings/settingsSectionNavigation.mjs";
 import { useSettingsDockPreferences } from "#ivlyrics/features/settings/useSettingsDockPreferences.mjs";
 import { createSettingsPreviewDock } from "#ivlyrics/features/settings/settingsPreviewDock.mjs";
@@ -246,6 +246,7 @@ export function createSettingsPage({
     readItem: (key) => StorageManager.getItem(key),
     writeItem: (key, value) => StorageManager.setItem(key, value),
     readVisualSettings: () => CONFIG.visual,
+    isInterfaceLanguageAvailable: (code) => I18n.getAvailableLanguages().some(language => language.code === code),
     applyVisualSettings: saveVisualSettings,
     onApplied: entries => publishAppliedSettingsPreset(entries, {
       setInterfaceLanguage: setSettingsLanguage,
@@ -253,6 +254,7 @@ export function createSettingsPage({
       publishConfigChange: publishSettingsConfigChange,
       refreshLyrics: updateLyrics,
       publishEvent: publishSettingsEvent,
+      loadFont: (value) => loadSettingsFontFamily(document, value, { refreshExisting: false }),
     }),
     randomUUID: () => window.crypto?.randomUUID?.(),
   });
@@ -712,10 +714,10 @@ export function createSettingsPage({
       overlay?.setAttribute("data-ui-theme-preference", uiThemePreference);
     }, [uiTheme, uiThemePreference]);
 
-    const settingsRegistryRef = react.useRef(null);
-    const declaredSearchIndexRef = react.useRef(null);
+    const interfaceLanguage = useSettingsInterfaceLanguage(react, window, readSettingsLanguage);
+    const settingsCatalog = react.useMemo(() => ({ registry: null, searchIndex: null }), [interfaceLanguage]);
     const search = useSettingsModalSearch(react, {
-      host: window, document, activeTab, changedView, settingsContentRef,
+      host: window, document, activeTab, changedView, settingsContentRef, interfaceLanguage,
       getPerformanceSettingsSections, getCdSettingsSections, getSettingsText,
       translate: (key) => I18n.t(key),
       getAllTranslations: (key) => I18n.getAllTranslations?.(key),
@@ -777,7 +779,7 @@ export function createSettingsPage({
     });
 
     const { settingsRegistry, changedCounts } = useChangedSettingsCounts(react, {
-      host: window, readSettingsRegistry, isSettingChanged, isChangedView: changedView,
+      host: window, readSettingsRegistry, isSettingChanged, isChangedView: changedView, interfaceLanguage,
     });
 
     const changedViewTitle = getSettingsText("settingsUi.changed.title", "Changed settings");
@@ -887,14 +889,11 @@ export function createSettingsPage({
     }
 
     function readSettingsRegistry() {
-      return settingsRegistryRef.current ??= buildSettingsRegistry();
+      return settingsCatalog.registry ??= buildSettingsRegistry();
     }
 
     function getDeclaredSearchIndex() {
-      if (!declaredSearchIndexRef.current) {
-        declaredSearchIndexRef.current = indexSettingsSearch(sidebarTabs, readSettingsRegistry());
-      }
-      return declaredSearchIndexRef.current;
+      return settingsCatalog.searchIndex ??= indexSettingsSearch(sidebarTabs, readSettingsRegistry());
     }
 
     const changedSettings = createChangedSettingsView(react, {

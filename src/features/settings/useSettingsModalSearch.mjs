@@ -5,7 +5,7 @@ import { renderSettingsSearchPanel } from "./renderSettingsSearchPanel.mjs";
 import { getRecordingHotkeyControl } from "./settingsHotkeyControls.mjs";
 
 export function useSettingsModalSearch(react, {
-  host, document, activeTab, changedView, settingsContentRef,
+  host, document, activeTab, changedView, settingsContentRef, interfaceLanguage,
   getPerformanceSettingsSections, getCdSettingsSections, getSettingsText,
   translate, getAllTranslations, getDeclaredSearchIndex,
   navigateToDestination, SettingsUiIcon, SettingsOutlineIcon,
@@ -35,7 +35,7 @@ export function useSettingsModalSearch(react, {
     getPerformanceSettingsSections,
     getSettingsText,
     getCdSettingsSections,
-  }), []);
+  }), [interfaceLanguage]);
 
   const discoveredSearchSettings = useSettingsSearchIndex(react, {
     host,

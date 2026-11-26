@@ -13,7 +13,7 @@ export function createSettingsServices(host) {
     getTranslator: () => read("Translator"),
     getApiTracker: () => read("ApiTracker"),
     readSettingsLanguage: () => read("I18n")?.getCurrentLanguage?.(),
-    setSettingsLanguage: (language) => read("I18n")?.setLanguage?.(language),
+    setSettingsLanguage: (language, options) => read("I18n")?.setLanguage?.(language, options),
     getSettingsLyricsHelper: () => read("lyricsHelperSender"),
     getStoragePersistence: () => readSettingsPersistence(host),
     readAiSettingsManager: () => read("AIAddonManager"),

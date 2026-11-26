@@ -4,7 +4,7 @@ import { createCdSettingsCatalog, isCdSettingsKey } from "#ivlyrics/features/set
 import { createSettingsPerformanceControls } from "#ivlyrics/features/settings/settingsPerformanceControls.mjs";
 import { LOCAL_LYRICS_UPDATED_EVENT as SETTINGS_LOCAL_LYRICS_UPDATED_EVENT } from "#ivlyrics/lyrics/localLyricsStore.mjs";
 import { SETTINGS_BACKGROUND_PRESETS, getSettingsBackgroundPresetLabel } from "#ivlyrics/features/settings/settingsBackgroundPresets.mjs";
-import { useSettingsSignal, useSettingsConfigSignal } from "../../src/features/settings/settingsSignals.mjs";
+import { useSettingsSignal, useSettingsConfigSignal, useSettingsInterfaceLanguage } from "../../src/features/settings/settingsSignals.mjs";
 import { createSettingsSectionNavigation } from "../../src/features/settings/settingsSectionNavigation.mjs";
 import { useSettingsDockPreferences } from "../../src/features/settings/useSettingsDockPreferences.mjs";
 import { createSettingsPreviewDock } from "../../src/features/settings/settingsPreviewDock.mjs";
@@ -60,7 +60,8 @@ export const settingsTabModules = {
   SETTINGS_LOCAL_LYRICS_UPDATED_EVENT,
   SETTINGS_BACKGROUND_PRESETS,
   getSettingsBackgroundPresetLabel,
-  useSettingsSignal, useSettingsConfigSignal, createSettingsSectionNavigation, useSettingsDockPreferences, createSettingsPreviewDock,
+  useSettingsSignal, useSettingsConfigSignal, useSettingsInterfaceLanguage,
+  createSettingsSectionNavigation, useSettingsDockPreferences, createSettingsPreviewDock,
   createSettingsLayerMatrix, createSettingsLayoutControls,
   useSettingsModalSearch, useSettingsModalInteractions, isSettingsEditableField, restoreSettingsOnFirstLyricsMount,
   useSettingsReleaseNotes, loadStoredSettingsFonts, renderSettingsAboutUpdateSection,

@@ -1,3 +1,16 @@
+import { INTERFACE_LANGUAGE_CHANGED } from "../../i18n/interfaceLanguage.mjs";
+
+export function useSettingsInterfaceLanguage(react, host, readLanguage) {
+  const [language, setLanguage] = react.useState(readLanguage);
+  react.useEffect(() => {
+    const update = () => setLanguage(readLanguage());
+    host.addEventListener(INTERFACE_LANGUAGE_CHANGED, update);
+    update();
+    return () => host.removeEventListener(INTERFACE_LANGUAGE_CHANGED, update);
+  }, [host, readLanguage]);
+  return language;
+}
+
 export function useSettingsSignal(react, signal) {
   const [value, setValue] = react.useState(() => (signal ? signal.get() : undefined));
   react.useEffect(() => {

@@ -21,6 +21,7 @@ export function formatSettingsPresetTimestamp(value, getLocale) {
 
 export function createSettingsPresetsStore({
   readItem, writeItem, readVisualSettings, applyVisualSettings, onApplied, randomUUID,
+  isInterfaceLanguageAvailable = () => true,
 }) {
   const createSettingsPresetId = () => {
     const uuid = randomUUID();
@@ -87,7 +88,10 @@ export function createSettingsPresetsStore({
   };
 
   const applySettingsPresetValues = (settings) => {
-    const entries = Object.entries(settings || {}).filter(([name]) => isPresetSetting(name));
+    const entries = Object.entries(settings || {}).filter(([name, value]) =>
+      isPresetSetting(name) && (name !== "language" || isInterfaceLanguageAvailable(value))
+    );
+    if (!entries.length) return;
     const current = readVisualSettings?.() || {};
     const changed = entries.filter(([name, value]) => !Object.is(current[name], value));
     applyVisualSettings(Object.fromEntries(entries));

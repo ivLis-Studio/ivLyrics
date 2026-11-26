@@ -2,13 +2,13 @@ import { getSettingDefaultValue, SETTINGS_BACKGROUND_MODE_KEY } from "./settings
 import { createChangedSettingsTracker } from "./createChangedSettingsTracker.mjs";
 import { resetSettingsControl } from "./settingsControlCommit.mjs";
 
-export function useChangedSettingsCounts(react, { host, readSettingsRegistry, isSettingChanged, isChangedView }) {
+export function useChangedSettingsCounts(react, { host, readSettingsRegistry, isSettingChanged, isChangedView, interfaceLanguage }) {
   const [settingsRegistry, setSettingsRegistry] = react.useState(null);
   const [changedCounts, setChangedCounts] = react.useState(() => ({ total: 0, byTab: {}, keys: [] }));
 
   react.useEffect(() => {
     setSettingsRegistry(readSettingsRegistry());
-  }, []);
+  }, [interfaceLanguage]);
 
   react.useEffect(() => {
     if (!settingsRegistry) return undefined;
