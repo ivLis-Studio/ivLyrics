@@ -1,4 +1,6 @@
-import { readActiveCommunityVideo, readFirstLyricTime, writeActiveCommunityVideo } from "../../../features/video/videoSyncRuntimeState.mjs";
+import { readActiveCommunityVideo, readFirstLyricTime, VIDEO_LYRIC_START_CHANGED, writeActiveCommunityVideo } from "../../../features/video/videoSyncRuntimeState.mjs";
+import { getPlaybackPositionService } from "../../../core/playbackPositionService.mjs";
+import { isVideoTrackCurrent } from "../../../features/video/videoBackgroundPlayback.mjs";
 import { COMMUNITY_VIDEO_SYNC_MAX_SECONDS, clampCommunityVideoSyncSeconds, normalizeCommunityVideoSyncSeconds } from "./syncOffsetValues.mjs";
 
 export function createCommunityVideoSync({ react, host, readUtils, translate, notify, createEvent, reportError }) {
@@ -16,7 +18,7 @@ export function createCommunityVideoSync({ react, host, readUtils, translate, no
     if (Number.isFinite(start) && !(isAutomatic && Math.abs(start) < 0.001)) {
       return start >= 0 ? start : null;
     }
-    const firstLyricTime = readFirstLyricTime(host);
+    const firstLyricTime = readFirstLyricTime(host, info.trackUri);
     if (firstLyricTime == null || firstLyricTime === "") return null;
     const firstLyricSeconds = Number(firstLyricTime) / 1000;
     return Number.isFinite(firstLyricSeconds) && firstLyricSeconds >= 0
@@ -56,12 +58,15 @@ export function createCommunityVideoSync({ react, host, readUtils, translate, no
   const readActiveCommunityVideoInfo = (trackUri) => {
     const active = readActiveCommunityVideo(host);
     if (!trackUri || !active?.youtubeVideoId || active.trackUri !== trackUri) return null;
+    const snapshot = getPlaybackPositionService(host)?.getPlayerPlaybackSnapshot?.();
+    if (!isVideoTrackCurrent(host.Spicetify?.Player, trackUri, snapshot)) return null;
     return active;
   };
 
   const useCurrentVideoSync = (trackUri) => {
     const [activeInfo, setActiveInfo] = useState(() => readActiveCommunityVideoInfo(trackUri));
     const activeInfoRef = useRef(activeInfo);
+    const [, setLyricStart] = useState(() => readFirstLyricTime(host, trackUri));
 
     const currentTrackUriRef = useRef(trackUri);
     currentTrackUriRef.current = trackUri;
@@ -92,10 +97,14 @@ export function createCommunityVideoSync({ react, host, readUtils, translate, no
         writeActiveCommunityVideo(host, next);
         setActiveInfo(next);
       };
+      const handleLyricStart = () => setLyricStart(readFirstLyricTime(host, trackUri));
       handleChange();
+      handleLyricStart();
+      host.addEventListener(VIDEO_LYRIC_START_CHANGED, handleLyricStart);
       host.addEventListener("ivLyrics:communityVideoChanged", handleChange);
       host.addEventListener("ivLyrics:community-video-start-changed", handleStartChange);
       return () => {
+        host.removeEventListener(VIDEO_LYRIC_START_CHANGED, handleLyricStart);
         host.removeEventListener("ivLyrics:communityVideoChanged", handleChange);
         host.removeEventListener("ivLyrics:community-video-start-changed", handleStartChange);
       };
@@ -166,7 +175,7 @@ export function createCommunityVideoSync({ react, host, readUtils, translate, no
         active.youtubeVideoId !== renderedInfo?.youtubeVideoId || !shareKey || pendingCommunityVideoSyncShares.has(shareKey)) return;
       const rawStart = active.captionStartTime;
       const startTime = rawStart == null || rawStart === "" ? NaN : Number(rawStart);
-      const firstLyricTime = readFirstLyricTime(host);
+      const firstLyricTime = readFirstLyricTime(host, trackUri);
       const duration = Number(active.videoDurationSeconds);
       if (firstLyricTime == null || firstLyricTime === "" ||
         !Number.isFinite(Number(firstLyricTime)) || Number(firstLyricTime) < 0 ||

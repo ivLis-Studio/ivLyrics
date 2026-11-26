@@ -303,7 +303,7 @@ export function createCommunityVideoSelector({
       : videos;
 
     return react.createElement(SelectorView, {
-      onClose, isLocalVideoMode, randomSelectionEnabled, toggleRandomSelection,
+      trackUri, onClose, isLocalVideoMode, randomSelectionEnabled, toggleRandomSelection,
       hideDislikedVideos, toggleHideDislikedVideos, dislikedVideoCount, isLoading, hasLoadError,
       visibleVideos, hasVideos: videos.length > 0, currentVideoId, currentUserHash, previewVideoId, votingIds, deletingId,
       togglePreview, handleApply, handleEdit, handleVote, showDeleteConfirm,

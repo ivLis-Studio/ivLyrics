@@ -1,7 +1,9 @@
 import { readLearningMode } from "#ivlyrics/features/learning/learningModeRuntime.mjs";
 import { readPronunciationFirst } from "#ivlyrics/lyrics/pronunciationRuntime.mjs";
-import { writeFirstLyricTime } from "../features/video/videoSyncRuntimeState.mjs";
+import { clearFirstLyricTime, writeFirstLyricTime } from "../features/video/videoSyncRuntimeState.mjs";
 import { isFocusedLyricsPresentation, normalizeFullscreenPresentation } from "../features/fullscreen/fullscreenPresentation.mjs";
+import { getPlaybackPositionService } from "../core/playbackPositionService.mjs";
+import { isVideoTrackCurrent } from "../features/video/videoBackgroundPlayback.mjs";
 import { getRuntimeService } from "../spicetify/runtimeServices.mjs";
 import { SYNCED, getKaraokeRenderGranularity, isKaraokeRenderMode, resolveModeSpecificLyrics } from "./lyricsRenderModes.mjs";
 import { resolveFadLyricsContainer, getLyricsPageRenderStyles, resolveLyricsPageRenderMode } from "./lyricsPageRenderState.mjs";
@@ -15,16 +17,22 @@ import { renderLyricsPageQuickSync } from "./lyricsPageQuickSyncView.mjs";
 import { renderLyricsPageToolbar } from "./lyricsPageToolbarView.mjs";
 import {
   getLyricsFullscreenClasses, renderLyricsFullscreenOverlay, renderLyricsStaticBackground,
-  renderLyricsVideoBackground, renderLyricsStudyPanel,
+  renderLyricsVideoBackground, renderLyricsStudyPanel, resolveLyricsVideoSource,
 } from "./lyricsPageFullscreenView.mjs";
+
+const readLyricsVideoSource = (host, state) => resolveLyricsVideoSource(state, uri => {
+  const snapshot = getPlaybackPositionService(host)?.getPlayerPlaybackSnapshot?.();
+  return isVideoTrackCurrent(host.Spicetify?.Player, uri, snapshot);
+});
 
 function LyricsPagePresentationCommit({ react, host, page, presentation, needsPronunciationTiming }) {
   const useLayoutEffect = react.useLayoutEffect || react.useEffect;
+  useLayoutEffect(() => () => clearFirstLyricTime(host, page), [host, page]);
   useLayoutEffect(() => {
     const { lyricsState } = presentation;
     if (lyricsState !== page.state) return;
-    const lyrics = lyricsState.currentLyrics;
-    writeFirstLyricTime(host, lyrics && lyrics.length > 0 ? lyrics[0].startTime : null);
+    const { firstLyricTime, trackUri } = readLyricsVideoSource(host, lyricsState);
+    writeFirstLyricTime(host, firstLyricTime, trackUri, page);
     if (needsPronunciationTiming) page.pronunciationPresentation.scheduleTiming(lyricsState);
     else page.pronunciationPresentation.stopTiming();
     commitLyricsPagePresentation(page, presentation);
@@ -187,6 +195,7 @@ export function renderLyricsPage(page, {
     }),
     renderLyricsVideoBackground({
       react, VideoBackground, state: page.state, visual,
+      source: readLyricsVideoSource(host, page.state),
       shouldUseVideoBackground, isVideoStagePresentation, computeLyricsBackgroundStyle,
       readPrefetchedVideo, onLoadingChange: page.handleVideoBackgroundLoadingChange,
     }),

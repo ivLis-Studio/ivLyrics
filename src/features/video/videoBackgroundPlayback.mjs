@@ -6,10 +6,14 @@ import { disableYouTubeCaptions } from "./youTubeBackgroundTimeline.mjs";
 const VIDEO_SYNC_INTERVAL_MS = 250;
 const VIDEO_START_CHANGED = "ivLyrics:community-video-start-changed";
 
+export function isVideoTrackCurrent(player, trackUri, snapshot) {
+    return snapshot?.uri !== "" && isPlaybackLyricsTargetCurrent(snapshot, player?.data?.item?.uri, trackUri);
+}
+
 export function readVideoTrackPlayback(player, trackUri, snapshot) {
     const data = player?.data;
     const publicUri = data?.item?.uri;
-    if (snapshot?.uri === "" || !isPlaybackLyricsTargetCurrent(snapshot, publicUri, trackUri)) return null;
+    if (!isVideoTrackCurrent(player, trackUri, snapshot)) return null;
     const publicCurrent = !publicUri || publicUri === trackUri;
     const hasClockPosition = Number.isFinite(snapshot?.position);
     if (!hasClockPosition && !publicCurrent) return null;

@@ -11,7 +11,7 @@ import {
 } from "./videoDriftCorrection.mjs";
 
 import { createVideoBackgroundSync } from "#ivlyrics/features/video/videoBackgroundTiming.mjs";
-import { readVideoTrackPlayback, watchVideoBackgroundPlayback } from "#ivlyrics/features/video/videoBackgroundPlayback.mjs";
+import { isVideoTrackCurrent, readVideoTrackPlayback, watchVideoBackgroundPlayback } from "#ivlyrics/features/video/videoBackgroundPlayback.mjs";
 import { createYouTubeBackgroundTimeline } from "#ivlyrics/features/video/youTubeBackgroundTimeline.mjs";
 import { startHelperBackgroundDownload } from "#ivlyrics/features/video/helperBackgroundDownload.mjs";
 import { startHelperBackgroundVideo } from "#ivlyrics/features/video/helperBackgroundVideo.mjs";
@@ -81,7 +81,8 @@ export function createVideoBackground({
             lookupFailed.current = false;
             return () => { committedLookup.current = null; };
         }, [lookup]);
-        const isLookupCurrent = useCallback(() => committedLookup.current === lookup, [lookup]);
+        const isLookupCurrent = useCallback(() => committedLookup.current === lookup
+            && (!trackUri || isVideoTrackCurrent(spotifyPlayer, trackUri, readPlaybackSnapshot())), [lookup, spotifyPlayer, trackUri]);
         const [videoSource, setVideoSource] = useState(null);
         const currentSelection = videoSource?.lookup === lookup ? videoSource : null;
         const videoInfo = currentSelection?.info || null;

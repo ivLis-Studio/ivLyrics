@@ -1,5 +1,7 @@
 import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
 import { createTrackSyncOffsetTools } from "../src/app/toolbar/sync/createTrackSyncOffsetTools.mjs";
+import { writeFirstLyricTime, clearFirstLyricTime } from "../src/features/video/videoSyncRuntimeState.mjs";
+import { resolveLyricsVideoSource, renderLyricsVideoBackground } from "../src/lyrics/lyricsPageFullscreenView.mjs";
 import { createVideoDriftState, planVideoDriftCorrection } from "../src/features/video/videoDriftCorrection.mjs";
 import { createToolbarSyncFixture } from "./fixtures/toolbar-sync-modules.mjs";
 import assert from "node:assert/strict";
@@ -149,6 +151,86 @@ const pressKey = (env, code, extra = {}) => {
     return event;
 };
 const showVideo = async (pill) => { pill.modeButton("communityVideo").props.onClick(); await flush(); };
+
+test("video playback inputs use the committed track and lyric identity through fullscreen changes", () => {
+    const other = "spotify:track:other";
+    const oldInfo = { youtubeVideoId: "old" };
+    const state = { uri: TRACK, lyricsDisplayUri: TRACK, currentLyrics: [{ startTime: 12000 }], videoInfo: oldInfo };
+    let playing = TRACK;
+    const source = value => resolveLyricsVideoSource(value, uri => uri === playing);
+    function render(state, fullscreen) {
+        return renderLyricsVideoBackground({
+            react: { createElement: (_component, props) => props }, VideoBackground() {},
+            source: source(state), state, visual: { "background-brightness": 45, "video-blur": 15 },
+            shouldUseVideoBackground: true, isVideoStagePresentation: fullscreen,
+        });
+    }
+    assert.equal(render(state, false).externalVideoInfo, oldInfo);
+    assert.equal(render(state, true).firstLyricTime, 12000);
+    assert.equal(render(state, true).brightness, 100);
+    assert.equal(render({ ...state, isLoading: true, lyricsDisplayUri: null }, true).trackUri, null);
+    playing = other;
+    const pending = render(state, true);
+    assert.equal(pending.trackUri, null);
+    assert.equal(pending.externalVideoInfo, null);
+    assert.equal(pending.firstLyricTime, null);
+    const arrived = render({ ...state, uri: other, videoInfo: null }, true);
+    assert.equal(arrived.trackUri, other);
+    assert.equal(arrived.firstLyricTime, null, "lyrics still tagged to the old track cannot set the new anchor");
+    assert.equal(render({ ...state, uri: other, lyricsDisplayUri: other, videoInfo: null, currentLyrics: [{ startTime: 0 }] }, false).firstLyricTime, 0);
+});
+
+test("video nudges and sharing cannot borrow the previous track's first lyric", async () => {
+    const env = createEnvironment();
+    const outgoing = {};
+    const incoming = {};
+    const other = "spotify:track:other";
+    writeFirstLyricTime(env.window, 12300, other, outgoing);
+    activate(env, autoVideo);
+    const panel = mount(env, "CurrentVideoSyncPanelControl");
+    const pill = mount(env);
+    await showVideo(pill);
+    assert.equal(currentValue(pill), "…");
+    pill.button("+0.1s").props.onClick();
+    assert.equal(env.writes.length, 0);
+
+    activate(env, knownVideo(5)); await flush();
+    await panel.panelShare().props.onClick();
+    assert.equal(env.submissions.length, 0);
+
+    activate(env, autoVideo); await flush();
+    writeFirstLyricTime(env.window, 0, TRACK, incoming);
+    clearFirstLyricTime(env.window, outgoing);
+    await flush();
+    assert.equal(currentValue(pill), "0.000s");
+    pill.button("+0.1s").props.onClick(); await flush();
+    assert.equal(env.writes[0].captionStartTime, 0.1);
+    clearFirstLyricTime(env.window, incoming);
+    await flush();
+    await panel.panelShare().props.onClick();
+    assert.equal(env.submissions.length, 0);
+});
+
+test("video controls reject an outgoing click before the old route has rerendered", async () => {
+    const env = createEnvironment();
+    let snapshot = { uri: TRACK, position: 10000 };
+    env.window.Utils = { getPlayerPlaybackSnapshot: () => snapshot };
+    activate(env, knownVideo(6));
+    const panel = mount(env, "CurrentVideoSyncPanelControl");
+    const hook = mount(env, "useCurrentVideoSync");
+    const nudge = hook.tree.handleStep;
+    const share = panel.panelShare().props.onClick;
+    snapshot = { uri: "", position: 0 };
+    assert.equal(nudge(500), null);
+    await share();
+    snapshot = { uri: "spotify:track:next", position: 500 };
+    assert.equal(nudge(500), null);
+    await share();
+    assert.equal(env.writes.length, 0);
+    assert.equal(env.submissions.length, 0);
+    snapshot = { uri: TRACK, position: 10000 };
+    assert.equal(nudge(500).captionStartTime, 6.5);
+});
 
 test("without a video the sync pill stays the lyric pill, with no switch", () => {
     const env = createEnvironment(), pill = mount(env);

@@ -104,13 +104,25 @@ export function renderLyricsStaticBackground({
   );
 }
 
+export function resolveLyricsVideoSource(state, isPlaybackUriCurrent) {
+  const awaitingTrack = state.isLoading && !state.lyricsDisplayUri;
+  const trackUri = !awaitingTrack && state.uri && isPlaybackUriCurrent(state.uri) ? state.uri : null;
+  const hasCurrentLyrics = trackUri && (!state.lyricsDisplayUri || state.lyricsDisplayUri === trackUri);
+  const rawTime = hasCurrentLyrics ? state.currentLyrics?.[0]?.startTime : null;
+  const startTime = typeof rawTime === "string" && rawTime.trim() ? Number(rawTime) : rawTime;
+  return {
+    trackUri,
+    firstLyricTime: Number.isFinite(startTime) && startTime >= 0 ? startTime : null,
+    externalVideoInfo: trackUri ? state.videoInfo ?? null : null,
+  };
+}
+
 export function renderLyricsVideoBackground({
-  react, VideoBackground, state, visual, shouldUseVideoBackground, isVideoStagePresentation,
+  react, VideoBackground, state, source, visual, shouldUseVideoBackground, isVideoStagePresentation,
   computeLyricsBackgroundStyle, readPrefetchedVideo, onLoadingChange,
 }) {
   return shouldUseVideoBackground && VideoBackground && react.createElement(VideoBackground, {
-    trackUri: state.uri,
-    firstLyricTime: state.currentLyrics && state.currentLyrics.length > 0 ? state.currentLyrics[0].startTime : null,
+    ...source,
     brightness: isVideoStagePresentation
       ? 100
       : visual["background-brightness"],
@@ -128,7 +140,6 @@ export function renderLyricsVideoBackground({
         dynamicColors: state.dynamicColors, colors: state.colors,
       })
       : null,
-    externalVideoInfo: state.videoInfo,
     readPrefetchedVideo,
     onLoadingChange,
   });

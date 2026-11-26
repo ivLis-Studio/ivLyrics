@@ -110,7 +110,7 @@ export function createCommunityVideoSelectorView({
   return function CommunityVideoSelectorView({
     onClose, isLocalVideoMode, randomSelectionEnabled, toggleRandomSelection,
     hideDislikedVideos, toggleHideDislikedVideos, dislikedVideoCount, isLoading, hasLoadError,
-    visibleVideos, hasVideos, currentVideoId, currentUserHash, previewVideoId, votingIds, deletingId,
+    trackUri, visibleVideos, hasVideos, currentVideoId, currentUserHash, previewVideoId, votingIds, deletingId,
     togglePreview, handleApply, handleEdit, handleVote, showDeleteConfirm,
     showSubmitForm, resetSubmitForm, openSubmitForm, form,
     deleteConfirmId, deleteConfirmTitle, executeDelete, closeDeleteConfirm,
@@ -203,7 +203,7 @@ export function createCommunityVideoSelectorView({
                     className: "community-video-list",
                   },
                   visibleVideos.map((video, index) => react.createElement(VideoListItem, {
-                      key: video.id, video, index, currentVideoId, currentUserHash, previewVideoId,
+                      key: video.id, trackUri, video, index, currentVideoId, currentUserHash, previewVideoId,
                       votingId: votingIds.has(video.id) ? video.id : null, deletingId,
                       togglePreview, handleApply, handleEdit, handleVote, showDeleteConfirm,
                     }))

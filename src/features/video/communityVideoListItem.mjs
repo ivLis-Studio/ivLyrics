@@ -77,7 +77,7 @@ export function createCommunityVideoListItem({ react, i18n: I18n, SyncedVideoPre
   }
 
   return function CommunityVideoListItem({
-    video, index, currentVideoId, currentUserHash, previewVideoId, votingId, deletingId,
+    video, index, trackUri, currentVideoId, currentUserHash, previewVideoId, votingId, deletingId,
     togglePreview, handleApply, handleEdit, handleVote, showDeleteConfirm,
   }) {
     const renderVideoActions = () =>
@@ -252,6 +252,7 @@ export function createCommunityVideoListItem({ react, i18n: I18n, SyncedVideoPre
       // Embed preview (해당 영상이 선택된 경우) - 현재 재생 시간에 맞춰 동기화
       previewVideoId === video.youtubeVideoId &&
       react.createElement(SyncedVideoPreview, {
+        trackUri,
         videoId: video.youtubeVideoId,
         startTime: video.startTime,
         skipSegments: video.skipSegments,
