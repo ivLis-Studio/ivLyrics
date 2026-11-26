@@ -17,6 +17,7 @@ const latest = '7.1.17';
 const canRun = process.platform !== 'win32'
     && spawnSync('unzip', ['-v'], { stdio: 'ignore' }).status === 0;
 const canRunUninstall = canRun && spawnSync('python3', ['-c', 'import pty'], { stdio: 'ignore' }).status === 0;
+const canHoldInstallerGuard = canRun && spawnSync('perl', ['-e', '1'], { stdio: 'ignore' }).status === 0;
 const builtVersion = process.env.IVLYRICS_TEST_PACKAGE_VERSION;
 
 function runUninstaller(env) {
@@ -729,6 +730,48 @@ test('a Unix install leaves another operation’s lock and files alone', { skip:
     assert.equal(readFileSync(join(fx.app, 'index.js'), 'utf8'), 'original app');
     assert.deepEqual(fx.readEvents(), []);
 });
+
+test('a Unix installer acquires the guard after a departing process releases it',
+    { skip: !canHoldInstallerGuard, timeout: 15000 }, async context => {
+        const fx = installerFixture(context);
+        const guard = join(fx.apps, '.ivLyrics-install.guard');
+        const attempted = join(fx.root, 'guard-attempted');
+        writeFileSync(join(fx.root, 'bin', 'flock'), String.raw`#!/bin/bash
+if perl -e '
+    use Fcntl qw(LOCK_EX LOCK_NB);
+    open my $guard, ">>&=8" or exit 1;
+    exit(flock($guard, LOCK_EX | LOCK_NB) ? 0 : 1);
+'; then
+    exit 0
+fi
+: > "$IVL_TEST_ROOT/guard-attempted"
+exit 1
+`, { mode: 0o755 });
+        const holder = spawn('perl', ['-e', String.raw`
+use Fcntl qw(LOCK_EX);
+open my $guard, ">>", $ARGV[0] or die "Cannot open guard: $!";
+flock($guard, LOCK_EX) or die "Cannot acquire guard: $!";
+$| = 1;
+print "locked\n";
+my $deadline = time() + 5;
+while (!-e $ARGV[1] && time() < $deadline) {
+    select(undef, undef, undef, 0.01);
+}
+die "The installer never tried to acquire the guard" if !-e $ARGV[1];
+select(undef, undef, undef, 0.15);
+`, guard, attempted], { stdio: ['ignore', 'pipe', 'inherit'] });
+        const exited = once(holder, 'exit');
+        const ready = await Promise.race([
+            once(holder.stdout, 'data').then(([chunk]) => chunk.toString().trim()),
+            exited.then(() => ''),
+        ]);
+        assert.equal(ready, 'locked');
+
+        const result = fx.run();
+        assert.deepEqual(await exited, [0, null]);
+        assert.equal(result.status, 0, result.stdout + result.stderr);
+        assert.equal(readFileSync(join(fx.app, 'version.txt'), 'utf8').trim(), latest);
+    });
 
 for (const installedVersion of [previous, null]) {
     test(`a killed Unix ${installedVersion ? 'upgrade' : 'first install'} is recovered on the next launch while offline`,

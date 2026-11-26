@@ -407,19 +407,28 @@ restore_previous_installation() {
 }
 
 lock_installer_guard() {
-    local guard="$TARGET_DIR/.ivLyrics-install.guard"
+    local guard="$TARGET_DIR/.ivLyrics-install.guard" attempt
+    local -a try_guard
     if command -v flock >/dev/null 2>&1; then
-        exec 8>>"$guard" && flock -n 8
+        try_guard=(flock -n 8)
     elif command -v perl >/dev/null 2>&1; then
         # macOS supplies Perl with flock(2). The shell keeps the open descriptor.
-        exec 8>>"$guard" && perl -e '
+        try_guard=(perl -e '
             use Fcntl qw(LOCK_EX LOCK_NB);
             open my $guard, ">>&=8" or exit 1;
             exit(flock($guard, LOCK_EX | LOCK_NB) ? 0 : 1);
-        '
+        ')
     else
         return 2
     fi
+
+    exec 8>>"$guard" || return 1
+    # A child may still hold the descriptor briefly after the installer exits.
+    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+        "${try_guard[@]}" && return 0
+        sleep 0.1
+    done
+    "${try_guard[@]}"
 }
 
 read_spicetify_apps() {
