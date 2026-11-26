@@ -1,11 +1,10 @@
-import { getLyricLanguageMode, readLyricDisplayModes, resolveLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
+import { getLyricLanguageMode, readLyricDisplayModes, readLyricPlaybackPreferences, resolveLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
 import { createLyricTranslationModes } from "./lyricTranslationModes.mjs";
 import { buildLyricTranslationRequests } from "./lyricTranslationVocals.mjs";
 import { getActiveLyricSupplementSlots, loadLyricSupplementSlots } from "./loadLyricSupplementSlots.mjs";
 import { getPanelSupplementVisibility } from "./panelLyricPresentation.mjs";
 import { isLyricsSectionHeader } from "./translationTextComparison.mjs";
 import { mergeLyricsTiming } from "./lyricsTimingMerge.mjs";
-import { isKaraokePlaybackEnabled } from "./selectPlaybackLyrics.mjs";
 import { retainLrcRedWordTiming } from "../providers/lyrics/lrcRedWordTiming.mjs";
 
 export function createPanelTranslationLoader({
@@ -23,10 +22,11 @@ export function createPanelTranslationLoader({
 
         try {
             const service = getPanelLyricsService();
-            const readLanguageOverride = () => getVisualSetting("translate:detect-language-override");
-            const configuredLanguage = readLanguageOverride();
+            const readPlaybackPreferences = () => readLyricPlaybackPreferences(getVisualSetting, languageOverride);
+            const playbackPreferences = readPlaybackPreferences();
+            const { configuredSourceLanguage, karaokeEnabled } = playbackPreferences;
             const detectedLanguage = resolveLyricSourceLanguage(
-                languageOverride, configuredLanguage, () => service?.detectLanguage?.(lyrics)
+                languageOverride, configuredSourceLanguage, () => service?.detectLanguage?.(lyrics)
             );
             const modeKey = getLyricLanguageMode(detectedLanguage);
             const readModes = () => readLyricDisplayModes(modeKey, key => getVisualSetting(key) || "none");
@@ -41,8 +41,10 @@ export function createPanelTranslationLoader({
             const isCurrentRequest = () => {
                 if (!isActiveLoad(loadSeq, uri) || !isSourceCurrent() || getCacheRevision() !== cacheRevision) return false;
                 const [nextMode1, nextMode2] = readModes();
+                const nextPlaybackPreferences = readPlaybackPreferences();
                 return displayMode1 === nextMode1 && displayMode2 === nextMode2
-                    && (languageOverride || readLanguageOverride() === configuredLanguage)
+                    && configuredSourceLanguage === nextPlaybackPreferences.configuredSourceLanguage
+                    && karaokeEnabled === nextPlaybackPreferences.karaokeEnabled
                     && getTranslationTargetLanguage() === translationTargetLanguage
                     && getPronunciationNotation() === pronunciationNotation
                     && getTranslationStyle() === translationStyle;
@@ -74,7 +76,7 @@ export function createPanelTranslationLoader({
                     userEditedTranslation: translationResult?.userEdited === true,
                 })
                 : visibleLyrics;
-            if (isKaraokePlaybackEnabled(getVisualSetting("karaoke-mode-enabled", true))) {
+            if (karaokeEnabled) {
                 const timing = retainLrcRedWordTiming(rawResult, service?.getLyricsSnapshot?.(uri)?.rawResult);
                 const upgraded = timing !== rawResult && mergeLyricsTiming(display, timing.karaoke);
                 if (upgraded) {
@@ -91,6 +93,7 @@ export function createPanelTranslationLoader({
                 provider,
                 karaokeSource,
                 lyricsType,
+                playbackPreferences,
                 displayMode1,
                 displayMode2,
                 detectedLanguage,

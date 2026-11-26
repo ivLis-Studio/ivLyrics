@@ -1,13 +1,13 @@
 import { mergeFullLyricsSupplementResults } from "./fullLyricsSupplementResults.mjs";
-import { getLyricLanguageMode, readLyricDisplayModes, resolveLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
+import { getLyricLanguageMode, readLyricDisplayModes, readLyricPlaybackPreferences, resolveLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
 import { buildLyricTranslationRequests } from "./lyricTranslationVocals.mjs";
 import { getActiveLyricSupplementSlots, loadLyricSupplementSlots } from "./loadLyricSupplementSlots.mjs";
 import { LRC_RED_WORD_SYNC_SOURCE, mergeLyricsTiming } from "./lyricsTimingMerge.mjs";
 import { retainLrcRedWordTiming } from "../providers/lyrics/lrcRedWordTiming.mjs";
-import { isKaraokePlaybackEnabled, selectPlaybackLyrics } from "./selectPlaybackLyrics.mjs";
+import { selectPlaybackLyrics } from "./selectPlaybackLyrics.mjs";
 
 export function createFullLyricsRequest({
-    getProviderGeneration, isPlaybackCurrent, detectLanguage, readSetting, isSectionHeader,
+    getProviderGeneration, isPlaybackCurrent, detectLanguage, readVisual, isSectionHeader,
     getTranslationTargetLanguage, getPronunciationNotation, getTranslationCacheId,
     getTranslationStyle = () => "natural",
     readSavedLocalLyrics,
@@ -19,7 +19,8 @@ export function createFullLyricsRequest({
             displayMode1 = null,
             displayMode2 = null,
             sendToOverlay = true,
-            skipTranslation = false
+            skipTranslation = false,
+            isRequestCurrent = () => true,
         } = options;
 
         const requestGeneration = getProviderGeneration(info?.uri);
@@ -46,7 +47,8 @@ export function createFullLyricsRequest({
             if (acceptedSnapshot && ((followsTimingUpgrade(current, acceptedSnapshot.revision)
                 && retainLrcRedWordTiming(acceptedSnapshot.rawResult, current.rawResult) !== acceptedSnapshot.rawResult)
                 || completesTimingUpgrade(current, acceptedSnapshot))) acceptedSnapshot = current;
-            return requestGeneration === getProviderGeneration(info?.uri)
+            return isRequestCurrent()
+                && requestGeneration === getProviderGeneration(info?.uri)
                 && isPlaybackCurrent(info?.uri)
                 && current === acceptedSnapshot
                 && getTranslationTargetLanguage() === translationTargetLanguage
@@ -90,9 +92,9 @@ export function createFullLyricsRequest({
             // A word-sync response can arrive while the language override is read.
             const lyricsResult = retainLrcRedWordTiming(rawResult, acceptedSnapshot?.rawResult);
             const provider = lyricsResult.provider;
-            const readVisual = (key) => readSetting(`ivLyrics:visual:${key}`);
-            const readKaraokeEnabled = () => isKaraokePlaybackEnabled(readVisual("karaoke-mode-enabled"));
-            const karaokeEnabled = readKaraokeEnabled();
+            const readPlaybackPreferences = () => readLyricPlaybackPreferences(readVisual, trackLanguageOverride);
+            const playbackPreferences = readPlaybackPreferences();
+            const { karaokeEnabled, configuredSourceLanguage } = playbackPreferences;
             const { lyrics: selected, lyricsType } = selectPlaybackLyrics(lyricsResult, karaokeEnabled);
             let lyrics = selected;
 
@@ -108,9 +110,8 @@ export function createFullLyricsRequest({
                 return line;
             });
 
-            const configuredLanguage = readVisual("translate:detect-language-override");
             const detectedLanguage = resolveLyricSourceLanguage(
-                trackLanguageOverride, configuredLanguage, () => detectLanguage(lyrics)
+                trackLanguageOverride, configuredSourceLanguage, () => detectLanguage(lyrics)
             );
             const modeKey = getLyricLanguageMode(detectedLanguage);
             const readModes = () => {
@@ -120,9 +121,10 @@ export function createFullLyricsRequest({
             const [mode1, mode2] = readModes();
             presentationSettingsCurrent = () => {
                 const [nextMode1, nextMode2] = readModes();
+                const nextPlaybackPreferences = readPlaybackPreferences();
                 return mode1 === nextMode1 && mode2 === nextMode2
-                    && karaokeEnabled === readKaraokeEnabled()
-                    && (trackLanguageOverride || readVisual("translate:detect-language-override") === configuredLanguage);
+                    && karaokeEnabled === nextPlaybackPreferences.karaokeEnabled
+                    && configuredSourceLanguage === nextPlaybackPreferences.configuredSourceLanguage;
             };
 
             debug('[LyricsService] 언어 감지:', { detectedLanguage, modeKey, mode1, mode2 });
@@ -138,6 +140,7 @@ export function createFullLyricsRequest({
                 karaokeSource: lyricsType === 'karaoke' ? lyricsResult.karaokeSource || null : null,
                 displayMode1: mode1,
                 displayMode2: mode2,
+                playbackPreferences,
                 detectedLanguage: detectedLanguage || 'auto',
                 pronunciationNotation,
                 translationTargetLanguage,

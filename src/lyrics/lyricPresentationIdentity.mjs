@@ -1,4 +1,5 @@
 import { isAiMode, isPronunciationMode } from "./lyricTranslationModes.mjs";
+import { isKaraokePlaybackEnabled } from "./selectPlaybackLyrics.mjs";
 
 export const normalizeLyricSourceLanguage = language =>
     String(language || "").trim().toLowerCase().replace(/_/g, "-") || "auto";
@@ -37,6 +38,13 @@ export function getLyricDisplayModes(visual, languageMode) {
 
 export function readLyricDisplayModes(languageMode, readSetting) {
     return [readSetting(`translation-mode:${languageMode}`), readSetting(`translation-mode-2:${languageMode}`)];
+}
+
+export function readLyricPlaybackPreferences(readVisual, trackLanguageOverride) {
+    return {
+        configuredSourceLanguage: trackLanguageOverride ? null : readVisual("translate:detect-language-override") || "off",
+        karaokeEnabled: isKaraokePlaybackEnabled(readVisual("karaoke-mode-enabled")),
+    };
 }
 
 export function hasStyleDependentLyricTranslation({ displayMode1, displayMode2 }) {

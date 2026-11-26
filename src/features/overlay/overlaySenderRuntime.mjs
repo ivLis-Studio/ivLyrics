@@ -141,6 +141,7 @@ export function createOverlaySenderRuntime({
                     this.sendLyrics(trackInfo, lyrics || [], false, 'lyrics-ready', {
                         provider: detail.provider,
                         lyricsType: detail.lyricsType,
+                        playbackPreferences: detail.playbackPreferences,
                         displayMode1: detail.displayMode1,
                         displayMode2: detail.displayMode2,
                         detectedLanguage: detail.detectedLanguage,

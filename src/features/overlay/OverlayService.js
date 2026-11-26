@@ -3,14 +3,19 @@ import { createRuntimeEffects } from "../../core/runtimeEffects.mjs";
 import { getMountedLyricsPage } from "../../spicetify/lyricsPageEffects.mjs";
 import { isIvLyricsRoute } from "../../spicetify/lyricsRoute.mjs";
 import { getRuntimeService, publishRuntimeService, releaseRuntimeService } from "../../spicetify/runtimeServices.mjs";
-import { hasStyleDependentLyricTranslation, matchesLyricTranslationStyle } from "../../lyrics/lyricPresentationIdentity.mjs";
+import { getLyricLanguageMode, hasStyleDependentLyricTranslation, matchesLyricTranslationStyle } from "../../lyrics/lyricPresentationIdentity.mjs";
 import { LRC_RED_WORD_SYNC_SOURCE } from "../../lyrics/lyricsTimingMerge.mjs";
 import { LYRICS_PROVIDER_SELECTION_CHANGED } from "../../lyrics/lyricsProviderRequests.mjs";
 import { LOCAL_LYRICS_UPDATED_EVENT } from "../../lyrics/localLyricsStore.mjs";
+import { INTERFACE_LANGUAGE_CHANGED } from "../../i18n/interfaceLanguage.mjs";
 
 const overlayStartupKey = Symbol.for("ivLyrics.overlayServiceStartup");
 const overlayServiceName = "ivLyricsOverlayService";
 const INITIAL_RETRY_MS = 300;
+const GLOBAL_PRESENTATION_SETTINGS = new Set([
+    "translate:target-language", "translate:pronunciation-notation",
+    "translate:detect-language-override", "karaoke-mode-enabled",
+]);
 
 export default function OverlayServiceExtension() {
     const host = window;
@@ -88,11 +93,22 @@ function mountOverlayService({
     let lastObservedNarration = false;
     let disposed = false;
     let pageOwnerReleased = false;
+    let presentationRevision = 0;
     const getTranslationStyle = () => getAIManager()?.getTranslationStyle?.() || "natural";
     const getLyricsRequestRevision = uri => readLyricsService()?.getLyricsRequestRevision?.(uri);
-    const isPresentationStyleCurrent = snapshot => !snapshot
-        || !hasStyleDependentLyricTranslation(snapshot)
-        || matchesLyricTranslationStyle(snapshot, getTranslationStyle());
+    const isPresentationCurrent = (context) => {
+        if (!context) return true;
+        if (hasStyleDependentLyricTranslation(context)
+            && !matchesLyricTranslationStyle(context, getTranslationStyle())) return false;
+
+        const preferences = readLyricsService()?.getLyricsPresentationPreferences?.(context.detectedLanguage);
+        if (!preferences) return true;
+        const matches = (key, source = context) => source[key] == null || source[key] === preferences[key];
+        const playback = context.playbackPreferences ?? {};
+        return matches("translationTargetLanguage") && matches("pronunciationNotation")
+            && (context.detectedLanguage === undefined || (matches("displayMode1") && matches("displayMode2")))
+            && matches("karaokeEnabled", playback) && matches("configuredSourceLanguage", playback);
+    };
 
     const finishChain = (chain) => {
         if (scheduledChain?.id === chain.id) {
@@ -138,8 +154,7 @@ function mountOverlayService({
         [readOverlaySender(), readHelperSender()].filter(sender => sender?.enabled && sender.isConnected);
     const matchesDelivery = (sender, trackInfo) => sender.lastDeliveredUri === trackInfo.uri
         && (sender.lastDeliveredIsDjNarration === true) === trackInfo.isDjNarration
-        && (trackInfo.isDjNarration || isPresentationStyleCurrent(sender._lastPresentationContext));
-    const hasCurrentDelivery = (trackInfo) => connectedSenders().every(sender => matchesDelivery(sender, trackInfo));
+        && (trackInfo.isDjNarration || isPresentationCurrent(sender._lastPresentationContext));
 
     const sendEmptyLyricsForDjNarration = (trackInfo, senders) => Promise.allSettled(
         senders.filter(sender => !matchesDelivery(sender, trackInfo))
@@ -181,16 +196,20 @@ function mountOverlayService({
         const requestKey = `${trackInfo.uri}:${skipTranslation ? 'original' : 'translated'}`;
         const style = getTranslationStyle();
         const revision = getLyricsRequestRevision(trackInfo.uri);
+        const settingsRevision = presentationRevision;
+        const isSameRequest = entry => entry?.settingsRevision === settingsRevision
+            && entry.style === style && entry.revision === revision;
+        const isRequestCurrent = () => !disposed && presentationRevision === settingsRevision;
         const existing = fallbackRequests.get(requestKey);
-        if (existing?.style === style && existing.revision === revision) return existing.request;
+        if (isSameRequest(existing)) return existing.request;
 
         const original = !skipTranslation
             ? fallbackRequests.get(`${trackInfo.uri}:original`)
             : null;
-        const originalRequest = original?.style === style && original.revision === revision ? original.request : null;
+        const originalRequest = isSameRequest(original) ? original.request : null;
         const request = Promise.resolve(originalRequest).then(() => {
             const currentTrack = getCurrentTrack();
-            if (disposed || currentTrack?.uri !== trackInfo.uri
+            if (!isRequestCurrent() || currentTrack?.uri !== trackInfo.uri
                 || currentTrack.isDjNarration || connectedSenders().length === 0
                 || getTranslationStyle() !== style || getLyricsRequestRevision(trackInfo.uri) !== revision) return;
             // 원문 보충이 늦게 끝나 번역 스냅샷을 무효화하지 않도록 같은 곡의
@@ -201,11 +220,11 @@ function mountOverlayService({
                     return;
                 }
                 const snapshot = getSharedPresentation(trackInfo.uri);
-                if (isPresentationStyleCurrent(snapshot) && snapshot?.presentationComplete !== false
-                    && hasCurrentDelivery(trackInfo)) return;
+                if (isPresentationCurrent(snapshot) && snapshot?.presentationComplete !== false
+                    && connectedSenders().every(sender => matchesDelivery(sender, trackInfo))) return;
             }
             return readLyricsService().getFullLyrics(trackInfo, {
-                sendToOverlay: true, skipTranslation
+                sendToOverlay: true, skipTranslation, isRequestCurrent
             });
         }).catch((error) => {
             console.error("[OverlayService] 현재 곡 가사 동기화 실패:", error);
@@ -215,7 +234,7 @@ function mountOverlayService({
             }
         });
 
-        fallbackRequests.set(requestKey, { style, revision, request });
+        fallbackRequests.set(requestKey, { style, revision, settingsRevision, request });
         return request;
     };
 
@@ -298,11 +317,11 @@ function mountOverlayService({
                 return;
             }
 
-            const delivered = senders.every(sender => matchesDelivery(sender, trackInfo));
             const snapshot = getSharedPresentation(trackInfo.uri);
-            const styleCurrent = isPresentationStyleCurrent(snapshot);
-            const sharedPresentation = styleCurrent ? snapshot : null;
-            const presentationIncomplete = !styleCurrent || sharedPresentation?.presentationComplete === false;
+            const delivered = senders.every(sender => matchesDelivery(sender, trackInfo));
+            const presentationCurrent = isPresentationCurrent(snapshot);
+            const sharedPresentation = presentationCurrent ? snapshot : null;
+            const presentationIncomplete = !presentationCurrent || sharedPresentation?.presentationComplete === false;
             // 원문 전송 성공은 번역/발음 생성 완료를 의미하지 않는다.
             if (delivered && !presentationIncomplete) {
                 finishChain(chain);
@@ -316,7 +335,8 @@ function mountOverlayService({
                     schedule(0, null, chain);
                     return;
                 }
-                if (getSharedPresentation(trackInfo.uri) !== sharedPresentation) {
+                if (getSharedPresentation(trackInfo.uri) !== sharedPresentation
+                    || !isPresentationCurrent(sharedPresentation)) {
                     schedule(0, null, chain);
                     return;
                 }
@@ -367,7 +387,7 @@ function mountOverlayService({
         const timingUpgrade = snapshot.source === LRC_RED_WORD_SYNC_SOURCE && snapshot.timingUpgradeApplied;
         if ((!timingUpgrade && !['ivlyrics-page', 'now-playing-panel'].includes(snapshot.source))
             || !trackInfo || trackInfo.isDjNarration || snapshot.trackUri !== trackInfo.uri
-            || !isPresentationStyleCurrent(snapshot) || !Array.isArray(snapshot.displayLyrics)
+            || !isPresentationCurrent(snapshot) || !Array.isArray(snapshot.displayLyrics)
             || snapshot.displayLyrics.length === 0) {
             return;
         }
@@ -395,6 +415,26 @@ function mountOverlayService({
         schedule(0);
     };
 
+    const schedulePresentationRefresh = () => {
+        presentationRevision++;
+        if (scheduledChain) scheduledChain.originalFallbackUri = null;
+        schedule(0);
+    };
+
+    const presentationSettingsChanged = ({ detail }) => {
+        const name = detail?.name;
+        if (GLOBAL_PRESENTATION_SETTINGS.has(name)) {
+            schedulePresentationRefresh();
+        } else if (typeof name === "string" && /^translation-mode(?:-2)?:/.test(name)) {
+            const trackInfo = getCurrentTrack();
+            const snapshot = trackInfo && getSharedPresentation(trackInfo.uri);
+            const language = snapshot?.detectedLanguage;
+            if (language === undefined || name.endsWith(`:${getLyricLanguageMode(language)}`)) {
+                schedulePresentationRefresh();
+            }
+        }
+    };
+
     const localLyricsUpdated = ({ detail }) => {
         if (!detail?.deleted) return;
         const trackInfo = getCurrentTrack();
@@ -420,6 +460,7 @@ function mountOverlayService({
 
     const api = {
         schedule,
+        isPresentationCurrent,
         syncNow() {
             schedule(0);
         },
@@ -445,9 +486,11 @@ function mountOverlayService({
         effects.listen(host, "ivLyrics:presentation-owner-released", presentationOwnerReleasedListener);
         effects.listen(host, LYRICS_PROVIDER_SELECTION_CHANGED, refreshCurrentPresentation);
         effects.listen(host, LOCAL_LYRICS_UPDATED_EVENT, localLyricsUpdated);
+        effects.listen(host, "ivLyrics", presentationSettingsChanged);
+        effects.listen(host, INTERFACE_LANGUAGE_CHANGED, schedulePresentationRefresh);
         const history = getHistory();
         effects.subscribe(handler => history?.listen?.(handler), historyListener);
-        effects.subscribe(handler => getAIManager()?.on?.("translation:style:changed", handler), () => schedule(0));
+        effects.subscribe(handler => getAIManager()?.on?.("translation:style:changed", handler), schedulePresentationRefresh);
 
         // Populate the current track when startup misses its songchange event.
         schedule(1200);

@@ -15,7 +15,7 @@ import { createApiTracker } from "../core/createApiTracker.mjs";
 import { getRuntimeService, publishRuntimeService } from "../spicetify/runtimeServices.mjs";
 import { getMountedLyricsPage } from "../spicetify/lyricsPageEffects.mjs";
 import { getTranslationSourceCacheHash } from "./translationPresentation.mjs";
-import { createLyricsServicePreferences } from "./lyricsServicePreferences.mjs";
+import { createLyricsPresentationPreferences, createLyricsServicePreferences } from "./lyricsServicePreferences.mjs";
 import { createTranslator } from "./createTranslator.mjs";
 import { createLocalLanguageConverter } from "./localLanguageConverter.mjs";
 import { LRUCache } from "../core/LRUCache.mjs";
@@ -341,6 +341,7 @@ export default function LyricsServiceExtension() {
                 presentationContext: {
                     provider: snapshot.provider,
                     lyricsType: snapshot.lyricsType,
+                    playbackPreferences: snapshot.playbackPreferences,
                     displayMode1: snapshot.displayMode1,
                     displayMode2: snapshot.displayMode2,
                     detectedLanguage: snapshot.detectedLanguage === null ? 'auto' : snapshot.detectedLanguage,
@@ -652,6 +653,14 @@ export default function LyricsServiceExtension() {
             getSpotifyLocale: () => Spicetify.Locale?.getLocale(),
         });
 
+    const getVisualSetting = (key) => getRuntimeService("CONFIG", window)?.visual?.[key]
+        ?? getStorageItem(`ivLyrics:visual:${key}`);
+    LyricsService.getLyricsPresentationPreferences = createLyricsPresentationPreferences({
+        readVisual: getVisualSetting,
+        getTranslationTargetLanguage,
+        getPronunciationNotation: getServicePronunciationNotation,
+    });
+
     const getTranslator = () => Translator;
     const translationModes = createLyricTranslationModes({
         getTranslator,
@@ -663,8 +672,7 @@ export default function LyricsServiceExtension() {
             playbackPosition.getPlayerPlaybackSnapshot(), Spicetify.Player.data?.item?.uri, uri
         ),
         detectLanguage: (lyrics) => Utils.detectLanguage(lyrics),
-        readSetting: (key) => getRuntimeService("CONFIG", window)?.visual?.[key.slice("ivLyrics:visual:".length)]
-            ?? getStorageItem(key),
+        readVisual: getVisualSetting,
         isSectionHeader: (text) => Utils.isSectionHeader(text),
         getTranslationTargetLanguage,
         getPronunciationNotation: getServicePronunciationNotation,
@@ -748,6 +756,8 @@ export default function LyricsServiceExtension() {
         scheduleSenderBootstrap: (delay = 1200, previousUri = null) => {
             getRuntimeService("ivLyricsOverlayService", window)?.schedule?.(delay, previousUri);
         },
+        isPresentationCurrent: context =>
+            getRuntimeService("ivLyricsOverlayService", window)?.isPresentationCurrent?.(context),
         debug: serviceDebug,
         lyricPresentation,
         mapLyricsForSender: createOverlayLyricPayload(lyricPresentation),

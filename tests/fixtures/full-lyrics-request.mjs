@@ -17,7 +17,7 @@ export function fixtureFullLyricsRequest({
             Utils.getPlayerPlaybackSnapshot(), Spicetify.Player.data?.item?.uri, uri
         ),
         detectLanguage: (lines) => Utils.detectLanguage(lines),
-        readSetting: (key) => Spicetify.LocalStorage.get(key),
+        readVisual: (key) => Spicetify.LocalStorage.get(`ivLyrics:visual:${key}`),
         isSectionHeader: (text) => Utils.isSectionHeader(text),
         getTranslationTargetLanguage,
         getPronunciationNotation: getServicePronunciationNotation,

@@ -1,3 +1,4 @@
+import { getLyricLanguageMode, readLyricDisplayModes, readLyricPlaybackPreferences } from "./lyricPresentationIdentity.mjs";
 import { normalizeIvLyricsPronunciationNotation } from "./translationPreferences.mjs";
 
 export function createLyricsServicePreferences({
@@ -60,4 +61,17 @@ export function createLyricsServicePreferences({
     }
 
     return { getServicePronunciationNotation, getTranslatorErrorMessage, getStorageItem, getTranslationTargetLanguage };
+}
+
+export function createLyricsPresentationPreferences({ readVisual, getTranslationTargetLanguage, getPronunciationNotation }) {
+    return (language) => {
+        const [displayMode1, displayMode2] = readLyricDisplayModes(getLyricLanguageMode(language), readVisual);
+        return {
+            displayMode1: displayMode1 || "none",
+            displayMode2: displayMode2 || "none",
+            translationTargetLanguage: getTranslationTargetLanguage(),
+            pronunciationNotation: getPronunciationNotation(),
+            ...readLyricPlaybackPreferences(readVisual),
+        };
+    };
 }

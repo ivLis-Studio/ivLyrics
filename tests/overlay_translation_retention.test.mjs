@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { createLyricsPresentationPreferences } from "#ivlyrics/lyrics/lyricsServicePreferences.mjs";
 import { createLyricsPresentationStore } from "#ivlyrics/lyrics/lyricsPresentationStore.mjs";
 import { createLyricSupplementPresentation } from "#ivlyrics/lyrics/lyricSupplementPresentation.mjs";
 import { installLyricsReadySnapshotListener } from "#ivlyrics/lyrics/installLyricsReadySnapshotListener.mjs";
@@ -114,11 +115,14 @@ test('preserving supplements reuses an unchanged presentation and only copies th
 
 // Exercise the actual sender, preservation and mapper. Capture the complete
 // payload at the transport queue boundary; transport retry policy has its own tests.
-const load = ({ globalFallback = false, holdTranslation = null } = {}) => {
+const load = ({ globalFallback = false, holdTranslation = null, withKaraoke = false, trackLanguageOverride = null } = {}) => {
 	const packets = [];
 	const timers = new Map(), values = new Map();
 	let timerId = 0, translationCalls = 0;
 	let translationStyle = 'natural';
+	const readVisual = key => values.get(`ivLyrics:visual:${key}`);
+	const readTargetLanguage = () => readVisual('translate:target-language') || 'ko';
+	const readNotation = () => readVisual('translate:pronunciation-notation') || 'latin';
 	const styleListeners = new Set();
 	const surface = () => {
 		const listeners = new Map();
@@ -148,6 +152,7 @@ const load = ({ globalFallback = false, holdTranslation = null } = {}) => {
         getMountedLyricsPage, getRuntimeService, getTrackSyncOffsetStore, getTranslationSourceCacheHash, installLyricsPresentationPublisher, installLyricsReadySnapshotListener,
     createOverlayOffsetResolver,
 		window, document, CustomEvent, createLyricsPresentationStore,
+		Blob, URL, Worker: class { postMessage() {} terminate() {} },
 		providerRequests: createLyricsProviderRequests(() => window.LyricsAddonManager),
 		Spicetify: { Player: player, Platform: { History: history }, LocalStorage: { get: key => values.get(key), set() {} } },
 		Utils: { getPlayerPlaybackSnapshot: () => ({ uri: player.data.item.uri }),
@@ -155,7 +160,7 @@ const load = ({ globalFallback = false, holdTranslation = null } = {}) => {
 			extractTrackId: value => value.split(':').at(-1),
 			getTranslationCacheId: value => value.startsWith('spotify:local:') ? `local-uri:${value}` : value.split(':').at(-1),
 			isSectionHeader: () => false },
-		getTranslationTargetLanguage: () => 'ko', getServicePronunciationNotation: () => 'latin',
+		getTranslationTargetLanguage: readTargetLanguage, getServicePronunciationNotation: readNotation,
 		serviceDebug() {},
 		helperDebug() {}, resolveSpotifyImageUrl: () => null,
 		setTimeout: (fn, delay) => { timers.set(++timerId, { fn, delay }); return timerId; },
@@ -191,17 +196,26 @@ const load = ({ globalFallback = false, holdTranslation = null } = {}) => {
 	if (globalFallback) {
 		values.set('ivLyrics:visual:translation-mode:english', 'gemini_ko');
 		values.set('ivLyrics:visual:translation-mode-2:english', 'gemini_romaji');
+		const raw = { uri, provider: 'lrclib', synced: rawLyrics() };
+		if (withKaraoke) {
+			raw.karaoke = raw.synced.map(line => ({ ...line, syllables: [{ text: line.text, startTime: line.startTime, endTime: line.endTime }] }));
+		}
+		window.LyricsService.getTrackLanguageOverride = async () => trackLanguageOverride;
 		Object.assign(window, { Spicetify: context.Spicetify, Utils: context.Utils,
-			LyricsAddonManager: { getLyrics: async () => ({ uri, provider: 'lrclib', synced: rawLyrics() }) },
-			Translator: { callGemini: async ({ wantSmartPhonetic }) => {
+			LyricsAddonManager: { getLyrics: async () => raw },
+			Translator: { callGemini: async ({ wantSmartPhonetic, pronunciationNotation }) => {
 				translationCalls++;
-				if (wantSmartPhonetic) return { phonetic: 'herro\nwarudo' };
+				if (wantSmartPhonetic) return { phonetic: pronunciationNotation === 'ipa' ? 'həˈləʊ\nwɜːld' : 'herro\nwarudo' };
+				if (readTargetLanguage() === 'fr') return { translation: 'Bonjour\nMonde' };
 				if (translationStyle === 'natural') {
 					if (holdTranslation) await holdTranslation;
 					return { translation: '안녕\n세상' };
 				}
 				return { translation: '안녕하세요\n세계' };
 			} },
+		});
+		window.LyricsService.getLyricsPresentationPreferences = createLyricsPresentationPreferences({
+			readVisual, getTranslationTargetLanguage: readTargetLanguage, getPronunciationNotation: readNotation,
 		});
 		window.LyricsService.getFullLyrics = fixtureFullLyricsRequest({
 			...context,
@@ -223,6 +237,10 @@ const load = ({ globalFallback = false, holdTranslation = null } = {}) => {
 			{ uri: trackUri, title: 'Title', artist: 'Artist' }, lines, true, reason, presentationContext),
 		last: name => packets.filter(packet => packet.name === name).at(-1).payload.lyrics,
 		translationCalls: () => translationCalls,
+		setVisual(name, value) {
+			values.set(`ivLyrics:visual:${name}`, value);
+			window.dispatchEvent({ type: 'ivLyrics', detail: { type: 'config', name, value } });
+		},
 		setStyle(style) {
 			translationStyle = style;
 			for (const listener of styleListeners) listener({ style });
@@ -582,6 +600,119 @@ test('a pending fallback for the previous style cannot block or overwrite curren
 	await flush();
 	assert.equal(h.service.getLyricsSnapshot(uri), current);
 	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), ['herro', 'warudo'], ['안녕하세요', '세계']);
+	h.window.ivLyricsOverlayService.destroy();
+});
+
+test('fresh owner rows cannot inherit supplements generated with a previous source language preference', async () => {
+	const h = load();
+	const trackInfo = { uri, title: 'Title', artist: 'Artist' };
+	const context = { ...richContext(), trackInfo, detectedLanguage: 'en' };
+	h.publisher.publishLyricsReady({ ...context, lyrics: richLyrics(),
+		playbackPreferences: { configuredSourceLanguage: 'off', karaokeEnabled: true },
+	});
+	await flush();
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name));
+
+	h.publisher.publishLyricsReady({ ...context, lyrics: rawLyrics(), presentationComplete: false,
+		playbackPreferences: { configuredSourceLanguage: 'ja', karaokeEnabled: true },
+	});
+	await flush();
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), [null, null], [null, null]);
+	assert.equal(h.service.getLyricsSnapshot(uri).displayLyrics[0].phoneticText, undefined);
+	assert.equal(h.service.getLyricsSnapshot(uri).displayLyrics[0].text2, undefined);
+});
+
+test('ownerless delivery reconciles target language, pronunciation notation and slot changes', async () => {
+	const h = load({ globalFallback: true });
+	h.window.dispatchEvent({ type: 'ivLyrics:presentation-owner-released', detail: { source: 'ivlyrics-page' } });
+	await h.runScheduled();
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name));
+
+	h.setVisual('translate:target-language', 'fr');
+	h.setVisual('translate:pronunciation-notation', 'ipa');
+	await h.runScheduled();
+	assert.equal(h.translationCalls(), 4, 'one refresh for both preferences');
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), ['həˈləʊ', 'wɜːld'], ['Bonjour', 'Monde']);
+
+	h.setVisual('translation-mode:english', 'none');
+	await h.runScheduled();
+	assert.equal(h.translationCalls(), 5, 'the hidden slot is not requested');
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), ['həˈləʊ', 'wɜːld'], [null, null]);
+	h.window.ivLyricsOverlayService.destroy();
+});
+
+test('ownerless delivery follows source language and karaoke preferences without refetching the raw source', async () => {
+	const h = load({ globalFallback: true, withKaraoke: true });
+	h.window.dispatchEvent({ type: 'ivLyrics:presentation-owner-released', detail: { source: 'ivlyrics-page' } });
+	await h.runScheduled();
+	const raw = h.service.getLyricsSnapshot(uri).rawResult;
+	assert.equal(h.service.getLyricsSnapshot(uri).lyricsType, 'karaoke');
+
+	h.setVisual('karaoke-mode-enabled', false);
+	h.setVisual('translate:detect-language-override', 'ja');
+	await h.runScheduled();
+	const overridden = h.service.getLyricsSnapshot(uri);
+	assert.equal(overridden.detectedLanguage, 'ja');
+	assert.equal(overridden.lyricsType, 'synced');
+	assert.strictEqual(overridden.rawResult, raw);
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), [null, null], [null, null]);
+
+	h.setVisual('translate:detect-language-override', 'off');
+	h.setVisual('karaoke-mode-enabled', true);
+	await h.runScheduled();
+	assert.equal(h.service.getLyricsSnapshot(uri).detectedLanguage, 'en');
+	assert.equal(h.service.getLyricsSnapshot(uri).lyricsType, 'karaoke');
+	assert.strictEqual(h.service.getLyricsSnapshot(uri).rawResult, raw);
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name));
+	h.window.ivLyricsOverlayService.destroy();
+});
+
+test('changing the global source language keeps an explicit track override and its supplements', async () => {
+	const h = load({ globalFallback: true, trackLanguageOverride: 'en' });
+	h.window.dispatchEvent({ type: 'ivLyrics:presentation-owner-released', detail: { source: 'ivlyrics-page' } });
+	await h.runScheduled();
+	const snapshot = h.service.getLyricsSnapshot(uri);
+	const packetCount = h.packets.length;
+	h.setVisual('translate:detect-language-override', 'ja');
+	await h.runScheduled();
+	assert.equal(h.service.getLyricsSnapshot(uri), snapshot);
+	assert.equal(h.translationCalls(), 2);
+	assert.equal(h.packets.length, packetCount);
+	h.window.ivLyricsOverlayService.destroy();
+});
+
+test('reconnection waits for refreshed preferences before resending cached lyrics', async () => {
+	const h = load({ globalFallback: true });
+	h.window.dispatchEvent({ type: 'ivLyrics:presentation-owner-released', detail: { source: 'ivlyrics-page' } });
+	await h.runScheduled();
+	const packetCount = h.packets.length;
+	h.setVisual('translate:target-language', 'fr');
+	await Promise.all(['overlay', 'helper'].map(name => h[name].resendWithNewOffset('reconnect')));
+	assert.equal(h.packets.length, packetCount);
+	await h.runScheduled();
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), ['herro', 'warudo'], ['Bonjour', 'Monde']);
+	h.window.ivLyricsOverlayService.destroy();
+});
+
+test('a new target language replaces a pending ownerless request on the same track', async () => {
+	let finishPrevious;
+	const holdTranslation = new Promise(resolve => { finishPrevious = resolve; });
+	const h = load({ globalFallback: true, holdTranslation });
+	h.window.dispatchEvent({ type: 'ivLyrics:presentation-owner-released', detail: { source: 'ivlyrics-page' } });
+	await h.runScheduled();
+	assert.equal(h.translationCalls(), 1);
+
+	h.setVisual('translate:target-language', 'fr');
+	await h.runScheduled();
+	const current = h.service.getLyricsSnapshot(uri);
+	assert.equal(current.translationTargetLanguage, 'fr');
+	assert.equal(h.translationCalls(), 3);
+	const packetCount = h.packets.length;
+	finishPrevious();
+	await flush();
+	assert.equal(h.service.getLyricsSnapshot(uri), current);
+	assert.equal(h.packets.length, packetCount);
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), ['herro', 'warudo'], ['Bonjour', 'Monde']);
 	h.window.ivLyricsOverlayService.destroy();
 });
 

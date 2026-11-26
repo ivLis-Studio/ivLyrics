@@ -26,6 +26,7 @@ export const buildLyricsReadyDetail = (options = {}) => {
     presentationComplete: options.presentationComplete !== false,
   };
 
+  if (options.playbackPreferences) detail.playbackPreferences = options.playbackPreferences;
   if (hasOwn(options, "translationSourceText")) {
     detail.translationSourceText = String(options.translationSourceText ?? "");
   }

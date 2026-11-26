@@ -1,5 +1,5 @@
 import {
-  getLyricDisplayModes, getLyricLanguageMode, matchesLyricPresentation, getSharedLyricPresentationKey,
+  getLyricDisplayModes, getLyricLanguageMode, matchesLyricPresentation, getSharedLyricPresentationKey, readLyricPlaybackPreferences,
 } from "./lyricPresentationIdentity.mjs";
 import { getLyricsModeTypeKey } from "./lyricsRenderModes.mjs";
 import { getCommittedLyricsTimingUpgrade } from "./pageLyricsTimingUpgrade.mjs";
@@ -53,6 +53,9 @@ export function createPageLyricsPresenter({
       provider,
       karaokeSource,
       lyricsType,
+      playbackPreferences: readLyricPlaybackPreferences(
+        key => getVisualSettings?.()?.[key], page.trackLanguageOverride,
+      ),
       displayMode1,
       displayMode2,
       detectedLanguage,

@@ -7,7 +7,7 @@ import { createOverlaySenderRuntime, MAX_OVERLAY_PROBE_STEPS } from "./overlaySe
 
 export function createOverlaySenders({
     host, getSpicetify, getSyncOffset, playback, getOverlayProgressIsPlaying,
-    resolveSpotifyImageUrl, scheduleSenderBootstrap, debug, lyricPresentation, mapLyricsForSender,
+    resolveSpotifyImageUrl, scheduleSenderBootstrap, isPresentationCurrent, debug, lyricPresentation, mapLyricsForSender,
 }) {
     const readPersistence = () => readSettingsPersistence(host);
 
@@ -248,6 +248,7 @@ export function createOverlaySenders({
         ...createOverlayTransport({ maxProbeFailures: MAX_OVERLAY_PROBE_STEPS }),
         ...createOverlayLyricsDelivery({
             playback, getSpicetify, resolveSpotifyImageUrl, debug, lyricPresentation, mapLyricsForSender,
+            scheduleSenderBootstrap, isPresentationCurrent,
         }),
         ...createOverlayProgress({
             host, playback, getSpicetify, getOverlayProgressIsPlaying, resolveSpotifyImageUrl

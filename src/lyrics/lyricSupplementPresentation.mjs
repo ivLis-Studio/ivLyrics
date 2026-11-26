@@ -23,6 +23,11 @@ export const getLyricSupplementVisibility = (presentationContext = null) => {
 };
 
 export function getLyricSupplementRetention(previous, next, visibility = getLyricSupplementVisibility(next)) {
+    const previousSource = previous?.playbackPreferences?.configuredSourceLanguage;
+    const nextSource = next?.playbackPreferences?.configuredSourceLanguage;
+    if (previousSource !== undefined && nextSource !== undefined && previousSource !== nextSource) {
+        return { pronunciation: false, translation: false };
+    }
     return next && hasStyleDependentLyricTranslation(next)
         && !matchesLyricTranslationStyle(previous || {}, next.translationStyle || "natural")
         ? { ...visibility, translation: false }

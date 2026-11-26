@@ -423,6 +423,7 @@ const { OverlaySender, lyricsHelperSender } = createOverlaySenders({
     getOverlayProgressIsPlaying: () => getOverlayProgressIsPlaying(),
     resolveSpotifyImageUrl: (url) => resolveSpotifyImageUrl(url),
     scheduleSenderBootstrap: globalThis.scheduleSenderBootstrap ?? (() => {}),
+    isPresentationCurrent: context => window.ivLyricsOverlayService?.isPresentationCurrent?.(context),
     debug: helperDebug,
     lyricPresentation,
     mapLyricsForSender: createFixtureOverlayLyricPayload(lyricPresentation),

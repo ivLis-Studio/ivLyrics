@@ -17,6 +17,7 @@ export function installLyricsReadySnapshotListener(host, publishSnapshot) {
             provider: detail.provider,
             karaokeSource: detail.karaokeSource,
             lyricsType: detail.lyricsType,
+            playbackPreferences: detail.playbackPreferences,
             displayMode1: detail.displayMode1,
             displayMode2: detail.displayMode2,
             pronunciationNotation: detail.pronunciationNotation,

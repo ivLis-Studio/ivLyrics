@@ -21,6 +21,7 @@ function waitBeforeRetry(sender, delay) {
 
 export function createOverlayLyricsDelivery({
     playback, getSpicetify, resolveSpotifyImageUrl, debug, lyricPresentation, mapLyricsForSender,
+    scheduleSenderBootstrap, isPresentationCurrent,
 }) {
     const { getPresentationKey, preserveAuxiliaryLyrics } = lyricPresentation;
 
@@ -338,6 +339,10 @@ export function createOverlayLyricsDelivery({
             }
             if (trackUri && trackUri !== this._lastTrackInfo?.uri) return;
             if (this._lastTrackInfo && this._lastLyrics) {
+                if (isPresentationCurrent?.(this._lastPresentationContext) === false) {
+                    scheduleSenderBootstrap(0);
+                    return;
+                }
                 debug(this.LOG_TAG, '가사 재전송:', sendReason);
                 await this.sendLyrics(
                     this._lastTrackInfo,

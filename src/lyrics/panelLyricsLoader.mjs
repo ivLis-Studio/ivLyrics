@@ -1,6 +1,7 @@
 import { getPanelSupplementVisibility } from "./panelLyricPresentation.mjs";
 import { loadLyricsForPresentation } from "./loadLyricsForPresentation.mjs";
-import { isKaraokePlaybackEnabled, selectPlaybackLyrics } from "./selectPlaybackLyrics.mjs";
+import { selectPlaybackLyrics } from "./selectPlaybackLyrics.mjs";
+import { readLyricPlaybackPreferences } from "./lyricPresentationIdentity.mjs";
 import { retainLrcRedWordTiming } from "../providers/lyrics/lrcRedWordTiming.mjs";
 
 const SERVICE_WAIT_INTERVAL_MS = 300;
@@ -101,8 +102,8 @@ export function createPanelLyricsLoader({
             }
 
             const result = retainLrcRedWordTiming(loaded.result, service.getLyricsSnapshot?.(trackUri)?.rawResult);
-            const karaokeEnabled = isKaraokePlaybackEnabled(getVisualSetting("karaoke-mode-enabled", true));
-            const { lyrics, lyricsType } = selectPlaybackLyrics(result, karaokeEnabled);
+            const playbackPreferences = readLyricPlaybackPreferences(getVisualSetting, trackInfo.languageOverride);
+            const { lyrics, lyricsType } = selectPlaybackLyrics(result, playbackPreferences.karaokeEnabled);
             if (!lyrics.length) {
                 showUnavailable();
                 return;
@@ -116,7 +117,7 @@ export function createPanelLyricsLoader({
             showLyrics({ trackUri, provider, lyrics: displayLyrics, karaokeSource });
             publishPanelLyricsSnapshot({
                 trackUri, trackInfo, rawResult: result, displayLyrics, provider, karaokeSource, lyricsType,
-                trackLyricsProviderOverride: override,
+                trackLyricsProviderOverride: override, playbackPreferences,
                 displayMode1: null, displayMode2: null,
                 translationSourceText: null, phoneticLines: null, translationLines: null,
                 presentationComplete: false,
