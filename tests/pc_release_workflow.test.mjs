@@ -366,3 +366,17 @@ test('a newer stable release during upload leaves the older build as a draft', {
     assert.equal(fx.stable(), '7.1.17');
     assert.doesNotMatch(fx.trace(), /release edit/);
 });
+
+test('a newer updater marker during upload leaves the older stable build as a draft', { skip: !canRun }, context => {
+    const fx = fixture(context);
+    fx.git('switch', '-c', 'marker-advance');
+    writeFileSync(join(fx.repo, 'version.txt'), '7.10.0\n');
+    fx.git('commit', '-qam', 'Advance the updater marker');
+    const marker = fx.git('rev-parse', 'HEAD');
+    fx.git('switch', 'main');
+
+    failed(fx.run('publish', { IVL_ADVANCE_DEFAULT_BRANCH: marker }), /older than version.txt on the default branch/);
+    assert.equal(fx.releaseInfo().isDraft, true);
+    assert.equal(fx.stable(), '7.10.0');
+    assert.doesNotMatch(fx.trace(), /release edit/);
+});

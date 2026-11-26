@@ -1,5 +1,6 @@
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const [group, command, tag, ...args] = process.argv.slice(2);
 const root = process.env.IVL_RELEASE_FIXTURE;
@@ -65,6 +66,9 @@ case 'download': {
     copyFileSync(join(releaseDir, 'ivLyrics.zip'), join(destination, 'ivLyrics.zip'));
     copyFileSync(join(releaseDir, 'ivLyrics.zip.sha256'), join(destination, 'ivLyrics.zip.sha256'));
     if (process.env.IVL_CORRUPT_UPLOADED_ZIP === 'true') appendFileSync(join(destination, 'ivLyrics.zip'), 'corrupt');
+    if (process.env.IVL_ADVANCE_DEFAULT_BRANCH) {
+        execFileSync('git', ['push', 'origin', `${process.env.IVL_ADVANCE_DEFAULT_BRANCH}:refs/heads/main`]);
+    }
     break;
 }
 case 'edit':

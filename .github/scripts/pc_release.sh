@@ -70,6 +70,18 @@ require_non_older_public_release() {
   require_non_older_version "${tag#v}" "the latest GitHub release"
 }
 
+read_stable_update_marker() {
+  git fetch origin "$DEFAULT_BRANCH" >&2 || return 1
+  git show FETCH_HEAD:version.txt | tr -d '\r\n'
+}
+
+require_publishable_stable_version() {
+  local stable
+  stable="$(read_stable_update_marker)" || fail "Could not read version.txt on the default branch."
+  require_non_older_version "$stable" "version.txt on the default branch"
+  require_non_older_public_release
+}
+
 find_artifact() {
   local name="$1" path
   path="$(find release-artifact -type f -name "$name")"
@@ -124,13 +136,10 @@ verify_uploaded_assets() (
 
 publish_release() {
   verify_release_identity
-  local archive checksum notes draft commit stable latest
+  local archive checksum notes draft commit latest
   verify_artifacts
   if [[ "$PRERELEASE" == false ]]; then
-    git fetch origin "$DEFAULT_BRANCH"
-    stable="$(git show FETCH_HEAD:version.txt | tr -d '\r\n')"
-    require_non_older_version "$stable" "version.txt on the default branch"
-    require_non_older_public_release
+    require_publishable_stable_version
   fi
 
   if draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>&1)"; then
@@ -162,7 +171,7 @@ publish_release() {
   require_tested_tag
   latest=false
   if [[ "$PRERELEASE" == false ]]; then
-    require_non_older_public_release
+    require_publishable_stable_version
     latest=true
   fi
   gh release edit "$RELEASE_TAG" --draft=false --prerelease="$PRERELEASE" --latest="$latest" \
@@ -188,8 +197,7 @@ advance_update_marker() {
   git config user.name "github-actions[bot]"
   git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
   for attempt in 1 2 3; do
-    git fetch origin "$DEFAULT_BRANCH"
-    stable="$(git show FETCH_HEAD:version.txt | tr -d '\r\n')"
+    stable="$(read_stable_update_marker)" || fail "Could not read version.txt on the default branch."
     require_non_older_version "$stable" "version.txt on the default branch"
     require_tested_tag
     verify_uploaded_assets
