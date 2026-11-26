@@ -1,4 +1,5 @@
 import { claimBrowserFullscreen } from "./browserFullscreenOwnership.mjs";
+import { getResearchFontSize } from "../../app/researchReaderSettings.mjs";
 
 const PORTAL_ID = "lyrics-fullscreen-container";
 const OPEN_DIALOG_SELECTOR = '.ivlyrics-fluent-overlay:not([aria-hidden="true"]), .lyrics-sync-adjust-floating [role="dialog"], .ivl-tb-fly, .ivlyrics-settings-overlay.is-open, .community-video-overlay, .ivlyrics-cache-edit-overlay';
@@ -88,7 +89,7 @@ export function createLyricsFullscreenController({
             if (!layout.usePageFullscreenUi) {
                 portal = document.createElement("div");
                 portal.id = PORTAL_ID;
-                portal.style.setProperty("--fullscreen-tmi-font-size", (visual["fullscreen-tmi-font-size"] || 100) / 100);
+                portal.style.setProperty("--fullscreen-tmi-font-size", getResearchFontSize(visual) / 100);
                 document.body.append(portal);
             }
 

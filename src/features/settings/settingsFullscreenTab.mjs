@@ -1,3 +1,7 @@
+import {
+  getResearchFontSize, RESEARCH_FONT_SIZE_KEY, RESEARCH_FONT_SIZE_MAX, RESEARCH_FONT_SIZE_MIN, RESEARCH_FONT_SIZE_STEP,
+} from "../../app/researchReaderSettings.mjs";
+
 export function createFullscreenSettingsTab({
   react, t, activeTab,
   getVisualSettings, fullscreenView, createTextOutlineSettingItems, handleVisualConfigChange, getCdSettingsSections, saveVinylSetting, buildLyricsTypographyColumns, getLyricsTypographyRows,
@@ -806,13 +810,13 @@ react.createElement(OptionList, {
               {
                 desc: t("settingsAdvanced.tmiStyle.fontSize.desc"),
                 info: t("settingsAdvanced.tmiStyle.fontSize.info"),
-                key: "fullscreen-tmi-font-size",
+                key: RESEARCH_FONT_SIZE_KEY,
                 type: ConfigSliderRange,
-                min: 80,
-                max: 150,
-                step: 5,
+                min: RESEARCH_FONT_SIZE_MIN,
+                max: RESEARCH_FONT_SIZE_MAX,
+                step: RESEARCH_FONT_SIZE_STEP,
                 unit: "%",
-                defaultValue: getVisualSettings()["fullscreen-tmi-font-size"] || 100,
+                defaultValue: getResearchFontSize(getVisualSettings()),
               },
               ...createTextOutlineSettingItems("fullscreen-tmi"),
             ],

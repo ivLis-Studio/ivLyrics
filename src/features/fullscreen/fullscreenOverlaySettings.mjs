@@ -1,4 +1,5 @@
 import { fitFullscreenAlbumSize } from "./fullscreenLayout.mjs";
+import { getResearchFontSize } from "../../app/researchReaderSettings.mjs";
 
 export function getFullscreenOverlaySettings(visual, viewport, cdAlbumActive) {
     // Get settings from CONFIG
@@ -47,7 +48,7 @@ export function getFullscreenOverlaySettings(visual, viewport, cdAlbumActive) {
     const autoHideDelay = (Number(visual?.["fullscreen-auto-hide-delay"]) || 3) * 1000;
 
     // TMI Font size settings
-    const tmiScale = (Number(visual?.["fullscreen-tmi-font-size"]) || 100) / 100;
+    const tmiScale = getResearchFontSize(visual) / 100;
 
     // Control style settings
     const controlButtonSize = Number(visual?.["fullscreen-control-button-size"]) || 36;
