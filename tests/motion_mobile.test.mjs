@@ -216,6 +216,27 @@ test("AI directions and the direction cache go through the app", async () => {
 });
 
 
+test("the WebView releases canceled bridge waits and ignores replies for the previous stage", async () => {
+	const { window, host, posted } = load();
+	host.start();
+	const manager = window.AIAddonManager;
+	const controller = new AbortController();
+	const request = manager.generateMotionDirection({ lines: [{ n: 0 }], signal: controller.signal });
+	const requestId = posted.at(-1).id;
+	const read = window.LyricsCache.getMotionDirection("a", "hash", { signal: controller.signal });
+	const readId = posted.at(-1).id;
+	controller.abort();
+	await assert.rejects(request, { name: "AbortError" });
+	await assert.rejects(read, { name: "AbortError" });
+
+	const next = manager.generateMotionDirection({ lines: [{ n: 0 }] });
+	const nextId = posted.at(-1).id;
+	host.resolve(requestId, { ok: true, value: '{"mood":"warm","shots":[{"from":0,"to":0}]}' });
+	host.resolve(readId, { ok: true, value: "{}" });
+	host.resolve(nextId, { ok: true, value: '{"mood":"calm","shots":[{"from":0,"to":0}]}' });
+	assert.equal((await next).mood, "calm");
+});
+
 test("the app's comfort settings and \"direct again\" reach the stage", () => {
 	const { host, rendered } = load();
 	host.start();

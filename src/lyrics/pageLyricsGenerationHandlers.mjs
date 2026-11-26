@@ -29,8 +29,29 @@ export function createPageLyricsGenerationHandlers({
     statuses.forEach(status => page.handlePronunciationSyncStatus({ detail: status }));
   }
 
+  let motionStatus = null;
+
+  function clearMotionDirectionLoading() {
+    motionStatus = null;
+    page.generationStatus.reportMotionStatus("idle");
+  }
+
   function handleMotionDirectionStatus(event) {
-    page.generationStatus.reportMotionStatus(event?.detail?.phase);
+    const { phase, uri, requestId } = event?.detail ?? {};
+    if (!page._isComponentMounted) return;
+    // The event is also used by older add-ons that do not supply an owner.
+    if (!uri && !requestId) {
+      if (!motionStatus) page.generationStatus.reportMotionStatus(phase);
+      return;
+    }
+    if (phase === "loading") {
+      if (uri !== page.currentTrackUri) return;
+      motionStatus = { uri, requestId };
+    } else {
+      if (!motionStatus || motionStatus.uri !== uri || motionStatus.requestId !== requestId) return;
+      motionStatus = null;
+    }
+    page.generationStatus.reportMotionStatus(phase);
   }
 
   function handlePronunciationFirstUpdate(event) {
@@ -119,6 +140,7 @@ export function createPageLyricsGenerationHandlers({
     clearPronunciationSyncLoading,
     restorePronunciationSyncLoading,
     handleMotionDirectionStatus,
+    clearMotionDirectionLoading,
     handlePronunciationFirstUpdate,
     restoreWordSyncLoading,
     startLyricsLoading,

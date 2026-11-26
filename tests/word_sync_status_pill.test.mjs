@@ -205,6 +205,25 @@ test('an obsolete loading callback cannot shorten the next request’s delay', (
     assert.equal(h.app.state.generationPills.translation.phase, 'complete');
 });
 
+test('a motion result can only settle its own track and stage request', () => {
+    const h = harness();
+    const report = (phase, uri, requestId) => h.app.handleMotionDirectionStatus({ detail: { phase, uri, requestId } });
+    const phase = () => h.app.state.generationPills['motion-direction']?.phase ?? 'idle';
+    report('loading', 'track-a', 'stage-a');
+    assert.equal(phase(), 'loading');
+    h.app.currentTrackUri = 'track-b';
+    h.app.clearMotionDirectionLoading();
+    report('loading', 'track-b', 'stage-b');
+    report('failed', 'track-a', 'stage-a');
+    report('idle', 'track-a', 'stage-a');
+    assert.equal(phase(), 'loading');
+    report('loading', 'track-b', 'retake-b');
+    report('complete', 'track-b', 'stage-b');
+    assert.equal(phase(), 'loading');
+    report('complete', 'track-b', 'retake-b');
+    assert.equal(phase(), 'complete');
+});
+
 test('disposing the page cancels all scheduled status transitions including motion direction', () => {
     const h = harness();
     h.app.handleMotionDirectionStatus({ detail: { phase: 'loading' } });

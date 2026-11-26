@@ -66,25 +66,29 @@
 
 	let nextRequest = 1;
 	const pending = new Map();
-	const ask = (message, timeoutMs) => new Promise((resolve, reject) => {
-		const id = nextRequest;
-		nextRequest += 1;
-		const timer = root.setTimeout(() => {
-			pending.delete(id);
-			reject(new Error("The app did not answer in time"));
-		}, timeoutMs);
-		pending.set(id, { resolve, reject, timer });
+	const ask = (message, timeoutMs, signal) => new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(signal.reason);
+			return;
+		}
+		const id = nextRequest++;
+		const settle = (complete, value) => {
+			if (!pending.delete(id)) return;
+			root.clearTimeout(timer);
+			signal?.removeEventListener("abort", abort);
+			complete(value);
+		};
+		const abort = () => settle(reject, signal.reason);
+		const timer = root.setTimeout(() => settle(reject, new Error("The app did not answer in time")), timeoutMs);
+		pending.set(id, (result) => {
+			if (result?.ok === true) settle(resolve, result.value ?? null);
+			else settle(reject, new Error(String(result?.error || "The request failed")));
+		});
+		signal?.addEventListener("abort", abort, { once: true });
 		post({ ...message, id });
 	});
 	/** The app's answer to a request: { ok: true, value } or { ok: false, error }. */
-	const resolve = (id, result) => {
-		const request = pending.get(Number(id));
-		if (!request) return;
-		pending.delete(Number(id));
-		root.clearTimeout(request.timer);
-		if (result?.ok === true) request.resolve(result.value ?? null);
-		else request.reject(new Error(String(result?.error || "The request failed")));
-	};
+	const resolve = (id, result) => pending.get(Number(id))?.(result);
 
 	// ---------------------------------------------------------------------
 	// Playback clock
@@ -162,14 +166,14 @@
 		getEnabledProvidersFor: (capability) => (capability === "motionDirection" && state.ai ? [{ id: "app" }] : []),
 		async generateMotionDirection(params) {
 			const prompt = root.ivLyricsMotionDirector.buildPrompt(params);
-			const direction = parseDirection(await ask({ type: "direct", prompt }, AI_TIMEOUT_MS));
+			const direction = parseDirection(await ask({ type: "direct", prompt }, AI_TIMEOUT_MS, params.signal));
 			if (!Array.isArray(direction?.shots) || !direction.shots.length) throw new Error("The AI direction has no shots");
 			return direction;
 		},
 	};
 	root.LyricsCache = {
-		async getMotionDirection(trackId, sourceHash) {
-			const value = await ask({ type: "cacheGet", key: cacheKey(trackId, sourceHash) }, CACHE_TIMEOUT_MS);
+		async getMotionDirection(trackId, sourceHash, { signal } = {}) {
+			const value = await ask({ type: "cacheGet", key: cacheKey(trackId, sourceHash) }, CACHE_TIMEOUT_MS, signal);
 			return value ? JSON.parse(value) : null;
 		},
 		async setMotionDirection(trackId, sourceHash, data) {

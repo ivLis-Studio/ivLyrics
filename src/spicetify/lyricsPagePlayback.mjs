@@ -53,6 +53,7 @@ export function createLyricsPagePlayback({
     if (candidateUri && candidateUri === page.currentTrackUri) return false;
 
     page.cancelSavedVideoLookup?.();
+    page.clearMotionDirectionLoading?.();
     const transitionSeq = page.beginLyricsLoadRequest(true);
     page.clearPendingLyricsUpdates();
     page.closeLyricsEditModal({ force: true });
@@ -74,6 +75,7 @@ export function createLyricsPagePlayback({
 
   function replacePlaybackTarget(uri, isNarration, advanceTransition = false) {
     page.cancelSavedVideoLookup?.();
+    page.clearMotionDirectionLoading?.();
     page.closeLyricsEditModal({ force: true });
     const previousTrackId = extractTrackId(page.currentTrackUri);
     if (previousTrackId) getTranslator()?.clearInflightRequests?.(previousTrackId);

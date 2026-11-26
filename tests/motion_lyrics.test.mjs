@@ -10,6 +10,7 @@ import { createDefaultVisualSettings } from "../src/spicetify/createAppConfig.mj
 import { normalizeFullscreenPresentation } from "../src/features/fullscreen/fullscreenPresentation.mjs";
 import { collectVisibleBoards, createBoardWindowIndex } from "../src/features/motion/motionBoardWindows.mjs";
 import { createEngine as createMotionEngine } from "../src/features/motion/motionEngine.mjs";
+import { sameMotionModelTiming } from "../src/features/motion/motionLyricModel.mjs";
 import { getFullscreenVinylSettings } from "../src/features/fullscreen/fullscreenOverlaySettings.mjs";
 import { renderLyricsGenerationStatus } from "../src/lyrics/lyricsPageGenerationStatus.mjs";
 import { getOrderedAddonCapabilities, getSettingsAiCapabilityLabel } from "../src/features/settings/settingsProviderCapabilities.mjs";
@@ -23,7 +24,7 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
 
 const load = () => {
 	const window = { navigator: { language: "ko" } };
-	const context = vm.createContext({ window, Intl, console, navigator: window.navigator, setTimeout, clearTimeout });
+	const context = vm.createContext({ window, Intl, console, navigator: window.navigator, setTimeout, clearTimeout, AbortController });
 	context.globalThis = context;
 	vm.runInContext(motionScript, context);
 	return { motion: window.ivLyricsMotionLyrics, director: window.ivLyricsMotionDirector, shapes: window.ivLyricsMotionShapes, type: window.ivLyricsMotionType, window };
@@ -2509,6 +2510,98 @@ test("a cache clear retires an in-flight direction without retiring its replacem
 	calls[1].resolve(newDirection);
 	assert.equal((await fresh).status, "ready");
 	assert.deepEqual(saved, [newDirection]);
+});
+
+test("the stage distinguishes updated word and backing timings with the same AI cache key", () => {
+	const { motion } = load();
+	const lyrics = song();
+	const first = lyrics[0];
+	first.vocals = {
+		lead: { speaker: "FEMALE", text: first.originalText, syllables: first.syllables },
+		background: [{ speaker: "FEMALE", role: "background", text: "stay here", syllables: timed(["stay", "here"], 2300) }],
+	};
+	const baseline = motion.buildModel(lyrics);
+	const leadUpdate = structuredClone(lyrics);
+	leadUpdate[0].vocals.lead.syllables[1].endTime += 75;
+	assert.equal(motion.modelSignature(baseline), motion.modelSignature(motion.buildModel(leadUpdate)));
+	assert.equal(sameMotionModelTiming(baseline, motion.buildModel(leadUpdate)), false);
+
+	const backingUpdate = structuredClone(lyrics);
+	backingUpdate[0].vocals.background[0].syllables[1].startTime += 95;
+	assert.equal(sameMotionModelTiming(baseline, motion.buildModel(backingUpdate)), false);
+	backingUpdate[0].vocals.background[0].syllables[1].startTime -= 95;
+	backingUpdate[0].vocals.background[0].speaker = "MALE";
+	assert.equal(sameMotionModelTiming(baseline, motion.buildModel(backingUpdate)), false);
+	backingUpdate[0].vocals.background[0].speaker = "FEMALE";
+	backingUpdate[0].text2 = "updated subtitle";
+	assert.equal(sameMotionModelTiming(baseline, motion.buildModel(backingUpdate)), true);
+});
+
+test("motion direction cancels with the last stage and ignores a provider that answers after abort", async () => {
+	const { motion, window } = load();
+	const model = motion.buildModel(song());
+	const pending = Promise.withResolvers();
+	const requests = [];
+	const saved = [];
+	window.AIAddonManager = {
+		getEnabledProvidersFor: () => [{ id: "test" }],
+		generateMotionDirection(params) { requests.push(params); return pending.promise; },
+	};
+	window.LyricsCache = {
+		async getMotionDirection() { return null; },
+		async setMotionDirection(_id, _hash, data) { saved.push(data); },
+	};
+	const first = new AbortController();
+	const second = new AbortController();
+	const info = { trackUri: "spotify:track:shared", model };
+	const outgoing = motion.requestDirection({ ...info, signal: first.signal });
+	const staying = motion.requestDirection({ ...info, signal: second.signal });
+	await new Promise(setImmediate);
+	assert.equal(requests.length, 1);
+	assert.equal(requests[0].signal?.aborted, false);
+	first.abort();
+	assert.equal((await outgoing).status, "off");
+	assert.equal(requests[0].signal.aborted, false);
+	second.abort();
+	assert.equal(requests[0].signal.aborted, true);
+	assert.equal((await staying).status, "off");
+	pending.resolve({ mood: "warm", shots: [{ from: 0, to: 9, layout: "column" }] });
+	await new Promise(setImmediate);
+	assert.deepEqual(saved, []);
+});
+
+test("retiring a motion stage during the second AI pass keeps the cached first take", async () => {
+	const { motion, window } = load();
+	const model = motion.buildModel(song());
+	const refined = Promise.withResolvers();
+	const requests = [];
+	const saved = [];
+	const raw = { mood: "warm", shots: [{ from: 0, to: 9, layout: "column" }] };
+	window.AIAddonManager = {
+		getEnabledProvidersFor: () => [{ id: "test" }],
+		generateMotionDirection(params) { requests.push(params); return params.revision ? refined.promise : raw; },
+	};
+	window.LyricsCache = {
+		async getMotionDirection() { return saved.at(-1) || null; },
+		async setMotionDirection(_id, _hash, data) { saved.push(data); },
+	};
+	const stage = new AbortController();
+	const info = { trackUri: "spotify:track:refining", model, judge: () => ({
+		score: 55, stats: {}, issues: [{ kind: "clip", layout: "column", lines: [1] }],
+	}) };
+	const first = await motion.requestDirection({ ...info, signal: stage.signal });
+	assert.equal(first.raw, raw);
+	assert.equal(requests.length, 2);
+	assert.equal(requests[1].signal?.aborted, false);
+	stage.abort();
+	assert.equal(await first.revised, null);
+	assert.equal(requests[1].signal.aborted, true);
+	refined.resolve({ ...raw, mood: "cool" });
+	await new Promise(setImmediate);
+	assert.deepEqual(saved.map(entry => [entry.raw.mood, entry.judged]), [["warm", false]]);
+	const replay = await motion.requestDirection({ ...info, judge: null });
+	assert.equal(replay.cached, true);
+	assert.equal(replay.raw, raw);
 });
 
 test("a new take keeps its cache slot when an older critique finishes later", async () => {

@@ -3,6 +3,7 @@ import { critiqueNotes, critiquePlan } from "./motionCritique.mjs";
 import { modelSignature } from "./motionLyricModel.mjs";
 import { motionDirector } from "./MotionLyricsDirector.mjs";
 import { clamp, hashString, round } from "./motionMath.mjs";
+import { runWithAbortSignal } from "../../core/abortableOperation.mjs";
 
 /**
  * The colours of an album cover for the AI ({ colors: [{ hex, share }],
@@ -107,12 +108,48 @@ export const bestLocalDirection = (model, options, composeOptions = {}) => {
  * cover: the album cover's colours ({ colors: [{ hex, share }], light }).
  */
 const REVISE_BELOW = 85;
+const directionOff = () => ({ status: "off" });
+
+function observeMotionRequest(entry, signal) {
+	if (!signal) {
+		entry.keepAlive = true;
+		return entry.request;
+	}
+
+	entry.subscribers++;
+	let active = true;
+	const done = () => {
+		if (!active) return;
+		active = false;
+		signal.removeEventListener("abort", release);
+		entry.subscribers--;
+	};
+	const release = () => {
+		done();
+		if (!entry.keepAlive && entry.subscribers === 0) entry.cancel();
+	};
+	signal.addEventListener("abort", release, { once: true });
+	return runWithAbortSignal(signal, () => entry.request).then(result => {
+		if (signal.aborted) return directionOff();
+		if (!result.revised) {
+			done();
+			return result;
+		}
+		const revised = runWithAbortSignal(signal, () => result.revised)
+			.catch(() => null).finally(done);
+		return { ...result, revised };
+	}, () => {
+		done();
+		return directionOff();
+	});
+}
+
 export function createMotionDirectionRequester({ readLyricsCache, readAiManager, getTrackCacheId }) {
 	const directionRequests = new Map();
 
-	return ({ trackUri, model, title = "", artist = "", tempo = null, songLang = "", energy = null, cover = null, judge = null, retake = 0 }) => {
+	return ({ trackUri, model, title = "", artist = "", tempo = null, songLang = "", energy = null, cover = null, judge = null, retake = 0, signal }) => {
 		const director = motionDirector;
-		if (!director || !trackUri || !model?.length) return Promise.resolve({ status: "off" });
+		if (!director || !trackUri || !model?.length || signal?.aborted) return Promise.resolve(directionOff());
 		const sourceHash = hashString(modelSignature(model)).toString(36) + "-v" + director.VERSION;
 		const take = Math.max(0, Math.floor(Number(retake) || 0));
 		const trackId = getTrackCacheId(trackUri) || String(trackUri).split(":").pop() || String(trackUri);
@@ -123,12 +160,21 @@ export function createMotionDirectionRequester({ readLyricsCache, readAiManager,
 		// newer take owns the same cache slot before the old revision finishes.
 		const existing = directionRequests.get(key);
 		if (existing && existing.cache === cache && existing.revision === revision && (!take || existing.take === take)) {
-			return existing.request;
+			return observeMotionRequest(existing, signal);
 		}
-		const entry = { cache, revision, take, request: null };
-		const isCurrent = () => directionRequests.get(key) === entry
+		existing?.cancel();
+		const controller = new AbortController();
+		const entry = { cache, revision, take, request: null, subscribers: 0, keepAlive: false, cancel };
+		function release() {
+			if (directionRequests.get(key) === entry) directionRequests.delete(key);
+		}
+		function cancel() {
+			release();
+			controller.abort();
+		}
+		const isCurrent = () => !controller.signal.aborted && directionRequests.get(key) === entry
 			&& readLyricsCache() === cache && cache?.getRevision?.(trackId) === revision;
-		entry.request = Promise.resolve().then(async () => {
+		entry.request = runWithAbortSignal(controller.signal, async () => {
 			if (!isCurrent()) return { status: "off" };
 			const manager = readAiManager();
 			const providers = manager?.getEnabledProvidersFor?.("motionDirection") || [];
@@ -144,6 +190,7 @@ export function createMotionDirectionRequester({ readLyricsCache, readAiManager,
 				language: songLang,
 				cover,
 				retake: take,
+				signal: controller.signal,
 			};
 			const save = async (raw, verdict, judged) => {
 				try {
@@ -165,14 +212,16 @@ export function createMotionDirectionRequester({ readLyricsCache, readAiManager,
 			const revise = async (raw, verdict) => {
 				if (!isCurrent()) return null;
 				try {
-					const next = await manager.generateMotionDirection({ ...params, revision: { direction: raw, notes: critiqueNotes(verdict), score: verdict.score } });
+					const next = await runWithAbortSignal(controller.signal, () =>
+						manager.generateMotionDirection({ ...params, revision: { direction: raw, notes: critiqueNotes(verdict), score: verdict.score } }));
 					if (!isCurrent()) return null;
 					const second = director.normalizeDirection(next, model, {}).coverage >= 0.5 ? watch(next) : null;
 					const better = !!second && second.score > verdict.score;
 					console.info("[ivLyrics motion] AI direction revised:", verdict.score, "->", second ? second.score : "unusable");
 					await save(better ? next : raw, better ? second : verdict, true);
-					return better ? next : null;
+					return better && isCurrent() ? next : null;
 				} catch (error) {
+					if (!isCurrent()) return null;
 					console.warn("[ivLyrics motion] AI revision failed:", error);
 					await save(raw, verdict, true);
 					return null;
@@ -181,7 +230,7 @@ export function createMotionDirectionRequester({ readLyricsCache, readAiManager,
 			const needsRevision = (verdict) => asking && !!verdict && verdict.score < REVISE_BELOW && critiqueNotes(verdict).length > 0;
 			if (!take) {
 				try {
-					const cached = await cache?.getMotionDirection?.(trackId, sourceHash);
+					const cached = await cache?.getMotionDirection?.(trackId, sourceHash, { signal: controller.signal });
 					if (!isCurrent()) return { status: "off" };
 					if (cached?.raw) {
 						// A direction cached before it was judged (the revision never finished) is judged now.
@@ -201,18 +250,16 @@ export function createMotionDirectionRequester({ readLyricsCache, readAiManager,
 			const revising = needsRevision(verdict);
 			if (verdict) console.info("[ivLyrics motion] AI direction scored", verdict.score, revising ? "(sending it back with " + critiqueNotes(verdict).length + " notes)" : "", verdict.stats);
 			await save(raw, verdict, !revising);
+			if (!isCurrent()) return directionOff();
 			return { status: "ready", raw, score: verdict?.score ?? null, revised: revising ? revise(raw, verdict) : null };
 		}).catch(error => isCurrent()
 			? { status: "failed", error: String(error?.message || error) }
 			: { status: "off" });
 		directionRequests.set(key, entry);
-		const release = () => {
-			if (directionRequests.get(key) === entry) directionRequests.delete(key);
-		};
 		entry.request.then(({ revised }) => {
 			if (revised) revised.then(release, release);
 			else release();
 		});
-		return entry.request;
+		return observeMotionRequest(entry, signal);
 	};
 }

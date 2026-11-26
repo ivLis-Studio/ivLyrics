@@ -1,25 +1,22 @@
 import { comfortOf } from "./motionCameraComfort.mjs";
 import { PERSPECTIVE_PX } from "./motionCameraFraming.mjs";
 import { compose } from "./motionComposition.mjs";
-import { critiquePlan } from "./motionCritique.mjs";
 import { bestLocalDirection } from "./motionDirectionRequests.mjs";
 import {
-	buildModel, lineEnergies, modelSignature, pulsesInMs, voicesSignature,
+	buildModel, lineEnergies, modelSignature, pulsesInMs, sameMotionModelTiming,
 } from "./motionLyricModel.mjs";
 import { motionDirector } from "./MotionLyricsDirector.mjs";
 import { motionType } from "./MotionLyricsType.mjs";
 import { hashString } from "./motionMath.mjs";
 import { deepOf, paletteFrom } from "./motionPalette.mjs";
 import { UI_FONT, fontNeeds } from "./motionTypesetting.mjs";
+import { useMotionStageDirection } from "./motionStageDirection.mjs";
 
 export const createStage = (react, {
 	browser, translate, detectLanguage, readAnalysisLoader, requestDirection, coverColorsOf, createEngine,
 }) => {
 	const { useEffect, useLayoutEffect, useMemo, useRef, useState } = react;
 	const ANALYSIS_WAIT_MS = 700;
-	const FAILED_NOTICE_MS = 6000;
-	// A direction that arrives sooner (from the cache) is not announced at all.
-	const STATUS_DELAY_MS = 400;
 	// How long the AI request waits for the cover's colours.
 	const COVER_WAIT_MS = 1200;
 	const t = (key, fallback) => translate(key) || fallback;
@@ -53,8 +50,6 @@ export const createStage = (react, {
 		const [size, setSize] = useState({ width: 0, height: 0 });
 		const [fonts, setFonts] = useState({ key: "", epoch: 0 });
 		const [analysis, setAnalysis] = useState({ uri: "", status: "loading", data: null, planned: false });
-		const [ai, setAi] = useState({ key: "", status: "idle", raw: null });
-		const [showFailure, setShowFailure] = useState(false);
 		const [coverInfo, setCoverInfo] = useState({ url: "", colors: null, settled: false });
 		const sizeRef = useRef(size);
 		sizeRef.current = size;
@@ -62,12 +57,13 @@ export const createStage = (react, {
 		const model = useMemo(() => {
 			const lines = buildModel(lyrics);
 			const signature = trackUri + "\u0002" + modelSignature(lines);
-			const shape = signature + "\u0003" + voicesSignature(lines);
-			if (shape !== modelRef.current.shape) modelRef.current = { signature, shape, lines };
+			const current = modelRef.current;
+			if (signature !== current.signature || !sameMotionModelTiming(lines, current.lines)) {
+				modelRef.current = { signature, lines };
+			}
 			return modelRef.current.lines;
 		}, [lyrics, trackUri]);
 		const signature = modelRef.current.signature;
-		const aiKey = String(hashString(signature));
 		// The song's language decides Han characters (Japanese, Simplified or Traditional faces).
 		const songLang = useMemo(() => {
 			try {
@@ -131,10 +127,12 @@ export const createStage = (react, {
 			const timer = browser.setTimeout(() => {
 				if (!cancelled) setAnalysis((current) => (current.uri === trackUri && current.status === "loading" ? { ...current, status: "late" } : current));
 			}, ANALYSIS_WAIT_MS);
-			Promise.resolve(load(trackUri)).then((data) => {
+			Promise.resolve().then(() => load(trackUri)).then((data) => {
+				browser.clearTimeout(timer);
 				if (cancelled) return;
 				setAnalysis((current) => (current.uri !== trackUri ? current : { uri: trackUri, status: "ready", data: data || null, planned: current.status === "loading" }));
 			}, () => {
+				browser.clearTimeout(timer);
 				if (!cancelled) setAnalysis((current) => (current.uri !== trackUri ? current : { ...current, status: "none" }));
 			});
 			return () => {
@@ -143,7 +141,8 @@ export const createStage = (react, {
 			};
 		}, [trackUri]);
 
-		const planAnalysis = analysis.planned ? analysis.data : null;
+		const currentAnalysis = analysis.uri === trackUri ? analysis.data : null;
+		const planAnalysis = analysis.planned ? currentAnalysis : null;
 		const tempo = useMemo(() => motionDirector?.tempoOf?.(model, pulsesInMs(planAnalysis)) || null, [model, planAnalysis]);
 
 		// The cover's colours for the AI (it waits a moment for them).
@@ -157,9 +156,11 @@ export const createStage = (react, {
 			const timer = browser.setTimeout(() => {
 				if (!cancelled) setCoverInfo((current) => (current.url === cover && !current.settled ? { ...current, settled: true } : current));
 			}, COVER_WAIT_MS);
-			coverColorsOf(cover).then((colors) => {
+			const settle = (colors) => {
+				browser.clearTimeout(timer);
 				if (!cancelled) setCoverInfo({ url: cover, colors, settled: true });
-			});
+			};
+			Promise.resolve().then(() => coverColorsOf(cover)).then(settle, () => settle(null));
 			return () => {
 				cancelled = true;
 				browser.clearTimeout(timer);
@@ -169,67 +170,25 @@ export const createStage = (react, {
 		const coverRef = useRef(null);
 		coverRef.current = coverInfo.url === cover ? coverInfo.colors : null;
 
-		// The AI is asked once the song's analysis is in (or late): it reads each line's energy and the tempo with its BPM.
 		const analysisSettled = analysis.uri === trackUri && analysis.status !== "loading";
-		useEffect(() => {
-			if (!model.length || !trackUri || !analysisSettled || !coverSettled) return undefined;
-			let cancelled = false;
-			// A new take keeps showing the edit before it until the new one is in.
-			setAi((current) => (current.key === aiKey && current.raw ? { ...current, status: "loading" } : { key: aiKey, status: "loading", raw: null }));
-			setShowFailure(false);
-			const sound = analysis.data || null;
-			const requestTempo = motionDirector?.tempoOf?.(model, pulsesInMs(sound)) || tempo;
-			const energy = lineEnergies(model, sound);
-			// How the AI's direction plays on this screen, watched before it is trusted (critiquePlan).
-			const judgeModel = model;
-			const judgeTypography = typography;
-			const judgeSeed = seedBase;
-			const judge = (raw) => {
-				const director = motionDirector;
-				const checked = director.normalizeDirection(raw, judgeModel, { seed: judgeSeed, energy, tempo: requestTempo });
-				return critiquePlan(compose(judgeModel, checked, {
-					width: sizeRef.current.width || 1440,
-					height: sizeRef.current.height || 900,
-					seed: judgeSeed,
-					analysis: sound,
-					measure: measureRef.current,
-					typography: judgeTypography,
-					songLang,
-				}));
-			};
-			requestDirection({ trackUri, model, title, artist, tempo: requestTempo, songLang, energy, cover: coverRef.current, judge, retake: take }).then((result) => {
-				if (cancelled) return;
-				setAi((current) => ({ key: aiKey, status: result.status, raw: result.raw || (current.key === aiKey && result.status === "failed" ? current.raw : null) }));
-				if (result.status === "failed") {
-					console.warn("[ivLyrics motion] AI direction failed:", result.error);
-					setShowFailure(true);
-				}
-				// The AI's revision of its own direction, when it came out better: shown from the next cut.
-				Promise.resolve(result.revised).then((better) => {
-					if (!cancelled && better) setAi({ key: aiKey, status: "ready", raw: better });
-				});
-			});
-			return () => { cancelled = true; };
-		}, [aiKey, analysisSettled, coverSettled, take]);
-
-		useEffect(() => {
-			if (!showFailure) return undefined;
-			const timer = browser.setTimeout(() => setShowFailure(false), FAILED_NOTICE_MS);
-			return () => browser.clearTimeout(timer);
-		}, [showFailure]);
+		const { ai, loading, showFailure } = useMotionStageDirection({
+			react, browser, requestDirection, onStatus,
+			song: { trackUri, signature, model, title, artist, songLang, typography, tempo, take, seedBase },
+			inputs: { ready: analysisSettled && coverSettled, sound: currentAnalysis, coverRef, sizeRef, measureRef },
+		});
 
 		const chosen = useMemo(() => {
 			const director = motionDirector;
 			if (!director || !model.length) return null;
 			const options = { seed: seedBase, energy: lineEnergies(model, planAnalysis), tempo };
-			if (ai.key === aiKey && ai.raw) return { direction: director.normalizeDirection(ai.raw, model, options), seed: seedBase };
+			if (ai.key === signature && ai.raw) return { direction: director.normalizeDirection(ai.raw, model, options), seed: seedBase };
 			// Once it is clear no AI direction is coming, the built-in one is the best of a few takes.
-			if (ai.key === aiKey && (ai.status === "off" || ai.status === "failed")) {
+			if (ai.key === signature && (ai.status === "off" || ai.status === "failed")) {
 				const best = bestLocalDirection(model, options, { typography, songLang, analysis: planAnalysis });
 				if (best) return best;
 			}
 			return { direction: director.localDirection(model, options), seed: seedBase };
-		}, [ai, aiKey, model, seedBase, planAnalysis, tempo, typography, songLang]);
+		}, [ai, signature, model, seedBase, planAnalysis, tempo, typography, songLang]);
 		const direction = chosen?.direction || null;
 		const planSeed = chosen?.seed ?? seedBase;
 		const palette = useMemo(() => paletteFrom(accent, direction?.palette), [accent, direction]);
@@ -278,52 +237,26 @@ export const createStage = (react, {
 		}, [planReady, direction, size.width, size.height, fonts.epoch, planAnalysis, typography, title, artist, comfort, planSeed]);
 
 		useEffect(() => { engineRef.current?.setLyrics(lyrics); }, [lyrics]);
-		const shownRef = useRef({ direction: null, size: "" });
+		const shownRef = useRef(null);
 		useEffect(() => {
-			// A new direction or a late face for the same song and size waits for a cut.
+			// A new direction or a late face can wait for a cut. Updated syllable
+			// timing applies immediately so the camera follows the current marks.
 			const sizeKey = size.width + "x" + size.height;
-			const soft = !!plan && !!shownRef.current.direction && shownRef.current.size === sizeKey;
-			if (plan) shownRef.current = { direction, size: sizeKey };
+			const shown = shownRef.current;
+			const soft = !!plan && shown?.model === model && shown.size === sizeKey;
+			shownRef.current = plan ? { model, size: sizeKey } : null;
 			engineRef.current?.setPlan(plan, trackUri, { soft });
-		}, [plan, trackUri]);
-		useEffect(() => { engineRef.current?.setPulses(pulsesInMs(analysis.data)); }, [analysis.data]);
+		}, [plan, trackUri, model, size.width, size.height]);
+		useEffect(() => { engineRef.current?.setPulses(pulsesInMs(currentAnalysis)); }, [currentAnalysis]);
 		useEffect(() => { engineRef.current?.setPlaying(isPlaying); }, [isPlaying]);
 
-		const status = ai.status === "loading" && ai.key === aiKey
+		const status = loading
 			? { kind: "loading", text: t("vinyl.presentation.motionDirecting", "AI is directing the motion…") }
 			: showFailure
 				? { kind: "failed", text: t("vinyl.presentation.motionDirectFailed", "AI direction failed. Using the built-in direction.") }
 				: null;
 
-		// The app's status list: loading once the AI takes a while, then done or failed.
-		const onStatusRef = useRef(onStatus);
-		onStatusRef.current = onStatus;
-		const reportedRef = useRef(null);
 		const reports = typeof onStatus === "function";
-		const loading = ai.status === "loading" && ai.key === aiKey;
-		useEffect(() => {
-			if (!reports) return undefined;
-			if (loading) {
-				const timer = browser.setTimeout(() => {
-					reportedRef.current = { key: aiKey, uri: trackUri };
-					onStatusRef.current?.({ phase: "loading", uri: trackUri });
-				}, STATUS_DELAY_MS);
-				return () => browser.clearTimeout(timer);
-			}
-			const reported = reportedRef.current;
-			if (reported) {
-				reportedRef.current = null;
-				const phase = reported.key !== ai.key ? "idle" : ai.status === "ready" ? "complete" : ai.status === "failed" ? "failed" : "idle";
-				onStatusRef.current?.({ phase, uri: reported.uri });
-			}
-			return undefined;
-		}, [reports, loading, ai.status, ai.key, aiKey, trackUri]);
-		useEffect(() => () => {
-			const reported = reportedRef.current;
-			reportedRef.current = null;
-			if (reported) onStatusRef.current?.({ phase: "idle", uri: reported.uri });
-		}, []);
-
 		const e = react.createElement;
 		return e("div", {
 			ref: rootRef,

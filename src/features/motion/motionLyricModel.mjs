@@ -336,8 +336,26 @@ export const buildModel = (lyrics) => {
 };
 
 export const modelSignature = (lines) => lines.map((line) => Math.round(line.start) + ":" + line.text).join("\u0001");
-/** The other voices too, so a change to them re-plans the song (the AI reads only the lead). */
-export const voicesSignature = (lines) => lines.map((line) => (line.backing || []).map((voice) => Math.round(voice.start) + ":" + voice.text).join("|")).join("\u0001");
+const sameTiming = (left, right) => left.start === right.start && left.end === right.end;
+const sameWords = (left, right) => left.length === right.length && left.every((word, index) => {
+	const previous = right[index];
+	return word.text === previous.text && word.joined === previous.joined
+		&& sameTiming(word, previous)
+		&& word.chars.length === previous.chars.length
+		&& word.chars.every((char, position) => char.ch === previous.chars[position].ch && sameTiming(char, previous.chars[position]));
+});
+
+// Subtitle text is updated separately. The rendered edit still needs new
+// marks when a provider upgrades timings without changing the lyric text.
+export const sameMotionModelTiming = (left, right) => left.length === right.length && left.every((line, index) => {
+	const previous = right[index];
+	return line.index === previous.index && line.charTimed === previous.charTimed
+		&& sameTiming(line, previous) && sameWords(line.words, previous.words)
+		&& line.backing.length === previous.backing.length && line.backing.every((voice, position) => {
+			const prior = previous.backing[position];
+			return voice.role === prior.role && sameTiming(voice, prior) && sameWords(voice.words, prior.words);
+		});
+});
 
 export const translationOf = (line) => {
 	for (const value of [line?.text2, line?.translationText, line?.translation, line?.transText]) {
