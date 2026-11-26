@@ -79,4 +79,4 @@ ivLyrics is an unofficial project and is not affiliated with Spotify. Lyrics, tr
 
 ## License and open-source notices
 
-ivLyrics is source-available under the [ivLyrics Source-Available License 1.0](https://github.com/ivLis-Studio/ivLyrics/blob/main/LICENSE). Install it only from official channels; redistributing it or reusing its code in other software is not allowed. Files derived from Spicetify lyrics-plus and other files listed in [NOTICE.md](https://github.com/ivLis-Studio/ivLyrics/blob/main/NOTICE.md) remain under GNU LGPL v2.1. Third-party credits and the full spicetify-visualizer MIT notice are collected at the [bottom of the README](https://github.com/ivLis-Studio/ivLyrics/blob/main/README_EN.md#license-and-open-source-notices). The original notices are also preserved in the distributed runtime files.
+The ivLyrics source code is licensed under the [GNU LGPL v2.1](https://github.com/ivLis-Studio/ivLyrics/blob/main/LICENSE). See the README for [third-party notices and the ivLyrics server access policy](https://github.com/ivLis-Studio/ivLyrics/blob/main/README_EN.md#license-and-open-source-notices).

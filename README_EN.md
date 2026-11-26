@@ -208,9 +208,13 @@ External AI features may send lyrics or song information to the provider you cho
 
 ## License and open-source notices
 
-ivLyrics is source-available software under the [ivLyrics Source-Available License 1.0](LICENSE). You may read the source, install and use official releases, fork it to make your own changes, and contribute through pull requests. You may not redistribute the original or a modified version outside official channels, put ivLyrics code (including server communication code, endpoints, and keys) into other software, or use the ivLyrics servers from other software.
+The ivLyrics source code is licensed under the [GNU LGPL v2.1](LICENSE). Bundled third-party components keep their respective licenses. Rights holders set the terms for use of lyrics, videos, and other third-party content and can request removal of content stored on ivLyrics servers at me@ivl.is.
 
-Files derived from the original [Spicetify lyrics-plus](https://github.com/spicetify/cli/tree/main/CustomApps/lyrics-plus), and files containing outside contributions made under the LGPL, remain under [GNU LGPL v2.1](LICENSES/LGPL-2.1.txt). [NOTICE.md](NOTICE.md) lists them. Releases up to v7.1.17 also remain under LGPL v2.1. ivLyrics does not include lyrics, videos, or other third-party content, and grants no rights to use them. Included third-party components remain covered by their respective licenses.
+**ivLyrics server access policy**
+
+To manage server load, ivLis Studio permits automated requests to the services it operates at `ivlis.kr`, `ivl.is`, and their subdomains only from official ivLyrics builds and clients that ivLis Studio has approved in advance. If you maintain a fork or another app without that approval, disable requests to those addresses or point them at a service you operate. This policy governs access to services operated by ivLis Studio. Use, modification, and redistribution of the source code are governed by the LGPL v2.1.
+
+See [NOTICE.md](NOTICE.md) for the Spicetify lyrics-plus attribution, contributor credits, and component licenses.
 
 - **TinySegmenter** — Copyright (c) 2008, Taku Kudo. [Copyright and license notice](TinySegmenter.LICENSE.txt)
 - **wa-sqlite 1.0.0** — Copyright (c) 2023 Roy T. Hashimoto. MIT License; the full notice is also preserved in the distributed `LrclibLocalDatabaseRuntime.js`.

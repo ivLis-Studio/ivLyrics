@@ -207,9 +207,13 @@ NVIDIA NIM은 기본 URL `https://integrate.api.nvidia.com/v1`과 채팅용 모�
 
 ## 라이선스와 오픈소스 고지
 
-ivLyrics는 [ivLyrics Source-Available License 1.0](LICENSE)을 따르는 소스 공개 소프트웨어입니다. 소스를 읽고, 공식 배포본을 설치해 쓰고, 포크해서 직접 고쳐 보거나 PR로 기여할 수 있습니다. 공식 채널 밖에서 원본이나 수정본을 재배포하는 것, ivLyrics 코드(서버 통신 코드·엔드포인트·키 포함)를 다른 프로그램에 넣는 것, 다른 프로그램에서 ivLyrics 서버를 사용하는 것은 허용되지 않습니다. 법적 효력은 영문 [LICENSE](LICENSE) 전문을 기준으로 합니다.
+ivLyrics의 소스 코드는 [GNU LGPL v2.1](LICENSE)을 따릅니다. 포함된 제3자 구성요소에는 각 구성요소의 라이선스가 적용됩니다. 가사와 영상 등 제3자 콘텐츠의 이용 조건은 각 권리자가 정합니다. ivLyrics 서버에 저장된 콘텐츠의 권리 침해 신고 및 삭제 요청은 me@ivl.is로 보내 주세요.
 
-원본 [Spicetify lyrics-plus](https://github.com/spicetify/cli/tree/main/CustomApps/lyrics-plus)에서 파생된 파일과 LGPL 시절 외부 기여가 들어간 파일은 계속 [GNU LGPL v2.1](LICENSES/LGPL-2.1.txt)을 따릅니다. 해당 파일 목록은 [NOTICE.md](NOTICE.md)에 있습니다. v7.1.17까지의 릴리스도 LGPL v2.1로 남습니다. ivLyrics는 가사·영상 등 제3자 콘텐츠를 포함하거나 그 이용 권한을 부여하지 않습니다. 포함된 외부 구성요소에는 각 구성요소의 라이선스가 적용됩니다.
+**ivLyrics 서버 이용 정책**
+
+ivLis Studio는 서버 부하를 관리하기 위해 `ivlis.kr`, `ivl.is` 및 각 하위 도메인에서 운영하는 서비스에 대한 앱의 자동 요청을 공식 ivLyrics 배포본과 사전 승인된 클라이언트에 한해 허용합니다. 승인받지 않은 포크나 외부 앱에서는 이들 주소로 보내는 요청을 비활성화하거나 자체 서버로 전환해 주세요. 이 정책은 ivLis Studio가 운영하는 서비스에 대한 접근에 적용되며, 코드의 사용·수정·재배포는 LGPL v2.1을 따릅니다.
+
+Spicetify lyrics-plus의 출처, 기존 기여, 각 구성요소의 라이선스는 [NOTICE.md](NOTICE.md)에서 확인할 수 있습니다.
 
 - **TinySegmenter** — Copyright (c) 2008, Taku Kudo. [저작권·라이선스 고지](TinySegmenter.LICENSE.txt)
 - **wa-sqlite 1.0.0** — Copyright (c) 2023 Roy T. Hashimoto. MIT 라이선스이며, 고지 전문은 배포되는 `LrclibLocalDatabaseRuntime.js`에도 보존되어 있습니다.

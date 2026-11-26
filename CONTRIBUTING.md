@@ -1,7 +1,7 @@
 # Contributing to ivLyrics
 
 > **한국어 요약**
-> 큰 기능이나 구조 변경은 PR 전에 이슈나 [Discord](https://discord.gg/2fu36fUzdE)에서 먼저 이야기해 주세요. PR에는 실행한 테스트와 화면 변화(전후 캡처)를 적어 주세요. 새 문구는 `langs/`의 모든 언어 파일에 추가하고, 설정 키는 저장된 값을 옮기는 마이그레이션 없이 바꾸거나 지우지 마세요. AI로 만든 코드도 한 줄씩 직접 검토하고 설명할 수 있어야 합니다. 기여한 코드는 [LICENSE](LICENSE) 6조에 따라 라이선스됩니다. 보안 문제는 공개 이슈 대신 [보안 정책](https://github.com/ivLis-Studio/.github/blob/main/SECURITY.md)을 따라 주세요.
+> 큰 기능이나 구조 변경은 PR 전에 이슈나 [Discord](https://discord.gg/2fu36fUzdE)에서 먼저 이야기해 주세요. PR에는 실행한 테스트와 화면 변화(전후 캡처)를 적어 주세요. 새 문구는 `langs/`의 모든 언어 파일에 추가하고, 설정 키는 저장된 값을 옮기는 마이그레이션 없이 바꾸거나 지우지 마세요. AI로 만든 코드도 한 줄씩 직접 검토하고 설명할 수 있어야 합니다. 기여하는 코드는 [GNU LGPL v2.1](LICENSE)로 제출해 주세요. 보안 문제는 공개 이슈 대신 [보안 정책](https://github.com/ivLis-Studio/.github/blob/main/SECURITY.md)을 따라 주세요.
 
 Thanks for helping improve ivLyrics. This guide covers ivLyrics for PC (the Spicetify app). The [shared contributing guide](https://github.com/ivLis-Studio/.github/blob/main/CONTRIBUTING.md) covers the Android, iOS, Overlay, and Helper repositories.
 
@@ -15,7 +15,7 @@ Thanks for helping improve ivLyrics. This guide covers ivLyrics for PC (the Spic
 
 ## License of contributions
 
-ivLyrics is source-available under the [ivLyrics Source-Available License 1.0](LICENSE). It is not open source: you may fork and modify it to develop and contribute changes, but not redistribute it. By submitting a contribution, you confirm that you have the right to submit it and grant ivLis Studio the license in Section 6 of [LICENSE](LICENSE). You keep the copyright in your work.
+Please submit your changes under the [GNU LGPL v2.1](LICENSE). By submitting a contribution, you confirm that you have the right to license it under those terms. You keep the copyright in your work.
 
 Files listed as LGPL-2.1 in [NOTICE.md](NOTICE.md) stay under LGPL-2.1. Changes you make to those files are also available under LGPL-2.1.
 

@@ -2,13 +2,9 @@
 
 Copyright (c) 2025-2026 ivLis Studio and contributors.
 
-Unless this notice says otherwise, the files in this repository are licensed under the ivLyrics Source-Available License 1.0 in [LICENSE](LICENSE).
+The ivLyrics source code is licensed under the [GNU LGPL v2.1](LICENSE). Bundled third-party components keep their respective licenses.
 
-Releases up to and including v7.1.17 (commit `3c251f7`) were published under the GNU Lesser General Public License v2.1. They remain available under LGPL-2.1.
-
-## LGPL-2.1 files
-
-The files in this section are licensed under the GNU Lesser General Public License v2.1, not under the ivLyrics license. The full text is in [LICENSES/LGPL-2.1.txt](LICENSES/LGPL-2.1.txt). You may use, modify, and redistribute these files under the LGPL. The ivLyrics license still covers the rest of the repository.
+## Spicetify origins and prior contributions
 
 ### Derived from Spicetify lyrics-plus
 
@@ -18,7 +14,7 @@ ivLyrics began as a modified version of [lyrics-plus](https://github.com/spiceti
 
 ### Contributed under LGPL-2.1
 
-These files contain code that others contributed while this repository was licensed under LGPL-2.1. They remain under LGPL-2.1 unless every contributor to the file agrees to the ivLyrics license. Contributors: PixelAxolotl, Ahmedxsaad, Oein, hohofught, kpnkpn1324, twoeater, karma-skz, Junsu Park, alixti, and moxuun.
+These files contain code that others contributed while this repository was licensed under LGPL-2.1. Contributors: PixelAxolotl, Ahmedxsaad, Oein, hohofught, kpnkpn1324, twoeater, karma-skz, Junsu Park, alixti, and moxuun.
 
 - Runtime: `AIAddonManager.js`, `AIRequest.js`, `Addon_AI_ChatGPT.js`, `Addon_Lyrics_LrcRed.js`, `Addon_Lyrics_Lrclib.js`, `Addon_Lyrics_OpenLyrics.js`, `FullscreenOverlay.js`, `LyricsShareImage.js`, `LyricsWordSegmenter.js`, `PlaylistPicker.js`, `PronunciationFirst.js`, `SyncDataCreator.js`, `VideoBackground.js`, `VideoBackgroundDepend.js`, `VideoMatch.js`, `WordLevelSupplements.js`
 - Language files: every file in `langs/`
@@ -38,6 +34,6 @@ Files with fewer than five lines changed by others are not listed. The Git histo
 
 ## Lyrics and other content
 
-The repository does not contain lyrics, recordings, artwork, or videos, and no license here covers them. ivLyrics retrieves lyrics and other content from third-party services at the user's request; that content belongs to its rights holders. Section 5 of [LICENSE](LICENSE) has the full terms. Rights holders can request removal of content stored on ivLyrics servers at me@ivl.is.
+The repository does not contain lyrics, recordings, artwork, or videos, and no license here covers them. ivLyrics retrieves lyrics and other content from third-party services at the user's request; that content belongs to its rights holders. See the [ivLyrics server access policy](README_EN.md#license-and-open-source-notices) for access to services operated by ivLis Studio. Rights holders can request removal of content stored on ivLyrics servers at me@ivl.is.
 
 ivLyrics is not affiliated with Spotify. Spotify is a trademark of Spotify AB.
