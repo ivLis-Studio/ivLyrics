@@ -1,6 +1,8 @@
+import { commitSettingsControlValue } from "./settingsControlCommit.mjs";
+
 export function createSettingsHelperToggles({
   react, translate, getCheckIcon, getVideoHelper, getLyricsHelper, isSettingsOpen,
-  openDownload, saveLyricsHelperSetting, publish, listenForLyricsHelperConnection,
+  openDownload, onSaveError, listenForLyricsHelperConnection,
   scheduleCheck, cancelCheck,
 }) {
   const { useState, useEffect } = react;
@@ -81,173 +83,100 @@ export function createSettingsHelperToggles({
     );
   };
 
-  const VideoHelperToggle = ({ name, settingKey, defaultValue, disabled, onChange = () => { } }) => {
-    const [enabled, setEnabled] = useState(defaultValue === "true" || defaultValue === true);
-    const [isConnected, setIsConnected] = useState(false);
+  const videoHelper = {
+    getService: getVideoHelper,
+    probe: service => service.checkHealth(),
+    download: () => {
+      const service = getVideoHelper();
+      if (service) service.openDownloadPage();
+      else openDownload();
+    },
+    getStatusText: ({ checking, connected }) => {
+      if (checking) return translate("settings.videoHelper.status.checking");
+      if (connected) return "✓ " + translate("settings.videoHelper.status.connected");
+      return translate("settings.videoHelper.status.disconnected");
+    },
+    labelKey: "settings.videoHelper",
+  };
+  const lyricsHelper = {
+    getService: getLyricsHelper,
+    probe: service => service.checkConnection(),
+    listen: listenForLyricsHelperConnection,
+    showPeriodicChecking: true,
+    download: openDownload,
+    downloadFallback: "Download",
+    getStatusText: ({ checking, connected }) => {
+      if (checking) return translate("settings.lyricsHelper.status.checking") || "Checking...";
+      if (connected) return "✓ " + (translate("settings.lyricsHelper.status.connected") || "Connected");
+      return translate("settings.lyricsHelper.status.disconnected") || "Not connected";
+    },
+    labelKey: "settings.lyricsHelper",
+  };
+
+  function useConnectionStatus(enabled, helper) {
+    const [connected, setConnected] = useState(false);
     const [checking, setChecking] = useState(false);
 
-    // 초기 연결 상태 확인 및 설정창 열려있는 동안 주기적 체크
     useEffect(() => {
-      let isMounted = true;
-      let checkInProgress = false;
+      if (!enabled) {
+        setConnected(false);
+        setChecking(false);
+        return;
+      }
+      let active = true;
+      let pending = false;
 
-      const checkConnection = async ({ showChecking = false } = {}) => {
-        if (!isMounted || checkInProgress) return;
-        const service = getVideoHelper();
-        if (service === undefined) return;
-
-        if (!isSettingsOpen()) return;
-
-        checkInProgress = true;
+      const checkConnection = async (showChecking) => {
+        if (pending || !active || !isSettingsOpen()) return;
+        const service = helper.getService();
+        if (!service) return;
+        pending = true;
         if (showChecking) setChecking(true);
         try {
-          const connected = await service.checkHealth();
-          if (isMounted) {
-            setIsConnected(connected);
-          }
+          const reachable = await helper.probe(service);
+          if (active) setConnected(Boolean(reachable));
+        } catch {
+          if (active) setConnected(false);
         } finally {
-          checkInProgress = false;
-          if (isMounted && showChecking) {
-            setChecking(false);
-          }
+          pending = false;
+          if (active && showChecking) setChecking(false);
         }
       };
 
-      // 활성화 시 즉시 체크
-      if (enabled) {
-        checkConnection({ showChecking: true });
-      } else {
-        setIsConnected(false);
-        setChecking(false);
-      }
-
-      // 주기 확인은 상태 배지를 "확인 중"으로 되돌리지 않는다.
-      const interval = scheduleCheck(() => {
-        if (enabled) checkConnection();
-      }, 5000);
+      const unsubscribe = helper.listen?.(event => {
+        if (active) setConnected(Boolean(event.detail?.connected));
+      });
+      void checkConnection(true);
+      const interval = scheduleCheck(() => void checkConnection(helper.showPeriodicChecking), 5000);
 
       return () => {
-        isMounted = false;
+        active = false;
         cancelCheck(interval);
+        unsubscribe?.();
       };
-    }, [enabled]);
+    }, [enabled, helper]);
 
-    const handleToggle = () => {
-      if (disabled) return;
-      const newValue = !enabled;
-      setEnabled(newValue);
-      onChange(settingKey || name, newValue);
+    return { connected, checking };
+  }
 
-      // 즉시 적용을 위해 이벤트 발생
-      publish("ivLyrics:videoHelperChanged", { enabled: newValue });
-    };
-
-    const handleDownload = () => {
-      const service = getVideoHelper();
-      if (service !== undefined) {
-        service.openDownloadPage();
-      } else {
-        openDownload();
-      }
-    };
-
-    const getStatusText = () => {
-      if (checking) return translate("settings.videoHelper.status.checking");
-      if (isConnected) return "✓ " + translate("settings.videoHelper.status.connected");
-      return translate("settings.videoHelper.status.disconnected");
-    };
-
+  function useHelperToggle({ name, settingKey, defaultValue, disabled, onChange = () => false }, helper) {
+    const enabled = defaultValue === true || defaultValue === "true";
+    const status = useConnectionStatus(enabled, helper);
     return renderSettingsHelperToggle({
-      settingKey, enabled, isConnected, disabled, handleDownload, handleToggle,
-      label: translate("settings.videoHelper.label"),
-      description: translate("settings.videoHelper.desc"),
-      downloadLabel: translate("settings.videoHelper.download"),
-      statusText: getStatusText()
+      settingKey, enabled, isConnected: status.connected, disabled,
+      label: translate(`${helper.labelKey}.label`),
+      description: translate(`${helper.labelKey}.desc`),
+      downloadLabel: translate(`${helper.labelKey}.download`) || helper.downloadFallback || "",
+      statusText: helper.getStatusText(status),
+      handleDownload: helper.download,
+      handleToggle: () => {
+        if (!disabled) commitSettingsControlValue(onChange, onSaveError, settingKey || name, !enabled);
+      },
     });
-  };
+  }
 
-  // Lyrics Helper Toggle - 가사 헬퍼 연결 토글
-  const LyricsHelperToggle = ({ name, settingKey, defaultValue, disabled, onChange = () => { } }) => {
-    const [enabled, setEnabled] = useState(defaultValue === "true" || defaultValue === true);
-    const [isConnected, setIsConnected] = useState(false);
-    const [checking, setChecking] = useState(false);
-
-    // 초기 연결 상태 확인 및 설정창 열려있는 동안 주기적 체크
-    useEffect(() => {
-      let isMounted = true;
-
-      const checkConnection = async () => {
-        if (!isMounted) return;
-        const sender = getLyricsHelper();
-        if (sender === undefined) return;
-
-        if (!isSettingsOpen()) return;
-
-        setChecking(true);
-        const connected = await sender.checkConnection();
-        if (isMounted) {
-          setIsConnected(connected);
-          setChecking(false);
-        }
-      };
-
-      // 활성화 시 즉시 체크
-      if (enabled) {
-        checkConnection();
-      }
-
-      // lyricsHelperSender 연결 이벤트 리스너
-      const handleConnectionChange = (e) => {
-        if (isMounted) {
-          setIsConnected(e.detail?.connected || false);
-        }
-      };
-      const unsubscribe = listenForLyricsHelperConnection(handleConnectionChange);
-
-      // 설정창 열려있는 동안 주기적 연결 확인 (5초마다, 활성화 시만)
-      const interval = scheduleCheck(() => {
-        if (enabled) checkConnection();
-      }, 5000);
-
-      return () => {
-        isMounted = false;
-        cancelCheck(interval);
-        unsubscribe();
-      };
-    }, [enabled]);
-
-    const handleToggle = () => {
-      if (disabled) return;
-      const newValue = !enabled;
-      setEnabled(newValue);
-      onChange(name, newValue);
-      saveLyricsHelperSetting(name, newValue);
-
-      // lyricsHelperSender 활성화/비활성화
-      const sender = getLyricsHelper();
-      if (sender) sender.enabled = newValue;
-
-      publish("ivLyrics:lyricsHelperChanged", { enabled: newValue });
-    };
-
-    const handleDownload = () => {
-      openDownload();
-    };
-
-    const getStatusText = () => {
-      if (checking) return translate("settings.lyricsHelper.status.checking") || "Checking...";
-      if (isConnected) return "✓ " + (translate("settings.lyricsHelper.status.connected") || "Connected");
-      return translate("settings.lyricsHelper.status.disconnected") || "Not connected";
-    };
-
-    return renderSettingsHelperToggle({
-      settingKey, enabled, isConnected, disabled, handleDownload, handleToggle,
-      label: translate("settings.lyricsHelper.label"),
-      description: translate("settings.lyricsHelper.desc"),
-      downloadLabel: translate("settings.lyricsHelper.download") || "Download",
-      statusText: getStatusText()
-    });
-  };
+  const VideoHelperToggle = (props) => useHelperToggle(props, videoHelper);
+  const LyricsHelperToggle = (props) => useHelperToggle(props, lyricsHelper);
 
   return { VideoHelperToggle, LyricsHelperToggle };
 }

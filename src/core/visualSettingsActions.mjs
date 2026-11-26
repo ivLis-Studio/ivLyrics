@@ -1,6 +1,12 @@
 export function createSettingsEventChannel(host, createEvent) {
   const publishSettingsEvent = (type, detail) => host.dispatchEvent(createEvent(type, detail));
-  const publishSettingsConfigChange = (name, value) => publishSettingsEvent("ivLyrics", { type: "config", name, value });
+  const publishSettingsConfigChange = (name, value) => {
+    const dispatched = publishSettingsEvent("ivLyrics", { type: "config", name, value });
+    const enabled = value === true || value === "true";
+    if (name === "video-helper-enabled") publishSettingsEvent("ivLyrics:videoHelperChanged", { enabled });
+    if (name === "lyrics-helper-enabled") publishSettingsEvent("ivLyrics:lyricsHelperChanged", { enabled });
+    return dispatched;
+  };
   const publishSettingsRefresh = (key) => publishSettingsEvent("ivLyrics:settings-refresh", { key });
   const subscribeSettingsConfig = (listener) => {
     host.addEventListener("ivLyrics", listener);

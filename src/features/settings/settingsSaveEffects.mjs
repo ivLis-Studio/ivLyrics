@@ -19,7 +19,7 @@ export function publishAppliedSettingsPreset(entries, {
 export function createSettingsSaveEffects({
   visualSettingsActions, persistConfig, persistVisualSetting,
   updatePreviewStyles, loadFont, publishConfigChange, publishEvent, setInterfaceLanguage,
-  reopenLanguageSettings, setLyricsHelperEnabled,
+  reopenLanguageSettings,
 }) {
   const { saveVisualSetting, refreshAndPublishSetting, handleVisualConfigChange } = visualSettingsActions;
 
@@ -53,7 +53,7 @@ export function createSettingsSaveEffects({
     },
     saveLyricsHelperSetting(name, value) {
       saveVisualSetting(name, value);
-      if (name === "lyrics-helper-enabled") setLyricsHelperEnabled(value);
+      publishConfigChange(name, value);
     },
     saveInstrumentalLabelSetting(name, value) {
       saveVisualSetting(name, value, (key, nextValue) => {

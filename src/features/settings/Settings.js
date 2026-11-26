@@ -302,8 +302,7 @@ export function createSettingsPage({
     isSettingsOpen: () => document.querySelector("#ivLyrics-config-container")
       || document.querySelector("#ivLyrics-settings-overlay"),
     openDownload: openSettingsHelperDownload,
-    saveLyricsHelperSetting: saveVisualSetting,
-    publish: publishSettingsEvent,
+    onSaveError: () => Toast?.error?.(I18n.t("messages.error")),
     listenForLyricsHelperConnection: (listener) => {
       window.addEventListener("ivLyrics:lyrics-helper-connection", listener);
       return () => window.removeEventListener("ivLyrics:lyrics-helper-connection", listener);
@@ -837,10 +836,6 @@ export function createSettingsPage({
       publishEvent: publishSettingsEvent,
       setInterfaceLanguage: setSettingsLanguage,
       reopenLanguageSettings: () => queueReloadIntoIvLyrics({ reopenSettings: true, initialTab: "general" }),
-      setLyricsHelperEnabled: (enabled) => {
-        const sender = getSettingsLyricsHelper();
-        if (sender) sender.enabled = enabled;
-      },
     });
     const renderTabContent = createSettingsTabContent({
       react, translate: key => I18n.t(key), activeTab, fullscreenView, isFadActive,

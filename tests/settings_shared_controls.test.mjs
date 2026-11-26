@@ -3,6 +3,8 @@ import { createSettingsHelperToggles } from "#ivlyrics/features/settings/setting
 import { createSettingsProviderListView } from "#ivlyrics/features/settings/settingsProviderListView.mjs";
 import { createSettingsLyricsProviderTab } from "#ivlyrics/features/settings/settingsLyricsProviderTab.mjs";
 import { createSettingsAiProviderTab } from "#ivlyrics/features/settings/settingsAiProviderTab.mjs";
+import { createSettingsEventChannel, createVisualSettingsActions } from "#ivlyrics/core/visualSettingsActions.mjs";
+import { createSettingsSaveEffects } from "#ivlyrics/features/settings/settingsSaveEffects.mjs";
 import { readSettingsFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -91,7 +93,12 @@ function createHarness(source, component, options = {}) {
     readSettingsService: (name) => window[name],
     I18n: { t: key => options.emptyTranslations ? '' : `${language}:${key}` },
     CONFIG: { visual: {} },
-    StorageManager: { saveConfig: (...args) => calls.push(['save', ...args]) },
+    StorageManager: {
+      saveConfig: (...args) => {
+        if (options.denySave) throw new Error("storage unavailable");
+        calls.push(['save', ...args]);
+      },
+    },
     Spicetify: { SVGIcons: { check: '<path />' } },
     VideoHelperService: { checkHealth: () => health('video-helper'), openDownloadPage: () => calls.push(['video-download']) },
     document: { querySelector: () => ({}) },
@@ -144,6 +151,18 @@ function createHarness(source, component, options = {}) {
       `globalThis.component = ${component};`,
     ].join('\n'), context);
   } else if (source === current) {
+    const channel = createSettingsEventChannel(window, (type, detail) => new context.CustomEvent(type, { detail }));
+    const visualSettingsActions = createVisualSettingsActions({
+      getVisualSettings: () => context.CONFIG.visual,
+      persistConfig: context.StorageManager.saveConfig,
+      updateLyrics() {},
+      publishConfigChange: channel.publishSettingsConfigChange,
+    });
+    const { saveLyricsHelperSetting } = createSettingsSaveEffects({
+      visualSettingsActions, publishConfigChange: channel.publishSettingsConfigChange,
+    });
+    context.changeHelperSetting = component === 'LyricsHelperToggle'
+      ? saveLyricsHelperSetting : visualSettingsActions.handleVisualConfigChange;
     context.component = createSettingsHelperToggles({
       react, translate: key => context.I18n.t(key),
       getCheckIcon: () => context.Spicetify.SVGIcons.check,
@@ -151,11 +170,7 @@ function createHarness(source, component, options = {}) {
       getLyricsHelper: services.getSettingsLyricsHelper,
       isSettingsOpen: () => true,
       openDownload: () => window.open("https://ivlis.kr/ivLyrics/extensions/#helper", "_blank"),
-      saveLyricsHelperSetting: (name, value) => {
-        context.CONFIG.visual[name] = value;
-        context.StorageManager.saveConfig(name, value);
-      },
-      publish: (type, detail) => window.dispatchEvent(new context.CustomEvent(type, { detail })),
+      onSaveError: () => calls.push(['save-error']),
       listenForLyricsHelperConnection: (listener) => {
         window.addEventListener("ivLyrics:lyrics-helper-connection", listener);
         return () => window.removeEventListener("ivLyrics:lyrics-helper-connection", listener);
@@ -320,26 +335,91 @@ for (const component of ['LyricsProvidersTab', 'AIProvidersTab']) {
   });
 }
 
+test("committed helper settings publish the same playback notifications as direct toggles", () => {
+  const host = new EventTarget();
+  const events = [];
+  for (const type of ["ivLyrics", "ivLyrics:videoHelperChanged", "ivLyrics:lyricsHelperChanged"]) {
+    host.addEventListener(type, event => events.push([type, event.detail]));
+  }
+  const { publishSettingsConfigChange } = createSettingsEventChannel(host, (type, detail) => new CustomEvent(type, { detail }));
+  publishSettingsConfigChange("video-helper-enabled", "true");
+  publishSettingsConfigChange("lyrics-helper-enabled", false);
+  assert.deepEqual(events, [
+    ["ivLyrics", { type: "config", name: "video-helper-enabled", value: "true" }],
+    ["ivLyrics:videoHelperChanged", { enabled: true }],
+    ["ivLyrics", { type: "config", name: "lyrics-helper-enabled", value: false }],
+    ["ivLyrics:lyricsHelperChanged", { enabled: false }],
+  ]);
+});
+
+test("the lyrics helper keeps one pending check and ignores it after disabling", async () => {
+  const h = createHarness(current, "LyricsHelperToggle");
+  const render = defaultValue => h.render({ settingKey: "lyrics-helper-enabled", defaultValue });
+  render(true);
+  h.flushEffects();
+  h.tick();
+  h.tick();
+  assert.equal(h.pendingHealth.length, 1);
+  render(false);
+  h.flushEffects();
+  await h.healthResult(true);
+  assert.equal(statusBadge(render(false)), undefined);
+  assert.equal(h.intervals.size, 0);
+  assert.equal(h.listeners.has("ivLyrics:lyrics-helper-connection"), false);
+  const tree = render(true);
+  assert.equal(statusBadge(tree).props.style.color, "#ef4444");
+  h.unmount();
+});
+
 for (const component of ['VideoHelperToggle', 'LyricsHelperToggle']) {
-  test(`${component}: connection states, styles, disabled toggles and distinct storage contracts`, async () => {
+  const isLyricsHelper = component === 'LyricsHelperToggle';
+  const settingKey = isLyricsHelper ? 'lyrics-helper-enabled' : 'video-helper-enabled';
+  const namespace = isLyricsHelper ? 'lyricsHelper' : 'videoHelper';
+
+  test(`${component}: a rejected write leaves the switch and connection unchanged`, (t) => {
+    t.mock.method(console, "error", () => {});
+    const h = createHarness(current, component, { denySave: true });
+    h.context.CONFIG.visual[settingKey] = false;
+    const render = () => h.render({
+      settingKey,
+      defaultValue: h.context.CONFIG.visual[settingKey],
+      onChange: h.context.changeHelperSetting,
+    });
+    checkbox(render()).props.onClick();
+    h.flushEffects();
+    assert.equal(checkbox(render()).props["aria-checked"], false);
+    assert.deepEqual(h.calls, [["save-error"]]);
+    assert.equal(h.pendingHealth.length, 0);
+    h.unmount();
+  });
+
+  test(`${component}: connection states, styles, disabled toggles and one committed change`, async () => {
     for (const defaultValue of [undefined, false, true, 'true', 'false']) {
       for (const emptyTranslations of [false, true]) {
         const before = baseline && createHarness(baseline, component, { emptyTranslations });
         const after = createHarness(current, component, { emptyTranslations });
         const pair = [before, after].filter(Boolean);
-        const props = { name: 'helper-name', settingKey: 'helper-key', defaultValue };
-        const isLyricsHelper = component === 'LyricsHelperToggle';
+        const props = { name: 'helper-name', settingKey, defaultValue };
         const initiallyEnabled = defaultValue === true || defaultValue === 'true';
-        const namespace = isLyricsHelper ? 'lyricsHelper' : 'videoHelper';
-        const render = (harness, extra = {}) => harness.render({ ...props, onChange: (...args) => harness.calls.push(['change', ...args]), ...extra });
+        const render = (harness, extra = {}) => harness.render({
+          ...props,
+          defaultValue: harness.context.CONFIG.visual[settingKey] ?? defaultValue,
+          onChange: (...args) => {
+            harness.calls.push(['change', ...args]);
+            harness.context.changeHelperSetting?.(...args);
+          },
+          ...extra,
+        });
+        const legacyEventTrace = harness => normalize(harness.calls.filter(call =>
+          !['save', 'change'].includes(call[0]) && !(call[0] === 'event' && call[1] === 'ivLyrics')));
         const check = () => {
           const trees = pair.map(harness => render(harness));
           treeContract(...trees);
-          if (before) assert.deepEqual(normalize(after.calls), normalize(before.calls));
+          if (before) assert.deepEqual(legacyEventTrace(after), legacyEventTrace(before));
           return trees;
         };
         let trees = check();
-        assert.equal(trees.at(-1).props['data-setting-key'], 'helper-key');
+        assert.equal(trees.at(-1).props['data-setting-key'], settingKey);
         assert.equal(checkbox(trees.at(-1)).props['aria-checked'], initiallyEnabled);
         assert.equal(Boolean(statusBadge(trees.at(-1))), initiallyEnabled);
         assert.equal(Boolean(downloadButton(trees.at(-1))), initiallyEnabled);
@@ -387,22 +467,19 @@ for (const component of ['VideoHelperToggle', 'LyricsHelperToggle']) {
         assert.equal(statusBadge(trees.at(-1)), undefined);
         assert.equal(downloadButton(trees.at(-1)), undefined);
         const values = initiallyEnabled ? [false] : [true, false];
-        assert.deepEqual(after.calls.filter(call => call[0] === 'change'), values.map(value => [
-          'change', isLyricsHelper ? 'helper-name' : 'helper-key', value,
+        assert.deepEqual(after.calls.filter(call =>
+          ['change', 'save'].includes(call[0]) || (call[0] === 'event' && call[1] !== 'unrelated')
+        ), values.flatMap(value => [
+          ['change', settingKey, value],
+          ['save', settingKey, value],
+          ['event', 'ivLyrics', { type: 'config', name: settingKey, value }],
+          ['event', `ivLyrics:${namespace}Changed`, { enabled: value }],
         ]));
-        assert.deepEqual(after.calls.filter(call => call[0] === 'save'), isLyricsHelper
-          ? values.map(value => ['save', 'helper-name', value]) : []);
-        assert.deepEqual(after.calls.filter(call => call[0] === 'event' && call[1] !== 'unrelated'), values.map(value => [
-          'event', `ivLyrics:${namespace}Changed`, { enabled: value },
-        ]));
-        assert.deepEqual(normalize(after.context.CONFIG.visual), isLyricsHelper ? { 'helper-name': false } : {});
-        assert.equal(after.window.lyricsHelperSender.enabled, false);
+        assert.deepEqual(normalize(after.context.CONFIG.visual), { [settingKey]: false });
         pair.forEach(harness => harness.unmount());
         assert.equal(after.intervals.size, 0);
         assert.equal(after.listeners.size, 0);
-        if (before) assert.deepEqual(normalize(after.calls), normalize(before.calls));
-        if (before) assert.deepEqual(normalize(after.context.CONFIG), normalize(before.context.CONFIG));
-        if (before) assert.equal(after.window.lyricsHelperSender.enabled, before.window.lyricsHelperSender.enabled);
+        if (before) assert.deepEqual(legacyEventTrace(after), legacyEventTrace(before));
       }
     }
   });
