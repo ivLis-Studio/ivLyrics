@@ -64,9 +64,9 @@ function fixture(t, {
         getAIManager: () => null,
         translationPreferences,
         getPanelLyricsService: () => ({
-            async getLyricsFromProviders(info, _order, _mode, forcedProvider) {
+            async getLyricsFromProviders(info, _order, _mode, forcedProvider, options) {
                 loads.push(info.uri);
-                return getLyrics(info, forcedProvider);
+                return getLyrics(info, forcedProvider, options);
             },
             getLyricsRequestRevision: getRevision,
             getTrackLyricsProviderOverride: getProviderOverride,
@@ -108,6 +108,9 @@ function fixture(t, {
             host.dispatchEvent(new CustomEvent("ivLyrics", { detail: { name, value } }));
         },
         notifyProviderSelection: () => host.dispatchEvent(new Event(LYRICS_PROVIDER_SELECTION_CHANGED)),
+        releasePage: trackUri => host.dispatchEvent(new CustomEvent("ivLyrics:presentation-owner-released", {
+            detail: { source: "ivlyrics-page", trackUri },
+        })),
         changeOffset: (trackUri, offset) => host.dispatchEvent(
             new CustomEvent("ivLyrics:offset-changed", { detail: { trackUri, offset } })),
         applyShared: detail => {
@@ -117,6 +120,22 @@ function fixture(t, {
         advance: async (delay) => { t.mock.timers.tick(delay); await flush(); },
     };
 }
+
+test("panel teardown aborts only the mounted view's pending provider lookup", async t => {
+    const pending = Promise.withResolvers();
+    let signal;
+    const h = fixture(t, { currentLoaded: false, getLyrics: (_info, _provider, options) => {
+        signal = options?.signal;
+        return pending.promise;
+    } });
+    await flush();
+    assert.equal(signal?.aborted, false);
+    h.close();
+    assert.equal(signal.aborted, true);
+    pending.resolve(result(first));
+    await flush();
+    assert.deepEqual(h.publish, []);
+});
 
 test("a panel request rejected after the cache was cleared does not replace the current lyrics with an error", async t => {
     const pending = Promise.withResolvers();
@@ -338,6 +357,21 @@ test("a queued panel settings refresh cannot apply to a different song or a clos
     h.close();
     await h.advance(300);
     assert.deepEqual(h.loads, [next.uri]);
+});
+
+test("the mounted panel finishes a pending page presentation when the page closes", async t => {
+    const h = fixture(t, { translate: async () => ({ translation: ["Finished by panel"] }) });
+    await flush();
+    h.applyShared({
+        source: "ivlyrics-page", trackUri: first.uri, lyricsType: "synced", detectedLanguage: "en",
+        displayMode1: "none", displayMode2: "gemini_ko", pronunciationNotation: "translation",
+        translationTargetLanguage: "ko", presentationComplete: false, displayLyrics: rows(first),
+    });
+    h.releasePage(first.uri);
+    await h.advance(0);
+    assert.deepEqual(h.loads, [first.uri]);
+    assert.equal(h.state.lyrics[0].text2, "Finished by panel");
+    assert.equal(h.publish.at(-1).presentationComplete, true);
 });
 
 test("a complete presentation with current settings supersedes a queued panel reload", async t => {

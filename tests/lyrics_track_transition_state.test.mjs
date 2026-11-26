@@ -88,9 +88,9 @@ const createHarness = () => {
       LyricsService: {
         getLyricsSnapshot: uri => snapshots.get(uri),
         publishLyricsSnapshot: snapshot => publications.push(snapshot),
-        getLyricsFromProviders(info) {
+        getLyricsFromProviders(info, _order, _mode, _override, options) {
           const pending = deferred();
-          requests.push({ info, ...pending });
+          requests.push({ info, signal: options?.signal, ...pending });
           return pending.promise;
         },
       },
@@ -864,8 +864,10 @@ test("a departing lyrics page cannot publish a late result or write into the nex
   const load = h.container.fetchLyrics(item);
   await flush();
   assert.equal(h.requests.length, 1);
+  assert.equal(h.requests[0].signal?.aborted, false);
   h.container._isComponentMounted = false;
   h.container.pageLyricsDataLoader.cancelPending();
+  assert.equal(h.requests[0].signal.aborted, true);
   h.requests[0].resolve({ uri: item.uri, provider: "fixture", synced: lines("Old page result") });
   await load;
   assert.equal(h.context.CACHE[item.uri], undefined);

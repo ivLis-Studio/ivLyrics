@@ -1,12 +1,14 @@
 export function createPanelTrackRequests(initialUri, readCurrentTrackUri) {
     let loadedUri = initialUri;
-    let loading = false;
+    let providerController = null;
     let loadRevision = 0;
     let offsetRevision = 0;
 
     const invalidateLyrics = () => {
         loadRevision++;
-        loading = false;
+        const retired = providerController;
+        providerController = null;
+        retired?.abort();
     };
     const invalidateOffset = () => { offsetRevision++; };
     const invalidate = () => {
@@ -22,13 +24,17 @@ export function createPanelTrackRequests(initialUri, readCurrentTrackUri) {
             loadedUri = null;
         },
         beginLyrics(uri, force) {
-            if (!force && (loading || uri === loadedUri)) return null;
-            loading = true;
+            if (!force && (providerController || uri === loadedUri)) return null;
+            const retired = providerController;
+            const controller = new AbortController();
+            providerController = controller;
             loadedUri = uri;
-            return ++loadRevision;
+            const revision = ++loadRevision;
+            retired?.abort();
+            return { revision, signal: controller.signal };
         },
         endLyrics(revision) {
-            if (revision === loadRevision) loading = false;
+            if (revision === loadRevision) providerController = null;
         },
         ownsLyrics: (revision, uri) => revision === loadRevision && uri === readCurrentTrackUri(),
         beginOffset: () => ++offsetRevision,

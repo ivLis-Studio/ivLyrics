@@ -1,4 +1,5 @@
 import { readPronunciationSlots } from "#ivlyrics/lyrics/pronunciationRuntime.mjs";
+import { createRuntimeEffects } from "../core/runtimeEffects.mjs";
 import { normalizeGlobalSyncOffset } from "#ivlyrics/core/globalSyncOffset.mjs";
 import { resolveStablePlayerItem } from "../core/PlaybackClock.js";
 import { createPlaybackTrackResolver } from "../spicetify/playbackTrackResolver.mjs";
@@ -7,6 +8,7 @@ import { resolveSharedPanelLyrics } from "./panelLyricPresentation.mjs";
 import { createPanelTranslationLoader } from "./panelTranslationLoader.mjs";
 import { createPanelLyricsLoader } from "./panelLyricsLoader.mjs";
 import { createPanelTrackRequests } from "./panelTrackRequests.mjs";
+import { LYRIC_PRESENTATION_OWNER_RELEASED, registerPanelLyricPresentationOwner } from "./lyricPresentationOwnership.mjs";
 import { isLyricPresentationSetting } from "./lyricPresentationIdentity.mjs";
 import { isLyricsProviderSelectionSetting, LYRICS_PROVIDER_SELECTION_CHANGED } from "./lyricsProviderRequests.mjs";
 
@@ -120,6 +122,11 @@ export function createPanelTrackEffects({
             let mounted = true;
             let resolvedUri = requests.trackUri || playbackUri;
             let narrationActive = false;
+            let pendingPageUri = null;
+            const effects = createRuntimeEffects({
+                scheduleTimer: setTimeout, cancelTimer: clearTimeout,
+                onCleanupError: error => console.warn("[PanelLyrics] Failed to clean up track effects:", error),
+            });
 
             if (initial.trackUri && initial.trackUri === playbackUri) {
                 const { trackUri, provider, lyrics, karaokeSource } = initial;
@@ -127,6 +134,7 @@ export function createPanelTrackEffects({
             }
 
             const resetPanelTrack = (lyricsNotFound = false) => {
+                pendingPageUri = null;
                 requests.reset();
                 showUnavailable(lyricsNotFound);
                 resetTimeline();
@@ -285,6 +293,14 @@ export function createPanelTrackEffects({
                 }
             };
 
+            const handlePresentationOwnerReleased = ({ detail }) => {
+                const uri = readCurrentTrackUri();
+                if (!uri || pendingPageUri !== uri || detail?.source !== "ivlyrics-page"
+                    || (detail.trackUri && detail.trackUri !== uri)) return;
+                pendingPageUri = null;
+                reloadCurrentTrack();
+            };
+
             const handleSharedLyricsUpdate = (event) => {
                 const detail = event.detail || {};
                 const currentUri = readCurrentTrackUri();
@@ -301,7 +317,11 @@ export function createPanelTrackEffects({
                 } else if (!timingUpgrade && detail.source !== 'now-playing-panel') {
                     requests.invalidateLyrics();
                 }
-                if (detail.source === 'ivlyrics-page' && hasSupplementModes && detail.presentationComplete === true
+                if (!timingUpgrade) {
+                    pendingPageUri = detail.source === "ivlyrics-page" && detail.presentationComplete === false
+                        ? currentUri : null;
+                }
+                if (detail.source === "ivlyrics-page" && hasSupplementModes && detail.presentationComplete === true
                     && settingsReloadUri === currentUri) {
                     settingsReloadUri = null;
                 }
@@ -314,38 +334,36 @@ export function createPanelTrackEffects({
                 });
             };
 
-            setIsPlaybackPaused(getPlaybackPaused());
-            player.addEventListener('songchange', handleSongChange);
-            player.addEventListener('onplaypause', handlePlaybackChange);
-            host.addEventListener('ivLyrics', handleSettingsChange);
-            host.addEventListener(LYRICS_PROVIDER_SELECTION_CHANGED, reloadCurrentTrack);
-            host.addEventListener('ivLyrics:offset-changed', handleOffsetChange);
-            host.addEventListener('ivLyrics:global-offset-changed', handleGlobalOffsetChange);
-            host.addEventListener('ivLyrics:sync-data-updated', handleSyncDataUpdated);
-            host.addEventListener(LOCAL_LYRICS_UPDATED_EVENT, handleLocalLyricsUpdated);
-            host.addEventListener('ivLyrics:shared-lyrics-updated', handleSharedLyricsUpdate);
-            const unsubscribeTranslationStyle = getAIManager()?.on?.("translation:style:changed", reloadCurrentTrack);
-
-            const currentUri = readCurrentTrackUri();
-            if (currentUri && currentUri === requests.trackUri) void loadTrackOffset(currentUri);
-            else resolver.schedule();
-
-            return () => {
+            const dispose = () => {
                 mounted = false;
                 if (settingsReloadTimer !== null) clearTimeout(settingsReloadTimer);
                 resolver.cancel();
                 requests.invalidate();
-                player.removeEventListener('songchange', handleSongChange);
-                player.removeEventListener('onplaypause', handlePlaybackChange);
-                host.removeEventListener('ivLyrics', handleSettingsChange);
-                host.removeEventListener(LYRICS_PROVIDER_SELECTION_CHANGED, reloadCurrentTrack);
-                host.removeEventListener('ivLyrics:offset-changed', handleOffsetChange);
-                host.removeEventListener('ivLyrics:global-offset-changed', handleGlobalOffsetChange);
-                host.removeEventListener('ivLyrics:sync-data-updated', handleSyncDataUpdated);
-                host.removeEventListener(LOCAL_LYRICS_UPDATED_EVENT, handleLocalLyricsUpdated);
-                host.removeEventListener('ivLyrics:shared-lyrics-updated', handleSharedLyricsUpdate);
-                if (typeof unsubscribeTranslationStyle === "function") unsubscribeTranslationStyle();
+                effects.dispose();
             };
+            try {
+                setIsPlaybackPaused(getPlaybackPaused());
+                effects.listen(player, "songchange", handleSongChange);
+                effects.listen(player, "onplaypause", handlePlaybackChange);
+                effects.listen(host, "ivLyrics", handleSettingsChange);
+                effects.listen(host, LYRICS_PROVIDER_SELECTION_CHANGED, reloadCurrentTrack);
+                effects.listen(host, "ivLyrics:offset-changed", handleOffsetChange);
+                effects.listen(host, "ivLyrics:global-offset-changed", handleGlobalOffsetChange);
+                effects.listen(host, "ivLyrics:sync-data-updated", handleSyncDataUpdated);
+                effects.listen(host, LOCAL_LYRICS_UPDATED_EVENT, handleLocalLyricsUpdated);
+                effects.listen(host, "ivLyrics:shared-lyrics-updated", handleSharedLyricsUpdate);
+                effects.listen(host, LYRIC_PRESENTATION_OWNER_RELEASED, handlePresentationOwnerReleased);
+                effects.subscribe(handler => getAIManager()?.on?.("translation:style:changed", handler), reloadCurrentTrack);
+                effects.add(registerPanelLyricPresentationOwner(host, readCurrentTrackUri));
+
+                const currentUri = readCurrentTrackUri();
+                if (currentUri && currentUri === requests.trackUri) void loadTrackOffset(currentUri);
+                else resolver.schedule();
+            } catch (error) {
+                dispose();
+                throw error;
+            }
+            return dispose;
         }, [loadLyricsFromExtension, loadTrackOffset, requests, resetTimeline, showLyrics, showUnavailable]);
     };
 }

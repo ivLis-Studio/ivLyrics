@@ -7,7 +7,7 @@ import { retainLrcRedWordTiming } from "../providers/lyrics/lrcRedWordTiming.mjs
 const SERVICE_WAIT_INTERVAL_MS = 300;
 const SERVICE_WAIT_ATTEMPTS = 20;
 
-async function readPanelSource({ service, track, isLocalTrack, getSavedPanelLocalLyrics, readPseudoKaraoke, ownsRequest }) {
+async function readPanelSource({ service, track, isLocalTrack, getSavedPanelLocalLyrics, readPseudoKaraoke, ownsRequest, signal }) {
     const readRevision = () => service.getLyricsRequestRevision?.(track.uri);
     while (ownsRequest()) {
         const revision = readRevision();
@@ -24,7 +24,7 @@ async function readPanelSource({ service, track, isLocalTrack, getSavedPanelLoca
             const override = providerOverride || null;
             let result = isLocalTrack ? getSavedPanelLocalLyrics(track.uri) : null;
             if (!result) {
-                const lookup = await loadLyricsForPresentation(service, trackInfo, 1, override);
+                const lookup = await loadLyricsForPresentation(service, trackInfo, 1, override, { signal });
                 if (!ownsRequest()) return null;
                 if (!lookup || lookup.revision !== revision) continue;
                 result = lookup.result;
@@ -62,11 +62,13 @@ export function createPanelLyricsLoader({
         const trackUri = item?.uri;
         if (!trackUri || trackUri !== readCurrentTrackUri()) return;
         if (requestedTrackUri && requestedTrackUri !== trackUri) return;
-        const loadRevision = requests.beginLyrics(trackUri, forceReload);
-        if (loadRevision === null) return;
+        const request = requests.beginLyrics(trackUri, forceReload);
+        if (!request) return;
+        const { revision: loadRevision, signal } = request;
         const ownsRequest = () => requests.ownsLyrics(loadRevision, trackUri);
 
         try {
+            if (!ownsRequest()) return;
             setLoading();
             const trackId = getPanelTrackId(trackUri);
             const track = {
@@ -90,7 +92,7 @@ export function createPanelLyricsLoader({
             let loaded;
             do {
                 loaded = await readPanelSource({
-                    service, track, isLocalTrack: !trackId, getSavedPanelLocalLyrics, readPseudoKaraoke, ownsRequest,
+                    service, track, isLocalTrack: !trackId, getSavedPanelLocalLyrics, readPseudoKaraoke, ownsRequest, signal,
                 });
                 if (!loaded || !ownsRequest()) return;
             } while (!loaded.isSourceCurrent());

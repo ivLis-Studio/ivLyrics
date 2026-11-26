@@ -38,25 +38,26 @@ export function createPageLyricsDataLoader({
     const inFlight = new Map();
 
     function cancelForUri(uri) {
-        const request = inFlight.get(uri);
-        if (request) request.superseded = true;
+        const controller = inFlight.get(uri);
         inFlight.delete(uri);
+        controller?.abort();
     }
 
     function begin(uri) {
         cancelForUri(uri);
-        const request = { superseded: false };
-        inFlight.set(uri, request);
+        const controller = new AbortController();
+        const { signal } = controller;
+        inFlight.set(uri, controller);
 
         return {
             close() {
-                if (inFlight.get(uri) === request) inFlight.delete(uri);
+                if (inFlight.get(uri) === controller) inFlight.delete(uri);
             },
             async read({
                 info, mode, refresh, hasSpotifyTrackId, sharedSnapshot, providerOverride,
                 lyricsSaved, getSavedLocalLyrics, isCurrent, onTrackPrepared, onProviderLoad,
             }) {
-                const canContinue = () => !request.superseded && isCurrent();
+                const canContinue = () => !signal.aborted && isCurrent();
                 if (!canContinue()) return null;
                 const readRevision = () => getLyricsService()?.getLyricsRequestRevision?.(uri);
                 const cachedProvider = readPageLyricsSource(cache, uri, readRevision())?.trackLyricsProviderOverride || null;
@@ -71,7 +72,7 @@ export function createPageLyricsDataLoader({
                         const localResult = { ...saved, provider: "local", uri, trackLyricsProviderOverride: null };
                         const pseudoKaraoke = getPseudoKaraoke();
                         if (pseudoKaraoke?.applyToResult) await pseudoKaraoke.applyToResult(localResult, info);
-                        if (!request.superseded) cache[uri] = localResult;
+                        if (!signal.aborted) cache[uri] = localResult;
                         isCached = true;
                     }
                 }
@@ -107,7 +108,7 @@ export function createPageLyricsDataLoader({
                 const service = getLyricsService();
                 const lookup = await loadLyricsForPresentation(
                     service, info, getDataMode(mode), providerOverride,
-                    canContinue,
+                    { shouldRetry: canContinue, signal },
                 );
                 if (!lookup) return null;
                 const { result: response, revision: providerRevision } = lookup;
@@ -117,7 +118,7 @@ export function createPageLyricsDataLoader({
                     : response;
                 // A superseded request for a different song may warm its own
                 // cache. An earlier request for this URI cannot replace it.
-                if (result.provider && !result.error && !request.superseded && revisionMatches) {
+                if (result.provider && !result.error && !signal.aborted && revisionMatches) {
                     writePageLyricsSource(cache, uri, { ...result, trackLyricsProviderOverride: providerOverride || null }, providerRevision);
                 }
 
@@ -129,8 +130,9 @@ export function createPageLyricsDataLoader({
     }
 
     function cancelPending() {
-        for (const request of inFlight.values()) request.superseded = true;
+        const retired = [...inFlight.values()];
         inFlight.clear();
+        for (const controller of retired) controller.abort();
     }
 
     return { begin, cancelForUri, cancelPending };

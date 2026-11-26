@@ -1,3 +1,4 @@
+import { notifyLyricPresentationOwnerReleased } from "../lyrics/lyricPresentationOwnership.mjs";
 import { cancelPendingLyricsTimingUpgrade } from "../lyrics/pageLyricsTimingUpgrade.mjs";
 import { cancelPendingPageMetadataTranslation } from "../lyrics/createPageMetadataTranslation.mjs";
 import { LYRICS_PROVIDER_SELECTION_CHANGED } from "../lyrics/lyricsProviderRequests.mjs";
@@ -229,9 +230,7 @@ export function createLyricsPageLifecycle({
     if (released && browser.lyricsPerformance) delete browser.lyricsPerformance;
     if (released) {
       // Let the overlay continue pending translation or pronunciation work.
-      browser.dispatchEvent(new browser.CustomEvent("ivLyrics:presentation-owner-released", {
-        detail: { source: "ivlyrics-page", trackUri: releasedTrackUri },
-      }));
+      notifyLyricPresentationOwnerReleased(browser, "ivlyrics-page", releasedTrackUri);
     }
   }
 

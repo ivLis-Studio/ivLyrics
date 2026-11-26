@@ -6,6 +6,7 @@ import test from "node:test";
 import vm from "node:vm";
 import { activateLyricsPage, getMountedLyricsPage, releaseLyricsPage } from "../src/spicetify/lyricsPageEffects.mjs";
 import { LYRICS_PROVIDER_SELECTION_CHANGED } from "#ivlyrics/lyrics/lyricsProviderRequests.mjs";
+import { registerPanelLyricPresentationOwner } from "#ivlyrics/lyrics/lyricPresentationOwnership.mjs";
 import { LOCAL_LYRICS_UPDATED_EVENT } from "#ivlyrics/lyrics/localLyricsStore.mjs";
 
 const source = bundleInitializer(new URL("../src/features/overlay/OverlayService.js", import.meta.url));
@@ -443,6 +444,41 @@ test("a similarly named route permits translated overlay fallback for an incompl
   assert.equal(h.fallbackCalls[0].trackInfo.uri, trackUri);
   assert.equal(h.fallbackCalls[0].options.skipTranslation, false);
   assert.equal(h.sharedSends.length, 0);
+});
+
+test("native preview suppression alone does not claim the overlay presentation", async () => {
+  const h = createHarness({panelActive: true});
+  await h.runNextTimer();
+  assert.equal(h.fallbackCalls.length, 1);
+  assert.equal(h.fallbackCalls[0].options.skipTranslation, false);
+});
+
+test("a mounted panel delays fallback until its last presentation owner closes", async () => {
+  const trackUri = "spotify:track:fixture";
+  const h = createHarness({panelActive: true, overlayDelivered: trackUri, snapshot: incompleteSnapshot(trackUri)});
+  const releaseOld = registerPanelLyricPresentationOwner(h.window, () => trackUri);
+  const releaseNew = registerPanelLyricPresentationOwner(h.window, () => trackUri);
+  await h.runNextTimer();
+  assert.equal(h.fallbackCalls.length, 0);
+
+  releaseOld();
+  await h.runDueTimers();
+  assert.equal(h.fallbackCalls.length, 0);
+
+  releaseNew();
+  await h.runDueTimers();
+  assert.equal(h.fallbackCalls.length, 1);
+  assert.equal(h.fallbackCalls[0].options.skipTranslation, false);
+});
+
+test("panel removal does not release a page still opening on its own route", async () => {
+  const trackUri = "spotify:track:fixture";
+  const h = createHarness({pathname: "/ivLyrics", snapshot: incompleteSnapshot(trackUri)});
+  const releasePanel = registerPanelLyricPresentationOwner(h.window, () => trackUri);
+  releasePanel();
+  await h.runDueTimers();
+  assert.equal(h.fallbackCalls.length, 0);
+  assert.equal(h.sharedSends.length, 1);
 });
 
 test("a complete snapshot already delivered to the connected consumer is not retranslated", async () => {

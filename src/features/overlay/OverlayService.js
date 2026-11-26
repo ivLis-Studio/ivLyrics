@@ -8,6 +8,7 @@ import { LRC_RED_WORD_SYNC_SOURCE } from "../../lyrics/lyricsTimingMerge.mjs";
 import { LYRICS_PROVIDER_SELECTION_CHANGED } from "../../lyrics/lyricsProviderRequests.mjs";
 import { LOCAL_LYRICS_UPDATED_EVENT } from "../../lyrics/localLyricsStore.mjs";
 import { INTERFACE_LANGUAGE_CHANGED } from "../../i18n/interfaceLanguage.mjs";
+import { hasPanelLyricPresentationOwner, LYRIC_PRESENTATION_OWNER_RELEASED } from "../../lyrics/lyricPresentationOwnership.mjs";
 
 const overlayStartupKey = Symbol.for("ivLyrics.overlayServiceStartup");
 const overlayServiceName = "ivLyricsOverlayService";
@@ -181,13 +182,13 @@ function mountOverlayService({
         });
     };
 
-    const hasActivePresentationOwner = () => {
+    const hasActivePresentationOwner = (trackUri) => {
         const pathname = getHistory()?.location?.pathname;
         // 같은 경로에서 페이지 인스턴스가 교체되면 이전 인스턴스의 release가
         // 먼저 도착할 수 있다. 새로 마운트된 인스턴스가 있으면 소유권을 유지한다.
         const mountedPage = getMountedLyricsPage(host)?._isComponentMounted === true;
         return mountedPage || (!pageOwnerReleased && isIvLyricsRoute(pathname))
-            || document.body?.classList?.contains("ivlyrics-panel-lyrics-active");
+            || hasPanelLyricPresentationOwner(host, trackUri);
     };
 
     // 이전 곡 AI 요청이 느리더라도 다음 곡 동기화를 막지 않는다. 각 URI의
@@ -215,7 +216,7 @@ function mountOverlayService({
             // 원문 보충이 늦게 끝나 번역 스냅샷을 무효화하지 않도록 같은 곡의
             // 원문 요청 뒤에 이어 실행한다. 다른 곡의 요청은 기다리지 않는다.
             if (originalRequest) {
-                if (hasActivePresentationOwner()) {
+                if (hasActivePresentationOwner(trackInfo.uri)) {
                     schedule(0);
                     return;
                 }
@@ -349,7 +350,7 @@ function mountOverlayService({
             // ivLyrics 페이지나 우측 패널이 이미 동일 곡의 표시 결과를 만들고 있으면
             // 중복 번역 없이 기다린다. 원문을 보충한 뒤에도 미완성 결과를 관찰해
             // 페이지/패널이 닫히면 전역 서비스가 번역을 이어받는다.
-            const presentationOwnerActive = hasActivePresentationOwner();
+            const presentationOwnerActive = hasActivePresentationOwner(trackInfo.uri);
             if (presentationOwnerActive) {
                 if (pageGraceUri !== trackInfo.uri) {
                     pageGraceUri = trackInfo.uri;
@@ -401,8 +402,8 @@ function mountOverlayService({
         schedule(0);
     };
 
-    const presentationOwnerReleasedListener = () => {
-        pageOwnerReleased = true;
+    const presentationOwnerReleasedListener = ({ detail }) => {
+        if (!detail?.source || detail.source === "ivlyrics-page") pageOwnerReleased = true;
         schedule(0);
     };
 
@@ -483,7 +484,7 @@ function mountOverlayService({
     try {
         effects.listen(player, "songchange", songChangeListener);
         effects.listen(host, "ivLyrics:shared-lyrics-updated", sharedLyricsListener);
-        effects.listen(host, "ivLyrics:presentation-owner-released", presentationOwnerReleasedListener);
+        effects.listen(host, LYRIC_PRESENTATION_OWNER_RELEASED, presentationOwnerReleasedListener);
         effects.listen(host, LYRICS_PROVIDER_SELECTION_CHANGED, refreshCurrentPresentation);
         effects.listen(host, LOCAL_LYRICS_UPDATED_EVENT, localLyricsUpdated);
         effects.listen(host, "ivLyrics", presentationSettingsChanged);
