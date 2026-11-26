@@ -4,7 +4,10 @@ import {
 } from './lrclibSyncSource.mjs';
 import { sanitizeSyncCreatorLastCharEnds } from './timingValidation.mjs';
 
-export async function exportSyncCreatorFile({ syncData, track, lyrics, timing, saveWork, files, toast, translate }) {
+export async function exportSyncCreatorFile({
+	syncData, track, lyrics, timing, saveWork, files, toast, translate, isDraftCurrent = () => true,
+}) {
+	if (!isDraftCurrent()) return;
 	if (!syncData?.lines || syncData.lines.length === 0) {
 		toast.error(translate('syncCreator.noSyncData') || 'No sync data to export');
 		return;
@@ -14,7 +17,7 @@ export async function exportSyncCreatorFile({ syncData, track, lyrics, timing, s
 		const expanded = timing.attachSource(sanitizeSyncCreatorLastCharEnds(timing.materialize(syncData)));
 		timing.validate(expanded);
 		const encoded = timing.compact(expanded, lyrics.chars, lyrics.language || undefined);
-		saveWork(expanded);
+		const contents = JSON.stringify(encoded, null, 2);
 		const baseName = [track.title, track.artist].map(value => String(value || '').trim()).filter(Boolean).join('-');
 		const fallbackName = track.id ? `sync-${track.id}` : 'ivLyrics-sync';
 		const fileName = `${files.sanitizeFileName(baseName, fallbackName)}.json`;
@@ -25,8 +28,15 @@ export async function exportSyncCreatorFile({ syncData, track, lyrics, timing, s
 		});
 		if (saveTarget.canceled) return;
 
-		const blob = new Blob([JSON.stringify(encoded, null, 2)], { type: 'application/json' });
+		const blob = new Blob([contents], { type: 'application/json' });
 		await files.saveBlobAs(blob, fileName, saveTarget);
+		if (isDraftCurrent()) {
+			try {
+				await saveWork(JSON.parse(contents));
+			} catch (error) {
+				console.warn('[SyncDataCreator] Could not checkpoint the exported snapshot:', error);
+			}
+		}
 		toast.success(translate('syncCreator.exportSuccess') || 'Exported sync data');
 	} catch (error) {
 		console.error('[SyncDataCreator] Export error:', error);

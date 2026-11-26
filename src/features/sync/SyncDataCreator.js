@@ -1108,21 +1108,25 @@ export function createSyncDataCreator({
 		// 싱크 데이터 내보내기 (JSON 파일로 저장)
 		const exportSyncData = useCallback(() => exportSyncCreatorFile({
 			syncData,
+			isDraftCurrent: captureEditorDraftOwnership(),
 			track: { title: trackName, artist: artistName, id: trackId },
 			lyrics: { chars: lyricsFullTextChars, language: lyricsLanguage },
 			timing: {
 				materialize: materializeSyncCreatorParallelDrafts, attachSource: attachSelectedLrclibSource,
 				validate: assertValidSyncCreatorSyncData, compact: compactSyncCreatorSyncData,
 			},
-			saveWork: expandedData => {
-				captureScoreWork('checkpoint', expandedData);
+			saveWork: snapshot => {
+				captureScoreWork('checkpoint', snapshot);
 				// Saving a file remains usable offline; the durable work queue retries.
 				scoreTrackerRef.current?.flush().catch(() => undefined);
 			},
 			files: Utils,
 			toast: Toast,
 			translate: key => I18n.t(key),
-		}), [artistName, attachSelectedLrclibSource, lyricsFullTextChars, lyricsLanguage, materializeSyncCreatorParallelDrafts, syncData, trackId, trackName, captureScoreWork]);
+		}), [
+			artistName, attachSelectedLrclibSource, captureEditorDraftOwnership, captureScoreWork, lyricsFullTextChars,
+			lyricsLanguage, materializeSyncCreatorParallelDrafts, syncData, trackId, trackName,
+		]);
 
 		// 싱크 데이터 불러오기 (JSON 파일에서)
 		const importSyncData = useCallback(() => openImportPicker({

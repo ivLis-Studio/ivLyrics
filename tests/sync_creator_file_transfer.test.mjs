@@ -1,8 +1,81 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createSyncCreatorImportPicker } from '#ivlyrics/features/sync/syncCreatorFileTransfer.mjs';
+import { createSyncCreatorImportPicker, exportSyncCreatorFile } from '#ivlyrics/features/sync/syncCreatorFileTransfer.mjs';
 import { createSyncCreatorEditorLifetime } from '#ivlyrics/features/sync/syncCreatorEditorLifetime.mjs';
 import { buildLrclibSyncSource } from '#ivlyrics/features/sync/syncCreatorLrclibLyrics.mjs';
+
+function exportFixture({ requestTarget, writeFile, saveWork, isDraftCurrent } = {}) {
+	const calls = [];
+	const data = { version: 6, lines: [{ start: 0, end: 0, time: 2 }], source: { lrclibId: '22' } };
+	const run = () => exportSyncCreatorFile({
+		syncData: data, track: { title: 'A', artist: 'B', id: 'track-id' }, lyrics: { chars: ['A'], language: 'en' },
+		timing: { materialize: value => value, attachSource: value => value, validate() {}, compact: value => value },
+		files: {
+			sanitizeFileName: name => name,
+			async requestSaveFileTarget(name) {
+				calls.push(['picker', name]);
+				return requestTarget ? requestTarget() : { canceled: false };
+			},
+			async saveBlobAs(blob, name) {
+				calls.push(['file', name, JSON.parse(await blob.text())]);
+				await writeFile?.();
+			},
+		},
+		saveWork(value) {
+			calls.push(['work', structuredClone(value)]);
+			return saveWork?.();
+		},
+		isDraftCurrent,
+		toast: { success: message => calls.push(['success', message]), error: message => calls.push(['error', message]) },
+		translate: key => key,
+	});
+	return { data, run, calls };
+}
+
+test('cancelling export or failing the file write does not checkpoint work', async t => {
+	t.mock.method(console, 'error', () => {});
+	const cancelled = exportFixture({ requestTarget: () => ({ canceled: true }) });
+	await cancelled.run();
+	assert.deepEqual(cancelled.calls, [['picker', 'A-B.json']]);
+
+	const failed = exportFixture({ writeFile: () => { throw new Error('disk full'); } });
+	await failed.run();
+	assert.deepEqual(failed.calls.map(([step]) => step), ['picker', 'file', 'error']);
+	assert.deepEqual(failed.calls.at(-1), ['error', 'disk full']);
+});
+
+test('the file follows the snapshot at click time, and a retired draft gets no checkpoint', async () => {
+	const picker = Promise.withResolvers();
+	let current = true;
+	const h = exportFixture({ requestTarget: () => picker.promise, isDraftCurrent: () => current });
+	const captured = structuredClone(h.data);
+	const saving = h.run();
+	h.data.lines[0].time = 4;
+	h.data.source.lrclibId = '33';
+	current = false;
+	picker.resolve({ canceled: false });
+	await saving;
+	assert.deepEqual(h.calls, [
+		['picker', 'A-B.json'], ['file', 'A-B.json', captured], ['success', 'syncCreator.exportSuccess'],
+	]);
+});
+
+test('a saved export checkpoints the same snapshot, and checkpoint failure still reports success', async t => {
+	t.mock.method(console, 'warn', () => {});
+	const saved = Promise.withResolvers();
+	const h = exportFixture({
+		writeFile: () => saved.promise,
+		saveWork: () => { throw new Error('work queue unavailable'); },
+	});
+	const captured = structuredClone(h.data);
+	const exporting = h.run();
+	h.data.lines[0].time = 9;
+	saved.resolve();
+	await exporting;
+	assert.deepEqual(h.calls, [
+		['picker', 'A-B.json'], ['file', 'A-B.json', captured], ['work', captured], ['success', 'syncCreator.exportSuccess'],
+	]);
+});
 
 function fixture({ lifetime } = {}) {
 	let open = true;
