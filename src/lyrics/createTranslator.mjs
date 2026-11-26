@@ -1,7 +1,8 @@
 import { LRUCache } from "../core/LRUCache.mjs";
 import { getTranslationSourceCacheHash } from "./translationPresentation.mjs";
 import { LYRICS_PHONETIC_PROMPT_CACHE_VERSION, normalizeIvLyricsPronunciationNotation } from "./translationPreferences.mjs";
-import { getTranslationOutputFromCache, hasValidTranslationLines, isUserEditedTranslation, readTranslationOutput } from "./translationCache.mjs";
+import { getTranslationOutputFromCache, hasValidTranslationLines, isUserEditedTranslation, matchesTranslationSourceLanguage, readTranslationOutput } from "./translationCache.mjs";
+import { normalizeLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
 import { createTranslationRequestRegistry } from "./translationRequestRegistry.mjs";
 import { isSupersededAbort } from "../providers/ai/aiRequestCancellation.mjs";
 
@@ -192,9 +193,12 @@ export function createTranslator({
                     return 'auto';
                 }
             })();
+            const sourceLanguage = normalizeLyricSourceLanguage(resolvedSourceLang);
 
+            // The editable disk entry has one key per track, text and output
+            // configuration. A different source language takes over that request.
             return requests.run(id, type, [lang, provider || null, sourceHash], {
-                refresh: ignoreCache, streamUpdates: true, observer: { onLine, onStreamReset },
+                refresh: ignoreCache, streamUpdates: true, observer: { onLine, onStreamReset }, sourceLanguage,
             }, async (isCurrent, signal, stream) => {
                 if (!ignoreCache) {
                     let cached;
@@ -204,14 +208,16 @@ export function createTranslator({
                         console.warn('[Translator] Local cache check failed:', error);
                     }
                     if (!isCurrent()) return null;
-                    if (hasValidTranslationLines(cached, text, wantSmartPhonetic)) {
+                    if (matchesTranslationSourceLanguage(cached, sourceLanguage)
+                        && hasValidTranslationLines(cached, text, wantSmartPhonetic)) {
                         if (wantSmartPhonetic) getPronunciationSlots()?.remember?.(id, text, cached);
                         getApiTracker()?.logCacheHit?.(type, `${id}:${lang}:${sourceHash}`, {
                             lineCount: cached.phonetic?.length || cached.translation?.length || 0,
                         });
-                        return cached;
+                        const { sourceLanguage: _sourceLanguage, ...result } = cached;
+                        return result;
                     }
-                    if (cached) debug('[Translator] Ignoring structurally invalid translation cache entry');
+                    if (cached) debug('[Translator] Ignoring incompatible translation cache entry');
                 }
 
                 const manager = managerAtStart || getAIManager();
@@ -232,7 +238,8 @@ export function createTranslator({
                         result = { ...result, [type]: output };
                     }
                     if (isCurrent() && hasValidTranslationLines(result, text, wantSmartPhonetic)) {
-                        const written = await cache.setTranslation(id, lang, wantSmartPhonetic, result, provider, sourceHash, isCurrent, {
+                        const cachedResult = { ...result, sourceLanguage };
+                        const written = await cache.setTranslation(id, lang, wantSmartPhonetic, cachedResult, provider, sourceHash, isCurrent, {
                             preserveUserEdits: !ignoreCache,
                         })
                             .catch(() => {});

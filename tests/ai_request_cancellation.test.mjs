@@ -72,7 +72,7 @@ test('retiring a lyric translation closes its HTTP stream without retrying or st
     assert.deepEqual(stored, []);
 
     assert.deepEqual(await translator.callGemini({ ...params, onLine: null }), { translation: ['Fresh line'] });
-    assert.deepEqual(stored, [{ translation: ['Fresh line'] }]);
+    assert.deepEqual(stored, [{ translation: ['Fresh line'], sourceLanguage: 'ja' }]);
     assert.equal(posts, 2);
 });
 

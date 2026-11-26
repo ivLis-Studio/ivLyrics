@@ -15,8 +15,11 @@ export function createTranslationRequester({
     }
     if (!session.isCurrentLyricsState(lyricsState)) return null;
 
-    const cacheKey = getMemoryCacheKey(lyricsState, mode);
-    const generationOptions = getGenerationOptions(mode);
+    const sourceLanguage = session.getSourceLanguage(lyrics) || "auto";
+    const readSourcePreference = session.getSourceLanguagePreference ?? (() => session.getSourceLanguage(lyrics));
+    const sourcePreference = readSourcePreference();
+    const cacheKey = getMemoryCacheKey(lyricsState, mode, sourceLanguage);
+    const generationOptions = getGenerationOptions(mode, sourceLanguage);
     const cached = readMemoryCache(cacheKey);
     if (cached) return cached;
 
@@ -65,12 +68,13 @@ export function createTranslationRequester({
       inflightRequests.get(cacheKey) === request &&
       session.isCurrentLyricsState(request.lyricsState) &&
       getCacheRevision?.(trackId) === cacheRevision &&
-      getGenerationOptions(mode) === generationOptions;
+      getGenerationOptions(mode, sourceLanguage) === generationOptions &&
+      readSourcePreference() === sourcePreference;
 
     const loadingToken = session.startLoading(wantSmartPhonetic);
     let loadingCompleted = false;
     const getCachedOutput = cacheText => getCachedTranslationForText({
-      trackId, lang, isPhonetic: wantSmartPhonetic, provider: lyricsState.provider, text: cacheText,
+      trackId, lang, isPhonetic: wantSmartPhonetic, provider: lyricsState.provider, text: cacheText, sourceLanguage,
       canUse: isCurrentRequest,
     });
 
@@ -104,7 +108,7 @@ export function createTranslationRequester({
           title: liveMetadata.title || owner.title,
           text,
           wantSmartPhonetic,
-          sourceLang: session.getSourceLanguage(lyrics),
+          sourceLang: sourceLanguage,
           provider: lyricsState.provider,
           onLine: stream.onLine,
           onStreamReset: stream.onStreamReset,

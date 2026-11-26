@@ -1,3 +1,5 @@
+import { normalizeLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
+
 export const SYNC_DATA_RENDERER_VERSION = "2026-07-13-timestamp-cluster-v1";
 
 const getLyricsTextCacheHash = (lyrics = []) => {
@@ -47,15 +49,16 @@ export function createPageLyricsCacheIdentity({
       || (lyricsState?.providerSelectionPolicy || "provider-first-v1:sync-data-first") === getLyricsProviderSelectionPolicy())
   );
 
-  const getDisplayModeGenerationOptions = (mode = "") => {
-    if (!String(mode || "").startsWith("gemini_")) return "";
+  const getDisplayModeGenerationOptions = (mode = "", sourceLanguage) => {
+    const source = sourceLanguage ? `:source=${normalizeLyricSourceLanguage(sourceLanguage)}` : "";
+    if (!String(mode || "").startsWith("gemini_")) return mode && mode !== "none" ? source : "";
     const options = mode === "gemini_romaji"
       ? translationPreferences.getPronunciationCacheTag()
       : `style=${translationPreferences.getTranslationStyle()}`;
-    return `:${translationPreferences.getCurrentTranslationTargetLanguage()}:${options}`;
+    return `:${translationPreferences.getCurrentTranslationTargetLanguage()}:${options}${source}`;
   };
 
-  const getDisplayModeCacheKey = (lyricsState = {}, mode = "") => {
+  const getDisplayModeCacheKey = (lyricsState = {}, mode = "", sourceLanguage) => {
     const providerKey = lyricsState.provider || "";
     const providerCacheVersion = lyricsState.cacheVersion || "provider-cache-legacy";
     const sourceLyrics = lyricsState.currentLyrics
@@ -64,7 +67,7 @@ export function createPageLyricsCacheIdentity({
       || lyricsState.unsynced
       || [];
     const lyricsShape = getLyricsProcessingShapeSignature(sourceLyrics);
-    const generationOptions = getDisplayModeGenerationOptions(mode);
+    const generationOptions = getDisplayModeGenerationOptions(mode, sourceLanguage);
     return `${lyricsState.uri}:${providerKey}:${mode}${generationOptions}:${getSyncDataRendererCacheVersion(lyricsState)}:${providerCacheVersion}:${lyricsShape}`;
   };
   return { isLyricsRenderCacheCurrent, getDisplayModeGenerationOptions, getDisplayModeCacheKey };

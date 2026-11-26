@@ -72,6 +72,7 @@ export function initializeLyricsRoutePage(page, {
     resolveModeSpecificLyrics, buildTranslationLineRequests, getLegacyNonSectionLyricsText,
     getTranslationResultCacheHash,
     getTranslationCacheId: (uri) => Utils.getTranslationCacheId(uri),
+    readSourceLanguage: (lyrics) => page.provideLanguageCode(lyrics, { publish: false }) || "auto",
     getCache: () => getService("LyricsCache"),
     getLyricsService: () => getService("LyricsService"),
     getTranslator: () => getService("Translator"),

@@ -50,7 +50,7 @@ test("the cache editor changes timed pronunciation cells and shifts plain lines"
     assert.equal(shifts.at(-1).props.disabled, true);
 });
 
-function editorFixture() {
+function editorFixture(sourceLanguage) {
     const tracks = new Map(), writes = [], successes = [], refreshed = [];
     const revisions = new Map();
     const page = {
@@ -87,6 +87,7 @@ function editorFixture() {
         ...createTranslationPresentation({}), resolveModeSpecificLyrics: state => state.lines,
         getTranslationCacheId: uri => uri.split(":").at(-1),
         getTranslationResultCacheHash: (source, isPhonetic) => `${source}:${isPhonetic}`,
+        readSourceLanguage: () => sourceLanguage,
         getCache: () => cache, getLyricsService: () => null, getTranslator: () => translator,
         getPronunciationSlots: () => ({ buildRecordSlots, join, readRecordLines }),
         clearMemoryCacheByUri() {}, translate: name => name,
@@ -99,6 +100,17 @@ function editorFixture() {
         invalidateDiskCache() { tracks.clear(); diskRevision++; },
     };
 }
+
+test("changing the source language hides incompatible generated values but keeps manual edits", async () => {
+    const fixture = editorFixture("zh");
+    fixture.seed(true, { phonetic: ["ni-hon", "ji-yuu"], sourceLanguage: "ja" });
+    fixture.seed(false, { translation: ["일본", "자유"], userEdited: true });
+    await fixture.editor.open();
+    assert.equal(fixture.page.state.lyricsEditPronunciationText, "\n");
+    assert.equal(fixture.page.state.lyricsEditHasPronunciationCache, false);
+    assert.equal(fixture.page.state.lyricsEditTranslationText, "일본\n자유");
+    assert.equal(fixture.page.state.lyricsEditHasTranslationCache, true);
+});
 
 test("saving cleared pronunciation lines preserves untouched translation and hides the old provider fallback", async () => {
     const fixture = editorFixture();

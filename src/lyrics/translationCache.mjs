@@ -1,4 +1,5 @@
 import { getTranslationSourceCacheHash } from "./translationPresentation.mjs";
+import { normalizeLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
 
 const getTranslationOutputFromCache = (cached, isPhonetic = false) => {
   if (!cached) {
@@ -18,6 +19,13 @@ const normalizeTranslationOutputLines = (outText) => {
 };
 
 export const isUserEditedTranslation = record => record?.userEdited === true;
+
+export function matchesTranslationSourceLanguage(record, sourceLanguage) {
+  return !sourceLanguage || isUserEditedTranslation(record) || (
+    typeof record?.sourceLanguage === "string"
+    && normalizeLyricSourceLanguage(record.sourceLanguage) === normalizeLyricSourceLanguage(sourceLanguage)
+  );
+}
 
 export function readTranslationOutput(record, isPhonetic = false) {
   const output = getTranslationOutputFromCache(record, isPhonetic);
@@ -64,6 +72,7 @@ function createTranslationCache({ getCache, getTranslationStyle, getPronunciatio
     isPhonetic = false,
     provider = null,
     text,
+    sourceLanguage,
     canUse = () => true,
   }) => {
     const cacheApi = getCache();
@@ -74,7 +83,8 @@ function createTranslationCache({ getCache, getTranslationStyle, getPronunciatio
     try {
       const sourceHash = getTranslationResultCacheHash(text, isPhonetic);
       const cached = await cacheApi.getTranslation(trackId, lang, isPhonetic, provider, sourceHash);
-      if (!canUse() || !hasValidTranslationLines(cached, text, isPhonetic)) return null;
+      if (!canUse() || !matchesTranslationSourceLanguage(cached, sourceLanguage)
+          || !hasValidTranslationLines(cached, text, isPhonetic)) return null;
       if (isPhonetic) {
         rememberPronunciationSlots(trackId, text, cached);
       }

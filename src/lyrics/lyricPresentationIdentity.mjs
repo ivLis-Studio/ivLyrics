@@ -1,5 +1,8 @@
 import { isAiMode, isPronunciationMode } from "./lyricTranslationModes.mjs";
 
+export const normalizeLyricSourceLanguage = language =>
+    String(language || "").trim().toLowerCase().replace(/_/g, "-") || "auto";
+
 export function isLyricPresentationSetting(name) {
     return typeof name === "string" && (name.startsWith("translation-mode") || [
         "translate:target-language",

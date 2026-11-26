@@ -80,7 +80,7 @@ function harness({ mode1 = "gemini_ko", mode2 = "none", target = "zh-CN" } = {})
       async getTranslation(id, lang, phonetic, provider, hash) {
         reads.push({ id, lang, phonetic, provider, hash });
         const value = phonetic ? `${lang}:reading` : `${lang}:${style}:meaning`;
-        return phonetic ? { phonetic: [value] } : { translation: [value] };
+        return phonetic ? { phonetic: [value], sourceLanguage: "ja" } : { translation: [value], sourceLanguage: "ja" };
       },
     },
     Translator: { callGemini() { assert.fail("Cached fixtures must not generate AI output"); } },
@@ -116,6 +116,7 @@ function harness({ mode1 = "gemini_ko", mode2 = "none", target = "zh-CN" } = {})
     getCurrentMode: () => 1,
     resolveLyricsForMode: state => state.synced,
     provideLanguageCode: () => "ja",
+    getSourceLanguagePreference: () => "ja",
     requestCulturalAnnotations() {},
     applyCulturalAnnotations: lyrics => lyrics,
     setState(update, callback) {

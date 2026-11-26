@@ -127,11 +127,13 @@ export async function regeneratePageTranslation(page, target, {
     const currentMode = page.getCurrentMode();
     const originalLyrics = selectOriginalLyrics(page.state, currentMode);
     const text = getNonSectionLyricsText(originalLyrics);
+    const sourceLanguage = page.provideLanguageCode(originalLyrics, { publish: false }) || "auto";
+    const sourcePreference = page.getSourceLanguagePreference?.();
 
     const currentUri = lyricsState.uri;
     const modes = [mode1, mode2];
-    const displayModeCacheKeys = modes.map((mode) => getDisplayModeCacheKey(lyricsState, mode));
-    const generationOptions = modes.map(getDisplayModeGenerationOptions);
+    const displayModeCacheKeys = modes.map(mode => getDisplayModeCacheKey(lyricsState, mode, sourceLanguage));
+    const generationOptions = modes.map(mode => getDisplayModeGenerationOptions(mode, sourceLanguage));
     const translator = getTranslator();
     const cacheRevision = translator.getCacheRevision?.(trackId);
     const resultCache = page._dmResults ||= {};
@@ -148,11 +150,12 @@ export async function regeneratePageTranslation(page, target, {
     if (needTranslation) owners.set("gemini_ko", token);
     ownsMode = mode => owners.get(mode) === token;
     isCurrentRequest = () => {
-      if (!page.isCurrentLyricsState(lyricsState) || page._dmResults?.[currentUri] !== requestResults
+      if (!page.isCurrentLyricsState(lyricsState) || page.getSourceLanguagePreference?.() !== sourcePreference
+          || page._dmResults?.[currentUri] !== requestResults
           || translator.getCacheRevision?.(trackId) !== cacheRevision || !modes.some(ownsMode)) return false;
       const settings = page.getRegenerationTargets({ publishLanguage: false });
       return settings.mode1 === mode1 && settings.mode2 === mode2 && settings.provider === provider
-        && modes.every((mode, index) => getDisplayModeGenerationOptions(mode) === generationOptions[index]);
+        && modes.every((mode, index) => getDisplayModeGenerationOptions(mode, sourceLanguage) === generationOptions[index]);
     };
     token.isCurrent = isCurrentRequest;
 
@@ -181,8 +184,7 @@ export async function regeneratePageTranslation(page, target, {
         title: page.state.title || lyricsState.title,
         text,
         wantSmartPhonetic: true,
-        sourceLang:
-          page.trackLanguageOverride || page.provideLanguageCode(originalLyrics) || "auto",
+        sourceLang: sourceLanguage,
         provider: lyricsState.provider,
         ignoreCache: true,
         ...phoneticStream,
@@ -196,6 +198,7 @@ export async function regeneratePageTranslation(page, target, {
         title: page.state.title || lyricsState.title,
         text,
         wantSmartPhonetic: false,
+        sourceLang: sourceLanguage,
         provider: lyricsState.provider,
         ignoreCache: true,
         ...translationStream,

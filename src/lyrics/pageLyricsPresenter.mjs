@@ -160,6 +160,10 @@ export function createPageLyricsPresenter({
 
     // Handle translation and display modes efficiently
     const originalLanguage = page.provideLanguageCode(lyrics);
+    const sourceLanguage = originalLanguage || "auto";
+    const sourcePreference = page.getSourceLanguagePreference?.();
+    const isSourceCurrent = () => page.getSourceLanguagePreference?.() === sourcePreference;
+    generationSettingsCurrent = isSourceCurrent;
     const modeKey = getLyricLanguageMode(originalLanguage);
 
     const firstLanguagePrompt = getLanguagePrompt()?.maybePrompt?.({
@@ -185,9 +189,9 @@ export function createPageLyricsPresenter({
     const modes = getLyricDisplayModes(getVisualSettings(), modeKey);
     const [displayMode1, displayMode2] = modes;
     const translationStyle = getTranslationStyle();
-    const generationOptions = modes.map(getDisplayModeGenerationOptions);
-    generationSettingsCurrent = () => getLyricDisplayModes(getVisualSettings(), modeKey).every(
-      (mode, index) => mode === modes[index] && getDisplayModeGenerationOptions(mode) === generationOptions[index]
+    const generationOptions = modes.map(mode => getDisplayModeGenerationOptions(mode, sourceLanguage));
+    generationSettingsCurrent = () => isSourceCurrent() && getLyricDisplayModes(getVisualSettings(), modeKey).every(
+      (mode, index) => mode === modes[index] && getDisplayModeGenerationOptions(mode, sourceLanguage) === generationOptions[index]
     );
 
     page.language = originalLanguage;

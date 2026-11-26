@@ -117,6 +117,7 @@ function harness(mode = "gemini_ko") {
       provider: "gemini", mode1: mode, mode2: "none", isGeminiMode: true,
       needPhonetic: mode === "gemini_romaji", needTranslation: mode !== "gemini_romaji",
     }),
+    getSourceLanguagePreference() { return this.provideLanguageCode(lines, { publish: false }); },
     applyStreamingTranslation: value => progress.push(value),
     invalidateSharedLyricsPresentation() {}, lyricsSource() {},
     startTranslationLoading: () => ++token, startPhoneticLoading: () => ++token,
@@ -157,7 +158,7 @@ function harness(mode = "gemini_ko") {
     },
     prefetcher: { requests, sourceCache, ...prefetcher },
     prefetch: (options) => prefetcher.loadTranslations(item, app.state, options),
-    key: (keyMode = mode) => context.cacheKey(app.state, keyMode),
+    key: (keyMode = mode) => context.cacheKey(app.state, keyMode, app.getSourceLanguagePreference()),
     request: () => app.getGeminiTranslation(app.state, lines, mode, (...args) => progress.push(args)),
     setTarget: value => { config.visual["translate:target-language"] = value; },
     setStyle: value => { style = value; },
@@ -398,6 +399,68 @@ test("memory identity matches persistent translation style and pronunciation opt
   assert.notEqual(h.key("gemini_romaji"), phonetic);
   assert.equal(h.key("gemini_ko"), literal, "pronunciation notation does not affect translation");
   assert.match(h.key("gemini_romaji"), /phonetic-prompt=\d+:notation=ipa/);
+});
+
+test("switching only the source language cannot reuse the previous pronunciation from page memory", async () => {
+  const h = harness("gemini_romaji");
+  let sourceLanguage = "ja";
+  h.app.provideLanguageCode = () => sourceLanguage;
+  const original = h.request();
+  await flush();
+  h.resolve(h.calls[0], "original pronunciation");
+  assert.equal((await original)[0].text, "original pronunciation");
+
+  sourceLanguage = "zh";
+  const refreshed = h.request();
+  await flush();
+  assert.equal(h.calls.length, 2);
+  assert.equal(h.calls[1].params.sourceLang, "zh");
+  h.resolve(h.calls[1], "new pronunciation");
+  assert.equal((await refreshed)[0].text, "new pronunciation");
+});
+
+test("the shared translator does not return cached pronunciation generated for another source language", async () => {
+  const h = harness();
+  h.window.LyricsCache.getTranslation = async () => ({ phonetic: ["previous reading"], sourceLanguage: "ja" });
+  h.usePersistentTranslator();
+  const pending = h.window.Translator.callGemini({
+    trackId: "race", text: "自由", wantSmartPhonetic: true, sourceLang: "zh",
+  });
+  await flush();
+  assert.equal(h.calls.length, 1);
+  h.resolve(h.calls[0], "new reading");
+  assert.equal((await pending).phonetic[0], "new reading");
+  assert.equal(h.writes[0][3].sourceLanguage, "zh");
+});
+
+test("a legacy user edit still wins when the source language changes", async () => {
+  const h = harness("gemini_romaji");
+  const edited = { phonetic: [""], userEdited: true };
+  h.window.LyricsCache.getTranslation = async () => edited;
+  h.usePersistentTranslator();
+  const result = await h.window.Translator.callGemini({
+    trackId: "race", text: "自由", wantSmartPhonetic: true, sourceLang: "zh",
+  });
+  assert.deepEqual(result, edited);
+  assert.equal(h.calls.length, 0);
+});
+
+test("a new source language supersedes the old shared request before it can write", async () => {
+  const h = harness();
+  h.usePersistentTranslator();
+  const params = { trackId: "race", text: "自由", wantSmartPhonetic: true };
+  const previous = h.window.Translator.callGemini({ ...params, sourceLang: "ja" });
+  await flush();
+  const current = h.window.Translator.callGemini({ ...params, sourceLang: "zh" });
+  await flush();
+  assert.equal(h.calls.length, 2);
+  assert.equal(h.calls[0].params.signal.aborted, true);
+  assert.equal(await previous, null);
+  h.resolve(h.calls[1], "correct reading");
+  assert.equal((await current).phonetic[0], "correct reading");
+  h.resolve(h.calls[0], "obsolete reading");
+  await flush();
+  assert.deepEqual(h.writes.map(write => write[3].sourceLanguage), ["zh"]);
 });
 
 for (const [mode, change] of [["gemini_ko", h => h.setStyle("literal")], ["gemini_romaji", h => h.setNotation("ipa")]]) {

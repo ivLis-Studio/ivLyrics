@@ -6,10 +6,10 @@ export function createTranslationRequestRegistry() {
     const pending = new Map();
     const { getRevision, invalidate } = createTrackRevisions();
 
-    function run(trackId, type, identity, { refresh, streamUpdates = false, observer }, execute) {
+    function run(trackId, type, identity, { refresh, streamUpdates = false, observer, sourceLanguage }, execute) {
         const key = JSON.stringify([trackId, type, ...identity]);
         const existing = pending.get(key);
-        if (!refresh && existing) {
+        if (!refresh && existing && existing.sourceLanguage === sourceLanguage) {
             existing.stream?.subscribe(observer);
             return existing.promise;
         }
@@ -20,7 +20,7 @@ export function createTranslationRequestRegistry() {
         const isCurrent = () => pending.get(key) === request;
         const stream = streamUpdates ? createTranslationStream(isCurrent) : null;
         const request = {
-            trackId, type, promise, stream,
+            trackId, type, promise, stream, sourceLanguage,
             retire() {
                 stream?.close();
                 resolve(null);

@@ -131,7 +131,7 @@ export function resolveLyricsPageRenderMode(page, {
   const friendlyLanguage = modeKey === "gemini" ? null : modeKey;
   const displayModes = getLyricDisplayModes(visual, modeKey);
   const [displayMode1, displayMode2] = displayModes;
-  const generationOptions = displayModes.map(getDisplayModeGenerationOptions);
+  const generationOptions = displayModes.map(mode => getDisplayModeGenerationOptions(mode, originalLanguage || "auto"));
   const culturalAnnotationsMode = page.isCulturalAnnotationsEnabled()
     ? `culture-${page.getTranslationTargetLanguage()}`
     : "culture-off";

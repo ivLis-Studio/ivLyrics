@@ -5,7 +5,7 @@ import {
 export function createLyricsCacheEditor({
   page, readActivePage = () => page,
   resolveModeSpecificLyrics, buildTranslationLineRequests, getLegacyNonSectionLyricsText,
-  getTranslationResultCacheHash, getTranslationCacheId,
+  getTranslationResultCacheHash, getTranslationCacheId, readSourceLanguage = () => undefined,
   getCache, getLyricsService, getTranslator, getPronunciationSlots, clearMemoryCacheByUri,
   translate, notifyError, notifySuccess,
 }) {
@@ -66,7 +66,7 @@ export function createLyricsCacheEditor({
     const cacheRevision = cache.getTranslationRevision(trackId);
     const isCacheCurrent = () => cache.getTranslationRevision(trackId) === cacheRevision;
     const edit = {
-      trackUri, trackId, sourceLines,
+      trackUri, trackId, sourceLines, sourceLanguage: readSourceLanguage(baseLyrics),
       cache, isCacheCurrent,
       targetLanguage: page.getTranslationTargetLanguage(),
       provider: page.state.provider || null,
@@ -95,7 +95,7 @@ export function createLyricsCacheEditor({
       const canRead = () => isActiveEdit(edit) && isCacheCurrent();
       const read = (isPhonetic, sourceHash) => readCachedResult({
         trackId, targetLanguage: edit.targetLanguage, provider: edit.provider,
-        baseLyrics, sourceRequests, isPhonetic, sourceHash, cache, canRead,
+        baseLyrics, sourceRequests, isPhonetic, sourceHash, sourceLanguage: edit.sourceLanguage, cache, canRead,
       });
       const [phonetic, translation] = await Promise.all([
         read(true, edit.pronunciationSourceHash), read(false, edit.translationSourceHash),

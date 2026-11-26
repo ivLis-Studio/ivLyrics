@@ -1,3 +1,5 @@
+import { resolveLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
+
 const TRANSLATION_FIELDS = ["romaji", "furigana", "hiragana", "katakana", "hangul", "romaja", "cn", "hk", "tw"];
 const PRESENTATION_FIELDS = [...TRANSLATION_FIELDS, "currentLyrics", "language"];
 export const emptyPageTranslationFields = Object.freeze(
@@ -7,13 +9,12 @@ export const emptyPageTranslationFields = Object.freeze(
 export function createPageLyricsTranslationState({
   page, translationCache, readLanguageOverride, detectLanguage, publishDetectedLanguage, translate, notifySuccess,
 }) {
+  const getSourceLanguagePreference = () =>
+    resolveLyricSourceLanguage(page.trackLanguageOverride, readLanguageOverride(), () => page.state.language);
+
   function provideLanguageCode(lyrics, { publish = true } = {}) {
     if (!lyrics) return null;
-    let language = page.trackLanguageOverride;
-    if (!language) {
-      const override = readLanguageOverride();
-      language = override === "off" ? page.state.language || detectLanguage(lyrics) : override;
-    }
+    const language = getSourceLanguagePreference() || detectLanguage(lyrics) || null;
     if (publish) publishDetectedLanguage(language);
     return language;
   }
@@ -83,7 +84,7 @@ export function createPageLyricsTranslationState({
   }
 
   return {
-    provideLanguageCode, getTranslationStates, applyTranslationStates,
+    getSourceLanguagePreference, provideLanguageCode, getTranslationStates, applyTranslationStates,
     clearTranslationRequestsForCacheRemoval, resetTranslationCache,
   };
 }

@@ -656,6 +656,7 @@ class LyricsContainer extends react.Component {
         getState: () => this.state,
         getTargetLanguage: () => this.getTranslationTargetLanguage(),
         getSourceLanguage: (source) => this.provideLanguageCode(source, { publish: false }) || "auto",
+        getSourceLanguagePreference: () => this.getSourceLanguagePreference(),
         getInflightRequests: () => this._inflightGemini,
         ensureInflightRequests: () => (this._inflightGemini ||= new Map()),
         isCurrentLyricsState: (state) => this.isCurrentLyricsState(state),

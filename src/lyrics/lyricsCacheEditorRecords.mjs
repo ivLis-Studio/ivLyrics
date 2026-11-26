@@ -1,5 +1,5 @@
 import { getTranslationSourceCacheHash } from "./translationPresentation.mjs";
-import { isUserEditedTranslation, readTranslationResultLines } from "./translationCache.mjs";
+import { isUserEditedTranslation, matchesTranslationSourceLanguage, readTranslationResultLines } from "./translationCache.mjs";
 
 export function createCacheEditorReader({
   buildTranslationLineRequests, getLegacyNonSectionLyricsText, getTranslationResultCacheHash, getPronunciationSlots,
@@ -34,6 +34,7 @@ export function createCacheEditorReader({
     targetLanguage,
     isPhonetic,
     sourceHash,
+    sourceLanguage,
     provider,
     baseLyrics,
     sourceRequests,
@@ -83,6 +84,7 @@ export function createCacheEditorReader({
         candidate.hash
       );
       if (!canRead()) return null;
+      if (!matchesTranslationSourceLanguage(record, sourceLanguage)) continue;
       const cacheLines = readTranslationResultLines(record, isPhonetic)?.map(line => String(line ?? ""));
       if (!cacheLines || (!isUserEditedTranslation(record) && !cacheLines.some(line => line.trim()))) {
         continue;

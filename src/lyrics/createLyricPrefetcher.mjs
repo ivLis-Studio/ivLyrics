@@ -86,7 +86,8 @@ export function createLyricPrefetcher({
     const text = getNonSectionLyricsText(lyricsArray);
     if (!text.trim()) return;
     const inputs = modes.map((mode) => ({
-      mode, key: getDisplayModeCacheKey({ ...lyrics, currentLyrics: lyricsArray }, mode), options: getDisplayModeGenerationOptions(mode),
+      mode, key: getDisplayModeCacheKey({ ...lyrics, currentLyrics: lyricsArray }, mode, sourceLanguage),
+      options: getDisplayModeGenerationOptions(mode, sourceLanguage),
     }));
     const needed = inputs.filter(({ key }) => !translationCache.get(key));
     if (needed.length === 0) return true;
@@ -112,7 +113,8 @@ export function createLyricPrefetcher({
           || (!trackOverride && getSourceLanguageSetting(current) !== configuredLanguage)
           || selectPrefetchLyrics(lyrics, mode, current) !== lyricsArray) return [];
       const currentModes = readModes(current);
-      return group.filter(({ mode, options }) => currentModes.includes(mode) && getDisplayModeGenerationOptions(mode) === options);
+      return group.filter(({ mode, options }) => currentModes.includes(mode)
+        && getDisplayModeGenerationOptions(mode, sourceLanguage) === options);
     };
 
     const mapOutput = (record, field, splitVocalParts = true) => {
@@ -132,7 +134,7 @@ export function createLyricPrefetcher({
       const label = phonetic ? "Phonetic" : "Translation";
       const readStored = async (source, splitVocalParts) => {
         const cached = await getCachedTranslationForText({
-          trackId, lang: targetLanguage, isPhonetic: phonetic, provider: lyrics.provider, text: source,
+          trackId, lang: targetLanguage, isPhonetic: phonetic, provider: lyrics.provider, text: source, sourceLanguage,
           canUse,
         });
         return mapOutput(cached, field, splitVocalParts);
