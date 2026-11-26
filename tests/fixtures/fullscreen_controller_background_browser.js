@@ -186,6 +186,23 @@ async page => {
     await waitHidden(true);
     results.push({ label: "volume-hover-and-column-hover-gate", bounded: true, lyricsPaneStaysHidden: true,
       clickThenLeaveHides: true, keyboardFocusPins: true });
+
+    // Removing the album surface can happen before the pointer sends a release.
+    // The next album surface must start with no hold from the previous one.
+    await page.mouse.move(zone.x, zone.y);
+    await waitHidden(false);
+    await play.hover();
+    await page.mouse.down();
+    try {
+      await page.evaluate(() => controllerBackgroundRuntime.render({ view: "tv", "fullscreen-auto-hide-ui": true }));
+      await page.mouse.move(1050, 400);
+      await page.evaluate(() => controllerBackgroundRuntime.render({ view: "cd", "fullscreen-auto-hide-ui": true }));
+      assert((await hiddenState()).hidden, "the detached controller kept the new album surface revealed");
+    } finally {
+      await page.mouse.up();
+    }
+    results.push({ label: "presentation-change-clears-controller-hold", preserved: true });
+
     // The under-album constraint must not replace the independent TV, portrait
     // or bottom-controller paths.
     for (const [label, width, height, options, selector] of [

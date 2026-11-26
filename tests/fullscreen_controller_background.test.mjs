@@ -1,14 +1,12 @@
 import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
 import { observeFullscreenControllerHeight } from "../src/features/fullscreen/fullscreenLayout.mjs";
 import { createFullscreenPlaybackControls } from "../src/features/fullscreen/fullscreenPlaybackControls.mjs";
 
 import { useFullscreenControlReveal } from "../src/features/fullscreen/fullscreenControlReveal.mjs";
+import { createFullscreenTrackPanels } from "../src/features/fullscreen/fullscreenTrackPanels.mjs";
 
-const source = readFileSync(new URL("../src/features/fullscreen/FullscreenOverlay.js", import.meta.url), "utf8");
 const styles = readPcStylesheet();
 const normalize = value => value.trim().replace(/\s+/g, " ");
 const rules = [...styles.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)]
@@ -22,34 +20,32 @@ const declarations = selector => Object.fromEntries(rules
 const bound = "--iv-fullscreen-controller-max-width";
 const left = ".fullscreen-left-controls";
 const controller = `${left} > .fullscreen-player-controls`;
-const start = source.indexOf("        const renderLeftPanel =");
-const end = source.indexOf("        const renderTopRightOverlay =", start);
-assert.ok(start >= 0 && end > start, "exercise the production under-album renderer");
-// The hover-gate derivation lives above the renderer, so pull it in too rather than
-// stubbing the visibility decision the assertions below depend on.
-const gateStart = source.indexOf("        const hoverGateControls =");
-const gateEnd = source.indexOf("        const showContextInOverlay =", gateStart);
-assert.ok(gateStart >= 0 && gateEnd > gateStart, "exercise the production hover-gate decision");
-const panelSource = source.slice(gateStart, gateEnd) + "\n" + source.slice(start, end);
+const { renderLandscapePanel } = createFullscreenTrackPanels({
+  react: { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) },
+  ProgressBar: "ProgressBar", PlayerControls: "PlayerControls",
+});
 
-function render(overrides = {}) {
-  const context = vm.createContext({
-    react: { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) },
-    uiVisible: true, showControlsInLeftPanel: true, tmiMode: false,
-    autoHideUI: true, pointerCanHover: true, leftControlsRevealed: true,
-    setControlsHoverSource() {}, beginControlsDragHold() {}, setControlsFocusHold() {},
-    setAlbumLyricsPanelRef() {}, setControllerHeightRef() {}, infoGap: 24, showAlbum: true,
-    albumSize: 400, cdAlbumActive: false, cdScale: 1, albumRadius: 12,
-    albumInteractionProps: {}, cdSlotStyle: {}, albumShadow: true,
-    renderAlbumVisual() {}, renderAlbumModeHint() {}, renderTmiModeView() {}, showInfoInOverlay: false,
-    showProgress: true, showControls: true, ProgressBar: "ProgressBar",
-    PlayerControls: "PlayerControls", leftPanelShowVolume: true,
-    leftPanelControlButtonSize: 36, leftPanelControlsBackground: true,
-    leftPlayerControlsClass: "fullscreen-left-controls left-controls-player",
-    leftProgressOnlyClass: "fullscreen-left-controls left-controls-progress-only",
-    ...overrides,
+function render({
+  uiVisible = true, showControlsInLeftPanel = true, tmiMode = false,
+  autoHideUI = true, pointerCanHover = true, leftControlsRevealed = true,
+  showAlbum = true, albumSize = 400, cdAlbumActive = false, cdScale = 1,
+  showProgress = true, showControls = true, leftPanelShowVolume = true,
+  leftPanelControlButtonSize = 36, leftPanelControlsBackground = true,
+} = {}) {
+  return renderLandscapePanel({
+    settings: {
+      infoGap: 24, showAlbum, showInfo: false, albumSize, albumRadius: 12, albumShadow: true,
+      showProgress, showControls, showVolume: leftPanelShowVolume,
+      controlButtonSize: leftPanelControlButtonSize, controlsBackground: leftPanelControlsBackground,
+    },
+    album: { cdActive: cdAlbumActive, cdScale, renderVisual() {}, renderHint() {} },
+    uiVisible, showLeftControls: showControlsInLeftPanel,
+    revealEnabled: showControlsInLeftPanel && autoHideUI && !tmiMode,
+    reveal: {
+      pointerCanHover, leftControlsRevealed, setControlsHoverSource() {}, beginControlsDragHold() {}, setControlsFocusHold() {},
+    },
+    albumPanelRef() {}, controlsRef() {}, renderResearchView: tmiMode ? () => null : null,
   });
-  return vm.runInContext(`${panelSource}\nrenderLeftPanel();`, context);
 }
 const elements = node => Array.isArray(node) ? node.flatMap(elements)
   : node?.props ? [node, ...elements(node.props.children)] : [];
@@ -242,7 +238,7 @@ test("hide animations and the separate portrait, bottom and TV layouts retain th
   assert.equal(declarations(".portrait-overlay-bottom .fullscreen-player-controls.with-background").background, "transparent !important");
   assert.equal(declarations(".fullscreen-bottom").position, "fixed");
   assert.equal(declarations(".fullscreen-tv-controls").display, "flex");
-  assert.equal(source.slice(start, end).match(/"--iv-fullscreen-controller-max-width"/g)?.length, 1,
+  assert.equal(elements(render()).filter(node => Object.hasOwn(node.props.style || {}, bound)).length, 1,
     "the under-album content publishes its album width bound");
 });
 

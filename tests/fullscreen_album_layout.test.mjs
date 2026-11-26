@@ -368,5 +368,5 @@ test("the panel callback ref owns attachment, replacement and removal cleanup", 
   context.ref(null);
   assert.deepEqual(calls, [["attach", first], ["detach", first],
     ["attach", replacement], ["detach", replacement]]);
-  assert.match(source, /className: `lyrics-fullscreen-left-panel[^\n]+\n\s+ref: setAlbumLyricsPanelRef/);
+  assert.match(source, /albumPanelRef: setAlbumLyricsPanelRef/);
 });

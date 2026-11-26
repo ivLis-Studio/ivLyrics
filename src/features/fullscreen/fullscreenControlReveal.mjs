@@ -49,7 +49,8 @@ export function useFullscreenAutoHide({
 }
 
 export function useFullscreenControlReveal({
-    react: { useState, useEffect, useCallback, useRef }, host: window, schedule: setTimeout, cancel: clearTimeout,
+    react: { useState, useEffect, useLayoutEffect = useEffect, useCallback, useRef }, host: window,
+    enabled = true, schedule: setTimeout = globalThis.setTimeout, cancel: clearTimeout = globalThis.clearTimeout,
 }) {
     // Left-panel controls are revealed by hover, not by global mouse activity.
     // Multiple sources can hold the panel open at once (hover strip + the panel
@@ -60,13 +61,25 @@ export function useFullscreenControlReveal({
     const controlsFocusHeldRef = useRef(false);
     const controlsDragHeldRef = useRef(false);
     const controlsHideTimerRef = useRef(null);
+    const controlsDragReleaseRef = useRef(null);
     const [leftControlsRevealed, setLeftControlsRevealed] = useState(false);
 
     const cancelControlsHideHold = useCallback(() => {
-        if (!controlsHideTimerRef.current) return;
+        if (controlsHideTimerRef.current === null) return;
         clearTimeout(controlsHideTimerRef.current);
         controlsHideTimerRef.current = null;
-    }, []);
+    }, [clearTimeout]);
+
+    useLayoutEffect(() => {
+        if (!enabled) setLeftControlsRevealed(false);
+        return () => {
+            controlsHoverSourcesRef.current.clear();
+            controlsFocusHeldRef.current = false;
+            controlsDragHeldRef.current = false;
+            controlsDragReleaseRef.current?.();
+            cancelControlsHideHold();
+        };
+    }, [enabled, cancelControlsHideHold]);
 
     // Losing the last source does not hide the panel straight away - it lingers
     // briefly, so brushing past the column on the way somewhere else does not
@@ -80,15 +93,16 @@ export function useFullscreenControlReveal({
             setLeftControlsRevealed(true);
             return;
         }
-        if (!controlsHideTimerRef.current) {
+        if (controlsHideTimerRef.current === null) {
             controlsHideTimerRef.current = setTimeout(() => {
                 controlsHideTimerRef.current = null;
                 setLeftControlsRevealed(false);
             }, CONTROLS_HIDE_HOLD_MS);
         }
-    }, [cancelControlsHideHold]);
+    }, [cancelControlsHideHold, setTimeout]);
 
     const setControlsHoverSource = useCallback((source, active) => {
+        if (!enabled) return;
         const sources = controlsHoverSourcesRef.current;
         if (active) {
             if (sources.has(source)) return;
@@ -98,18 +112,15 @@ export function useFullscreenControlReveal({
             sources.delete(source);
         }
         syncLeftControlsReveal();
-    }, [syncLeftControlsReveal]);
-
-    useEffect(() => () => cancelControlsHideHold(), [cancelControlsHideHold]);
+    }, [enabled, syncLeftControlsReveal]);
 
     // A press can start inside the controls and finish outside them (timeline or
     // volume drag), so the hold is taken on the press and dropped by the first
     // release anywhere. The release listener is registered by the press itself:
     // the panel is already revealed when a press lands, so nothing re-renders
     // that could register it later.
-    const controlsDragReleaseRef = useRef(null);
     const beginControlsDragHold = useCallback(() => {
-        if (controlsDragReleaseRef.current) return;
+        if (!enabled || controlsDragReleaseRef.current) return;
         if (typeof window === "undefined" || typeof window.addEventListener !== "function") return;
         const detach = () => {
             window.removeEventListener("mouseup", release, true);
@@ -126,15 +137,14 @@ export function useFullscreenControlReveal({
         window.addEventListener("mouseup", release, true);
         window.addEventListener("blur", release);
         syncLeftControlsReveal();
-    }, [syncLeftControlsReveal]);
-
-    useEffect(() => () => controlsDragReleaseRef.current?.(), []);
+    }, [enabled, syncLeftControlsReveal, window]);
 
     // Only keyboard focus pins the controls. A mouse press also focuses the
     // button it lands on, and that focus must not keep the panel up once the
     // pointer has left the column. A press in progress marks pointer focus;
     // :focus-visible rules out programmatic focus after a pointer interaction.
     const setControlsFocusHold = useCallback((target, focused) => {
+        if (!enabled) return;
         let keyboardFocus = false;
         if (focused && !controlsDragHeldRef.current) {
             try {
@@ -146,7 +156,7 @@ export function useFullscreenControlReveal({
         if (controlsFocusHeldRef.current === keyboardFocus) return;
         controlsFocusHeldRef.current = keyboardFocus;
         syncLeftControlsReveal();
-    }, [syncLeftControlsReveal]);
+    }, [enabled, syncLeftControlsReveal]);
 
     // Spotify's CEF reports "(hover: none)" even with a mouse attached, so that
     // media query cannot be trusted to mean "touch". Assume hover works and only
@@ -167,7 +177,7 @@ export function useFullscreenControlReveal({
             window.removeEventListener("pointerdown", seenTouchPointer, true);
             window.removeEventListener("pointerdown", seenMouse, true);
         };
-    }, []);
+    }, [window]);
 
     return { leftControlsRevealed, pointerCanHover, setControlsHoverSource, beginControlsDragHold, setControlsFocusHold };
 }
