@@ -1,3 +1,5 @@
+import { createSyncCreatorImportPicker } from './syncCreatorFileTransfer.mjs';
+
 export function createSyncCreatorSourceRequests({ lifetime, isCurrentRevision }) {
 	let active = null;
 
@@ -24,5 +26,50 @@ export function createSyncCreatorSourceRequests({ lifetime, isCurrentRevision })
 			previous?.controller.abort();
 			return previous !== null;
 		},
+	};
+}
+
+export function useSyncCreatorSourceOperations({
+	react: { useMemo, useCallback, useLayoutEffect }, lifetime, captureEditorDraftOwnership,
+	beginDraftSourceChange, isCurrentRevision, claimDraftForLocalEditing, setIsLoading, setIsLoadingLrclibId,
+}) {
+	const imports = useMemo(() => createSyncCreatorImportPicker({
+		isEditorOpen: lifetime.canStartOperation, captureDraftOwnership: captureEditorDraftOwnership,
+	}), [lifetime, captureEditorDraftOwnership]);
+	const sources = useMemo(() => createSyncCreatorSourceRequests({
+		lifetime, isCurrentRevision,
+	}), [lifetime, isCurrentRevision]);
+
+	const beginSourceChange = useCallback(() => sources.begin(() => {
+		const id = beginDraftSourceChange();
+		imports.cancel();
+		return id;
+	}), [beginDraftSourceChange, imports, sources]);
+
+	const claimSessionForLocalEditing = useCallback(() => {
+		claimDraftForLocalEditing();
+		imports.cancel();
+	}, [claimDraftForLocalEditing, imports]);
+
+	const cancelSourceLoading = useCallback(() => {
+		if (sources.cancel()) {
+			setIsLoading(false);
+			setIsLoadingLrclibId(false);
+		}
+	}, [sources, setIsLoading, setIsLoadingLrclibId]);
+
+	useLayoutEffect(() => () => {
+		imports.cancel();
+		sources.cancel();
+	}, [imports, sources]);
+
+	return {
+		openImportPicker: imports.open,
+		cancelImport: imports.cancel,
+		claimSessionForLocalEditing,
+		beginSourceChange,
+		isCurrentSourceChange: sources.isCurrent,
+		getSourceSignal: sources.getSignal,
+		cancelSourceLoading,
 	};
 }

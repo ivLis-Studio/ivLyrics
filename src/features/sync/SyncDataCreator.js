@@ -34,7 +34,7 @@ import { useSyncCreatorSessionLifecycle } from '#ivlyrics/features/sync/syncCrea
 import { useSyncCreatorSourceChange } from '#ivlyrics/features/sync/syncCreatorSourceChange.mjs';
 import { useSyncCreatorLrclibActions } from '#ivlyrics/features/sync/syncCreatorLrclibActions.mjs';
 import { createLrclibSearchRequests } from '#ivlyrics/providers/lyrics/lrclibSearchRequests.mjs';
-import { createSyncCreatorSourceRequests } from '#ivlyrics/features/sync/syncCreatorSourceRequests.mjs';
+import { useSyncCreatorSourceOperations } from '#ivlyrics/features/sync/syncCreatorSourceRequests.mjs';
 import { createSyncCreatorLrclibClient } from '#ivlyrics/features/sync/syncCreatorLrclibClient.mjs';
 import { useSyncCreatorFurigana } from '#ivlyrics/features/sync/syncCreatorFurigana.mjs';
 import { renderSyncCreatorDialogs } from '#ivlyrics/features/sync/syncCreatorDialogs.mjs';
@@ -95,7 +95,7 @@ import {
 } from '#ivlyrics/features/sync/syncCreatorPublication.mjs';
 import { createSyncCreatorEditorLifetime } from '#ivlyrics/features/sync/syncCreatorEditorLifetime.mjs';
 import { createSyncCreatorEditorCommands } from '#ivlyrics/features/sync/syncCreatorEditorCommands.mjs';
-import { createSyncCreatorImportPicker, exportSyncCreatorFile } from '#ivlyrics/features/sync/syncCreatorFileTransfer.mjs';
+import { exportSyncCreatorFile } from '#ivlyrics/features/sync/syncCreatorFileTransfer.mjs';
 import { applySyncCreatorImportedSession } from '#ivlyrics/features/sync/syncCreatorSessionReplacement.mjs';
 import { useSyncCreatorVisibility } from '#ivlyrics/features/sync/syncCreatorVisibility.mjs';
 import { useSyncCreatorLivePreview } from '#ivlyrics/features/sync/syncCreatorLivePreview.mjs';
@@ -366,7 +366,7 @@ export function createSyncDataCreator({
 			refs: sessionRefs,
 			ui: sessionUi,
 			actions: {
-				nextSessionClientRevision, claimSessionForLocalEditing, toggleSessionAutosave,
+				nextSessionClientRevision, claimSessionForLocalEditing: claimDraftForLocalEditing, toggleSessionAutosave,
 				isCurrentSyncCreatorSourceChange, beginDraftSourceChange,
 				syncSessionUiFromRecord, announceHistoryStatus, announceRecoveredSession,
 				captureDraftOwnership, deleteActiveSyncCreatorDraft, beginDraftImport, adoptImportedDraftKey, markDraftDirty, flushDraftBeforeClose,
@@ -391,16 +391,13 @@ export function createSyncDataCreator({
 		const runPublication = useMemo(() => createSyncCreatorPublicationRunner({
 			isEditorOpen: lifetime.canStartOperation, captureDraftOwnership: captureEditorDraftOwnership,
 		}), [lifetime, captureEditorDraftOwnership]);
-		const openImportPicker = useMemo(() => createSyncCreatorImportPicker({
-			isEditorOpen: lifetime.canStartOperation, captureDraftOwnership: captureEditorDraftOwnership,
-		}), [lifetime, captureEditorDraftOwnership]);
-		const sourceRequests = useMemo(() => createSyncCreatorSourceRequests({
-			lifetime, isCurrentRevision: isCurrentSyncCreatorSourceChange,
-		}), [lifetime, isCurrentSyncCreatorSourceChange]);
-		const beginEditorSourceChange = useCallback(() => sourceRequests.begin(beginDraftSourceChange), [
-			sourceRequests, beginDraftSourceChange,
-		]);
-		useLayoutEffect(() => sourceRequests.cancel, [sourceRequests]);
+		const {
+			openImportPicker, cancelImport, claimSessionForLocalEditing, beginSourceChange: beginEditorSourceChange,
+			isCurrentSourceChange: isCurrentEditorSourceChange, getSourceSignal, cancelSourceLoading,
+		} = useSyncCreatorSourceOperations({
+			react, lifetime, captureEditorDraftOwnership, beginDraftSourceChange, claimDraftForLocalEditing,
+			isCurrentRevision: isCurrentSyncCreatorSourceChange, setIsLoading, setIsLoadingLrclibId,
+		});
 
 		const historyResize = useSyncCreatorHistoryResize({
 			react,
@@ -471,7 +468,7 @@ export function createSyncDataCreator({
 			},
 			session: {
 				scoreInputRef, scorePendingEffectsRef, beginDraftSourceChange: beginEditorSourceChange,
-				isCurrentSyncCreatorSourceChange: sourceRequests.isCurrent,
+				isCurrentSyncCreatorSourceChange: isCurrentEditorSourceChange,
 				syncCreatorDraftStore, announceRecoveredSession, sessionEditorRevisionRef, readSourceDraft, readTrackDrafts,
 				applySyncCreatorSessionRecord: (...args) => applySyncCreatorSessionRecord(...args),
 			},
@@ -490,8 +487,8 @@ export function createSyncDataCreator({
 				},
 				client: syncCreatorLrclibClient,
 				sourceChange: {
-					applyLoadedLyricsResult, beginSyncCreatorSourceChange, isCurrentSyncCreatorSourceChange: sourceRequests.isCurrent,
-					getSourceSignal: sourceRequests.getSignal, readPublishedSync,
+					applyLoadedLyricsResult, beginSyncCreatorSourceChange, isCurrentSyncCreatorSourceChange: isCurrentEditorSourceChange,
+					getSourceSignal, readPublishedSync,
 					resetSyncCreatorLyricsLoadingState, clearLrclibCandidateState, prepareImportedLyricsSource, captureOfflineDraftRecovery,
 				},
 				ui: {
@@ -778,10 +775,8 @@ export function createSyncDataCreator({
 
 		const closeEditor = useCallback(() => lifetime.requestClose({
 			stopRecording: () => {
-				if (sourceRequests.cancel()) {
-					setIsLoading(false);
-					setIsLoadingLrclibId(false);
-				}
+				cancelImport();
+				cancelSourceLoading();
 				lrclibSearchRequests.cancel();
 				stopSyncCreatorKeyboardDrag(keyboardDragRef, clearInterval);
 				if (pointerRecordingRef.current) handleDragCancel();
@@ -794,7 +789,7 @@ export function createSyncDataCreator({
 				preventNextTrackRef.current = false;
 				onClose?.();
 			},
-		}), [lifetime, clearPointerRecording, flushDraftBeforeClose, handleDragCancel, lrclibSearchRequests, sourceRequests, onClose]);
+		}), [lifetime, cancelImport, cancelSourceLoading, clearPointerRecording, flushDraftBeforeClose, handleDragCancel, lrclibSearchRequests, onClose]);
 		useLayoutEffect(() => registerCloseRequest?.(closeEditor), [registerCloseRequest, closeEditor]);
 
 		const resetCurrentSyncInput = useCallback(() => {
@@ -1135,6 +1130,7 @@ export function createSyncDataCreator({
 				scoreInputRef.current = null;
 				scorePendingEffectsRef.current?.clear();
 				captureScoreWork('import', sanitizedData, undefined, work);
+				cancelSourceLoading();
 				target.activate?.();
 				applySyncCreatorImportedSession(sanitizedData, target, {
 					draft: {
@@ -1148,7 +1144,7 @@ export function createSyncDataCreator({
 			toast: Toast,
 			translate: key => I18n.t(key),
 		}), [
-			activeSessionDraftKey, adoptImportedDraftKey, beginDraftImport, markDraftDirty, addonId,
+			activeSessionDraftKey, adoptImportedDraftKey, beginDraftImport, markDraftDirty, addonId, cancelSourceLoading,
 			openImportPicker, prepareLrclibSourceForImport, lyricsFullTextChars, lyricsText, provider, sessionLyricsFingerprint,
 			sessionTrackKey, setSelectedLrclibSourceValue, resetCurrentSyncInput, syncCreatorDraftStore, captureScoreWork, trackDurationMs,
 		]);

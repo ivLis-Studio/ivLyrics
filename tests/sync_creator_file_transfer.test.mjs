@@ -10,7 +10,7 @@ function fixture({ lifetime } = {}) {
 	const inputs = [];
 	const applied = [];
 	const errors = [];
-	const pick = createSyncCreatorImportPicker({
+	const picker = createSyncCreatorImportPicker({
 		isEditorOpen: () => open && (!lifetime || lifetime.canStartOperation()),
 		captureDraftOwnership() {
 			const captured = revision;
@@ -20,10 +20,10 @@ function fixture({ lifetime } = {}) {
 	});
 	return {
 		applied, errors,
-		switchSource() { revision++; },
-		close() { open = false; },
+		switchSource() { revision++; picker.cancel(); },
+		close() { open = false; picker.cancel(); },
 		choose(options = {}) {
-			pick({
+			picker.open({
 				createInput() {
 					const input = { click() {} };
 					inputs.push(input);
@@ -37,7 +37,8 @@ function fixture({ lifetime } = {}) {
 				...options,
 			});
 			const input = inputs.at(-1);
-			return text => input.onchange({ target: { files: [{ text }] } });
+			const change = input.onchange;
+			return text => change({ target: { files: [{ text }] } });
 		},
 	};
 }
@@ -82,15 +83,16 @@ test('a draft change or closing the editor invalidates pending lyric preparation
 		const wait = Promise.withResolvers();
 		let activated = false;
 		const importing = h.choose({
-			prepareLrclibSource(_source, isCurrent) {
-				started.resolve(isCurrent);
+			prepareLrclibSource(_source, isCurrent, signal) {
+				started.resolve({ isCurrent, signal });
 				return wait.promise;
 			},
 		})(async () => file);
-		const isCurrent = await started.promise;
+		const { isCurrent, signal } = await started.promise;
 		assert.equal(isCurrent(), true);
 		h[change]();
 		assert.equal(isCurrent(), false);
+		assert.equal(signal.aborted, true);
 		wait.resolve({ activate() { activated = true; } });
 		await importing;
 		assert.equal(activated, false);
@@ -146,5 +148,25 @@ test('the same normalized lyrics import without reloading LRCLIB', async () => {
 		prepareLrclibSource() { assert.fail('the current lyrics match the file'); },
 	})(async () => JSON.stringify({ version: 6, lines: [], source }));
 	assert.equal(h.applied.length, 1);
+	assert.deepEqual(h.errors, []);
+});
+
+test('a replacement file import aborts the previous file’s LRCLIB lookup', async () => {
+	const h = fixture();
+	const started = Promise.withResolvers();
+	const lookup = Promise.withResolvers();
+	const previous = h.choose({
+		prepareLrclibSource(_source, _isCurrent, signal) {
+			started.resolve(signal);
+			return lookup.promise;
+		},
+	})(async () => file);
+	const signal = await started.promise;
+	await h.choose()(async () => '{"lines":[],"name":"replacement"}');
+	lookup.resolve({ lyricsChars: Array.from('new text') });
+	await previous;
+
+	assert.equal(signal?.aborted, true);
+	assert.deepEqual(h.applied.map(value => value.name), ['replacement']);
 	assert.deepEqual(h.errors, []);
 });

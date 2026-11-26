@@ -35,50 +35,78 @@ export async function exportSyncCreatorFile({ syncData, track, lyrics, timing, s
 }
 
 export function createSyncCreatorImportPicker({ captureDraftOwnership, isEditorOpen }) {
-	let requestId = 0;
-	return function openImportPicker(options) {
+	let active = null;
+
+	function cancel() {
+		const previous = active;
+		active = null;
+		previous?.releaseInput();
+		previous?.controller.abort();
+	}
+
+	function open(options) {
 		if (!isEditorOpen()) return;
 		const ownsDraft = captureDraftOwnership();
-		const id = ++requestId;
-		pickSyncCreatorImport({
-			...options,
-			isCurrent: () => id === requestId && isEditorOpen() && ownsDraft(),
+		cancel();
+
+		const { createInput, ...transfer } = options;
+		const input = createInput();
+		const controller = new AbortController();
+		const releaseInput = () => {
+			input.onchange = null;
+			input.oncancel = null;
+		};
+		const request = { controller, releaseInput };
+		active = request;
+		const isCurrent = () => active === request && isEditorOpen() && ownsDraft();
+
+		input.type = 'file';
+		input.accept = '.json';
+		input.oncancel = () => {
+			if (active === request) cancel();
+		};
+		input.onchange = async event => {
+			releaseInput();
+			try {
+				const file = event.target.files?.[0];
+				if (file && isCurrent()) {
+					await importSyncCreatorFile(file, { ...transfer, isCurrent, signal: controller.signal });
+				}
+			} finally {
+				if (active === request) active = null;
+			}
+		};
+		input.click();
+	}
+
+	return { open, cancel };
+}
+
+async function importSyncCreatorFile(file, {
+	lyricsText, currentSource, timing, prepareLrclibSource, applyImport, toast, translate, isCurrent, signal,
+}) {
+	let committing = false;
+	try {
+		const contents = await file.text();
+		if (!isCurrent()) return;
+		const data = JSON.parse(contents);
+		if (!Array.isArray(data.lines)) throw new Error('Invalid sync data format');
+
+		const prepared = await prepareSyncCreatorFileImport(data, {
+			lyricsText, currentSource, timing, prepareLrclibSource, isCurrent, signal,
 		});
-	};
+		if (!prepared || !isCurrent()) return;
+		committing = true;
+		applyImport(prepared.data, prepared.target);
+		toast.success(translate('syncCreator.importSuccess') || 'Imported sync data');
+	} catch (error) {
+		if (!committing && !isCurrent()) return;
+		console.error('[SyncDataCreator] Import error:', error);
+		toast.error((translate('syncCreator.importError') || 'Import failed') + ': ' + error.message);
+	}
 }
 
-function pickSyncCreatorImport({ createInput, lyricsText, currentSource, timing, prepareLrclibSource, applyImport, toast, translate, isCurrent }) {
-	const input = createInput();
-	input.type = 'file';
-	input.accept = '.json';
-	input.onchange = async (event) => {
-		const file = event.target.files[0];
-		if (!file || !isCurrent()) return;
-		let committing = false;
-
-		try {
-			const contents = await file.text();
-			if (!isCurrent()) return;
-			const data = JSON.parse(contents);
-			if (!Array.isArray(data.lines)) throw new Error('Invalid sync data format');
-
-			const prepared = await prepareSyncCreatorFileImport(data, {
-				lyricsText, currentSource, timing, prepareLrclibSource, isCurrent,
-			});
-			if (!prepared || !isCurrent()) return;
-			committing = true;
-			applyImport(prepared.data, prepared.target);
-			toast.success(translate('syncCreator.importSuccess') || 'Imported sync data');
-		} catch (error) {
-			if (!committing && !isCurrent()) return;
-			console.error('[SyncDataCreator] Import error:', error);
-			toast.error((translate('syncCreator.importError') || 'Import failed') + ': ' + error.message);
-		}
-	};
-	input.click();
-}
-
-async function prepareSyncCreatorFileImport(data, { lyricsText, currentSource, timing, prepareLrclibSource, isCurrent }) {
+async function prepareSyncCreatorFileImport(data, { lyricsText, currentSource, timing, prepareLrclibSource, isCurrent, signal }) {
 	let target = currentSource;
 	const source = data.source;
 	if (isCompleteSyncCreatorLrclibSource(source)
@@ -86,7 +114,7 @@ async function prepareSyncCreatorFileImport(data, { lyricsText, currentSource, t
 		// A positional import can reuse the current lyrics when each row has
 		// the same length. Otherwise validate the file before loading its text.
 		timing.validate(timing.sanitize(data));
-		const loaded = await prepareLrclibSource(source, isCurrent);
+		const loaded = await prepareLrclibSource(source, isCurrent, signal);
 		if (!loaded || !isCurrent()) return null;
 		target = { ...loaded, provider: SYNC_CREATOR_SOURCE_ADDON_ID, addonId: SYNC_CREATOR_SOURCE_ADDON_ID };
 	}

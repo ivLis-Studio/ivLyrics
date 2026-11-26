@@ -173,12 +173,13 @@ export function useSyncCreatorLrclibActions({
 	]);
 
 	// Fetch the file's exact lyric version without changing the current editor.
-	const prepareLrclibSourceForImport = useCallback(async (source, isCurrent) => {
+	const prepareLrclibSourceForImport = useCallback(async (source, isCurrent, signal) => {
+		if (!isCurrent()) return null;
 		const lrclibId = normalizeSyncCreatorLrclibId(source?.lrclibId);
 		const inputRevision = lrclibIdInputRevisionRef.current;
 		let record = null;
 		try {
-			record = await getLrclibRecord(lrclibId);
+			record = await getLrclibRecord(lrclibId, signal);
 		} catch (error) {
 			throw new Error(`${i18n.t('syncCreator.lrclibIdLoadError') || 'Failed to load lyrics from LRCLIB ID'} (${lrclibId}): ${error?.message || error}`);
 		}
