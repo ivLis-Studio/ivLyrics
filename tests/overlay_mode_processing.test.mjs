@@ -1,22 +1,10 @@
 import { fixtureFullLyricsRequest } from "./fixtures/full-lyrics-request.mjs";
 import { getRuntimeService } from "#ivlyrics/spicetify/runtimeServices.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
-import { createLyricsProviderRequests } from "#ivlyrics/lyrics/lyricsProviderRequests.mjs";
+import { createLyricsProviderLookup, createLyricsProviderRequests } from "#ivlyrics/lyrics/lyricsProviderRequests.mjs";
 import { createTranslationPresentation } from "#ivlyrics/lyrics/translationPresentation.mjs";
 
-const serviceSource = readFileSync(new URL('../src/lyrics/LyricsService.js', import.meta.url), 'utf8');
-
-const section = (source, start, end) => {
-    const from = source.indexOf(start);
-    const to = source.indexOf(end, from + start.length);
-    assert.ok(from >= 0 && to > from, `missing source section: ${start}`);
-    return source.slice(from, to);
-};
-
-const method = (source, start, end) => section(source, start, end).trim().replace(/,\s*$/, '');
 const track = { uri: 'spotify:track:mode-fixture', title: 'Mode song', artist: 'Mode artist' };
 
 const makeTranslator = ({ language = 'en', ai = null, conversions = {} } = {}) => {
@@ -69,7 +57,7 @@ function load({ language = 'en', ai = null, conversions = {}, values = new Map()
     const sent = [];
     const current = lyrics || [{ text: 'Original', startTime: 1000, endTime: 2000 }];
     const Translator = makeTranslator({ language, ai, conversions });
-    const context = vm.createContext({
+    const context = {
         getRuntimeService,
         window: {
             LyricsAddonManager: {
@@ -98,14 +86,10 @@ function load({ language = 'en', ai = null, conversions = {}, values = new Map()
         serviceDebug() {},
         console: { warn() {}, error() {} },
         sendLyricsToConsumers: async (payload) => { sent.push(payload); },
-    });
+    };
 
     context.providerRequests = createLyricsProviderRequests(() => context.window.LyricsAddonManager);
-    vm.runInContext(`globalThis.service = {
-            ${method(serviceSource, '        async getLyricsFromProviders(', '\n        /**\n         * 싱크 데이터 서비스 접근')},
-        };`, context);
-
-    const service = context.service;
+    const service = { getLyricsFromProviders: createLyricsProviderLookup(context.window, context.providerRequests) };
     service.getFullLyrics = fixtureFullLyricsRequest(context);
     service.getLyricsSnapshot = (uri) => snapshots.get(uri) || null;
     service.publishLyricsSnapshot = (update) => {

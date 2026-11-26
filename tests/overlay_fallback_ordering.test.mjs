@@ -1,22 +1,13 @@
 import { fixtureFullLyricsRequest } from "./fixtures/full-lyrics-request.mjs";
 import { getRuntimeService } from "#ivlyrics/spicetify/runtimeServices.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
-import { createLyricsProviderRequests } from "#ivlyrics/lyrics/lyricsProviderRequests.mjs";
+import { createLyricsProviderLookup, createLyricsProviderRequests } from "#ivlyrics/lyrics/lyricsProviderRequests.mjs";
 import { createLyricsPresentationStore } from "#ivlyrics/lyrics/lyricsPresentationStore.mjs";
 import { createPageLyricsTimingUpgrade } from "#ivlyrics/lyrics/pageLyricsTimingUpgrade.mjs";
 import { installLyricsReadySnapshotListener } from "#ivlyrics/lyrics/installLyricsReadySnapshotListener.mjs";
 import { publishLyricsReady } from "#ivlyrics/lyrics/lyricsReadyPublisher.mjs";
 
-const source = readFileSync(new URL('../src/lyrics/LyricsService.js', import.meta.url), 'utf8');
-const section = (start, end) => {
-    const from = source.indexOf(start), to = source.indexOf(end, from + start.length);
-    assert.ok(from >= 0 && to > from);
-    return source.slice(from, to);
-};
-const method = (start, end) => section(start, end).trim().replace(/,\s*$/, '');
 const deferred = () => {
     let resolve;
     const promise = new Promise(done => { resolve = done; });
@@ -34,7 +25,7 @@ function load(readSavedLocalLyrics) {
     let provider = async () => result(), translator = async () => ({ translation: 'Translated' });
     let send = async () => {};
     let target = 'ko', notation = 'translation', currentUri = track.uri, djNarration = false;
-    const context = vm.createContext({
+    const context = {
         getRuntimeService,
         readSavedLocalLyrics,
         window: {
@@ -51,12 +42,9 @@ function load(readSavedLocalLyrics) {
         serviceDebug() {}, console: { warn() {}, error() {} },
         sendLyricsToConsumers: async payload => { sent.push(payload); await send(payload); },
         reportError: (_message, error) => errors.push(error),
-    });
+    };
     context.providerRequests = createLyricsProviderRequests(() => context.window.LyricsAddonManager);
-    vm.runInContext(`globalThis.service = {
-            ${method('        async getLyricsFromProviders(', '\n        /**\n         * 싱크 데이터 서비스 접근')},
-        };`, context);
-    const service = context.service;
+    const service = { getLyricsFromProviders: createLyricsProviderLookup(context.window, context.providerRequests) };
     service.getFullLyrics = fixtureFullLyricsRequest(context);
     service.getLyricsSnapshot = uri => snapshots.get(uri) || null;
     service.publishLyricsSnapshot = update => {
@@ -67,7 +55,7 @@ function load(readSavedLocalLyrics) {
         return next;
     };
     service.emit = (event, payload) => loaded.push({ event, payload });
-    return { service, snapshots, published, sent, loaded, values, errors,
+    return { service, snapshots, published, sent, loaded, values, errors, host: context.window,
         setSend: fn => { send = fn; },
         setProvider: fn => { provider = fn; }, setTranslator: fn => { translator = fn; },
         setTarget: value => { target = value; }, setNotation: value => { notation = value; },
@@ -77,6 +65,30 @@ function load(readSavedLocalLyrics) {
             source: 'ivlyrics-page', displayLyrics: [{ text: 'Original', text2: 'Page translation' }], presentationComplete: true }),
     };
 }
+
+test('a provider lookup held by Marketplace does not start with an obsolete provider selection', async () => {
+    const h = load();
+    const gate = deferred();
+    let pending = gate.promise;
+    h.host.MarketplaceManager = { getPendingLyricsProviderChanges: () => pending };
+    let calls = 0;
+    h.setProvider(async () => { calls++; return result(); });
+
+    const oldLookup = h.service.getLyricsFromProviders(track, [], 1, 'old-override');
+    await flush();
+    assert.equal(calls, 0);
+    h.bumpGeneration(track.uri);
+    pending = null;
+    gate.resolve();
+    assert.equal((await oldLookup).stale, true);
+    assert.equal(calls, 0);
+    assert.deepEqual(h.published, []);
+
+    const fresh = await h.service.getLyricsFromProviders(track, [], 1, 'current-override');
+    assert.equal(fresh.provider, 'fixture');
+    assert.equal(h.published[0].trackLyricsProviderOverride, 'current-override');
+    assert.equal(calls, 1);
+});
 
 test('fallback accepts its own raw snapshot and publishes captured target and notation', async () => {
     const h = load(); h.setNotation('ipa');

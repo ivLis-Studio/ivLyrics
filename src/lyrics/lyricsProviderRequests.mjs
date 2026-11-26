@@ -1,8 +1,27 @@
 import { createTrackRevisions } from "../core/trackRevisions.mjs";
+import { waitForMarketplaceLyricsProviderChanges } from "../features/marketplace/marketplaceRuntime.mjs";
 
 export const LYRICS_PROVIDER_SELECTION_CHANGED = "ivLyrics:lyrics-provider-selection-changed";
 
 export const supersededLyricsRequest = uri => ({ uri, error: 'Lyrics request superseded', stale: true });
+
+export function createLyricsProviderLookup(host, requests) {
+    return async function getLyricsFromProviders(info, providerOrder = [], mode = 1, forcedProviderId = null, { signal } = {}) {
+        const pendingChange = waitForMarketplaceLyricsProviderChanges(host, signal);
+        if (pendingChange) {
+            const uri = info?.uri || '';
+            const revision = requests.getRevision(uri);
+            if (!await pendingChange || revision !== requests.getRevision(uri)) return supersededLyricsRequest(uri);
+        }
+        return requests.request({
+            info,
+            forcedProviderId,
+            signal,
+            getSnapshot: uri => this.getLyricsSnapshot(uri),
+            publishSnapshot: update => this.publishLyricsSnapshot(update),
+        });
+    };
+}
 
 export function isLyricsProviderSelectionSetting(name) {
     return typeof name === "string" && (name === "prefer-sync-data-provider"

@@ -14,7 +14,7 @@ import { createLyricsPresentationPreferences } from "#ivlyrics/lyrics/lyricsServ
 import { createLyricsPresentationStore } from "#ivlyrics/lyrics/lyricsPresentationStore.mjs";
 import { createLyricSupplementPresentation } from "#ivlyrics/lyrics/lyricSupplementPresentation.mjs";
 import { installLyricsReadySnapshotListener } from "#ivlyrics/lyrics/installLyricsReadySnapshotListener.mjs";
-import { createLyricsProviderRequests } from "#ivlyrics/lyrics/lyricsProviderRequests.mjs";
+import { createLyricsProviderLookup, createLyricsProviderRequests } from "#ivlyrics/lyrics/lyricsProviderRequests.mjs";
 import { createLrcRedTimingDelivery } from "#ivlyrics/providers/lyrics/lrcRedTimingDelivery.mjs";
 import { createOverlayOffsetResolver } from '../src/features/overlay/overlayOffsets.mjs';
 
@@ -221,13 +221,10 @@ const load = ({ globalFallback = false, holdTranslation = null, withKaraoke = fa
 			...context,
 			sendLyricsToConsumers: vm.runInContext('sendLyricsToConsumers', context),
 		});
-		vm.runInContext([
-			`Object.assign(LyricsService, {
-				${section('        async getLyricsFromProviders(', '\n        /**\n         * 싱크 데이터 서비스 접근')}
-				emit() {}
-			});`,
-			bundleInitializer(new URL('../src/features/overlay/OverlayService.js', import.meta.url)),
-		].join('\n'), context);
+		Object.assign(window.LyricsService, {
+			getLyricsFromProviders: createLyricsProviderLookup(window, context.providerRequests), emit() {},
+		});
+		vm.runInContext(bundleInitializer(new URL('../src/features/overlay/OverlayService.js', import.meta.url)), context);
 		overlay._isConnected = helper._isConnected = true;
 	}
 	return {
