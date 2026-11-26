@@ -14,7 +14,7 @@ import { collectSyncCreatorLineTimes } from '#ivlyrics/features/sync/syncCreator
 import { useSyncCreatorOffsetActions } from '#ivlyrics/features/sync/syncCreatorOffsetActions.mjs';
 import { pageLyricsMemoryCache } from '#ivlyrics/lyrics/pageMemoryCache.mjs';
 import { createSyncCreatorScoreTracker, GRACE_MS, HEARTBEAT_MS } from '#ivlyrics/features/sync/syncCreatorScoreTracker.mjs';
-import { renderSyncCreatorLineGlyphs } from '#ivlyrics/features/sync/syncCreatorLineGlyphView.mjs';
+import { renderSyncCreatorLineGlyphs, useSyncCreatorGlyphLayout } from '#ivlyrics/features/sync/syncCreatorLineGlyphView.mjs';
 import { renderSyncCreatorStagePanel } from '#ivlyrics/features/sync/syncCreatorStageView.mjs';
 import { renderSyncCreatorParallelPart } from '#ivlyrics/features/sync/syncCreatorParallelPartView.mjs';
 import { renderSyncCreatorLineInspector } from '#ivlyrics/features/sync/syncCreatorStyleControls.mjs';
@@ -1241,13 +1241,17 @@ export function createSyncDataCreator({
 		});
 		const { syncLinesByStart, isCharSynced, getCharSyncTime, getPreviewProgressIndex, getPlayedCharacters } = previewTiming;
 
-		useEffect(() => {
-			charElementsRef.current = [];
-			charHitBoxesRef.current = [];
-			charScrollMetricsRef.current = [];
-			lastPaintedPlaybackIndexRef.current = -2;
-			invalidateRecordingPaint();
-		}, [currentLineIndex, lyricsText, activeParallelPartId, currentSpeakerTextColor, invalidateRecordingPaint]);
+		const characterRefs = useSyncCreatorGlyphLayout({
+			react,
+			line: {
+				index: currentLineIndex, partId: activeParallelPartId, text: currentLineText,
+				charCount: currentLineChars.length, useTextRun: useCurrentLineTextRun, granularity: syncGranularity,
+				speakerColor: currentSpeakerTextColor, styleRanges: currentLineStyleRanges, furigana: currentLineFuriganaMap,
+				readings: currentLineCharacterPronunciationMap, readingUnits: currentLineRenderedPronunciationUnits,
+			},
+			refs: { charElementsRef, charHitBoxesRef, charScrollMetricsRef, lastPaintedPlaybackIndexRef },
+			invalidateRecordingPaint,
+		});
 
 		useEffect(() => {
 			if (mode !== 'record') return undefined;
@@ -1366,7 +1370,7 @@ export function createSyncDataCreator({
 			},
 			visuals: { currentSpeakerTextColor, rtlTextRunStyle, textEffectsDisabled },
 			vocalStyles: syncCreatorVocalStyles,
-			refs: { charElementsRef, rtlTextRunRef },
+			refs: { characterRefs, rtlTextRunRef },
 			input: { getCharIndexFromPoint, handleCharacterContextMenu },
 		});
 

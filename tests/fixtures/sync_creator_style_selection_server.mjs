@@ -72,6 +72,12 @@ function SelectionFixture(){
   const currentLineDirection='ltr',useCurrentLineTextRun=false,rtlTextRunStyle={},rtlTextRunRef=useRef(null);
   const currentGranularityRanges=[],currentWordBoundaryStartIndexes=new Set();
   const currentLineRenderedPronunciationUnitByStart=new Map(),currentLineRenderedPronunciationCoveredIndexes=new Set();
+  const charHitBoxesRef=useRef([]),charScrollMetricsRef=useRef([]),lastPaintedPlaybackIndexRef=useRef(-1);
+  const characterRefs=useSyncCreatorGlyphLayout({
+    react, line:{index:currentLineIndex,partId:activeParallelTargetId,text:currentLineText,charCount:currentLineChars.length},
+    refs:{charElementsRef,charHitBoxesRef,charScrollMetricsRef,lastPaintedPlaybackIndexRef},
+    invalidateRecordingPaint:noop,
+  });
   ${part('\tconst renderCurrentLineCharacters =', '\tconst renderParallelPartLine =')}
   const lyricsText=lyricsLines[0],isCurrentLineSynced=true,currentParallelParts=[],hasCurrentParallelParts=false,currentTextEffectKind=currentLineMeta.kind;
   const isLoading=false,error=null,multiVocalMode=Boolean(activeParallelPart),showLivePreview=false,syncGranularityRecordingHint='';

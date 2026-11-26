@@ -4,7 +4,8 @@ import { projectTimedUnits } from "#ivlyrics/features/sync/timingGranularity.mjs
 import { createSyncCreatorParallelPreviewTargets, createSyncCreatorPreviewPainting } from "#ivlyrics/features/sync/syncCreatorPreviewPainting.mjs";
 import { useSyncCreatorEditorPreview, useSyncCreatorPreviewTiming } from "#ivlyrics/features/sync/syncCreatorEditorPreview.mjs";
 import { renderSyncCreatorParallelPart } from "#ivlyrics/features/sync/syncCreatorParallelPartView.mjs";
-import { renderSyncCreatorLineGlyphs } from "#ivlyrics/features/sync/syncCreatorLineGlyphView.mjs";
+import { renderSyncCreatorLineGlyphs, useSyncCreatorGlyphLayout } from "#ivlyrics/features/sync/syncCreatorLineGlyphView.mjs";
+import { createSyncCreatorCharacterHitTesting } from "#ivlyrics/features/sync/syncCreatorCharacterHitTesting.mjs";
 import { getSyncCreatorPreviewProgressIndex } from "#ivlyrics/features/sync/syncCreatorPlayback.mjs";
 import { useSyncCreatorRecordingProgress } from "#ivlyrics/features/sync/syncCreatorRecordingProgress.mjs";
 import {
@@ -405,6 +406,9 @@ const createSelectedPartPreview = ({ savedLine, targetPart, text = "ABCD", initi
 		handleCharacterContextMenu: () => {},
 		charElementsRef: { current: [] },
 	});
+	context.characterRefs = Array.from(text, (_, index) => element => {
+		context.charElementsRef.current[index] = element;
+	});
 	Object.assign(context.s, {
 		charSynced: { background: "synced" },
 		charPlayed: { background: "progress" },
@@ -424,6 +428,65 @@ const createSelectedPartPreview = ({ savedLine, targetPart, text = "ABCD", initi
 	preview.render();
 	return { preview, context, renderer, mounted };
 };
+
+test("committed glyphs stay available for paint and hit testing when the active line changes", () => {
+	let applyLayout;
+	let memo;
+	let memoDeps;
+	let layoutDeps;
+	const sameDependencies = (previous, next) => previous && next.every((value, index) => Object.is(previous[index], value));
+	const react = {
+		useMemo(create, deps) {
+			if (!sameDependencies(memoDeps, deps)) {
+				memo = create();
+				memoDeps = deps;
+			}
+			return memo;
+		},
+		useLayoutEffect(effect, deps) {
+			applyLayout = sameDependencies(layoutDeps, deps) ? null : effect;
+			layoutDeps = deps;
+		},
+	};
+	const refs = {
+		charElementsRef: { current: [] }, charHitBoxesRef: { current: [] },
+		charScrollMetricsRef: { current: [] }, lastPaintedPlaybackIndexRef: { current: 3 },
+		rtlTextRunRef: { current: null },
+	};
+	let recordingInvalidations = 0;
+	const invalidateRecordingPaint = () => recordingInvalidations++;
+	const render = line => useSyncCreatorGlyphLayout({ react, line, refs, invalidateRecordingPaint });
+	const glyph = left => ({
+		getBoundingClientRect: () => ({ left, right: left + 8, top: 0, bottom: 10, width: 8 }),
+	});
+	const first = { index: 0, partId: "full", text: "ABCD", charCount: 4 };
+	const firstRefs = render(first);
+	firstRefs.forEach((ref, index) => ref(glyph(index * 10)));
+	applyLayout();
+	const hitTest = createSyncCreatorCharacterHitTesting({ refs, charCount: 4 });
+	hitTest.cacheCharHitBoxes();
+	assert.equal(hitTest.getCharIndexFromPoint(23, 5), 2);
+	assert.equal(render(first), firstRefs, "an unchanged layout keeps the same callback refs");
+	assert.equal(applyLayout, null);
+
+	const next = { ...first, index: 1, text: "EF", charCount: 2 };
+	const nextRefs = render(next);
+	firstRefs.forEach(ref => ref(null));
+	const mounted = [glyph(100), glyph(120)];
+	nextRefs.forEach((ref, index) => ref(mounted[index]));
+	applyLayout();
+	assert.deepEqual(refs.charElementsRef.current, mounted);
+	assert.deepEqual(refs.charHitBoxesRef.current, []);
+	assert.deepEqual(refs.charScrollMetricsRef.current, []);
+	assert.equal(hitTest.getCharIndexFromPoint(125, 5), 1);
+	assert.equal(refs.lastPaintedPlaybackIndexRef.current, -2);
+	assert.equal(recordingInvalidations, 2);
+
+	assert.deepEqual(render({ ...next, useTextRun: true }), []);
+	nextRefs.forEach(ref => ref(null));
+	applyLayout();
+	assert.deepEqual(refs.charElementsRef.current, []);
+});
 
 const attachRecordingPainter = (preview) => {
 	const { context } = preview;

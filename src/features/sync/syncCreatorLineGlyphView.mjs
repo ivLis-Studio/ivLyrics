@@ -2,6 +2,32 @@ import { getSyncCreatorParallelPartDisplayItems } from './syncCreatorVocalLayout
 import { isSyncCreatorCharContextMenuEnabled } from './parallelTiming.mjs';
 import { SYNC_CREATOR_PROGRESS_BACKGROUND, SYNC_CREATOR_SYNCED_BACKGROUND } from './syncCreatorStyles.mjs';
 
+export function useSyncCreatorGlyphLayout({
+	react, line, refs, invalidateRecordingPaint,
+}) {
+	const { index, partId, text, charCount, useTextRun, granularity, speakerColor, styleRanges, furigana, readings, readingUnits } = line;
+	const { charElementsRef, charHitBoxesRef, charScrollMetricsRef, lastPaintedPlaybackIndexRef } = refs;
+	const glyphCount = useTextRun ? 0 : charCount;
+	const characterRefs = react.useMemo(() => Array.from({ length: glyphCount }, (_, index) => element => {
+		charElementsRef.current[index] = element;
+	}), [charElementsRef, glyphCount]);
+
+	react.useLayoutEffect(() => {
+		// Ref callbacks already registered the new glyphs in this commit.
+		// Only drop slots from the previous line and invalidate derived data.
+		charElementsRef.current.length = glyphCount;
+		charHitBoxesRef.current = [];
+		charScrollMetricsRef.current = [];
+		lastPaintedPlaybackIndexRef.current = -2;
+		invalidateRecordingPaint();
+	}, [
+		index, partId, text, glyphCount, useTextRun, granularity, speakerColor, styleRanges, furigana, readings, readingUnits,
+		charElementsRef, charHitBoxesRef, charScrollMetricsRef, lastPaintedPlaybackIndexRef, invalidateRecordingPaint,
+	]);
+
+	return characterRefs;
+}
+
 export function renderSyncCreatorLineGlyphs({
 	react, i18n: I18n, styles: s,
 	line: {
@@ -21,7 +47,7 @@ export function renderSyncCreatorLineGlyphs({
 	},
 	visuals: { currentSpeakerTextColor, rtlTextRunStyle, textEffectsDisabled },
 	vocalStyles: { getSyncCreatorSpeakerTextColor, normalizeSyncCreatorKind },
-	refs: { charElementsRef, rtlTextRunRef },
+	refs: { characterRefs, rtlTextRunRef },
 	input: { getCharIndexFromPoint, handleCharacterContextMenu },
 }) {
 	const lockedPlaybackCompletedIndex = currentLockedPlaybackIndex === null
@@ -112,7 +138,7 @@ export function renderSyncCreatorLineGlyphs({
 				inlineStyleRange && textEffectsDisabled ? 'text-effects-disabled' : ''
 			].filter(Boolean).join(' '),
 			style,
-			ref: (el) => { charElementsRef.current[i] = el; },
+			ref: characterRefs[i],
 			'data-char-index': i,
 			'data-iv-sync-creator-synced': !options.wordSpacer && isSynced ? '1' : '0',
 			'data-iv-sync-creator-base-background': baseBackground,
