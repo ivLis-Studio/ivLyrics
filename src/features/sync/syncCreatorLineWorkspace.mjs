@@ -79,9 +79,13 @@ export function useSyncCreatorLineWorkspace({
 	const currentNextMergeLineIndex = currentMergedLineIndexes.length > 0
 		? currentMergedLineIndexes[currentMergedLineIndexes.length - 1] + 1
 		: currentLineIndex + 1;
+	const nextMergeLineIndexes = useMemo(
+		() => getMergedLineIndexesForStart(currentNextMergeLineIndex),
+		[getMergedLineIndexesForStart, currentNextMergeLineIndex]
+	);
 	const canMergeCurrentLineWithNext = !currentLineCoveredByPrevious
-		&& currentMergedLineIndexes.length < SYNC_CREATOR_MAX_MERGED_LINES
-		&& currentNextMergeLineIndex < lyricsLines.length;
+		&& nextMergeLineIndexes.length > 0
+		&& currentMergedLineIndexes.length + nextMergeLineIndexes.length <= SYNC_CREATOR_MAX_MERGED_LINES;
 	const currentLineMeta = useMemo(() => {
 		const draft = lineMetaDrafts[currentLineStart] || {};
 		const speakerMeta = resolveSyncCreatorDraftSpeakerMeta({
@@ -331,7 +335,7 @@ export function useSyncCreatorLineWorkspace({
 		currentLineStart, currentExistingLineData, getLineEndAtIndex, getMergedLineIndexesForStart, findMergedOwnerLineIndex,
 		isLineCoveredByMergedPrevious, findNavigableLineIndex, currentMergedLineIndexes,
 		currentLineMergedWithNext, currentLineCoveredByPrevious, previousNavigableLineIndex, nextNavigableLineIndex,
-		currentFullLineChars, currentAutoMergeSplitPoints, currentAutoMergeSplitPointSet, currentNextMergeLineIndex,
+		currentFullLineChars, currentAutoMergeSplitPoints, currentAutoMergeSplitPointSet, nextMergeLineIndexes,
 		canMergeCurrentLineWithNext, currentLineMeta, currentLineStyleRanges, getParallelTemplateForLineData,
 		currentParallelTemplate, currentParallelData, currentParallelParts, hasCurrentParallelParts, activeParallelPart,
 		activeParallelTargetId, currentSpeakerTextColor, currentSpeakerMutedColor, currentTextEffectKind,

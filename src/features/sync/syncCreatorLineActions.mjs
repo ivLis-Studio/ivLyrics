@@ -3,10 +3,9 @@ import {
 } from './syncCreatorMergedTiming.mjs';
 import { resolveSyncCreatorManualSplitState } from './parallelTiming.mjs';
 
-function removeLineDraft(drafts, lineStart) {
-	if (!Object.prototype.hasOwnProperty.call(drafts, lineStart)) return drafts;
+function removeMergedLineDrafts(drafts, lineIndexes, lineCharOffsets) {
 	const remaining = { ...drafts };
-	delete remaining[lineStart];
+	for (const index of lineIndexes) delete remaining[lineCharOffsets[index]];
 	return remaining;
 }
 
@@ -18,7 +17,7 @@ export function useSyncCreatorLineActions({
 	const { getLineEndAtIndex } = lyricDocument;
 	const {
 		currentLineIndex, currentLineStart, currentFullLineChars, currentExistingLineData, currentMergedLineIndexes,
-		currentNextMergeLineIndex, currentLineMergedWithNext, currentAutoMergeSplitPoints, currentAutoMergeSplitPointSet,
+		nextMergeLineIndexes, currentLineMergedWithNext, currentAutoMergeSplitPoints, currentAutoMergeSplitPointSet,
 		canMergeCurrentLineWithNext,
 	} = line;
 	const {
@@ -46,13 +45,14 @@ export function useSyncCreatorLineActions({
 		if (!canStartOperation() || !canMergeCurrentLineWithNext) return;
 
 		const currentStart = lineCharOffsets[currentLineIndex] ?? 0;
-		const nextStart = lineCharOffsets[currentNextMergeLineIndex];
-		const nextEnd = getLineEndAtIndex(currentNextMergeLineIndex);
+		const nextIndex = nextMergeLineIndexes[0];
+		const nextStart = lineCharOffsets[nextIndex];
+		const nextEnd = getLineEndAtIndex(nextIndex);
 		if (!Number.isInteger(currentStart) || !Number.isInteger(nextStart) || nextEnd < nextStart) return;
 		claimSessionForLocalEditing();
 
 		const mergePlan = prepareSyncCreatorLineMerge({
-			currentStart, currentMergedLineIndexes, currentNextMergeLineIndex, getLineEndAtIndex,
+			currentStart, currentMergedLineIndexes, nextMergeLineIndexes, getLineEndAtIndex,
 			lineCharOffsets, syncData, manualParallelSplitDrafts,
 		});
 		const { nextMergedLineIndexes, hasManualSplitState, mergedManualSplitPoints } = mergePlan;
@@ -69,7 +69,7 @@ export function useSyncCreatorLineActions({
 		setMultiVocalMode(true);
 		setActiveParallelPartId('a');
 		setMergedLineDrafts(prev => ({
-			...prev,
+			...removeMergedLineDrafts(prev, nextMergedLineIndexes, lineCharOffsets),
 			[currentStart]: nextMergedLineIndexes.slice(1).map(index => lineCharOffsets[index])
 		}));
 		if (hasManualSplitState) {
@@ -83,7 +83,7 @@ export function useSyncCreatorLineActions({
 		claimSessionForLocalEditing,
 		currentLineIndex,
 		currentMergedLineIndexes,
-		currentNextMergeLineIndex,
+		nextMergeLineIndexes,
 		getLineEndAtIndex,
 		lineCharOffsets,
 		lyricsLines,
@@ -142,7 +142,7 @@ export function useSyncCreatorLineActions({
 			sanitizeSyncCreatorSpeakerFallback, sanitizeSyncCreatorSpeakerColor, normalizeSyncCreatorKind,
 		}));
 
-		setMergedLineDrafts(prev => removeLineDraft(prev, lineStart));
+		setMergedLineDrafts(prev => removeMergedLineDrafts(prev, currentMergedLineIndexes, lineCharOffsets));
 		setManualParallelSplitDrafts(prev => distributeSyncCreatorManualSplitDraft(prev, layout));
 		setActiveParallelPartId('full');
 		resetAfterLayoutChange();

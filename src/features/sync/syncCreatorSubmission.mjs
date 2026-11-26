@@ -6,37 +6,28 @@ function inspectSyncCreatorSubmission({
     lineCharOffsets,
     multiVocalMode,
     isLineCovered,
-    getMergedLineIndexes,
-    getParallelTemplate,
-    mergeParallelTemplate,
     getLineSpeaker,
     isSpeakerComplete,
 }) {
     const linesByStart = new Map(syncData.lines.map(line => [line.start, line]));
-    let coveredLineCount = 0;
+    let incomplete = false;
     for (let index = 0; index < lyricsLines.length; index++) {
-        if (isLineCovered(index, linesByStart)) {
-            coveredLineCount++;
+        if (isLineCovered(index, linesByStart)) continue;
+
+        const lineNumber = index + 1;
+        const lineData = linesByStart.get(lineCharOffsets[index]);
+        if (!lineData) {
+            if (multiVocalMode) {
+                return { issue: { key: 'syncCreator.lineMissingSync', lineNumber, fallback: `Line ${lineNumber} has no sync yet.` } };
+            }
+            incomplete = true;
             continue;
         }
         if (!multiVocalMode) continue;
 
-        const lineNumber = index + 1;
-        const lineStart = lineCharOffsets[index];
-        const lineData = linesByStart.get(lineStart);
-        if (!lineData) {
-            return { issue: { key: 'syncCreator.lineMissingSync', lineNumber, fallback: `Line ${lineNumber} has no sync yet.` } };
-        }
-
-        const mergedIndexes = getMergedLineIndexes(index, linesByStart);
-        const isMerged = mergedIndexes.length > 1;
-        const lineChars = isMerged
-            ? mergedIndexes.flatMap(lineIndex => Array.from(lyricsLines[lineIndex] || ''))
-            : Array.from(lyricsLines[index] || '');
-        const template = getParallelTemplate(lineData, lineChars, lineStart, isMerged);
-        if (template?.parts?.length > 1) {
-            // Resolved editor marks can combine several saved timing runs.
-            const parts = mergeParallelTemplate(template, lineData)?.parts || [];
+        const parts = lineData.parallel?.parts;
+        if (Array.isArray(parts) && parts.length > 1) {
+            // The delivery snapshot already includes the final vocal boundaries.
             for (const part of parts) {
                 if (!hasReusableSyncCreatorParallelChars(part, part)) {
                     return { issue: { key: 'syncCreator.lineAllPartsMissingSync', lineNumber, fallback: `Sync every vocal part on line ${lineNumber}.` } };
@@ -50,7 +41,7 @@ function inspectSyncCreatorSubmission({
         }
     }
 
-    return { incomplete: syncData.lines.length + coveredLineCount < lyricsLines.length };
+    return { incomplete };
 }
 
 function createSyncCreatorSubmissionData(syncData, {

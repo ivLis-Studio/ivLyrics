@@ -378,14 +378,15 @@ export function createSyncCreatorDraftRecords({ getStructuredClone, getCodec }) 
     historyCursorId = cursorEntry.id;
     // Keep the navigation position in the live draft and preserve the redo branch.
     if (historyContent(cursorEntry.snapshot) !== historyContent(incoming.draft)) {
+      const updatingWorkingTip = cursorEntry.kind === "working" && cursorIndex === history.length - 1;
       history = history.slice(0, cursorIndex + 1);
       const workingEntry = createHistoryEntry(incoming.draft, {
-        id: cursorEntry.kind === "working" ? cursorEntry.id : undefined,
+        id: updatingWorkingTip ? cursorEntry.id : undefined,
         kind: "working",
         lineIndex: Number(incoming.draft.editor.currentLineIndex) || 0,
       });
       if (!workingEntry) throw new Error("Invalid Sync Creator working checkpoint.");
-      if (cursorEntry.kind === "working") history[cursorIndex] = workingEntry;
+      if (updatingWorkingTip) history[cursorIndex] = workingEntry;
       else history.push(workingEntry);
       historyCursorId = workingEntry.id;
     }
@@ -427,16 +428,12 @@ export function createSyncCreatorDraftRecords({ getStructuredClone, getCodec }) 
 
     let cursorIndex = history.findIndex((entry) => entry.id === cursorId);
     if (cursorIndex < 0) cursorIndex = history.length - 1;
-    if (history[cursorIndex]?.kind === "working") {
-      history.splice(cursorIndex, 1);
-      cursorIndex -= 1;
-    }
-    if (cursorIndex >= 0 && cursorIndex < history.length - 1) {
-      history = history.slice(0, cursorIndex + 1);
-    }
-
     const entry = createHistoryEntry(checkpoint.snapshot || incoming.draft, checkpoint);
     if (!entry) throw new Error("Invalid Sync Creator checkpoint.");
+    const current = history[cursorIndex];
+    const promotesWorking = current?.kind === "working"
+      && historyContent(current.snapshot) === historyContent(entry.snapshot);
+    history = history.slice(0, cursorIndex + (promotesWorking ? 0 : 1));
     history.push(entry);
     history = trimHistory(history);
     return normalizeRecord({

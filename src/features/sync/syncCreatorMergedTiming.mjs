@@ -2,7 +2,6 @@ import {
 	resolveSyncCreatorManualSplitState, preserveSyncCreatorParallelTimingRuns,
 } from "./parallelTiming.mjs";
 import { normalizeSyncCreatorGranularity, normalizeSyncCreatorTimeSequence } from "./timingGranularity.mjs";
-import { SYNC_CREATOR_MAX_MERGED_LINES } from "./syncCreatorMergedLayout.mjs";
 import { SYNC_CREATOR_DEFAULT_SPEAKER, SYNC_CREATOR_DEFAULT_KIND } from "./syncCreatorVocalStyles.mjs";
 
 const partIds = 'abcdefghijklmnopqrstuvwxyz'.split('');
@@ -25,36 +24,39 @@ export function distributeSyncCreatorManualSplitDraft(drafts, {
 }
 
 export function prepareSyncCreatorLineMerge({
-	currentStart, currentMergedLineIndexes, currentNextMergeLineIndex, getLineEndAtIndex,
+	currentStart, currentMergedLineIndexes, nextMergeLineIndexes, getLineEndAtIndex,
 	lineCharOffsets, syncData, manualParallelSplitDrafts,
 }) {
-	const nextMergedLineIndexes = [...currentMergedLineIndexes, currentNextMergeLineIndex]
-		.filter((index, position, indexes) => indexes.indexOf(index) === position)
-		.sort((a, b) => a - b)
-		.slice(0, SYNC_CREATOR_MAX_MERGED_LINES);
-	const mergedEnd = getLineEndAtIndex(nextMergedLineIndexes[nextMergedLineIndexes.length - 1]);
+	const nextMergedLineIndexes = [...currentMergedLineIndexes, ...nextMergeLineIndexes];
+	const mergedEnd = getLineEndAtIndex(nextMergedLineIndexes.at(-1));
 	const sourceLinesByStart = new Map((syncData?.lines || []).map(line => [line.start, line]));
-	const ownerLine = sourceLinesByStart.get(currentStart);
+	const ownersByIndex = new Map();
+	for (const group of [currentMergedLineIndexes, nextMergeLineIndexes]) {
+		const owner = { start: lineCharOffsets[group[0]], end: getLineEndAtIndex(group.at(-1)) };
+		for (const index of group) ownersByIndex.set(index, owner);
+	}
 	let hasManualSplitState = false;
 	const mergedManualSplitPoints = [...new Set(nextMergedLineIndexes.flatMap(index => {
 		const start = lineCharOffsets[index];
 		const end = getLineEndAtIndex(index);
-		const sourceLine = sourceLinesByStart.get(start) || ownerLine;
-		const sourceStart = Number(sourceLine?.start ?? start);
+		const owner = ownersByIndex.get(index);
+		const sourceLine = sourceLinesByStart.get(start) || sourceLinesByStart.get(owner.start);
+		const sourceStart = sourceLine?.start ?? owner.start;
+		const sourceEnd = sourceStart === owner.start ? Math.max(owner.end, sourceLine?.end ?? owner.end) : end;
 		hasManualSplitState ||= Object.prototype.hasOwnProperty.call(manualParallelSplitDrafts, sourceStart)
 			|| Array.isArray(sourceLine?.parallel?.manualSplitPoints);
 		return resolveSyncCreatorManualSplitState(
-			manualParallelSplitDrafts, sourceStart, Number(sourceLine?.end ?? end) - sourceStart + 1, sourceLine?.parallel
+			manualParallelSplitDrafts, sourceStart, sourceEnd - sourceStart + 1, sourceLine?.parallel
 		).manualSplitPoints
 			.map(point => sourceStart + point)
 			.filter(point => point > start && point <= end)
 			.map(point => point - currentStart);
 	}))].sort((left, right) => left - right);
-	return { nextMergedLineIndexes, mergedEnd, hasManualSplitState, mergedManualSplitPoints };
+	return { nextMergedLineIndexes, mergedEnd, ownersByIndex, hasManualSplitState, mergedManualSplitPoints };
 }
 
 export function mergeSyncCreatorLineTiming(prev, {
-	currentStart, mergedEnd, nextMergedLineIndexes, hasManualSplitState, mergedManualSplitPoints,
+	currentStart, mergedEnd, nextMergedLineIndexes, ownersByIndex, hasManualSplitState, mergedManualSplitPoints,
 	lineCharOffsets, getLineEndAtIndex, lyricsLines, editingVersion,
 }, {
 	inheritSyncCreatorParallelPartChars, sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
@@ -64,7 +66,6 @@ export function mergeSyncCreatorLineTiming(prev, {
 	if (!prev || !Array.isArray(prev.lines)) return prev;
 
 	const linesByStart = new Map(prev.lines.map(line => [line.start, line]));
-	const currentLineData = linesByStart.get(currentStart);
 
 	const getPartSnapshot = (lineIndex) => {
 		const lineStart = lineCharOffsets[lineIndex];
@@ -73,23 +74,23 @@ export function mergeSyncCreatorLineTiming(prev, {
 		if (!Number.isInteger(lineStart) || lineEnd < lineStart || lineChars.length === 0) return null;
 
 		const directLine = linesByStart.get(lineStart);
-		const existingPart = currentLineData?.parallel?.parts?.find(part =>
+		const timingSource = directLine || linesByStart.get(ownersByIndex.get(lineIndex).start);
+		const existingPart = timingSource?.parallel?.parts?.find(part =>
 			Array.isArray(part?.ranges)
 			&& part.ranges.some(range =>
 				Number(range?.start) <= lineStart
 				&& Number(range?.end) >= lineEnd
 			)
 		);
-		const timingSource = directLine || currentLineData;
 		const chars = inheritSyncCreatorParallelPartChars({ ranges: [{ start: lineStart, end: lineEnd }] }, timingSource);
 		if (!Array.isArray(chars) || chars.length !== lineChars.length) return null;
 		const sliced = sliceSyncCreatorLineTiming(timingSource, lineStart, lineEnd);
 
-		const sourceSpeaker = directLine?.speaker || existingPart?.speaker || currentLineData?.speaker;
+		const sourceSpeaker = directLine?.speaker || existingPart?.speaker || timingSource?.speaker;
 		const speaker = normalizeSyncCreatorSpeaker(sourceSpeaker) || SYNC_CREATOR_DEFAULT_SPEAKER;
 		const speakerFallback = sanitizeSyncCreatorSpeakerFallback(
 			speaker,
-			directLine?.['speaker-fallback'] || existingPart?.['speaker-fallback'] || currentLineData?.['speaker-fallback'],
+			directLine?.['speaker-fallback'] || existingPart?.['speaker-fallback'] || timingSource?.['speaker-fallback'],
 			true,
 			sourceSpeaker
 		);
@@ -101,17 +102,17 @@ export function mergeSyncCreatorLineTiming(prev, {
 			hiddenRanges: sliced?.hiddenRanges || [],
 			styleRanges: sliced?.styleRanges || [],
 			granularity: normalizeSyncCreatorGranularity(
-				directLine?.granularity || existingPart?.granularity || currentLineData?.granularity
+				directLine?.granularity || existingPart?.granularity || timingSource?.granularity
 			),
 			speaker,
 			...(speakerFallback ? { 'speaker-fallback': speakerFallback } : {}),
 			'speaker-color': sanitizeSyncCreatorSpeakerColor(
 				speaker,
-				directLine?.['speaker-color'] || existingPart?.['speaker-color'] || currentLineData?.['speaker-color'],
+				directLine?.['speaker-color'] || existingPart?.['speaker-color'] || timingSource?.['speaker-color'],
 				true,
 				speakerFallback
 			),
-			kind: normalizeSyncCreatorKind(directLine?.kind || existingPart?.kind || currentLineData?.kind) || SYNC_CREATOR_DEFAULT_KIND
+			kind: normalizeSyncCreatorKind(directLine?.kind || existingPart?.kind || timingSource?.kind) || SYNC_CREATOR_DEFAULT_KIND
 		};
 	};
 

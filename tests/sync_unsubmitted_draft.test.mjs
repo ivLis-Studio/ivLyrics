@@ -59,6 +59,22 @@ test('sub-millisecond rounding is ignored but parallel timing is compared', () =
 	assert.equal(compare(left, right), false);
 });
 
+test('legacy compact line and vocal timing compare against their expanded editing marks', () => {
+	const compare = loadHelpers();
+	const compact = { version: 5, lines: [{ start: 0, end: 3, granularity: 'line', timing: 1, parallel: { parts: [
+		{ id: 'a', ranges: [{ start: 0, end: 3 }], granularity: 'word', timing: [[1, 2], [3, 3]] },
+	] } }] };
+	const expanded = structuredClone(compact);
+	expanded.lines[0].chars = [1, 1, 1, 1];
+	delete expanded.lines[0].timing;
+	expanded.lines[0].parallel.parts[0].chars = [2, 2, 3, 3];
+	delete expanded.lines[0].parallel.parts[0].timing;
+	assert.equal(compare(compact, expanded), true);
+	const changed = structuredClone(compact);
+	changed.lines[0].parallel.parts[0].timing[1][1] = 4;
+	assert.equal(compare(compact, changed), false);
+});
+
 test('unsubmitted comparison includes speaker styling, granularity and vocal part layout', () => {
 	const compare = loadHelpers();
 	for (const extra of [

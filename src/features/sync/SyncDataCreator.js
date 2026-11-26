@@ -535,7 +535,7 @@ export function createSyncDataCreator({
 			currentLineStart, currentExistingLineData, getMergedLineIndexesForStart, findMergedOwnerLineIndex,
 			isLineCoveredByMergedPrevious, findNavigableLineIndex, currentMergedLineIndexes,
 			currentLineMergedWithNext, currentLineCoveredByPrevious, previousNavigableLineIndex, nextNavigableLineIndex,
-			currentFullLineChars, currentAutoMergeSplitPoints, currentAutoMergeSplitPointSet, currentNextMergeLineIndex,
+			currentFullLineChars, currentAutoMergeSplitPoints, currentAutoMergeSplitPointSet, nextMergeLineIndexes,
 			canMergeCurrentLineWithNext, currentLineMeta, currentLineStyleRanges, getParallelTemplateForLineData,
 			currentParallelTemplate, currentParallelData, currentParallelParts, hasCurrentParallelParts, activeParallelPart,
 			activeParallelTargetId, currentSpeakerTextColor, currentSpeakerMutedColor, currentTextEffectKind,
@@ -691,7 +691,7 @@ export function createSyncDataCreator({
 			song: { lyricDocument, syncData, lineCharOffsets, lyricsLines },
 			line: {
 				currentLineIndex, currentLineStart, currentFullLineChars, currentExistingLineData, currentMergedLineIndexes,
-				currentNextMergeLineIndex, currentLineMergedWithNext, currentAutoMergeSplitPoints, currentAutoMergeSplitPointSet,
+				nextMergeLineIndexes, currentLineMergedWithNext, currentAutoMergeSplitPoints, currentAutoMergeSplitPointSet,
 				canMergeCurrentLineWithNext,
 			},
 			vocal: {
@@ -1055,9 +1055,6 @@ export function createSyncDataCreator({
 				multiVocalMode,
 				coverage: {
 					isLineCovered: isLineCoveredByMergedPrevious,
-					getMergedLineIndexes: getMergedLineIndexesForStart,
-					getParallelTemplate: getParallelTemplateForLineData,
-					mergeParallelTemplate: mergeSyncCreatorParallelTemplate,
 					getLineSpeaker: line => ({
 						speaker: normalizeSyncCreatorSpeaker(line.speaker) || SYNC_CREATOR_DEFAULT_SPEAKER,
 						'speaker-fallback': sanitizeSyncCreatorSpeakerFallback(line.speaker, line['speaker-fallback']),

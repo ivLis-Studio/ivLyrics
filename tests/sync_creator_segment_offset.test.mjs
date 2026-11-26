@@ -79,7 +79,7 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
         currentParallelData: null, currentParallelParts: [], currentLineChars: Array.from(rows[1]),
         currentLineCharRefs: [], currentLineMeta: { speaker: 'NORMAL', kind: 'vocal' },
         currentLineStyleRanges: [], activeParallelTargetId: 'full', hasCurrentParallelParts: false,
-        currentNextMergeLineIndex: 2, canMergeCurrentLineWithNext: true, isCurrentSyncTargetMetaComplete: true,
+        nextMergeLineIndexes: [2], canMergeCurrentLineWithNext: true, isCurrentSyncTargetMetaComplete: true,
         isLineCoveredByMergedPrevious: (index, linesByStart) => context.api.findMergedOwnerLineIndex(index, linesByStart) >= 0,
         showMissingMetaToast() { throw new Error('fixture unexpectedly required vocal metadata'); },
         currentLineDirection: 'ltr', currentSpeakerTextColor: '#fff', currentSpeakerMutedColor: '#777',
@@ -268,8 +268,9 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
                 char: context.lyricsFullTextChars[range.start + index],
             })))
             : context.currentFullLineChars.map((char, index) => ({ absoluteIndex: context.currentLineStart + index, localIndex: index, char }));
-        context.currentNextMergeLineIndex = context.currentMergedLineIndexes.at(-1) + 1;
-        context.canMergeCurrentLineWithNext = context.currentNextMergeLineIndex < rows.length;
+        context.nextMergeLineIndexes = context.api.getMergedLineIndexesForStart(context.currentMergedLineIndexes.at(-1) + 1);
+        context.canMergeCurrentLineWithNext = context.nextMergeLineIndexes.length > 0
+            && context.currentMergedLineIndexes.length + context.nextMergeLineIndexes.length <= 5;
         context.preview = useSyncCreatorPreviewTiming({
             react: context, syncData: context.syncData, lineCharOffsets,
             activeParallelPart: context.activeParallelPart, getRejoinedLineChars: context.api.getSyncCreatorRejoinedLineChars,
@@ -690,6 +691,42 @@ test('first autosave retains the loaded timing as the undo destination', () => {
     assert.equal(saved.historyCursorId, saved.history[1].id);
 });
 
+test('a manual checkpoint keeps the previous autosave when a vocal was edited after it', () => {
+    const editor = createEditor();
+    const source = editor.record();
+    editor.split(2);
+    const split = editor.record();
+    const originalHistory = draftStore.__test.mergeAutosaveRecord(null, split, source.draft);
+    const working = originalHistory.history.at(-1);
+    editor.render('b'); editor.shift(100);
+    const edited = editor.record();
+    const withCheckpoint = draftStore.__test.mergeCheckpointRecord(originalHistory, edited, { id: 'offset' });
+    assert.deepEqual(withCheckpoint.history.map(entry => entry.id), [originalHistory.history[0].id, working.id, 'offset']);
+    assert.deepEqual(withCheckpoint.history[1].snapshot, working.snapshot);
+
+    const undone = draftStore.__test.mergeRestoredRecord(withCheckpoint, working.id, working.snapshot, 1000);
+    editor.recover(plain(undone));
+    editor.render('b'); assert.deepEqual(editor.times(), [11.5, 11.75]);
+    editor.shift(200);
+    const fork = draftStore.__test.mergeAutosaveRecord(undone, { ...editor.record(), clientRevision: 1001 });
+    assert.deepEqual(fork.history.slice(0, 2).map(entry => entry.id), [originalHistory.history[0].id, working.id]);
+    assert.equal(fork.history.length, 3);
+    assert.ok(!fork.history.some(entry => entry.id === 'offset'));
+    assert.deepEqual(fork.history[1].snapshot, working.snapshot, 'new edits preserve their undo destination');
+    editor.recover(plain(fork));
+    editor.render('b'); assert.deepEqual(editor.times(), [11.7, 11.95]);
+});
+
+test('a manual checkpoint promotes an identical working entry without duplicating the edit', () => {
+    const editor = createEditor();
+    const baseline = editor.record();
+    editor.split(2);
+    const working = draftStore.__test.mergeAutosaveRecord(null, editor.record(), baseline.draft);
+    const checkpoint = draftStore.__test.mergeCheckpointRecord(working, editor.record(), { id: 'split' });
+    assert.deepEqual(checkpoint.history.map(entry => entry.kind), ['source', 'manual']);
+    assert.equal(checkpoint.historyCursorId, 'split');
+});
+
 test('restoring a checked checkpoint cannot overwrite a newer draft from another window', () => {
     const editor = createEditor();
     const baseline = editor.record();
@@ -946,6 +983,34 @@ test('merging another source row does not restore a previously removed split bou
     editor.api.unmergeCurrentLine(); editor.render();
     assert.equal(editor.context.currentParallelParts.length, 2, 'unmerging source rows keeps the earlier manual join');
     assert.deepEqual(plain(editor.api.getSyncCreatorRejoinedLineChars(editor.line())), expected);
+});
+
+test('merging into an existing group preserves every continuation and its vocal timing', async () => {
+    const rows = ['PRE', 'ABCD', 'EFGH', 'IJKL'];
+    const editor = createEditor({ rows });
+    editor.context.currentLineIndex = 3; editor.render();
+    editor.split(2);
+    editor.render('b'); editor.shift(-500);
+    const lastTiming = plain(editor.api.getSyncCreatorRejoinedLineChars(editor.line()));
+    editor.context.currentLineIndex = 2; editor.render();
+    editor.api.mergeCurrentLineWithNext(); editor.render();
+    assert.deepEqual(plain(editor.context.currentMergedLineIndexes), [2, 3]);
+
+    editor.context.currentLineIndex = 1; editor.render();
+    editor.api.mergeCurrentLineWithNext(); editor.render();
+    assert.deepEqual(plain(editor.context.currentMergedLineIndexes), [1, 2, 3]);
+    assert.deepEqual(plain(editor.api.getSyncCreatorRejoinedLineChars(editor.line())).slice(-4), lastTiming);
+    const exported = await editor.export();
+    const submitted = await editor.submit();
+    assert.deepEqual(plain(submitted.lines[1].parallel.parts), plain(exported.lines[1].parallel.parts));
+
+    editor.api.unmergeCurrentLine(); editor.render();
+    assert.deepEqual(plain(editor.api.getMergedLineIndexesForStart(2)), [2]);
+    editor.context.currentLineIndex = 3; editor.render();
+    assert.deepEqual(plain(editor.context.currentParallelParts.map(part => part.ranges)), [
+        [{ start: 11, end: 12 }], [{ start: 13, end: 14 }],
+    ]);
+    assert.deepEqual(plain(editor.api.getSyncCreatorRejoinedLineChars(editor.line())), lastTiming);
 });
 
 test('unmerging saved source rows keeps new and removed manual boundaries on the correct rows', async () => {

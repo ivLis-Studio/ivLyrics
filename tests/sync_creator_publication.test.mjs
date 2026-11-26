@@ -163,6 +163,39 @@ for (const step of ['materialize', 'compact']) {
 	});
 }
 
+test('several timing entries on one source row do not cover a later unrecorded row', async () => {
+	const dialogs = [];
+	const options = submitOptions({
+		confirm: message => { dialogs.push(message); return false; },
+		setBusy: () => assert.fail('declining incomplete submission must not lock the editor'),
+		translate: key => key,
+	}, { getSyncService: () => assert.fail('declined submission must stop before transport') }, () => true);
+	options.lyrics = { lines: ['AB', 'C'], offsets: [0, 2], chars: ['A', 'B', 'C'] };
+	options.syncData = { version: 5, lines: [{ start: 0, end: 0, chars: [1] }, { start: 1, end: 1, chars: [2] }] };
+	await submitSyncCreatorEdits(options);
+	assert.deepEqual(dialogs, ['syncCreator.incompleteConfirm']);
+});
+
+test('a materialized vocal with no timing blocks submission even if the editor template looks complete', async () => {
+	const errors = [];
+	const options = submitOptions({
+		setBusy: () => assert.fail('an unrecorded vocal cannot enter the submission pipeline'),
+		translate: key => key, toast: { error: message => errors.push(message) },
+	}, { getSyncService: () => assert.fail('an unrecorded vocal must not be submitted') }, () => true);
+	options.vocals.multiVocalMode = true;
+	options.vocals.metadata.sanitizeParallel = value => value;
+	Object.assign(options.vocals.coverage, {
+		getMergedLineIndexes: () => [0], getParallelTemplate: () => null,
+		getLineSpeaker: () => ({}), isSpeakerComplete: () => true,
+	});
+	options.timing.materialize = data => ({ ...data, lines: [{ ...data.lines[0], parallel: { parts: [
+		{ id: 'lead', ranges: [{ start: 0, end: 0 }], chars: [1] },
+		{ id: 'background', ranges: [{ start: 0, end: 0 }] },
+	] } }] });
+	await submitSyncCreatorEdits(options);
+	assert.deepEqual(errors, ['syncCreator.lineAllPartsMissingSync']);
+});
+
 test('the submitted provider is the same provider used to validate the snapshot', async () => {
 	const errors = [];
 	const options = submitOptions({

@@ -83,6 +83,12 @@ function createSyncCreatorSnapshotTools({
 			const numeric = Number(value);
 			return Number.isFinite(numeric) ? roundSyncCreatorTime(numeric) : null;
 		};
+		const canonicalTimes = (target, expectedLength) => {
+			const expanded = target?.timing === undefined || Array.isArray(target.chars)
+				? target : decodeSyncCreatorCompactTiming(target, expectedLength);
+			if (Array.isArray(expanded?.chars)) return expanded.chars.map(finiteTime);
+			return expanded?.timing === undefined ? [] : { invalidTiming: expanded.timing };
+		};
 		const canonicalRanges = (ranges) => (Array.isArray(ranges) ? ranges : []).map(range => [
 			Number(range?.start),
 			Number(range?.end)
@@ -90,7 +96,7 @@ function createSyncCreatorSnapshotTools({
 		return {
 			start: Number(line?.start),
 			end: Number(line?.end),
-			chars: (Array.isArray(line?.chars) ? line.chars : []).map(finiteTime),
+			chars: canonicalTimes(line, Number(line?.end) - Number(line?.start) + 1),
 			kind: normalizeSyncCreatorKind(line?.kind) || defaultKind,
 			speaker: normalizeSyncCreatorSpeaker(line?.speaker) || defaultSpeaker,
 			granularity: normalizeSyncCreatorGranularity(line?.granularity),
@@ -115,7 +121,7 @@ function createSyncCreatorSnapshotTools({
 				ranges: canonicalRanges(part?.ranges),
 				join: (Array.isArray(part?.ranges) ? part.ranges.slice(1) : [])
 					.map((_, index) => Number(part?.join?.[index] ?? 1)),
-				chars: (Array.isArray(part?.chars) ? part.chars : []).map(finiteTime),
+				chars: canonicalTimes(part, countSyncCreatorRangeChars(part?.ranges)),
 				kind: normalizeSyncCreatorKind(part?.kind) || defaultKind,
 				speaker: normalizeSyncCreatorSpeaker(part?.speaker) || defaultSpeaker,
 				granularity: normalizeSyncCreatorGranularity(part?.granularity || line?.granularity),
