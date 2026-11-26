@@ -1,4 +1,5 @@
 import { claimBrowserFullscreen } from "./browserFullscreenOwnership.mjs";
+import { cancelFullscreenAlbumTransition } from "./fullscreenAlbumViewTransition.mjs";
 import { getResearchFontSize } from "../../app/researchReaderSettings.mjs";
 
 const PORTAL_ID = "lyrics-fullscreen-container";
@@ -44,6 +45,7 @@ export function createLyricsFullscreenController({
 
     function setPresentation(nextPresentation) {
         if (disposed) return normalizePresentation(nextPresentation);
+        cancelFullscreenAlbumTransition(document, { pendingOnly: true });
         const normalized = rememberPresentation(nextPresentation);
         if (active) active.presentation = normalized;
         setState({ fullscreenPresentation: normalized });
@@ -120,6 +122,7 @@ export function createLyricsFullscreenController({
     function detachActive() {
         const session = active;
         active = null;
+        if (session) cancelFullscreenAlbumTransition(document);
         if (activeSessions.get(document) === session) activeSessions.delete(document);
         detachKeys();
         writeLayout({ requestedPresentation: null, usePageFullscreenUi: false, useBrowserFullscreen: false, portal: null });

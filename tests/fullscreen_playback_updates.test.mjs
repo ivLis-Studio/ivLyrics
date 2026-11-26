@@ -4,6 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 import { artworkUtils } from './artwork_harness.mjs';
 import { createFullscreenPlaybackContext } from "../src/features/fullscreen/fullscreenPlaybackContext.mjs";
+import { createFullscreenQueuePanel } from "../src/features/fullscreen/fullscreenQueuePanel.mjs";
 import { renderLyricsFullscreenOverlay } from "../src/lyrics/lyricsPageFullscreenView.mjs";
 import { getKaraokeRenderGranularity, KARAOKE, WORD_KARAOKE, SYNCED } from "../src/lyrics/lyricsRenderModes.mjs";
 
@@ -77,9 +78,11 @@ test("fullscreen context ignores pending artwork after disposal and skips lookup
   assert.equal(views.at(-1).name, "Fixture playlist");
 });
 
-// Run the actual overlay with persistent hooks, effects and event subscriptions.
-// Child components stay as elements so only work scheduled by the root is counted.
-const createHarness = ({ mode = "standard", visual = {}, windowOverrides = {}, documentOverrides = {}, timers = {} } = {}) => {
+// Run the overlay or an individual panel with persistent hooks and effects.
+const createHarness = ({
+  mode = "standard", visual = {}, windowOverrides = {}, documentOverrides = {}, timers = {},
+  createComponent, initialProps, configureSpotify,
+} = {}) => {
   const slots = [];
   const intervals = new Map();
   const listeners = new Map();
@@ -90,7 +93,7 @@ const createHarness = ({ mode = "standard", visual = {}, windowOverrides = {}, d
   let timerId = 0;
   let tree;
   let effects = [];
-  let props = { isFullscreen: true, presentationMode: mode };
+  let props = { isFullscreen: true, presentationMode: mode, ...initialProps };
   const sameDeps = (a, b) => a && b && a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
   const useState = (initial) => {
     const index = cursor++;
@@ -155,10 +158,12 @@ const createHarness = ({ mode = "standard", visual = {}, windowOverrides = {}, d
   vinyl.CompactAlbumVinyl = () => null;
   vinyl.PresentationSwitcher = () => null;
   const config = { visual: { "fullscreen-auto-hide-ui": false, ...visual } };
+  const spotify = { React: react, Player: player };
+  configureSpotify?.(spotify);
   const context = vm.createContext({
     AbortController,
     Utils: artworkUtils,
-    Spicetify: { React: react, Player: player },
+    Spicetify: spotify,
     CONFIG: config,
     I18n: { t: (key) => key },
     window: { ivLyricsVinylPlayerMode: vinyl, ...windowOverrides },
@@ -168,7 +173,10 @@ const createHarness = ({ mode = "standard", visual = {}, windowOverrides = {}, d
     ...timers,
     console,
   });
-  vm.runInContext(source, context);
+  const component = createComponent ? createComponent({ react, spotify }) : (() => {
+    vm.runInContext(source, context);
+    return context.window.FullscreenOverlay;
+  })();
   const render = () => {
     let attempts = 0;
     do {
@@ -176,7 +184,7 @@ const createHarness = ({ mode = "standard", visual = {}, windowOverrides = {}, d
       dirty = false;
       cursor = 0;
       effects = [];
-      tree = context.window.FullscreenOverlay(props);
+      tree = component(props);
       renders++;
       for (const effect of effects) effect();
     } while (dirty);
@@ -214,6 +222,104 @@ const elements = (node) => {
 };
 const byClass = (tree, className) => elements(tree).find((node) => node.props.className?.split(" ").includes(className));
 const text = (node) => Array.isArray(node) ? node.map(text).join("") : node && typeof node === "object" ? text(node.props.children) : typeof node === "string" ? node : "";
+
+function createQueueHarness() {
+  const waiting = new Map();
+  const queueCallbacks = new Set();
+  const requests = [];
+  let timerId = 0;
+  let spotify;
+  const h = createHarness({
+    initialProps: { show: true },
+    configureSpotify(runtime) {
+      spotify = runtime;
+      runtime.Player.origin = { _events: {
+        addListener: (_name, callback) => queueCallbacks.add(callback),
+        removeListener: (_name, callback) => queueCallbacks.delete(callback),
+      } };
+      runtime.Player.playUri = (...args) => requests.push(args);
+      runtime.Queue = {
+        nextUp: [
+          { uri: "spotify:track:repeat", uid: "repeat1", metadata: { title: "First", context_uri: "spotify:album:queue" } },
+          { uri: "spotify:track:repeat", uid: "repeat2", metadata: { title: "Second", context_uri: "spotify:album:queue" } },
+          { uri: "spotify:track:last", uid: "last", metadata: { title: "Last" } },
+        ],
+      };
+    },
+    createComponent: (runtime) => createFullscreenQueuePanel({
+      ...runtime, translate: key => key,
+      timers: {
+        setInterval: () => ++timerId,
+        clearInterval() {},
+        setTimeout(callback, delay) {
+          waiting.set(++timerId, { callback, delay });
+          return timerId;
+        },
+        clearTimeout(id) { waiting.delete(id); },
+      },
+    }),
+  });
+  return Object.assign(h, {
+    spotify, waiting, queueCallbacks, requests,
+    titles: () => elements(h.tree)
+      .filter(node => node.props.className === "fullscreen-queue-item-title").map(text),
+    click(title) {
+      const item = elements(h.tree).find(node =>
+        node.props.className === "fullscreen-queue-item" && text(node).startsWith(title)
+      );
+      assert.ok(item, title);
+      item.props.onClick();
+      h.flush();
+    },
+  });
+}
+
+test("fullscreen queue selects the exact occurrence of a repeated track", () => {
+  const h = createQueueHarness();
+  h.click("Second");
+  assert.deepEqual(h.titles(), ["Second", "Last"]);
+  assert.deepEqual(h.requests, [
+    ["spotify:album:queue", {}, { skipTo: { uri: "spotify:track:repeat", uid: "repeat2" } }],
+  ]);
+  const [fallback] = h.waiting.values();
+  assert.equal(fallback.delay, 900);
+  fallback.callback();
+  assert.deepEqual(h.requests.at(-1), ["spotify:track:repeat"]);
+  h.unmount();
+});
+
+test("hiding the fullscreen queue disposes its pending direct-play fallback", () => {
+  const h = createQueueHarness();
+  h.click("First");
+  const [fallback] = h.waiting.values();
+  h.update({ show: false });
+  assert.equal(h.waiting.size, 0);
+  fallback.callback();
+  assert.equal(h.requests.length, 1);
+  h.unmount();
+});
+
+test("replacing a fullscreen queue player detaches listeners and retires an old track selection", () => {
+  const h = createQueueHarness();
+  const [oldCallback] = h.queueCallbacks;
+  h.click("First");
+  const [fallback] = h.waiting.values();
+  h.spotify.Player = {
+    data: h.player.data,
+    addEventListener() {},
+    removeEventListener() {},
+    playUri() { assert.fail("old track selection reached the replacement player"); },
+  };
+  h.update();
+  assert.equal(h.listenerCount, 0);
+  assert.equal(h.queueCallbacks.size, 0);
+  assert.equal(h.waiting.size, 0);
+  fallback.callback();
+  oldCallback({ data: { nextUp: [{ uri: "spotify:track:old", metadata: { title: "Stale" } }] } });
+  h.flush();
+  assert.ok(!h.titles().includes("Stale"));
+  h.unmount();
+});
 
 test("the focused stage receives the same word, character or line mode selected by the lyrics page", () => {
   const h = createHarness({ mode: "vinyl" });
@@ -685,6 +791,80 @@ test("rapid mode changes keep the latest selection and old completion cannot cle
   assert.ok(classes.has("is-lp-view-switch"), "stale completion must not remove the active direction");
   transitions.at(-1).finish();
   await new Promise(resolve => setImmediate(resolve));
+  assert.equal(classes.size, 0);
+  h.unmount();
+});
+
+const createDeferredFullscreenTransitions = () => {
+  const classes = new Set(), transitions = [];
+  const documentOverrides = {
+    documentElement: { classList: {
+      add: (...names) => names.forEach(name => classes.add(name)),
+      remove: (...names) => names.forEach(name => classes.delete(name)),
+    } },
+    startViewTransition(update) {
+      let finish;
+      const transition = { ready: Promise.resolve(), finished: new Promise(resolve => { finish = resolve; }),
+        skipped: false, commit: update, finish: () => finish(), skipTransition() { this.skipped = true; } };
+      transitions.push(transition);
+      return transition;
+    },
+  };
+  return { classes, transitions, documentOverrides, windowOverrides: { ReactDOM: { flushSync: update => update() } } };
+};
+
+test("a skipped transition cannot commit an earlier presentation after a newer choice", async () => {
+  const { classes, transitions, ...options } = createDeferredFullscreenTransitions();
+  const changes = [];
+  const h = createHarness({ ...options, mode: "compact-vinyl" });
+  h.update({ onPresentationModeChange: mode => changes.push(mode) });
+  const choose = elements(h.tree).find(node => node.type === h.vinyl.PresentationSwitcher).props.onChange;
+
+  choose("video");
+  choose("vinyl");
+  assert.equal(transitions[0].skipped, true);
+  transitions[1].commit();
+  transitions[0].commit();
+  transitions[0].finish();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(changes, ["vinyl"]);
+  assert.equal(classes.has("is-lp-view-switch"), true);
+  transitions[1].finish();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(classes.size, 0);
+  h.unmount();
+});
+
+test("closing fullscreen retires a pending album change before the browser runs its update", () => {
+  const { classes, transitions, ...options } = createDeferredFullscreenTransitions();
+  const changes = [];
+  const h = createHarness({ ...options, mode: "standard", visual: { "fullscreen-focus-presentation": "vinyl" } });
+  h.update({ onPresentationModeChange: mode => changes.push(mode) });
+
+  byClass(h.tree, "lyrics-fullscreen-album-container").props.onClick();
+  h.unmount();
+  assert.equal(transitions[0].skipped, true);
+  transitions[0].commit();
+  transitions[0].finish();
+  assert.deepEqual(changes, []);
+  assert.equal(classes.size, 0);
+});
+
+test("a non-animated presentation change supersedes an outstanding album transition", () => {
+  const { classes, transitions, ...options } = createDeferredFullscreenTransitions();
+  const changes = [];
+  const h = createHarness({ ...options, mode: "compact-vinyl" });
+  h.update({ onPresentationModeChange: mode => changes.push(mode) });
+  const choose = () => elements(h.tree).find(node => node.type === h.vinyl.PresentationSwitcher).props.onChange;
+
+  choose()("video");
+  h.config.visual["reduce-motion"] = true;
+  h.update();
+  choose()("standard");
+  transitions[0].commit();
+  transitions[0].finish();
+  assert.equal(transitions[0].skipped, true);
+  assert.deepEqual(changes, ["standard"]);
   assert.equal(classes.size, 0);
   h.unmount();
 });

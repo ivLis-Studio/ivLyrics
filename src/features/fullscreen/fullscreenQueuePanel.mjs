@@ -31,7 +31,15 @@ export function createFullscreenQueuePanel({ react, spotify, translate, timers =
         const [activeTab, setActiveTab] = useState('queue'); // 'queue' or 'recent'
         const nextTracksRef = useRef([]);
         const emptyQueueTimerRef = useRef(null);
-        const queuePlayRequestSeqRef = useRef(0);
+        const fallbackPlayTimerRef = useRef(null);
+        const player = spotify.Player;
+        const queueEvents = player.origin?._events;
+
+        const cancelFallbackPlay = useCallback(() => {
+            if (fallbackPlayTimerRef.current === null) return;
+            timers.clearTimeout(fallbackPlayTimerRef.current);
+            fallbackPlayTimerRef.current = null;
+        }, []);
 
         const commitNextTracks = useCallback((tracks, { deferEmpty = false } = {}) => {
             const next = Array.isArray(tracks) ? tracks : [];
@@ -58,10 +66,12 @@ export function createFullscreenQueuePanel({ react, spotify, translate, timers =
         // 재생 대기열 업데이트
         useEffect(() => {
             if (!show || !isFullscreen) return;
+            let active = true;
 
             const updateQueue = (queueData = null) => {
+                if (!active || spotify.Player !== player) return;
                 try {
-                    const playerData = spotify.Player.data;
+                    const playerData = player.data;
                     const queueState = queueData?.data || spotify.Queue || {};
                     const prevSource = queueState.prevTracks || spotify.Queue?.prevTracks || [];
 
@@ -91,31 +101,38 @@ export function createFullscreenQueuePanel({ react, spotify, translate, timers =
 
             // 곡 변경 이벤트 리스너 (주요 업데이트 트리거)
             const songChangeHandler = () => updateQueue();
-            spotify.Player.addEventListener("songchange", songChangeHandler);
+            player.addEventListener("songchange", songChangeHandler);
             const queueUpdateHandler = (payload) => updateQueue(payload);
-            spotify.Player.origin?._events?.addListener?.("queue_update", queueUpdateHandler);
+            queueEvents?.addListener?.("queue_update", queueUpdateHandler);
 
             return () => {
+                active = false;
+                cancelFallbackPlay();
                 timers.clearInterval(interval);
                 if (emptyQueueTimerRef.current) {
                     timers.clearTimeout(emptyQueueTimerRef.current);
                     emptyQueueTimerRef.current = null;
                 }
-                spotify.Player.removeEventListener("songchange", songChangeHandler);
-                spotify.Player.origin?._events?.removeListener?.("queue_update", queueUpdateHandler);
+                player.removeEventListener("songchange", songChangeHandler);
+                queueEvents?.removeListener?.("queue_update", queueUpdateHandler);
             };
-        }, [show, isFullscreen, commitNextTracks]);
+        }, [show, isFullscreen, player, queueEvents, commitNextTracks, cancelFallbackPlay]);
 
         // 곡 클릭 시 재생
         const handleTrackClick = useCallback((track) => {
-            if (!track?.uri) return;
+            if (!track?.uri || player !== spotify.Player) return;
+            cancelFallbackPlay();
             try {
-                const selectedIndex = nextTracks.findIndex((t) =>
-                    (track.key && t.key === track.key) ||
-                    (track.uid && t.uid === track.uid) || t.uri === track.uri
-                );
+                const tracks = nextTracksRef.current;
+                let selectedIndex = tracks.findIndex((entry) => entry.key === track.key);
+                if (selectedIndex < 0 && track.uid) {
+                    selectedIndex = tracks.findIndex((entry) => entry.uid === track.uid);
+                }
+                if (selectedIndex < 0) {
+                    selectedIndex = tracks.findIndex((entry) => entry.uri === track.uri);
+                }
                 if (selectedIndex >= 0) {
-                    const selected = nextTracks[selectedIndex];
+                    const selected = tracks[selectedIndex];
                     const selectedTrackData = {
                         title: selected.title || "Unknown",
                         artist: selected.artist || "Unknown",
@@ -123,36 +140,33 @@ export function createFullscreenQueuePanel({ react, spotify, translate, timers =
                         uri: selected.uri
                     };
                     setCurrentTrack((prev) => areTrackInfoEqual(prev, selectedTrackData) ? prev : selectedTrackData);
-                    const remainingTracks = nextTracks.slice(selectedIndex + 1);
-                    commitNextTracks(remainingTracks);
+                    commitNextTracks(tracks.slice(selectedIndex + 1));
                 }
                 const contextUri = track.canPlayInContext ? track.contextUri : "";
-                const playDirectly = () => spotify.Player.playUri(track.uri);
-                const playRequestSeq = ++queuePlayRequestSeqRef.current;
-
                 if (contextUri) {
                     const options = { skipTo: { uri: track.uri } };
                     if (track.uid) {
                         options.skipTo.uid = track.uid;
                     }
-                    spotify.Player.playUri(contextUri, {}, options);
-                    timers.setTimeout(() => {
-                        if (queuePlayRequestSeqRef.current !== playRequestSeq) {
-                            return;
-                        }
-                        const activeUri = spotify.Player.data?.item?.uri || "";
+                    player.playUri(contextUri, {}, options);
+                    const fallback = timers.setTimeout(() => {
+                        if (fallbackPlayTimerRef.current !== fallback) return;
+                        fallbackPlayTimerRef.current = null;
+                        if (spotify.Player !== player) return;
+                        const activeUri = player.data?.item?.uri || "";
                         if (activeUri !== track.uri) {
-                            playDirectly();
+                            player.playUri(track.uri);
                         }
                     }, 900);
+                    fallbackPlayTimerRef.current = fallback;
                     return;
                 }
 
-                playDirectly();
+                player.playUri(track.uri);
             } catch (e) {
                 console.warn('[FullscreenOverlay] Failed to play track:', e);
             }
-        }, [nextTracks, commitNextTracks]);
+        }, [player, commitNextTracks, cancelFallbackPlay]);
 
         const upNextTracks = useMemo(
             () => nextTracks.filter((track) => !isRecommendedQueueTrack(track)),
