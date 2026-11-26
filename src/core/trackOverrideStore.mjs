@@ -9,9 +9,9 @@ import {
 
 export const REQUIRE_TRACK_OVERRIDE_COMMIT = Object.freeze({ requireCommit: true });
 
-function createTrackOverrideStore({ dbName, storeName, label, setting, methods, normalize, getIndexedDB, sharePendingOpen, debug, logger = console }) {
+function createTrackOverrideStore({ dbName, storeName, label, setting, methods, normalize, getIndexedDB, waitForDatabaseRecovery, sharePendingOpen, debug, logger = console }) {
   const [getName, setName, clearName] = methods;
-  const open = createTrackPreferenceDatabase({ dbName, storeName, label, getIndexedDB, sharePendingOpen, debug, logger });
+  const open = createTrackPreferenceDatabase({ dbName, storeName, label, getIndexedDB, waitForDatabaseRecovery, sharePendingOpen, debug, logger });
   return {
     async [getName](trackUri) {
       try {

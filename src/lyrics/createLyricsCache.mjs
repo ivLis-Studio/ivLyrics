@@ -33,6 +33,7 @@ export const LYRICS_CACHE_INVALIDATED_EVENT = "ivLyrics:lyrics-cache-invalidated
 
 export function createLyricsCache({
     getIndexedDB,
+    waitForDatabaseRecovery,
     getKeyRange,
     getPersistentStorage,
     onInvalidating,
@@ -123,7 +124,9 @@ export function createLyricsCache({
             if (this._db) return this._db;
             if (this._dbPromise) return this._dbPromise;
 
-            this._dbPromise = openLyricsCacheDatabase(getIndexedDB(), this.DB_NAME, this.DB_VERSION)
+            const open = () => openLyricsCacheDatabase(getIndexedDB(), this.DB_NAME, this.DB_VERSION);
+            const pending = waitForDatabaseRecovery?.();
+            this._dbPromise = (pending ? Promise.resolve(pending).then(open) : open())
                 .then(db => {
                     const reset = () => {
                         if (this._db !== db) return;

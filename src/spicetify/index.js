@@ -186,12 +186,13 @@ window.ivLyricsBackgroundFlagIds = IVLYRICS_BACKGROUND_FLAG_IDS;
 window.ivLyricsGetGlobalBackgroundMode = getIvLyricsGlobalBackgroundMode;
 window.ivLyricsNormalizeTrackBackgroundOverride = normalizeIvLyricsTrackBackgroundOverride;
 
+const settingsPersistence = initializeSettingsPersistence();
 const TrackSyncDB = getTrackSyncOffsetStore(window);
 const trackOverrides = getTrackOverrideStores(window);
 const { TrackLyricsProviderDB, TrackBackgroundDB } = trackOverrides;
 
 const StorageManager = publishSettingsStorage(window, createSettingsStorage({
-  persistence: initializeSettingsPersistence(),
+  persistence: settingsPersistence,
   localStorage,
   getSpicetifyStorage: () => Spicetify.LocalStorage,
   offsetStore: TrackSyncDB,

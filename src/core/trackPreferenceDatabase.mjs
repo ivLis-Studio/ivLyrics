@@ -35,6 +35,7 @@ export function createTrackPreferenceDatabase({
   storeName,
   version = 1,
   getIndexedDB,
+  waitForDatabaseRecovery,
   sharePendingOpen = false,
   label = "",
   debug,
@@ -44,6 +45,7 @@ export function createTrackPreferenceDatabase({
   const prefix = label ? `[ivLyrics] ${label} IndexedDB` : "[ivLyrics] IndexedDB";
   const openDatabase = async () => {
     if (database) return database;
+    if (waitForDatabaseRecovery) await waitForDatabaseRecovery();
     const db = await openTrackPreferenceDatabase(getIndexedDB(), { dbName, storeName, version }, {
       onStoreCreated: () => debug(`${prefix} object store created`),
       onOpenError: error => logger.error(`${prefix} error:`, error),

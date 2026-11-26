@@ -1,5 +1,6 @@
 import { createRuntimeDebugLogger } from "#ivlyrics/spicetify/runtimeDebug.mjs";
 import { awaitIdbRequest, openIdbDatabase, putIdbRecord, runIdbTransaction } from "../../core/indexedDbTransaction.mjs";
+import { readSettingsDatabaseRecovery } from "../../core/settingsRuntime.mjs";
 
 export const SELECTED_VIDEO_DATABASE = Object.freeze({ name: "ivLyricsSelectedVideos", storeName: "selectedVideos" });
 const STORE_NAME = SELECTED_VIDEO_DATABASE.storeName;
@@ -29,8 +30,9 @@ function putSelectedVideo(store, trackUri, videoInfo) {
   return putIdbRecord(store, trackUri, { ...videoInfo, trackUri, savedAt: Date.now() });
 }
 
-export function createSelectedVideoStore({ getIndexedDb, logDebug = () => {} }) {
+export function createSelectedVideoStore({ getIndexedDb, waitForDatabaseRecovery, logDebug = () => {} }) {
   async function withDatabase(operation) {
+    if (waitForDatabaseRecovery) await waitForDatabaseRecovery();
     const db = await openSelectedVideoDatabase(getIndexedDb());
     try {
       return await operation(db);
@@ -136,5 +138,6 @@ export function createSelectedVideoStore({ getIndexedDb, logDebug = () => {} }) 
 
 export const selectedVideoStore = createSelectedVideoStore({
   getIndexedDb: () => globalThis.indexedDB,
+  waitForDatabaseRecovery: () => readSettingsDatabaseRecovery(globalThis),
   logDebug: createRuntimeDebugLogger(globalThis),
 });

@@ -6,6 +6,7 @@ import {
   TRACK_SYNC_OFFSETS_RESTORED_KEY, TRACK_SYNC_OFFSETS_STORAGE_KEY,
 } from "#ivlyrics/core/trackSyncOffsetStore.mjs";
 import { createSettingsStorage } from "#ivlyrics/core/createSettingsStorage.mjs";
+import { publishSettingsPersistence } from "#ivlyrics/core/settingsRuntime.mjs";
 
 // Minimal fake IndexedDB that properly simulates transaction completion
 const createFakeIndexedDB = (initialData = {}) => {
@@ -158,6 +159,30 @@ test("the startup and page offset APIs wait for legacy migration before reading 
   assert.deepEqual(await page.getAllOffsets(), { [firstTrack]: 600, [otherTrack]: 250 });
   assert.equal(host.indexedDB.opens, 1);
   assert.equal(values.has(key), false);
+});
+
+test("offset playback and legacy migration wait for rollback of an interrupted database restore", async () => {
+  const track = "spotify:track:fixture";
+  const values = new Map([[TRACK_SYNC_OFFSETS_STORAGE_KEY, JSON.stringify({ [track]: 125 })]]);
+  const indexedDB = createFakeIndexedDB({ [track]: 900, [TRACK_SYNC_OFFSETS_RESTORED_KEY]: true });
+  const host = {
+    indexedDB,
+    localStorage: { getItem: key => values.get(key), removeItem: key => values.delete(key) },
+  };
+  const recovery = Promise.withResolvers();
+  publishSettingsPersistence(host, { databasesReady: recovery.promise });
+  const store = getTrackSyncOffsetStore(host);
+  const read = store.getOffset(track);
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(indexedDB.opens, 0);
+    assert.equal(values.has(TRACK_SYNC_OFFSETS_STORAGE_KEY), true);
+  } finally {
+    indexedDB.data.clear();
+    recovery.resolve();
+  }
+  assert.equal(await read, 125);
+  assert.equal(values.has(TRACK_SYNC_OFFSETS_STORAGE_KEY), false);
 });
 
 test("concurrent reads reuse a single connection and reopen after a failed attempt", async () => {

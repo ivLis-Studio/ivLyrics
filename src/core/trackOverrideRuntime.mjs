@@ -2,6 +2,7 @@ import { normalizeIvLyricsTrackBackgroundOverride } from "../lyrics/backgroundMo
 import { getRuntimeService, publishRuntimeService } from "../spicetify/runtimeServices.mjs";
 import { createRuntimeDebugLogger } from "../spicetify/runtimeDebug.mjs";
 import { createTrackOverrideStores } from "./trackOverrideStore.mjs";
+import { readSettingsDatabaseRecovery } from "./settingsRuntime.mjs";
 
 const serviceKey = Symbol.for("ivLyrics.trackOverrideStores");
 
@@ -16,6 +17,7 @@ export function getTrackOverrideStores(host, options = {}) {
     } = options;
     const stores = createTrackOverrideStores({
         getIndexedDB, sharePendingOpen: true, debug, logger,
+        waitForDatabaseRecovery: () => readSettingsDatabaseRecovery(host),
         normalizeBackground: normalizeIvLyricsTrackBackgroundOverride,
     });
     for (const [name, store] of Object.entries(stores)) {

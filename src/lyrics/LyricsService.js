@@ -1,5 +1,5 @@
 import { createRuntimeDebugLogger } from "#ivlyrics/spicetify/runtimeDebug.mjs";
-import { readSettingsPersistence, readSettingsStorage } from "../core/settingsRuntime.mjs";
+import { readSettingsDatabaseRecovery, readSettingsPersistence, readSettingsStorage } from "../core/settingsRuntime.mjs";
 import { readSyncDataCodec } from "../features/sync/syncDataCodecRuntime.mjs";
 // ============================================
 // LyricsService Extension for ivLyrics
@@ -182,6 +182,7 @@ export default function LyricsServiceExtension() {
 
     const LyricsCache = createLyricsCache({
         getIndexedDB: () => indexedDB,
+        waitForDatabaseRecovery: () => readSettingsDatabaseRecovery(window),
         getKeyRange: () => IDBKeyRange,
         getPersistentStorage: () => globalThis.navigator?.storage,
         onInvalidating: invalidateLyricsSourceForCache,

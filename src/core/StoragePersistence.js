@@ -3,6 +3,7 @@ import { isIvLyricsRoute } from "../spicetify/lyricsRoute.mjs";
 import { requestAppRouteReload } from "../spicetify/routeReload.mjs";
 import { publishSettingsPersistence, readSettingsPersistence } from "./settingsRuntime.mjs";
 import { createIndexedDbBackup } from "./indexedDbBackup.mjs";
+import { hasInterruptedSettingsImport } from "./settingsImportJournal.mjs";
 
 const PLATFORM_STORAGE_WAIT_MS = 3000;
 const PLATFORM_STORAGE_RETRY_MS = 100;
@@ -46,23 +47,29 @@ export default function initializeSettingsPersistence() {
   const existing = readSettingsPersistence(window);
   if (existing?.ready) return existing;
 
+  // The database restore may need the track-offset receipt owned by settings
+  // import recovery. Clean starts can check the database journal in parallel.
+  let waitForSettingsImport = true;
+  try { waitForSettingsImport = hasInterruptedSettingsImport(localStorage); }
+  catch { /* Wait for settings recovery if native storage is unavailable. */ }
+  let recoveredSettings;
   const { api, startRecovery } = createSettingsPersistence({
     getLocalStorage: () => localStorage,
     getPlatformStorage,
     waitForInitialPlatformStorage: isPlatformStorageReady() ? null : waitForPlatformStorage,
     getIndexedDB: () => window.indexedDB,
-    onRecovered: reloadRecoveredSettings,
+    onRecovered: recovery => { recoveredSettings = recovery; },
     warn: (...args) => console.warn(...args),
   });
   publishSettingsPersistence(window, api);
-  api.ready = startRecovery().then(async result => {
-    try {
-      // A forced quit can lose recent localStorage writes. Check the
-      // IndexedDB journal itself before serving the restored settings.
-      await createIndexedDbBackup({ readIndexedDb: () => window.indexedDB }).recover();
-    } catch (error) {
+  const settingsReady = startRecovery();
+  const recoverDatabases = () => createIndexedDbBackup({ readIndexedDb: () => window.indexedDB }).recover();
+  api.databasesReady = (waitForSettingsImport ? settingsReady.then(recoverDatabases) : recoverDatabases())
+    .catch(error => {
       console.warn("[ivLyrics] Could not recover the interrupted database restore.", error);
-    }
+    });
+  api.ready = Promise.all([settingsReady, api.databasesReady]).then(([result]) => {
+    if (recoveredSettings) reloadRecoveredSettings(recoveredSettings);
     return result;
   });
   return api;

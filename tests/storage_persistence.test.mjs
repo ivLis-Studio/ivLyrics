@@ -22,6 +22,7 @@ const tickUntil = async (predicate) => {
 
 const createHarness = ({
   local = {}, synchronous = null, indexed = null, deferRead = false, deferPlatformStorage = false, namespace = "test-user", receipt,
+  deferDatabaseCheck = false,
   initialBundle = source,
 } = {}) => {
   const values = local instanceof Map ? local : new Map(Object.entries(local));
@@ -32,6 +33,7 @@ const createHarness = ({
   const timers = [];
   const historyChanges = [];
   let synchronousRecord = clone(synchronous);
+  const databaseCheck = deferDatabaseCheck ? Promise.withResolvers() : null;
   let indexedRecord = clone(indexed);
   let autoComplete = true;
   let failSync = false;
@@ -93,7 +95,7 @@ const createHarness = ({
     location: { reload: () => {} },
     setTimeout: (callback, delay) => timers.push({ callback, delay }),
     indexedDB: {
-      databases: async () => [],
+      databases: async () => databaseCheck ? databaseCheck.promise : [],
       open: name => {
         const request = {};
         queueMicrotask(() => {
@@ -154,6 +156,7 @@ const createHarness = ({
     get hasReadRequest() { return !!readRequest; },
     get routePersistence() { return window.fixtureRoutePersistence; },
     runStartup() { vm.runInContext(source, context); },
+    completeDatabaseCheck() { databaseCheck.resolve([]); },
     makePlatformStorageReady() { window.Spicetify.Platform.LocalStorageAPI = platformStorage; },
     set autoComplete(value) { autoComplete = value; },
     set failSync(value) { failSync = value; },
@@ -188,6 +191,31 @@ test("the route can acquire persistence before the startup bundle with one recov
   storage.setItem(settingKey, "41");
   await harness.api.flush();
   assert.equal(harness.indexedRecord.settings[settingKey], "41");
+});
+
+test("settings recovery does not navigate or reload before database rollback has finished", async () => {
+  const h = createHarness({
+    deferDatabaseCheck: true,
+    indexed: { revision: 42, settings: { [settingKey]: "37" } },
+  });
+  await tickUntil(() => h.values.get(settingKey) === "37");
+  assert.deepEqual(h.historyChanges, []);
+  assert.deepEqual(h.timers, []);
+  h.completeDatabaseCheck();
+  await h.api.ready;
+  assert.deepEqual(h.historyChanges, ["/"]);
+  assert.equal(h.timers.length, 1);
+});
+
+test("clean database startup does not wait for the Spotify settings namespace", async () => {
+  const h = createHarness({ deferPlatformStorage: true });
+  let databasesReady = false;
+  h.api.databasesReady.then(() => { databasesReady = true; });
+  await tickUntil(() => databasesReady);
+  assert.equal(h.openConnections, 0);
+  h.makePlatformStorageReady();
+  h.timers.shift().callback();
+  await h.api.ready;
 });
 
 test("a settings burst keeps immediate local and synchronous backups but coalesces the waiting IndexedDB snapshot", async () => {

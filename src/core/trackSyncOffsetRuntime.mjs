@@ -1,6 +1,7 @@
 import { getRuntimeService, publishRuntimeService } from "../spicetify/runtimeServices.mjs";
 import { createRuntimeDebugLogger } from "../spicetify/runtimeDebug.mjs";
 import { createTrackSyncOffsetStore, migrateTrackSyncOffsets } from "./trackSyncOffsetStore.mjs";
+import { readSettingsDatabaseRecovery } from "./settingsRuntime.mjs";
 
 const SERVICE_NAME = "TrackSyncDB";
 
@@ -19,7 +20,8 @@ export function getTrackSyncOffsetStore(host, options = {}) {
         getItem: (key) => readLocalStorage()?.getItem(key),
         removeItem: (key) => readLocalStorage()?.removeItem(key),
     };
-    const migration = migrateTrackSyncOffsets({ localStorage, offsetStore: store, debug, logger });
+    const migration = Promise.resolve(readSettingsDatabaseRecovery(host))
+        .then(() => migrateTrackSyncOffsets({ localStorage, offsetStore: store, debug, logger }));
     const afterMigration = (operation) => async (...args) => {
         await migration;
         return operation(...args);
