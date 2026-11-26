@@ -521,6 +521,35 @@ if (builtVersion) {
         assert.equal(readFileSync(join(fx.root, 'registered-handler'), 'utf8').trim(), fx.backupBundle);
     });
 
+    test('a macOS upgrade keeps its existing launcher available until the replacement registers', {
+        skip: !canRun || process.platform !== 'darwin',
+    }, context => {
+        const archive = readFileSync(new URL('../dist/ivLyrics.zip', import.meta.url));
+        const fx = installerFixture(context, {
+            archive, releaseVersion: builtVersion, failProtocolRegistration: true,
+        });
+        const bundle = join(fx.app, 'updater/macos/ivLyrics Updater.app');
+        const marker = join(bundle, 'previous-marker');
+        mkdirSync(bundle, { recursive: true });
+        writeFileSync(marker, 'previous launcher');
+        writeFileSync(join(fx.root, 'default-handler'), `kr.ivlis.ivlyrics.updater\n${bundle}\n`);
+
+        const failed = fx.run();
+        assert.equal(failed.status, 1, failed.stdout + failed.stderr);
+        assert.match(failed.stdout, /Updater protocol registration failed/);
+        assert.equal(existsSync(marker), true, 'the in-app launcher must survive replacing the install directory');
+        assert.equal(readFileSync(marker, 'utf8'), 'previous launcher');
+        assert.ok(!fx.readLaunchServices().includes('-u'));
+        assert.equal(readFileSync(join(fx.app, 'version.txt'), 'utf8').trim(), builtVersion);
+
+        fx.repairProtocolRegistration();
+        const repaired = fx.run();
+        assert.equal(repaired.status, 0, repaired.stdout + repaired.stderr);
+        assert.ok(existsSync(join(bundle, 'Contents/Info.plist')));
+        assert.ok(!existsSync(marker));
+        assert.deepEqual(fx.readEvents().filter(event => event.startsWith('apply:')), [`apply:${builtVersion}`]);
+    });
+
     test('the macOS installer removes only the stale ivLyrics handler registration', {
         skip: !canRun || process.platform !== 'darwin',
     }, context => {

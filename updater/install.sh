@@ -299,6 +299,18 @@ verify_installation() {
     done <<< "$runtime_files"
 }
 
+preserve_macos_updater_bundle() {
+    local target_dir="$1/updater/macos"
+    local bundle_name="ivLyrics Updater.app"
+    local previous_bundle="$FINAL_APP_DIR/updater/macos/$bundle_name"
+    [ -d "$previous_bundle" ] && [ "$(uname -s)" = Darwin ] || return 0
+    app_path_exists "$target_dir/$bundle_name" && return 0
+
+    # The signed launcher points at the same updater script path after the swap.
+    mkdir -p -- "$target_dir" &&
+        /usr/bin/ditto "$previous_bundle" "$target_dir/$bundle_name"
+}
+
 register_updater_protocol() {
     local app_dir="$TARGET_DIR/$FINAL_APP_NAME"
     local register_script="$app_dir/updater/unix/register-updater-protocol.sh"
@@ -808,6 +820,11 @@ if ! verify_installation "$EXTRACTED_DIR"; then
     exit 1
 fi
 print_substep "Extracted release verified" "success"
+
+if ! preserve_macos_updater_bundle "$EXTRACTED_DIR"; then
+    print_substep "Could not preserve the existing macOS updater. The installation is unchanged." "error"
+    exit 1
+fi
 
 previous_custom_apps=$(read_spicetify_apps) || exit 1
 close_spotify || exit 1

@@ -101,7 +101,11 @@ cleanup_macos_registration() {
     local status="$1" stale_path
     if [[ "$committed" = false ]]; then
         if [[ "$registration_attempted" = true ]]; then
-            "$lsregister" -u "$app_path" >/dev/null 2>&1 || true
+            # Keep the existing handler entry when the old bundle is coming
+            # back at the same path and Launch Services may still be unavailable.
+            if [[ ! -d "$staging/previous.app" || ! "$original_path" -ef "$app_path" ]]; then
+                "$lsregister" -u "$app_path" >/dev/null 2>&1 || true
+            fi
         fi
         if { [[ "$candidate_installed" = true ]] && ! rm -rf -- "$app_path"; } ||
             { [[ -e "$staging/previous.app" ]] && ! mv "$staging/previous.app" "$app_path"; }; then
