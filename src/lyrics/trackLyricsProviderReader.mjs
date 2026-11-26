@@ -1,7 +1,7 @@
 import { runWithAbortSignal } from "../core/abortableOperation.mjs";
 import { trackIdentity } from "../core/trackIdentity.mjs";
 import { getTrackOverrideStores } from "../core/trackOverrideRuntime.mjs";
-import { readMarketplaceManager } from "../features/marketplace/marketplaceRuntime.mjs";
+import { readMarketplaceManager, waitForMarketplaceLyricsProviderChanges } from "../features/marketplace/marketplaceRuntime.mjs";
 import { getRuntimeService } from "../spicetify/runtimeServices.mjs";
 
 export function createTrackLyricsProviderReader(host, extractTrackId = trackIdentity.extractTrackId) {
@@ -12,6 +12,8 @@ export function createTrackLyricsProviderReader(host, extractTrackId = trackIden
         if (!extractTrackId(uri) || signal?.aborted) return null;
         const provider = await readProvider(uri);
         if (!provider || signal?.aborted) return null;
+        const pendingChange = waitForMarketplaceLyricsProviderChanges(host, signal);
+        if (pendingChange && !await pendingChange) return null;
 
         let manager = getAddonManager();
         if (manager?.getAddon?.(provider)) return provider;

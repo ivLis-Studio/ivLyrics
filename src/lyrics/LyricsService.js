@@ -38,13 +38,14 @@ import { createCommunityLyricsSync } from "./createCommunityLyricsSync.mjs";
 import { createFullLyricsRequest } from "./createFullLyricsRequest.mjs";
 import { createLyricTranslationModes } from "./lyricTranslationModes.mjs";
 import {
-    createLyricsProviderRequests, isLyricsProviderSelectionSetting, LYRICS_PROVIDER_SELECTION_CHANGED,
+    createLyricsProviderRequests, isLyricsProviderSelectionSetting, LYRICS_PROVIDER_SELECTION_CHANGED, supersededLyricsRequest,
 } from "./lyricsProviderRequests.mjs";
 import { getTrackOverrideStores } from "../core/trackOverrideRuntime.mjs";
 import { getTrackSyncOffsetStore } from "../core/trackSyncOffsetRuntime.mjs";
 import { createPseudoKaraokeService } from "./pseudo-karaoke/createPseudoKaraokeService.mjs";
 import { createLocalLyricsStore } from "./localLyricsStore.mjs";
 import { createTrackLyricsProviderReader } from "./trackLyricsProviderReader.mjs";
+import { waitForMarketplaceLyricsProviderChanges } from "../features/marketplace/marketplaceRuntime.mjs";
 
 export { KaraokeWordTiming, SyncDataSourceCompatibility };
 
@@ -444,6 +445,14 @@ export default function LyricsServiceExtension() {
          * @returns {Promise<Object>} - 가사 결과
          */
         async getLyricsFromProviders(info, providerOrder = [], mode = 1, forcedProviderId = null, { signal } = {}) {
+            const pendingChange = waitForMarketplaceLyricsProviderChanges(window, signal);
+            if (pendingChange) {
+                const uri = info?.uri || '';
+                const revision = providerRequests.getRevision(uri);
+                if (!await pendingChange || revision !== providerRequests.getRevision(uri)) {
+                    return supersededLyricsRequest(uri);
+                }
+            }
             return providerRequests.request({
                 info,
                 forcedProviderId,

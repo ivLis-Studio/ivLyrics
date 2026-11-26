@@ -1,6 +1,8 @@
 import { bundleInitializer } from "./fixtures/initializer-bundle.mjs";
 import { createLyricsProviderRequests } from "../src/lyrics/lyricsProviderRequests.mjs";
 import { getLocalTrackUriFromCacheId, trackIdentity } from "../src/core/trackIdentity.mjs";
+import { createLyricsProviderCandidateLoader } from "../src/providers/lyrics/loadLyricsProviderCandidate.mjs";
+import { recordMarketplaceLyricsCacheRevision } from "../src/features/marketplace/marketplaceRuntime.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
@@ -62,6 +64,42 @@ function setup(t, {
         resolve: (index, value = missing()) => gates[index].resolve(value),
     };
 }
+
+test('a Marketplace replacement with the same provider version can only reuse its own persisted lyrics', async () => {
+    let cached = { ...result(), provider: 'marketplace-fixture' };
+    let providerCalls = 0;
+    const service = {
+        getCachedLyrics: async () => cached,
+        cacheLyrics: async (_track, _provider, value) => { cached = structuredClone(value); },
+    };
+    const load = createLyricsProviderCandidateLoader({
+        readLyricsService: () => service,
+        readSyncDataService: () => null,
+        readPseudoKaraoke: () => null,
+        normalizeProviderInstrumentalBreaks: value => ({ result: value, changed: false }),
+        readAddonDebug: () => null,
+        debug() {},
+    });
+    const install = (revision, text) => {
+        const provider = { id: 'marketplace-fixture', version: '1', async getLyrics() {
+            providerCalls++;
+            return { provider: this.id, synced: [{ ...line, text }] };
+        } };
+        recordMarketplaceLyricsCacheRevision(provider, {
+            id: provider.id, metadata: { type: 'lyrics', version: provider.version }, lyricsCacheRevision: revision,
+        });
+        return provider;
+    };
+    const read = async provider => (await load(provider, info, { lyricsCacheId: 'song' },
+        { synced: true }, () => false)).result.synced[0].text;
+
+    assert.equal(await read(install('committed-install', 'Installed lyric')), 'Installed lyric');
+    assert.equal(cached.marketplaceLyricsRevision, 'committed-install');
+    assert.equal(await read(install('committed-replacement', 'Updated lyric')), 'Updated lyric');
+    assert.equal(cached.marketplaceLyricsRevision, 'committed-replacement');
+    assert.equal(await read(install('committed-replacement', 'Unnecessary network result')), 'Updated lyric');
+    assert.equal(providerCalls, 2);
+});
 
 test('reentrant progress joins the request and an old refresh cannot alter the current progress or cache', async t => {
     const old = deferred(), fresh = deferred();

@@ -3,6 +3,8 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { bundleInitializer } from './fixtures/initializer-bundle.mjs';
 import { createMarketplaceCatalog } from '../src/features/marketplace/marketplaceCatalog.mjs';
+import { waitForMarketplaceLyricsProviderChanges } from '../src/features/marketplace/marketplaceRuntime.mjs';
+import { createTrackLyricsProviderReader } from '../src/lyrics/trackLyricsProviderReader.mjs';
 
 const initializer = bundleInitializer(new URL('../src/features/marketplace/MarketplaceManager.js', import.meta.url));
 const runtimeId = 'fixture-provider';
@@ -17,6 +19,7 @@ window.LyricsAddonManager.register({ id: '${runtimeId}', version: '${version}' }
 
 function fixture(records = new Map()) {
   let abortNext;
+  let heldWrite;
   const indexedDB = { open() {
     const open = {};
     const db = { transaction(_name, mode) {
@@ -34,7 +37,13 @@ function fixture(records = new Map()) {
         const request = {};
         queueMicrotask(() => {
           request.onsuccess?.();
-          queueMicrotask(() => {
+          queueMicrotask(async () => {
+            if (heldWrite?.action === action) {
+              const { entered, release } = heldWrite;
+              heldWrite = null;
+              entered.resolve();
+              await release.promise;
+            }
             if (abortNext === action) {
               abortNext = undefined;
               transaction.error = new Error('fixture transaction aborted after request success');
@@ -106,7 +115,11 @@ function fixture(records = new Map()) {
       });
     } },
   };
-  const window = { Spicetify: { LocalStorage: {} }, document, indexedDB, LyricsAddonManager: provider };
+  const providerRefreshes = [];
+  const window = { Spicetify: { LocalStorage: {} }, document, indexedDB, LyricsAddonManager: provider,
+    LyricsService: { refreshLyricsProviderSelection() {
+      providerRefreshes.push([addons.get(runtimeId)?.version, records.get(catalogId)?.metadata.version]);
+    } } };
   const context = vm.createContext({ window, URL: FixtureURL, Blob, AbortController,
     setTimeout: (callback, ms) => setTimeout(callback, ms === 1500 ? 35 : ms), clearTimeout,
     console: { error() {} }, fetch: async (target) => {
@@ -117,9 +130,14 @@ function fixture(records = new Map()) {
     },
   });
   vm.runInContext(initializer, context);
-  return { manager: window.MarketplaceManager, records, provider, addons, assets, marked, requests,
+  return { window, manager: window.MarketplaceManager, records, provider, addons, assets, marked, requests, providerRefreshes,
     send: (...responses) => downloads.push(...responses.map(response => typeof response === 'string' ? new Response(response) : response)),
     abort: action => { abortNext = action; },
+    hold: action => {
+      const entered = Promise.withResolvers(), release = Promise.withResolvers();
+      heldWrite = { action, entered, release };
+      return { entered: entered.promise, release: release.resolve };
+    },
   };
 }
 
@@ -198,6 +216,69 @@ test('download, execution and storage errors keep the previous addon; a later up
   assert.equal(h.records.get(catalogId).metadata.version, '2');
   assert.equal(h.records.get(catalogId).installedAt, oldRecord.installedAt);
   assert.deepEqual([...h.marked], [runtimeId]);
+});
+
+test('committed lyrics installs, same-ID updates and removals refresh the active provider selection', async () => {
+  const h = fixture();
+  h.send(providerCode(), providerCode('2'), providerCode('2'));
+  await h.manager.installAddon(catalogInfo());
+  assert.deepEqual(h.providerRefreshes, [['1', '1']]);
+
+  h.abort('put');
+  await assert.rejects(h.manager.updateAddon(catalogInfo('2')), /aborted/);
+  assert.deepEqual(h.providerRefreshes, [['1', '1']], 'failed replacement preserves the current presentation');
+
+  const write = h.hold('put');
+  const pending = h.manager.updateAddon(catalogInfo('2'));
+  await write.entered;
+  try {
+    assert.deepEqual(h.providerRefreshes, [['1', '1']], 'no refresh can observe an uncommitted provider');
+  } finally {
+    write.release();
+  }
+  await pending;
+  assert.deepEqual(h.providerRefreshes, [['1', '1'], ['2', '2']]);
+
+  await h.manager.uninstallAddon(catalogId);
+  assert.deepEqual(h.providerRefreshes, [['1', '1'], ['2', '2'], [undefined, undefined]]);
+});
+
+test('track selection waits for a pending provider replacement and resumes against the restored provider', async () => {
+  const h = fixture();
+  h.window.TrackLyricsProviderDB = { getProvider: () => runtimeId };
+  const readProvider = createTrackLyricsProviderReader(h.window, () => 'song');
+  h.send(providerCode(), providerCode('2'));
+  await h.manager.installAddon(catalogInfo());
+  const originalRecord = h.records.get(catalogId);
+
+  const write = h.hold('put');
+  h.abort('put');
+  const update = h.manager.updateAddon(catalogInfo('2'));
+  const failure = assert.rejects(update, /aborted/);
+  await write.entered;
+  let chosen;
+  let cancelledResult;
+  let selection;
+  try {
+    assert.ok(h.manager.getPendingLyricsProviderChanges());
+    assert.equal(h.addons.get(runtimeId).version, '2');
+    selection = readProvider('song').then(provider => { chosen = provider; });
+    const controller = new AbortController();
+    const cancelled = waitForMarketplaceLyricsProviderChanges(h.window, controller.signal);
+    controller.abort();
+    cancelledResult = await cancelled;
+    await new Promise(setImmediate);
+    assert.equal(chosen, undefined);
+    assert.equal(cancelledResult, false);
+  } finally {
+    write.release();
+  }
+  await failure;
+  await selection;
+  assert.equal(chosen, runtimeId);
+  assert.equal(h.addons.get(runtimeId).version, '1');
+  assert.strictEqual(h.records.get(catalogId), originalRecord);
+  assert.equal(h.manager.getPendingLyricsProviderChanges(), null);
 });
 
 test('a removal queued while an update downloads cannot leave a provider or record behind', async () => {

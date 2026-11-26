@@ -4,6 +4,7 @@ import {
 } from "./lyricsProviderTypes.mjs";
 import { canApplyLrcRedWordTiming, normalizeLrcRedIsrc } from "./lrcRedWordTiming.mjs";
 import { createLyricsProviderTimingEnrichment } from "./enrichLyricsProviderTiming.mjs";
+import { readMarketplaceLyricsCacheRevision } from "../../features/marketplace/marketplaceRuntime.mjs";
 
 export function createLyricsProviderCandidateLoader({
     readLyricsService, readSyncDataService, readPseudoKaraoke,
@@ -17,7 +18,7 @@ export function createLyricsProviderCandidateLoader({
     // AddonDebug timing span always closes, cache-lookup failures are swallowed
     // with a warning, and debug logs fire in the same order. Returns the raw
     // result plus whether it came from cache and whether the provider was hit.
-    async function resolveProviderResult(provider, info, lyricsCacheId, debugTiming, { isCurrent, signal }) {
+    async function resolveProviderResult(provider, info, lyricsCacheId, marketplaceRevision, debugTiming, { isCurrent, signal }) {
         let result = null;
         let cacheHit = false;
         let providerFetched = false;
@@ -29,7 +30,8 @@ export function createLyricsProviderCandidateLoader({
             if (isCurrent() && lyricsCacheId && readLyricsService()?.getCachedLyrics) {
                 try {
                     const cached = await readLyricsService().getCachedLyrics(lyricsCacheId, provider.id);
-                    const isProviderCacheCurrent = cached && (!provider.cacheVersion || cached.cacheVersion === provider.cacheVersion);
+                    const isProviderCacheCurrent = cached && (!provider.cacheVersion || cached.cacheVersion === provider.cacheVersion)
+                        && (cached.marketplaceLyricsRevision ?? null) === marketplaceRevision;
                     const isSyncDataRendererCurrent = !cached?.syncDataApplied
                         || cached.syncDataRendererVersion === SYNC_DATA_RENDERER_VERSION;
                     if (isProviderCacheCurrent && isSyncDataRendererCurrent) {
@@ -84,7 +86,8 @@ export function createLyricsProviderCandidateLoader({
         const debugTiming = addonDebug?.isEnabled();
         if (debugTiming) addonDebug.time('lyrics', `provider:${provider.id}`);
 
-        const fetched = await resolveProviderResult(provider, info, lyricsCacheId, debugTiming, { isCurrent, signal });
+        const marketplaceRevision = readMarketplaceLyricsCacheRevision(provider);
+        const fetched = await resolveProviderResult(provider, info, lyricsCacheId, marketplaceRevision, debugTiming, { isCurrent, signal });
         if (!isCurrent()) return null;
         let result = fetched.result;
         const { cacheHit, providerFetched } = fetched;
@@ -197,6 +200,7 @@ export function createLyricsProviderCandidateLoader({
             && isCurrent()
         ) {
             const cachePayload = { ...result };
+            if (marketplaceRevision !== null) cachePayload.marketplaceLyricsRevision = marketplaceRevision;
             if (cachePayload.syncDataApplied) {
                 cachePayload.syncDataRendererVersion = SYNC_DATA_RENDERER_VERSION;
             }

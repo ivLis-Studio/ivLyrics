@@ -1,6 +1,8 @@
 import { EventEmitter } from "../../core/eventEmitter.mjs";
 import { getRuntimeService } from "../../spicetify/runtimeServices.mjs";
-import { readMarketplaceManager, publishMarketplaceManager } from "./marketplaceRuntime.mjs";
+import {
+    readMarketplaceManager, publishMarketplaceManager, recordMarketplaceLyricsCacheRevision,
+} from "./marketplaceRuntime.mjs";
 import { createMarketplaceRepository } from "./marketplaceRepository.mjs";
 import { createMarketplaceCatalog } from "./marketplaceCatalog.mjs";
 import {
@@ -54,6 +56,7 @@ export default function initializeMarketplaceManager() {
 
     const FETCH_TIMEOUT = 15000;
     const DIRECT_ADDON_MAX_BYTES = 2 * 1024 * 1024;
+    let nextCacheRevision = 0;
     const readProviderManager = (type) => {
         if (type === 'lyrics') return getRuntimeService('LyricsAddonManager', host) || null;
         if (type === 'ai') return getRuntimeService('AIAddonManager', host) || null;
@@ -64,6 +67,7 @@ export default function initializeMarketplaceManager() {
     // metadata 마지막 4개 필드와 installedAt은 호출자가 계산해 overrides로 전달하며,
     // updatedAt은 항상 마지막에 새로 생성한다.
     function buildMarketplaceAddonEntry(id, code, addonInfo, overrides) {
+        const updatedAt = new Date().toISOString();
         return {
             id,
             code,
@@ -83,7 +87,10 @@ export default function initializeMarketplaceManager() {
                 githubUrl: overrides.githubUrl
             },
             installedAt: overrides.installedAt,
-            updatedAt: new Date().toISOString()
+            updatedAt,
+            ...(addonInfo.type === 'lyrics' && {
+                lyricsCacheRevision: host.crypto?.randomUUID?.() || `${updatedAt}:${++nextCacheRevision}`,
+            }),
         };
     }
 
@@ -111,6 +118,7 @@ export default function initializeMarketplaceManager() {
             });
             this._activeAddons = new Map();
             this._operations = new Map();
+            this._lyricsProviderChanges = new Set();
             this._loadErrors = new Map(); // id -> startup/runtime load error
 
             // Readiness tracking
@@ -179,6 +187,7 @@ export default function initializeMarketplaceManager() {
             });
             this._loadErrors.delete(entry.id);
             handle.manager?.markAsMarketplaceAddon?.(handle.runtimeId);
+            recordMarketplaceLyricsCacheRevision(handle.provider, entry);
         }
 
         async _saveAndActivate(entry, installedStyle) {
@@ -207,6 +216,26 @@ export default function initializeMarketplaceManager() {
                 if (this._operations.get(id) === task) this._operations.delete(id);
             };
             return task.finally(release);
+        }
+
+        getPendingLyricsProviderChanges() {
+            return this._lyricsProviderChanges.size ? Promise.all(this._lyricsProviderChanges) : null;
+        }
+
+        async _applyAddonChange(affectsLyrics, apply) {
+            if (!affectsLyrics) return apply();
+            // Provider scripts register before IndexedDB can commit. Let
+            // playback lookups wait until that registry change is settled.
+            const { promise, resolve } = Promise.withResolvers();
+            this._lyricsProviderChanges.add(promise);
+            try {
+                const result = await apply();
+                getRuntimeService('LyricsService', host)?.refreshLyricsProviderSelection?.();
+                return result;
+            } finally {
+                this._lyricsProviderChanges.delete(promise);
+                resolve();
+            }
         }
 
         fetchAddonList(forceRefresh = false) {
@@ -346,8 +375,10 @@ export default function initializeMarketplaceManager() {
                         githubUrl: addonInfo.githubUrl || '',
                         installedAt: new Date().toISOString(),
                     });
-                    const runtimeId = await this._saveAndActivate(entry);
-                    this._addToProviderOrder(runtimeId, type);
+                    await this._applyAddonChange(type === 'lyrics', async () => {
+                        const runtimeId = await this._saveAndActivate(entry);
+                        this._addToProviderOrder(runtimeId, type);
+                    });
                     this.emit('addon:installed', { id, name: addonInfo.name, type });
                     return true;
                 } catch (error) {
@@ -378,8 +409,11 @@ export default function initializeMarketplaceManager() {
                         source: 'direct-url', runtimeId: info.runtimeId, sourceRepo: '', githubUrl: '',
                         installedAt: new Date().toISOString(),
                     });
-                    const runtimeId = await this._saveAndActivate(entry);
-                    this._addToProviderOrder(runtimeId, info.type);
+                    const runtimeId = await this._applyAddonChange(info.type === 'lyrics', async () => {
+                        const added = await this._saveAndActivate(entry);
+                        this._addToProviderOrder(added, info.type);
+                        return added;
+                    });
                     this.emit('addon:installed', {
                         id, runtimeId, name: info.name, type: info.type, source: 'direct-url',
                     });
@@ -395,14 +429,16 @@ export default function initializeMarketplaceManager() {
             return this._runOperation(id, async () => {
                 const addon = this._installedAddons.get(id);
                 if (!addon) return false;
-                await this._repository.remove(id);
-
                 const handle = this._activeAddons.get(id);
-                this._runtime.unload(handle);
-                this._activeAddons.delete(id);
-                if (handle) this._removeFromProviderOrder(handle.runtimeId, addon.metadata?.type);
-                this._installedAddons.delete(id);
-                this._loadErrors.delete(id);
+                const type = addon.metadata?.type;
+                await this._applyAddonChange(!!handle && type === 'lyrics', async () => {
+                    await this._repository.remove(id);
+                    this._runtime.unload(handle);
+                    this._activeAddons.delete(id);
+                    this._installedAddons.delete(id);
+                    this._loadErrors.delete(id);
+                    if (handle) this._removeFromProviderOrder(handle.runtimeId, type);
+                });
                 this.emit('addon:uninstalled', { id, name: addon.metadata?.name });
                 return true;
             });
@@ -425,29 +461,9 @@ export default function initializeMarketplaceManager() {
                         installedAt: previous.installedAt,
                     });
 
-                    const installedStyle = previous.metadata?.type === 'style' && addonInfo.type === 'style' ? active : undefined;
-                    if (!installedStyle) {
-                        this._runtime.unload(active);
-                        this._activeAddons.delete(id);
-                    }
-                    try {
-                        const runtimeId = await this._saveAndActivate(entry, installedStyle);
-                        if (active && (runtimeId !== active.runtimeId || previous.metadata?.type !== addonInfo.type)) {
-                            this._removeFromProviderOrder(active.runtimeId, previous.metadata?.type);
-                            this._addToProviderOrder(runtimeId, addonInfo.type);
-                        }
-                    } catch (error) {
-                        if (active && !installedStyle) {
-                            try {
-                                this._runtime.restore(active);
-                                this._activeAddons.set(id, active);
-                            } catch (restoreError) {
-                                this._loadErrors.set(id, restoreError?.message || String(restoreError));
-                                console.error(`[MarketplaceManager] Could not restore "${id}":`, restoreError);
-                            }
-                        }
-                        throw error;
-                    }
+                    const previousType = previous.metadata?.type;
+                    await this._applyAddonChange(previousType === 'lyrics' || addonInfo.type === 'lyrics', () =>
+                        this._replaceAddon(entry, active, previousType));
                     this.emit('addon:updated', { id, name: addonInfo.name, version: addonInfo.version });
                     return true;
                 } catch (error) {
@@ -455,6 +471,35 @@ export default function initializeMarketplaceManager() {
                     throw error;
                 }
             });
+        }
+
+        async _replaceAddon(entry, active, previousType) {
+            const type = entry.metadata.type;
+            const installedStyle = previousType === 'style' && type === 'style' ? active : undefined;
+            if (!installedStyle) {
+                this._runtime.unload(active);
+                this._activeAddons.delete(entry.id);
+            }
+            let runtimeId;
+            try {
+                runtimeId = await this._saveAndActivate(entry, installedStyle);
+            } catch (error) {
+                if (active && !installedStyle) {
+                    try {
+                        this._runtime.restore(active);
+                        this._activeAddons.set(entry.id, active);
+                    } catch (restoreError) {
+                        this._loadErrors.set(entry.id, restoreError?.message || String(restoreError));
+                        if (previousType === 'lyrics') getRuntimeService('LyricsService', host)?.refreshLyricsProviderSelection?.();
+                        console.error(`[MarketplaceManager] Could not restore "${entry.id}":`, restoreError);
+                    }
+                }
+                throw error;
+            }
+            if (!active || runtimeId !== active.runtimeId || previousType !== type) {
+                if (active) this._removeFromProviderOrder(active.runtimeId, previousType);
+                this._addToProviderOrder(runtimeId, type);
+            }
         }
 
         // ============================================
@@ -468,7 +513,7 @@ export default function initializeMarketplaceManager() {
                 const order = manager.getProviderOrder();
                 if (!order.includes(addonId)) {
                     order.unshift(addonId);
-                    manager.setProviderOrder(order);
+                    manager.setProviderOrder(order, { refreshLyrics: false });
                 }
             } catch (e) {
                 console.warn('[MarketplaceManager] Failed to update provider order:', e);
@@ -479,7 +524,7 @@ export default function initializeMarketplaceManager() {
             try {
                 const manager = readProviderManager(type);
                 if (!manager) return;
-                manager.setProviderOrder(manager.getProviderOrder().filter(id => id !== addonId));
+                manager.setProviderOrder(manager.getProviderOrder().filter(id => id !== addonId), { refreshLyrics: false });
             } catch (e) {
                 console.warn('[MarketplaceManager] Failed to update provider order:', e);
             }

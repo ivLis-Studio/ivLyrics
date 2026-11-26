@@ -160,7 +160,7 @@ export function createLyricsAddonManager({
          * Provider 순서 저장
          * @param {string[]} order - Provider ID 순서
          */
-        setProviderOrder(order) {
+        setProviderOrder(order, options) {
             preferences.writeProviderOrder(order);
             debug('[LyricsAddonManager] Provider order saved:', order);
 
@@ -168,7 +168,7 @@ export function createLyricsAddonManager({
             this.emit('provider:order:changed', { order });
 
             // 가사 새로고침 트리거
-            this._triggerLyricsRefresh();
+            if (options?.refreshLyrics !== false) this._triggerLyricsRefresh();
         }
 
         /**
