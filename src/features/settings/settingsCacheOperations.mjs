@@ -33,8 +33,8 @@ export function createSettingsCacheOperations({
     update({ clearing: true });
     try {
       const result = await run();
-      await loadStats();
-      reload();
+      // The storage clear may have cancelled the active lyrics request.
+      await Promise.all([reload(), loadStats()]);
       notifySuccess(success(result));
     } catch (error) {
       console.error(failure, error);

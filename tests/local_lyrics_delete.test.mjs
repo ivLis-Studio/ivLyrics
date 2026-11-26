@@ -613,6 +613,32 @@ test("settings cache ignores stale counts and overlapping clears across tab remo
 	unmountSecond();
 });
 
+test("after a cache clear the lyrics reload while the settings counts are still pending", async () => {
+	const stats = Promise.withResolvers();
+	const calls = [];
+	const operations = createSettingsCacheOperations({
+		cache: {
+			clearAll: async () => { calls.push("cleared"); },
+			getStats: () => stats.promise,
+			getOpenDbInfo: () => null,
+		},
+		translate: key => key,
+		reloadLyrics: () => calls.push("reloaded"),
+		notifySuccess: () => calls.push("notified"),
+	});
+	const clear = operations.clearAll();
+	await new Promise(resolve => setImmediate(resolve));
+	try {
+		assert.deepEqual([...calls], ["cleared", "reloaded"]);
+		assert.equal(operations.getSnapshot().loading, true);
+	} finally {
+		stats.resolve({ lyrics: 0 });
+		await clear;
+	}
+	assert.deepEqual(calls, ["cleared", "reloaded", "notified"]);
+	assert.deepEqual(operations.getSnapshot().stats, { lyrics: 0 });
+});
+
 test("settings cache invalidates the mounted lyric loader before the disk clear", async () => {
 	const calls = [];
 	const page = {
