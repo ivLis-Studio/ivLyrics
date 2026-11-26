@@ -212,26 +212,39 @@ cleanup_uninstall() {
 
 unregister_updater_protocol() {
     local unregister_script="$TARGET_DIR/updater/unix/unregister-updater-protocol.sh"
+    local os_name output data_home desktop_file updater_script
+    os_name=$(uname -s)
 
-    if [ -f "$unregister_script" ]; then
-        if bash "$unregister_script" >/dev/null 2>&1; then
-            print_substep "Updater protocol unregistered" "success"
+    if [ -f "$unregister_script" ] &&
+        { [ "$os_name" != Linux ] || [ -f "$TARGET_DIR/updater/unix/linux-desktop-entry.sh" ]; }; then
+        if output=$(bash "$unregister_script" "$TARGET_DIR" 2>&1); then
+            print_substep "${output:-Updater protocol unregistered}" "success"
         else
             print_substep "Updater protocol unregister failed" "warning"
         fi
         return
     fi
 
-    if [ "$(uname -s)" = "Darwin" ]; then
+    if [ "$os_name" = Darwin ]; then
         rm -rf "$HOME/Library/Application Support/ivLyrics/Updater"
         print_substep "Updater helper files removed" "success"
         return
     fi
 
-    rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/applications/ivlyrics-updater.desktop"
-    rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/ivLyrics/updater"
+    data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+    desktop_file="$data_home/applications/ivlyrics-updater.desktop"
+    updater_script="$TARGET_DIR/updater/unix/ivlyrics-updater.sh"
+    # Older installations wrote a literal Exec line and removed the shared
+    # desktop file unconditionally. Check the path before removing it here.
+    if [ -f "$desktop_file" ] &&
+        { [[ "$updater_script" == *$'\n'* ]] || ! grep -Fxq -- "Exec=/bin/bash \"$updater_script\" %u" "$desktop_file"; }; then
+        print_substep "The Linux updater is registered for another Spicetify profile." "success"
+        return
+    fi
+    rm -f "$desktop_file"
+    rm -rf "$data_home/ivLyrics/updater"
     if command -v update-desktop-database >/dev/null 2>&1; then
-        update-desktop-database "${XDG_DATA_HOME:-$HOME/.local/share}/applications" >/dev/null 2>&1 || true
+        update-desktop-database "$data_home/applications" >/dev/null 2>&1 || true
     fi
     print_substep "Updater helper files removed" "success"
 }

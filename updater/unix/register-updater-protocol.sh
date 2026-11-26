@@ -222,21 +222,6 @@ EOF
     echo "Registered ivlyrics-updater:// protocol for macOS."
 )
 
-desktop_exec_argument() {
-    local value="$1"
-    # Quote for Exec first, then escape those backslashes for the desktop file.
-    value=${value//\\/\\\\}
-    value=${value//\"/\\\"}
-    value=${value//\$/\\\$}
-    value=${value//\`/\\\`}
-    value=${value//\\/\\\\}
-    value=${value//%/%%}
-    value=${value//$'\t'/\\t}
-    value=${value//$'\n'/\\n}
-    value=${value//$'\r'/\\r}
-    printf '"%s"' "$value"
-}
-
 register_linux() (
     local data_home="${XDG_DATA_HOME:-${HOME}/.local/share}"
     local updater_script="${APP_DIR}/updater/unix/ivlyrics-updater.sh"
@@ -256,6 +241,7 @@ register_linux() (
     fi
 
     mkdir -p "$desktop_dir"
+    lock_linux_updater_desktop "$desktop_dir"
     staging=$(mktemp -d "${desktop_dir}/.ivlyrics-updater.XXXXXX")
     cleanup_linux_registration() {
         if [[ "$installed_entry" == true && "$registered" == false ]]; then
@@ -279,7 +265,7 @@ register_linux() (
 [Desktop Entry]
 Type=Application
 Name=ivLyrics Updater
-Exec=/bin/bash $(desktop_exec_argument "$updater_script") %u
+$(linux_updater_exec_line "$updater_script")
 MimeType=${mime_type};
 Terminal=true
 NoDisplay=true
@@ -305,6 +291,6 @@ EOF
 
 case "$OS_NAME" in
     Darwin) remember_spicetify_state; register_macos ;;
-    Linux) remember_spicetify_state; register_linux ;;
+    Linux) source "$SCRIPT_DIR/linux-desktop-entry.sh"; remember_spicetify_state; register_linux ;;
     *) echo "Unsupported OS for updater protocol: $OS_NAME" >&2; exit 1 ;;
 esac

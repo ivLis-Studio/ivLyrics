@@ -25,6 +25,7 @@ const updaterFiles = [
     "updater/uninstall.ps1",
     "updater/unix/ivlyrics-updater.applescript",
     "updater/unix/ivlyrics-updater.sh",
+    "updater/unix/linux-desktop-entry.sh",
     "updater/unix/register-updater-protocol.sh",
     "updater/unix/unregister-updater-protocol.sh",
     "updater/windows/ivlyrics-updater.ps1",

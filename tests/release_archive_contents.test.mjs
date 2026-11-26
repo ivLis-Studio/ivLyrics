@@ -40,6 +40,7 @@ test('the existing updaters can locate, verify and extract the package', () => {
   assert.equal(archivedFile('style.css'), readPcStylesheet());
   for (const path of [
     'index.js', 'style.css', 'updater/unix/register-updater-protocol.sh', 'updater/unix/ivlyrics-updater.sh',
+    'updater/unix/linux-desktop-entry.sh',
     'updater/unix/ivlyrics-updater.applescript', 'updater/windows/register-updater-protocol.ps1',
     'updater/windows/ivlyrics-updater.ps1', 'updater/windows/updater-path-utils.ps1',
     manifest.preview, manifest.readme, 'docs/assets/preview_readme_en.png', 'docs/assets/preview_readme_ko.png',

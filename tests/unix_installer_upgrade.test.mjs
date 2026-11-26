@@ -104,6 +104,7 @@ function installerFixture(context, {
         mkdirSync(join(app, 'updater/unix'), { recursive: true });
         writeFileSync(join(app, 'updater/unix/unregister-updater-protocol.sh'),
             'printf "unregister\\n" >> "$IVL_TEST_ROOT/events"\n');
+        writeFileSync(join(app, 'updater/unix/linux-desktop-entry.sh'), '');
         if (!incomplete) {
             writeFileSync(join(app, 'manifest.json'), '{"name":"ivLyrics"}');
             writeFileSync(join(app, 'style.css'), 'body {}');
@@ -834,9 +835,25 @@ test('Unix removal deletes files and unregisters the protocol after a successful
     assert.equal(existsSync(join(fx.apps, '.ivLyrics-install.lock')), false);
 });
 
+test('the standalone uninstaller protects a different profile when removing an older Linux install', { skip: !canRunUninstall }, context => {
+    const fx = installerFixture(context);
+    rmSync(join(fx.app, 'updater/unix/linux-desktop-entry.sh'));
+    writeFileSync(join(fx.root, 'bin/uname'), '#!/bin/bash\nprintf "Linux\\n"\n', { mode: 0o755 });
+    const otherLauncher = 'Exec=/bin/bash "/other/CustomApps/ivLyrics/updater/unix/ivlyrics-updater.sh" %u\n';
+    mkdirSync(dirname(fx.desktopFile), { recursive: true });
+    writeFileSync(fx.desktopFile, otherLauncher);
+
+    const result = fx.uninstall();
+    assert.equal(result.status, 0, result.output);
+    assert.match(result.output, /registered for another Spicetify profile/);
+    assert.equal(readFileSync(fx.desktopFile, 'utf8'), otherLauncher);
+    assert.deepEqual(fx.readEvents(), ['apply:']);
+    assert.equal(existsSync(fx.app), false);
+});
+
 function runUnixProtocolFixture(context, registered, uri = 'ivlyrics-updater://update', {
     linked = false, missingConfig = false, profileName = 'custom Spicetify', relativeRegistration = false,
-    desktopOwner = 'ivlyrics-updater.desktop', previousLauncher = null,
+    desktopOwner = 'ivlyrics-updater.desktop', previousLauncher = null, unregisterFrom = null, legacyLauncher = false,
 } = {}) {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'ivlyrics-unix-protocol-')));
     context.after(() => rmSync(root, { recursive: true, force: true }));
@@ -854,12 +871,18 @@ function runUnixProtocolFixture(context, registered, uri = 'ivlyrics-updater://u
     if (!missingConfig) writeFileSync(join(profile, 'config-xpui.ini'), '');
     const handler = join(updater, 'ivlyrics-updater.sh');
     const register = join(updater, 'register-updater-protocol.sh');
+    const unregister = join(updater, 'unregister-updater-protocol.sh');
     copyFileSync(new URL('../updater/unix/ivlyrics-updater.sh', import.meta.url), handler);
     copyFileSync(new URL('../updater/unix/register-updater-protocol.sh', import.meta.url), register);
+    copyFileSync(new URL('../updater/unix/unregister-updater-protocol.sh', import.meta.url), unregister);
+    copyFileSync(new URL('../updater/unix/linux-desktop-entry.sh', import.meta.url), join(updater, 'linux-desktop-entry.sh'));
     const bootstrap = join(root, 'installer.sh');
     writeFileSync(bootstrap, '# ivLyrics Installer for macOS/Linux\n#' + ' '.repeat(512) +
         '\nprintf "%s\\n" "$SPICETIFY_CONFIG" "${SPICETIFY_STATE:-}" "${XDG_STATE_HOME:-}" > "$IVL_TEST_ROOT/installer-environment"\n');
     const desktopFile = join(root, 'desktop', 'applications', 'ivlyrics-updater.desktop');
+    const otherApp = join(root, 'second profile', 'CustomApps', 'ivLyrics');
+    if (unregisterFrom === 'other') mkdirSync(otherApp, { recursive: true });
+    const appToRemove = unregisterFrom === 'other' ? otherApp : unregisterFrom === 'current' ? app : '';
     if (previousLauncher !== null) {
         mkdirSync(dirname(desktopFile), { recursive: true });
         writeFileSync(desktopFile, previousLauncher);
@@ -872,6 +895,7 @@ curl() { [ "$1" = -fsSLo ] && cp "$IVL_TEST_INSTALLER" "$2"; }
 xdg-mime() {
     case "$*" in
         'default ivlyrics-updater.desktop x-scheme-handler/ivlyrics-updater') return 0 ;;
+        'default  x-scheme-handler/ivlyrics-updater') return 0 ;;
         'query default x-scheme-handler/ivlyrics-updater') printf '%s\n' "$IVL_TEST_DESKTOP_OWNER" ;;
         *) return 1 ;;
     esac
@@ -881,9 +905,16 @@ export -f uname curl xdg-mime update-desktop-database
 if [ "$IVL_TEST_REGISTER" = true ]; then
     SPICETIFY_STATE='backup $(literal) path' XDG_STATE_HOME='custom XDG state' bash "$2" "$3"
 fi
+if [ "$IVL_TEST_LEGACY_LAUNCHER" = true ]; then
+    printf 'Exec=/bin/bash "%s" %%u\n' "$1" > "$XDG_DATA_HOME/applications/ivlyrics-updater.desktop"
+fi
+if [ -n "$IVL_TEST_UNREGISTER_FROM" ]; then
+    bash "$5" "$IVL_TEST_UNREGISTER_FROM"
+    exit
+fi
 unset SPICETIFY_CONFIG
 export SPICETIFY_STATE="$IVL_TEST_ROOT/launcher state"
-exec bash "$1" "$4"`, 'protocol-fixture', handler, register, relativeRegistration ? relative(root, app) : app, uri], {
+exec bash "$1" "$4"`, 'protocol-fixture', handler, register, relativeRegistration ? relative(root, app) : app, uri, unregister], {
         encoding: 'utf8',
         timeout: 15000,
         cwd: root,
@@ -895,6 +926,8 @@ exec bash "$1" "$4"`, 'protocol-fixture', handler, register, relativeRegistratio
             IVL_TEST_INSTALLER: bootstrap,
             IVL_TEST_REGISTER: String(registered),
             IVL_TEST_DESKTOP_OWNER: desktopOwner,
+            IVL_TEST_LEGACY_LAUNCHER: String(legacyLauncher),
+            IVL_TEST_UNREGISTER_FROM: appToRemove,
         },
     });
     const marker = join(root, 'installer-environment');
@@ -941,6 +974,20 @@ test('Linux protocol registration reports and rolls back an unselected handler',
     assert.match(result.stderr, /Linux has not selected ivLyrics Updater/);
     assert.equal(launcher, previousLauncher);
     assert.equal(environment, null);
+});
+
+test('Linux removal only unregisters a launcher owned by the removed profile', { skip: !canRun }, context => {
+    const otherProfile = runUnixProtocolFixture(context, true, undefined, { unregisterFrom: 'other' });
+    assert.equal(otherProfile.result.status, 0, otherProfile.result.stdout + otherProfile.result.stderr);
+    assert.match(otherProfile.launcher ?? '', /Exec=.+custom Spicetify/);
+
+    const owner = runUnixProtocolFixture(context, true, undefined, { unregisterFrom: 'current', profileName: '100% music' });
+    assert.equal(owner.result.status, 0, owner.result.stdout + owner.result.stderr);
+    assert.equal(owner.launcher, null);
+
+    const legacyOwner = runUnixProtocolFixture(context, true, undefined, { unregisterFrom: 'current', legacyLauncher: true });
+    assert.equal(legacyOwner.result.status, 0, legacyOwner.result.stdout + legacyOwner.result.stderr);
+    assert.equal(legacyOwner.launcher, null);
 });
 
 test('a Unix protocol update stops when its registered profile config is gone', { skip: !canRun }, context => {

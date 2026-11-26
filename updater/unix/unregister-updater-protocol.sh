@@ -5,9 +5,7 @@ OS_NAME="$(uname -s)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="${1:-}"
 
-if [[ -z "$APP_DIR" ]]; then
-    APP_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-fi
+APP_DIR="$(CDPATH= cd -L -- "${APP_DIR:-${SCRIPT_DIR}/../..}" && pwd -L)"
 
 unregister_macos() {
     local app_path="${APP_DIR}/updater/macos/ivLyrics Updater.app"
@@ -29,7 +27,19 @@ unregister_macos() {
 unregister_linux() {
     local data_home="${XDG_DATA_HOME:-${HOME}/.local/share}"
     local updater_root="${data_home}/ivLyrics/updater"
-    local desktop_file="${data_home}/applications/ivlyrics-updater.desktop"
+    local desktop_dir="${data_home}/applications"
+    local desktop_file="${desktop_dir}/ivlyrics-updater.desktop"
+    local updater_script="${APP_DIR}/updater/unix/ivlyrics-updater.sh"
+
+    if [[ -d "$desktop_dir" ]]; then
+        lock_linux_updater_desktop "$desktop_dir"
+    fi
+    if [[ -f "$desktop_file" ]] &&
+        ! grep -Fxq -- "$(linux_updater_exec_line "$updater_script")" "$desktop_file" &&
+        ! { [[ "$updater_script" != *$'\n'* ]] && grep -Fxq -- "Exec=/bin/bash \"$updater_script\" %u" "$desktop_file"; }; then
+        echo "The Linux updater is registered for another Spicetify profile."
+        return 0
+    fi
 
     if command -v xdg-mime >/dev/null 2>&1; then
         local current
@@ -43,7 +53,7 @@ unregister_linux() {
     rm -rf "$updater_root"
 
     if command -v update-desktop-database >/dev/null 2>&1; then
-        update-desktop-database "${data_home}/applications" >/dev/null 2>&1 || true
+        update-desktop-database "$desktop_dir" >/dev/null 2>&1 || true
     fi
 
     echo "Unregistered ivlyrics-updater:// protocol for Linux."
@@ -51,6 +61,6 @@ unregister_linux() {
 
 case "$OS_NAME" in
     Darwin) unregister_macos ;;
-    Linux) unregister_linux ;;
+    Linux) source "$SCRIPT_DIR/linux-desktop-entry.sh"; unregister_linux ;;
     *) echo "Unsupported OS for updater protocol: $OS_NAME" >&2; exit 1 ;;
 esac
