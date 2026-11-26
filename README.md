@@ -207,6 +207,44 @@ NVIDIA NIM은 기본 URL `https://integrate.api.nvidia.com/v1`과 채팅용 모�
 
 </details>
 
+## ivLyrics의 데이터 저장과 처리
+
+가사 원문은 클라이언트가 LRCLIB 등 선택한 가사 제공자에서 불러옵니다. ivLyrics 백엔드는 공유 싱크에 문자 위치와 밀리초 단위 재생 시각, 가사 제공자 ID·줄별 문자 수·원문 지문 같은 매칭 정보, 보컬 등 표시 정보만 저장합니다. 클라이언트는 제공자에서 받은 원문에 이 타이밍을 적용해 노래방 가사를 표시합니다. 가사 번역과 발음은 클라이언트에서 관리하며, 사용자가 선택한 제공자에게 처리를 요청할 수 있습니다.
+
+아래는 가상의 LRCLIB 항목에 대한 싱크 v6 예제입니다. 클라이언트에서 불러온 한 줄이 `blue sky`라면 `lengths: [5, 3]`은 공백을 포함한 첫 구간과 두 번째 구간의 문자 수입니다. 첫 구간은 1,200ms에 시작하고 두 번째 구간은 450ms 뒤인 1,650ms에 시작합니다.
+
+```json
+{
+  "version": 6,
+  "timeUnit": "ms",
+  "indexUnit": "nfc-codepoint",
+  "source": {
+    "provider": "lrclib",
+    "lrclibId": 123,
+    "preferredLyricsSource": "plain",
+    "duration": 180,
+    "lyricsFingerprint": "lrclib-u2suus-8",
+    "lineCharCounts": [8],
+    "lineCount": 1,
+    "textCharCount": 8
+  },
+  "lines": [{
+    "id": "l0",
+    "offset": 0,
+    "length": 8,
+    "timing": {
+      "unit": "word",
+      "startMs": 1200,
+      "lengths": [5, 3],
+      "deltaMs": [450],
+      "endMs": 2200
+    }
+  }]
+}
+```
+
+영상 배경 서비스는 자동 검색이나 사용자 제보로 찾은 YouTube 영상 ID를 녹음 식별 코드(ISRC)에 연결해 저장합니다. 클라이언트는 그 ID로 YouTube 영상을 불러옵니다. 계정 연동, 제작자 프로필, 투표와 곡 정보 캐시 등 서버 기능에 필요한 데이터도 해당 기능에서 저장합니다. [싱크 v6 저장 형식](https://github.com/ivLis-Studio/ivLyrics/blob/main/docs/sync-v6.md)
+
 ## 라이선스와 오픈소스 고지
 
 ivLyrics의 소스 코드는 [GNU LGPL v2.1](LICENSE)을 따릅니다. 포함된 제3자 구성요소에는 각 구성요소의 라이선스가 적용됩니다. 가사와 영상 등 제3자 콘텐츠의 이용 조건은 각 권리자가 정합니다. ivLyrics 서버에 저장된 콘텐츠의 권리 침해 신고 및 삭제 요청은 me@ivl.is로 보내 주세요.

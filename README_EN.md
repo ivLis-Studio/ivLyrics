@@ -208,6 +208,44 @@ External AI features may send lyrics or song information to the provider you cho
 
 </details>
 
+## How ivLyrics stores and processes data
+
+The client fetches original lyrics from the selected provider, such as LRCLIB. The ivLyrics backend stores only timing, source matching, and display metadata in each community sync record. This includes character positions, playback times in milliseconds, the provider record ID, line lengths, a fingerprint of the source text, and details such as vocal parts. The client applies the saved timings to the text fetched from the provider to display karaoke lyrics. The client manages lyric translations and pronunciation and can request processing from a user-selected provider.
+
+This v6 sync example uses a fictional LRCLIB entry. If the client fetches a line reading `blue sky`, `lengths: [5, 3]` describes its two character ranges, including the space in the first range. The first range starts at 1,200 ms and the second starts 450 ms later, at 1,650 ms.
+
+```json
+{
+  "version": 6,
+  "timeUnit": "ms",
+  "indexUnit": "nfc-codepoint",
+  "source": {
+    "provider": "lrclib",
+    "lrclibId": 123,
+    "preferredLyricsSource": "plain",
+    "duration": 180,
+    "lyricsFingerprint": "lrclib-u2suus-8",
+    "lineCharCounts": [8],
+    "lineCount": 1,
+    "textCharCount": 8
+  },
+  "lines": [{
+    "id": "l0",
+    "offset": 0,
+    "length": 8,
+    "timing": {
+      "unit": "word",
+      "startMs": 1200,
+      "lengths": [5, 3],
+      "deltaMs": [450],
+      "endMs": 2200
+    }
+  }]
+}
+```
+
+For video backgrounds, the service stores mappings from recording identifiers (ISRCs) to YouTube video IDs found through automatic searches or user submissions. The client uses the ID to load the video from YouTube. The backend also stores data used by services such as account linking, creator profiles, voting, and the track information cache. [Sync v6 storage format](https://github.com/ivLis-Studio/ivLyrics/blob/main/docs/sync-v6.md)
+
 ## License and open-source notices
 
 The ivLyrics source code is licensed under the [GNU LGPL v2.1](LICENSE). Bundled third-party components keep their respective licenses. Rights holders set the terms for use of lyrics, videos, and other third-party content and can request removal of content stored on ivLyrics servers at me@ivl.is.
