@@ -1,3 +1,5 @@
+import { buildSyncCreatorImportedScoreWork } from "./syncCreatorScoreSnapshots.mjs";
+
 // A replacement already includes its source's layout and timing edits.
 export function clearSyncCreatorLayoutDrafts(layout) {
 	layout.setParallelPartMetaDrafts({});
@@ -40,6 +42,18 @@ export function applySyncCreatorImportedSession(data, target, { draft, layout, e
 	editor.setSyncData(data);
 	editor.setSelectedLrclibSourceValue(lrclibSource);
 	draft.markDraftDirty();
+}
+
+export function commitSyncCreatorFileImport(data, target, { draft, layout, editor, score, cancelSourceLoading }) {
+	// A file's timing and its target baseline must enter the work queue before
+	// replacing the editor state, even when importing the same file repeatedly.
+	const work = target.activate && buildSyncCreatorImportedScoreWork(data, target, score.encoding);
+	score.inputRef.current = null;
+	score.pendingEffectsRef.current?.clear();
+	score.captureWork('import', data, undefined, work);
+	cancelSourceLoading();
+	target.activate?.();
+	applySyncCreatorImportedSession(data, target, { draft, layout, editor });
 }
 
 export async function restoreSyncCreatorPublishedSession(data, { draft, layout, editor, isEditorOpen, isDraftCurrent }) {

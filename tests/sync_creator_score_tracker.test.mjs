@@ -1,4 +1,5 @@
 import { buildSyncCreatorImportedScoreWork, buildSyncCreatorScoreSnapshot } from "#ivlyrics/features/sync/syncCreatorScoreSnapshots.mjs";
+import { commitSyncCreatorFileImport } from "#ivlyrics/features/sync/syncCreatorSessionReplacement.mjs";
 import codec from '#ivlyrics/features/sync/SyncDataCodec.mjs';
 import { useSyncCreatorRecordingProgress } from "#ivlyrics/features/sync/syncCreatorRecordingProgress.mjs";
 import { createSyncCreatorScoreTracker as create } from '#ivlyrics/features/sync/syncCreatorScoreTracker.mjs';
@@ -649,32 +650,56 @@ test('restored anonymous import hint only recreates an import event from the ver
   assert.equal(pending.length, 1);
 });
 
-test('creator emits import before replacing data and exports never attach trusted credit fields', () => {
+test('creator exports never attach trusted credit fields', () => {
   const source = readSyncCreatorFixture();
-  const importCode = source.slice(source.indexOf('const importSyncData ='), source.indexOf('// 가사 전체 복사'));
-  const captureIndex = importCode.indexOf("captureScoreWork('import', sanitizedData, undefined, work)");
-  assert.ok(captureIndex >= 0 && captureIndex < importCode.indexOf('applySyncCreatorImportedSession(sanitizedData, target'));
-  const replacement = readFileSync(new URL('../src/features/sync/syncCreatorSessionReplacement.mjs', import.meta.url), 'utf8');
-  assert.match(replacement, /export function applySyncCreatorImportedSession[\s\S]+?editor\.setSyncData\(data\)/);
   assert.match(source, /saveWork: \(data, isrc\) => [\s\S]+?return tracker\.submission\(data\)/);
   const exportCode = readFileSync(new URL('../src/features/sync/syncCreatorFileTransfer.mjs', import.meta.url), 'utf8');
   assert.match(exportCode, /JSON\.stringify\(encoded, null, 2\)/);
   assert.doesNotMatch(exportCode, /workSessionId|workSequence|manualCredit/);
 });
 
-test('an import switching lyric versions encodes its work and baseline with the target source', () => {
+test('an import records work against its target baseline before changing the editor', () => {
   const data = snapshot(2);
   const publishedBaseline = snapshot(1);
   const source = { ...data.source, lrclibId: '22', lyricsFingerprint: 'target-text' };
-  const target = { lrclibSource: source, lyricsChars: Array(100).fill('a'), publishedBaseline };
-  const options = { editingVersion: 5, trackDurationMs: 120000, compactSyncCreatorSyncData: codec.encode };
-  const work = buildSyncCreatorImportedScoreWork(data, target, options);
+  const order = [];
+  const target = {
+    lrclibSource: source, lyricsChars: Array(100).fill('a'), publishedBaseline,
+    activate() { order.push('activate'); },
+  };
+  const encoding = { editingVersion: 5, trackDurationMs: 120000, compactSyncCreatorSyncData: codec.encode };
+  const inputRef = { current: 'previous input' };
+  const pendingEffectsRef = { current: new Set(['previous effect']) };
+  let work;
+  commitSyncCreatorFileImport(data, target, {
+    cancelSourceLoading() { order.push('cancel previous load'); },
+    draft: { beginDraftImport() {}, adoptImportedDraftKey() {}, markDraftDirty() {} },
+    layout: new Proxy({}, { get: () => () => {} }),
+    editor: {
+      resetCurrentSyncInput() {},
+      setSyncData(imported) { assert.strictEqual(imported, data); order.push('set imported timing'); },
+      setSelectedLrclibSourceValue(selected) { assert.strictEqual(selected, source); },
+    },
+    score: {
+      inputRef, pendingEffectsRef, encoding,
+      captureWork(action, imported, eventTarget, prepared) {
+        assert.equal(action, 'import');
+        assert.strictEqual(imported, data);
+        assert.equal(eventTarget, undefined);
+        assert.equal(inputRef.current, null);
+        assert.equal(pendingEffectsRef.current.size, 0);
+        order.push('capture import');
+        work = prepared;
+      },
+    },
+  });
+  assert.deepEqual(order, ['capture import', 'cancel previous load', 'activate', 'set imported timing']);
   assert.deepEqual(codec.decode(work.snapshot).source, source);
   assert.deepEqual(codec.decode(work.baseline).source, source);
   assert.equal(codec.decode(work.snapshot).lines.length, 2);
   assert.equal(codec.decode(work.baseline).lines.length, 1);
   assert.equal(codec.decode(work.snapshot).trackDurationMs, 120000);
-  const newSourceWork = buildSyncCreatorImportedScoreWork(data, { ...target, publishedBaseline: null }, options);
+  const newSourceWork = buildSyncCreatorImportedScoreWork(data, { ...target, publishedBaseline: null }, encoding);
   assert.equal(codec.decode(newSourceWork.baseline).lines.length, 0);
   assert.deepEqual(codec.decode(newSourceWork.baseline).source, source);
 });

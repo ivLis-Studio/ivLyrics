@@ -1,5 +1,5 @@
 import {
-	SYNC_CREATOR_SOURCE_ADDON_ID, getSyncCreatorLineCharCountsFromText,
+	SYNC_CREATOR_SOURCE_ADDON_ID, doesSyncCreatorLrclibSourceMatchShape, getSyncCreatorLrclibTextShape,
 	hasExactSyncCreatorLineShape, isCompleteSyncCreatorLrclibSource,
 } from './lrclibSyncSource.mjs';
 import { sanitizeSyncCreatorLastCharEnds } from './timingValidation.mjs';
@@ -109,16 +109,31 @@ async function importSyncCreatorFile(file, {
 async function prepareSyncCreatorFileImport(data, { lyricsText, currentSource, timing, prepareLrclibSource, isCurrent, signal }) {
 	let target = currentSource;
 	const source = data.source;
-	if (isCompleteSyncCreatorLrclibSource(source)
-		&& !hasExactSyncCreatorLineShape(source.lineCharCounts, getSyncCreatorLineCharCountsFromText(lyricsText))) {
-		// A positional import can reuse the current lyrics when each row has
-		// the same length. Otherwise validate the file before loading its text.
+	const currentShape = getSyncCreatorLrclibTextShape(lyricsText);
+	const completeFileSource = isCompleteSyncCreatorLrclibSource(source);
+	let lrclibSource;
+	if (completeFileSource && !hasExactSyncCreatorLineShape(source.lineCharCounts, currentShape.lineCharCounts)) {
+		// Validate the file before loading its exact text.
 		timing.validate(timing.sanitize(data));
 		const loaded = await prepareLrclibSource(source, isCurrent, signal);
 		if (!loaded || !isCurrent()) return null;
-		target = { ...loaded, provider: SYNC_CREATOR_SOURCE_ADDON_ID, addonId: SYNC_CREATOR_SOURCE_ADDON_ID };
+		target = {
+			...loaded, lrclibSource: loaded.lrclibSource || source,
+			provider: SYNC_CREATOR_SOURCE_ADDON_ID, addonId: SYNC_CREATOR_SOURCE_ADDON_ID,
+		};
+		lrclibSource = source;
+	} else {
+		// Matching row lengths allow positional timing import. The source ID
+		// still needs to describe the text the editor will actually display.
+		lrclibSource = [source, currentSource.lrclibSource].find(candidate =>
+			doesSyncCreatorLrclibSourceMatchShape(candidate, currentShape)
+		) || (!completeFileSource && source?.provider === SYNC_CREATOR_SOURCE_ADDON_ID ? source : null);
+		target = { ...currentSource, lrclibSource };
 	}
 	const sanitized = timing.sanitize(data, target.lyricsChars);
 	timing.validate(sanitized);
-	return { data: sanitized, target };
+	const imported = { ...sanitized };
+	if (lrclibSource) imported.source = lrclibSource;
+	else if (imported.source?.provider === SYNC_CREATOR_SOURCE_ADDON_ID) delete imported.source;
+	return { data: imported, target };
 }

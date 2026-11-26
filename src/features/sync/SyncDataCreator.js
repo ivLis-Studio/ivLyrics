@@ -3,7 +3,7 @@ import { useSyncCreatorCharacterSelection, useSyncCreatorSelectionReset } from '
 import { useSyncCreatorPointerSelection } from '#ivlyrics/features/sync/syncCreatorPointerSelection.mjs';
 import { resolveSyncCreatorTrack } from '#ivlyrics/features/sync/syncCreatorTrack.mjs';
 import { getSyncCreatorPlayerForTrack, readSyncCreatorPosition } from '#ivlyrics/features/sync/syncCreatorSeek.mjs';
-import { buildSyncCreatorImportedScoreWork, buildSyncCreatorScoreSnapshot, repairSyncCreatorScoreSnapshot } from '#ivlyrics/features/sync/syncCreatorScoreSnapshots.mjs';
+import { buildSyncCreatorScoreSnapshot, repairSyncCreatorScoreSnapshot } from '#ivlyrics/features/sync/syncCreatorScoreSnapshots.mjs';
 import { useSyncCreatorSessionEditor } from '#ivlyrics/features/sync/syncCreatorSessionEditor.mjs';
 import { isSyncCreatorDraftTimingCleared } from '#ivlyrics/features/sync/syncCreatorSessionRecord.mjs';
 import { useSyncCreatorNavigation } from '#ivlyrics/features/sync/syncCreatorNavigation.mjs';
@@ -70,6 +70,7 @@ import { createSyncCreatorParallelEditing } from '#ivlyrics/features/sync/parall
 import { createSyncCreatorSnapshotTools } from '#ivlyrics/features/sync/syncSnapshot.mjs';
 import {
     SYNC_CREATOR_SOURCE_ADDON_ID,
+    doesSyncCreatorLrclibSourceMatchShape,
     getSyncCreatorLyricsFingerprintFromText,
 } from '#ivlyrics/features/sync/lrclibSyncSource.mjs';
 
@@ -97,7 +98,7 @@ import {
 import { createSyncCreatorEditorLifetime } from '#ivlyrics/features/sync/syncCreatorEditorLifetime.mjs';
 import { createSyncCreatorEditorCommands } from '#ivlyrics/features/sync/syncCreatorEditorCommands.mjs';
 import { exportSyncCreatorFile } from '#ivlyrics/features/sync/syncCreatorFileTransfer.mjs';
-import { applySyncCreatorImportedSession } from '#ivlyrics/features/sync/syncCreatorSessionReplacement.mjs';
+import { commitSyncCreatorFileImport } from '#ivlyrics/features/sync/syncCreatorSessionReplacement.mjs';
 import { useSyncCreatorVisibility } from '#ivlyrics/features/sync/syncCreatorVisibility.mjs';
 import { useSyncCreatorLivePreview } from '#ivlyrics/features/sync/syncCreatorLivePreview.mjs';
 import { createSyncCreatorCharacterHitTesting } from '#ivlyrics/features/sync/syncCreatorCharacterHitTesting.mjs';
@@ -1125,34 +1126,34 @@ export function createSyncDataCreator({
 		const importSyncData = useCallback(() => openImportPicker({
 			createInput: () => document.createElement('input'),
 			lyricsText,
-			currentSource: { lyricsChars: lyricsFullTextChars, lyricsFingerprint: sessionLyricsFingerprint, provider, addonId, lrclibSource: null },
+			currentSource: {
+				lyricsChars: lyricsFullTextChars, lyricsFingerprint: sessionLyricsFingerprint, provider, addonId,
+				lrclibSource: [selectedLrclibSourceRef.current, lyrics?.lrclibSource].find(source =>
+					doesSyncCreatorLrclibSourceMatchShape(source, lyricsTextLrclibShape)),
+			},
 			timing: { sanitize: sanitizeSyncCreatorSyncData, validate: assertValidSyncCreatorSyncData },
 			prepareLrclibSource: prepareLrclibSourceForImport,
-			applyImport: (sanitizedData, target) => {
-				// Import is an immutable queue boundary, including small/repeated
-				// imports and files previously exported from this editor.
-				const work = target.activate && buildSyncCreatorImportedScoreWork(sanitizedData, target, {
-					editingVersion: SYNC_CREATOR_SYNC_DATA_VERSION, trackDurationMs, compactSyncCreatorSyncData,
-				});
-				scoreInputRef.current = null;
-				scorePendingEffectsRef.current?.clear();
-				captureScoreWork('import', sanitizedData, undefined, work);
-				cancelSourceLoading();
-				target.activate?.();
-				applySyncCreatorImportedSession(sanitizedData, target, {
-					draft: {
-						beginDraftImport, syncCreatorDraftStore, sessionTrackKey,
-						activeSessionDraftKey, adoptImportedDraftKey, markDraftDirty,
+			applyImport: (sanitizedData, target) => commitSyncCreatorFileImport(sanitizedData, target, {
+				draft: {
+					beginDraftImport, syncCreatorDraftStore, sessionTrackKey,
+					activeSessionDraftKey, adoptImportedDraftKey, markDraftDirty,
+				},
+				layout: sessionReplacementLayout,
+				editor: { resetCurrentSyncInput, setSyncData, setSelectedLrclibSourceValue },
+				score: {
+					inputRef: scoreInputRef, pendingEffectsRef: scorePendingEffectsRef, captureWork: captureScoreWork,
+					encoding: {
+						editingVersion: SYNC_CREATOR_SYNC_DATA_VERSION, trackDurationMs, compactSyncCreatorSyncData,
 					},
-					layout: sessionReplacementLayout,
-					editor: { resetCurrentSyncInput, setSyncData, setSelectedLrclibSourceValue },
-				});
-			},
+				},
+				cancelSourceLoading,
+			}),
 			toast: Toast,
 			translate: key => I18n.t(key),
 		}), [
 			activeSessionDraftKey, adoptImportedDraftKey, beginDraftImport, markDraftDirty, addonId, cancelSourceLoading,
-			openImportPicker, prepareLrclibSourceForImport, lyricsFullTextChars, lyricsText, provider, sessionLyricsFingerprint,
+			openImportPicker, prepareLrclibSourceForImport, lyricsFullTextChars, lyricsText, lyrics?.lrclibSource, lyricsTextLrclibShape,
+			provider, sessionLyricsFingerprint,
 			sessionTrackKey, setSelectedLrclibSourceValue, resetCurrentSyncInput, syncCreatorDraftStore, captureScoreWork, trackDurationMs,
 		]);
 

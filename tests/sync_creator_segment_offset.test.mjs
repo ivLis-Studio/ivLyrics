@@ -1476,16 +1476,31 @@ test('a file made on other lyrics loads them before its timings are placed', asy
     assert.deepEqual(plain(editor.context.selectedLrclibSource), loadedSource);
 });
 
-test('files for the shown lyrics, or with the same line lengths, import without loading other lyrics', async () => {
+test('files with matching line lengths keep their timing without claiming a different lyric text', async () => {
     const rows = ['PRE', 'ABCD', 'TAIL'];
     const exported = await createEditor({ rows }).export();
     const shown = createEditor({ rows });
-    for (const source of [lrclibSourceFor(shown.context, rows), lrclibSourceFor(shown.context, ['PRX', 'ABCE', 'TAIX'])]) {
+    const original = lrclibSourceFor(shown.context, rows);
+    const other = { ...lrclibSourceFor(shown.context, ['PRX', 'ABCE', 'TAIX']), lrclibId: '378' };
+    for (const source of [original, other, undefined]) {
         const editor = createEditor({ rows, data: { version: 5, lines: [] } });
+        editor.context.lyrics.lrclibSource = original;
         await editor.import({ ...exported, source });
-        assert.equal(editor.context.syncData.lines.length, rows.length);
-        assert.deepEqual(plain(editor.context.selectedLrclibSource), source);
+        assert.deepEqual(plain(editor.context.syncData.lines), plain(exported.lines));
+        assert.deepEqual(plain(editor.context.selectedLrclibSource), original);
+        assert.deepEqual(plain(editor.context.syncData.source), original);
+        assert.equal(editor.context.sessionReadyDraftKey, draftStore.createDraftKey({
+            trackKey: editor.context.sessionTrackKey,
+            provider: 'lrclib',
+            addonId: 'lrclib',
+            lyricsFingerprint: editor.context.sessionLyricsFingerprint,
+            lrclibId: original.lrclibId,
+        }));
     }
+    const unbound = createEditor({ rows });
+    await unbound.import({ ...exported, source: other });
+    assert.equal(unbound.context.selectedLrclibSource, null);
+    assert.equal(unbound.context.syncData.source, undefined);
 });
 
 test('a file that fits no available lyrics fails instead of reporting success', async () => {
