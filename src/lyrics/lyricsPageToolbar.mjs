@@ -97,7 +97,7 @@ export function createLyricsPageToolbar({
     onToggleModeLock: toggleCurrentModeLock,
     onTogglePronunciationFirst: togglePronunciationFirst,
     getRegenerateChoices: () => page.getRegenerateTranslationChoices(),
-    onRegenerate: (target) => page.runRegenerateTranslationChoice(target),
+    onRegenerate: (target, trackUri) => page.runRegenerateTranslationChoice(target, trackUri),
     onOpenLyricsEditor: () => page.openLyricsEditModal(),
     getCurrentTrackInfo: () => page.getCurrentPlayerTrackInfo(),
     onSelectProvider: page.selectLyricsProviderForCurrentTrack,

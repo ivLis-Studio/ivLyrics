@@ -21,9 +21,34 @@ export function getPageRegenerationTargets(visual, readLanguage) {
   };
 }
 
-export async function runPageLyricRegeneration(page, target) {
-  const uri = page.state.uri;
-  if (!uri) return;
+export function createPageRegenerationMenu({ page, openChoiceModal, getChoiceItems, readWordSupplements }) {
+  const getOptions = () => ({
+    targets: page.getRegenerationTargets(),
+    includeCulturalAnnotations: page.isCulturalAnnotationsEnabled(),
+    includeWordSupplements: !!readWordSupplements(),
+  });
+
+  function open() {
+    const lyrics = page.state;
+    const { uri } = lyrics;
+    const options = getOptions();
+    const { targets, includeCulturalAnnotations, includeWordSupplements } = options;
+    const onSelect = target => {
+      if (page.isCurrentLyricsState(lyrics)) return page.runRegenerateTranslationChoice(target, uri);
+    };
+    if (includeCulturalAnnotations || includeWordSupplements || (targets.needPhonetic && targets.needTranslation)) {
+      openChoiceModal({ ...options, onSelect });
+      return;
+    }
+    onSelect(targets.needPhonetic ? "phonetic" : targets.needTranslation ? "translation" : "all");
+  }
+
+  return { open, getChoices: () => getChoiceItems(getOptions()) };
+}
+
+export async function runPageLyricRegeneration(page, target, uri = page.state.uri) {
+  if (!uri || !page._isComponentMounted || uri !== page.state.uri
+      || !page.isCurrentLyricsState(page.state) || !page.isPlaybackUriCurrent(uri)) return;
   const kinds = target === "all" ? ["phonetic", "translation"] : [target];
   if (kinds.some(kind => !REGENERATION_TARGETS.has(kind))) return;
   const requests = page._regenerationRequests ||= new Map();

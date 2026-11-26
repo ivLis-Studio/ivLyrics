@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
-import { runPageLyricRegeneration } from '../src/lyrics/pageLyricRegeneration.mjs';
+import { createPageRegenerationMenu, runPageLyricRegeneration } from '../src/lyrics/pageLyricRegeneration.mjs';
 import { regeneratePageTranslation } from '../src/lyrics/pageTranslationRegeneration.mjs';
 import {
   createToolbarRegeneration, getRegenerateTranslationChoiceItems,
@@ -25,18 +25,7 @@ const deferred = () => {
 const plain = value => JSON.parse(JSON.stringify(value));
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 
-function regenerationChoices() {
-  const helper = input => getRegenerateTranslationChoiceItems(key => key, input);
-  const helperCalls = [];
-  const context = vm.createContext({
-    window: {}, I18n: { t: key => key },
-    getRegenerateTranslationChoiceItems(input) { helperCalls.push(plain(input)); return helper(input); },
-  });
-  const app = vm.runInContext(`({
-    ${section(source, '  getRegenerateTranslationChoices() {', '  async runRegenerateTranslationChoice(')}
-  })`, context);
-  return { app, context, helper, helperCalls };
-}
+const getChoiceItems = input => getRegenerateTranslationChoiceItems(key => key, input);
 
 const regenerationChoiceRows = {
   phonetic: { key: 'regenerate-phonetic-only', target: 'phonetic', label: 'menu.regeneratePronunciationOnly' },
@@ -45,7 +34,7 @@ const regenerationChoiceRows = {
   'word-supplements': { key: 'regenerate-word-supplements', target: 'word-supplements', label: 'menu.regenerateWordDetails' },
 };
 
-test('regeneration choices never offer all, with or without the shared helper', async t => {
+test('regeneration choices offer only enabled individual targets', async t => {
   for (const [needPhonetic, needTranslation, independentTargets] of [
     [false, false, []],
     [true, false, ['phonetic']],
@@ -55,28 +44,21 @@ test('regeneration choices never offer all, with or without the shared helper', 
     for (const includeCulturalAnnotations of [false, true]) {
       for (const includeWordSupplements of [false, true]) {
         await t.test(`pronunciation=${needPhonetic}, translation=${needTranslation}, culture=${includeCulturalAnnotations}, words=${includeWordSupplements}`, () => {
-          const h = regenerationChoices();
           const targets = { needPhonetic, needTranslation };
-          const input = { targets, includeCulturalAnnotations, includeWordSupplements };
+          const menu = createPageRegenerationMenu({
+            page: {
+              getRegenerationTargets: () => targets,
+              isCulturalAnnotationsEnabled: () => includeCulturalAnnotations,
+            },
+            getChoiceItems,
+            readWordSupplements: () => includeWordSupplements ? {} : undefined,
+          });
           const expected = [
             ...independentTargets,
             ...(includeCulturalAnnotations ? ['cultural-annotations'] : []),
             ...(includeWordSupplements ? ['word-supplements'] : []),
           ].map(target => regenerationChoiceRows[target]);
-          assert.deepEqual(plain(h.helper(input)), expected, 'popup helper offers only enabled individual targets');
-
-          h.app.getRegenerationTargets = () => targets;
-          h.app.isCulturalAnnotationsEnabled = () => includeCulturalAnnotations;
-          h.context.getAppWordSupplementService = () => includeWordSupplements ? {} : undefined;
-          assert.deepEqual(plain(h.app.getRegenerateTranslationChoices()), expected, 'current-track choices match the real helper');
-          assert.deepEqual(h.helperCalls, [input], 'always delegate to the available helper with every flag');
-
-          delete h.context.getRegenerateTranslationChoiceItems;
-          assert.deepEqual(
-            plain(h.app.getRegenerateTranslationChoices()),
-            independentTargets.map(target => regenerationChoiceRows[target]),
-            'missing helper falls back to enabled independent pronunciation/translation rows without all',
-          );
+          assert.deepEqual(menu.getChoices(), expected);
         });
       }
     }
@@ -84,11 +66,39 @@ test('regeneration choices never offer all, with or without the shared helper', 
 });
 
 test('regeneration choice helper defaults omit optional actions and disabled targets', () => {
-  const { helper } = regenerationChoices();
-  assert.deepEqual(plain(helper({})), []);
-  assert.deepEqual(plain(helper({ targets: { needPhonetic: true, needTranslation: true } })), [
+  assert.deepEqual(getChoiceItems({}), []);
+  assert.deepEqual(getChoiceItems({ targets: { needPhonetic: true, needTranslation: true } }), [
     regenerationChoiceRows.phonetic, regenerationChoiceRows.translation,
   ]);
+});
+
+test('the regeneration dialog keeps the lyrics request it was opened for', async () => {
+  const calls = [];
+  let select;
+  const page = {
+    state: { uri: 'track-a', lyricsRequestSeq: 1 },
+    getRegenerationTargets: () => ({ needPhonetic: true, needTranslation: true }),
+    isCulturalAnnotationsEnabled: () => false,
+    isCurrentLyricsState(lyrics) {
+      return lyrics.uri === this.state.uri && lyrics.lyricsRequestSeq === this.state.lyricsRequestSeq;
+    },
+    runRegenerateTranslationChoice: (...args) => calls.push(args),
+  };
+  const menu = createPageRegenerationMenu({
+    page, getChoiceItems, openChoiceModal: ({ onSelect }) => { select = onSelect; },
+    readWordSupplements: () => null,
+  });
+
+  menu.open();
+  await select('phonetic');
+  assert.deepEqual(calls, [['phonetic', 'track-a']]);
+
+  menu.open();
+  page.state = { uri: 'track-b', lyricsRequestSeq: 2 };
+  await select('translation');
+  page.state = { uri: 'track-a', lyricsRequestSeq: 3 };
+  await select('translation');
+  assert.deepEqual(calls, [['phonetic', 'track-a']]);
 });
 
 function container() {
@@ -135,6 +145,7 @@ function container() {
     getCurrentMode: () => 1, getTranslationTargetLanguage: () => 'en', provideLanguageCode: () => 'ja',
     isCurrentLyricsUri(uri) { return this.currentTrackUri === uri; },
     isCurrentLyricsState(state) { return this.currentTrackUri === state.uri; },
+    isPlaybackUriCurrent(uri) { return (this.playbackUri ?? this.currentTrackUri) === uri; },
     applyStreamingTranslation: data => snapshots.push(plain(data)),
     invalidateSharedLyricsPresentation() {}, lyricsSource() {}, forceUpdate() {},
     startPhoneticLoading() { return 1; }, clearPhoneticLoading() {},
@@ -267,6 +278,23 @@ test('track changes ignore late streams and completions without unlocking a newe
   assert.equal(h.app._regenerationRequests.size, 1);
   h.resolve(h.calls[1], 'current'); await next;
   assert.deepEqual(plain(h.app._dmResults['track-b'].mode2), [{ text: 'current' }]);
+});
+
+test('a regeneration click from the old track cannot start work for the next track', async () => {
+  const h = container();
+  h.app.state = { ...h.app.state, uri: 'track-b' };
+  h.app.currentTrackUri = 'track-b';
+  const stale = h.app.runRegenerateTranslationChoice('translation', 'track-a');
+  assert.equal(h.calls.length, 0);
+  await stale;
+});
+
+test('regeneration is blocked while the lyrics page still shows the previous track', async () => {
+  const h = container();
+  h.app.playbackUri = 'track-b';
+  const stale = h.app.runRegenerateTranslationChoice('translation', 'track-a');
+  assert.equal(h.calls.length, 0);
+  await stale;
 });
 
 test('an older regeneration cannot stream or overwrite a newer request for the same field', async () => {

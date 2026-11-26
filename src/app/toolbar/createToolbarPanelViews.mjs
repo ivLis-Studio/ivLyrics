@@ -171,7 +171,7 @@ export function createToolbarPanelViews({
           detectedLanguage: toolbar.detectedLanguage,
           regenerate: {
             choices: actions?.getRegenerateChoices?.() || [],
-            onRegenerate: actions?.onRegenerate,
+            onRegenerate: target => actions?.onRegenerate?.(target, toolbar.trackUri),
             isEnabled: !!toolbar.canRegenerate,
             busyTargets: [
               toolbar.isPronunciationRegenerating && "phonetic",

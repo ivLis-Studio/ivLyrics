@@ -549,7 +549,7 @@ test("conversion panel writes the same settings and reaches the same tools", () 
   assert.equal(toolbar.CONFIG.visual["translation-mode-2:japanese"], "gemini_ko");
 
   click(toolbar, findOne(toolbar, (node) => hasClass(node, "ivl-tb-chip") && textOf(node).trim() === t("settings.culturalAnnotations.label"), "cultural chip"));
-  assert.deepEqual(toolbar.calls.find(([name]) => name === "onRegenerate"), ["onRegenerate", "cultural-annotations"]);
+  assert.deepEqual(toolbar.calls.find(([name]) => name === "onRegenerate"), ["onRegenerate", "cultural-annotations", "spotify:track:abc"]);
   click(toolbar, findOne(toolbar, (node) => node.type === "button" && textOf(node) === t("buttons.edit"), "cache editor button"));
   assert.ok(toolbar.calls.some(([name]) => name === "onOpenLyricsEditor"));
 

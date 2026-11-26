@@ -27,7 +27,9 @@ import {
 } from "#ivlyrics/lyrics/lyricsRenderModes.mjs";
 import { createRuntimeTrackIdentity as createPageTrackIdentity } from "#ivlyrics/core/trackIdentity.mjs";
 import { regeneratePageTranslation } from "#ivlyrics/lyrics/pageTranslationRegeneration.mjs";
-import { getPageRegenerationTargets, runPageLyricRegeneration, regeneratePageWordSupplements } from "#ivlyrics/lyrics/pageLyricRegeneration.mjs";
+import {
+  createPageRegenerationMenu, getPageRegenerationTargets, runPageLyricRegeneration, regeneratePageWordSupplements,
+} from "#ivlyrics/lyrics/pageLyricRegeneration.mjs";
 import { createSpotifyTrackMetadata } from "#ivlyrics/core/spotifyTrackMetadata.mjs";
 import { getSettingsSurfaceTheme as getActiveSettingsSurfaceTheme } from "#ivlyrics/features/settings/settingsSurfaceTheme.mjs";
 import { createAppConfig } from "#ivlyrics/spicetify/createAppConfig.mjs";
@@ -293,6 +295,12 @@ class LyricsContainer extends react.Component {
   constructor() {
     super();
     watchFullscreenContainerBodyClass(document, window.MutationObserver);
+    this.regenerationMenu = createPageRegenerationMenu({
+      page: this,
+      openChoiceModal: openRegenerateTranslationChoiceModal,
+      getChoiceItems: getRegenerateTranslationChoiceItems,
+      readWordSupplements: getAppWordSupplementService,
+    });
     initializeLyricsRoutePage(this, {
       host: window, document, react, Spicetify, CONFIG, I18n, Utils, Toast, StorageManager,
       TrackLyricsProviderDB, TrackBackgroundDB, getService: name => getAppService(name, window), nextTrackPrefetch,
@@ -493,61 +501,15 @@ class LyricsContainer extends react.Component {
   }
 
   handleRegenerateTranslationRequest() {
-    const targets = this.getRegenerationTargets();
-    const includeCulturalAnnotations = this.isCulturalAnnotationsEnabled();
-    const includeWordSupplements = !!getAppWordSupplementService();
-    if (
-      (includeCulturalAnnotations || includeWordSupplements || (targets.needPhonetic && targets.needTranslation)) &&
-      typeof openRegenerateTranslationChoiceModal === "function"
-    ) {
-      openRegenerateTranslationChoiceModal({
-        targets,
-        includeCulturalAnnotations,
-        includeWordSupplements,
-        onSelect: (target) => this.runRegenerateTranslationChoice(target),
-      });
-      return;
-    }
-
-    if (targets.needPhonetic) {
-      this.runRegenerateTranslationChoice("phonetic");
-      return;
-    }
-
-    if (targets.needTranslation) {
-      this.runRegenerateTranslationChoice("translation");
-      return;
-    }
-
-    this.runRegenerateTranslationChoice("all");
+    this.regenerationMenu.open();
   }
 
-  // 번역 재생성 choices in the toolbar's conversion panel: the choice dialog's
-  // list, or the single target the old toolbar button regenerated directly.
   getRegenerateTranslationChoices() {
-    const targets = this.getRegenerationTargets();
-    const includeCulturalAnnotations = this.isCulturalAnnotationsEnabled();
-    const includeWordSupplements = !!getAppWordSupplementService();
-    if (typeof getRegenerateTranslationChoiceItems === "function") {
-      return getRegenerateTranslationChoiceItems({
-        targets,
-        includeCulturalAnnotations,
-        includeWordSupplements,
-      });
-    }
-
-    return [
-      targets.needPhonetic && {
-        key: "regenerate-phonetic-only", target: "phonetic", label: I18n.t("menu.regeneratePronunciationOnly"),
-      },
-      targets.needTranslation && {
-        key: "regenerate-translation-only", target: "translation", label: I18n.t("menu.regenerateTranslationOnly"),
-      },
-    ].filter(Boolean);
+    return this.regenerationMenu.getChoices();
   }
 
-  async runRegenerateTranslationChoice(target) {
-    return runPageLyricRegeneration(this, target);
+  async runRegenerateTranslationChoice(target, trackUri) {
+    return runPageLyricRegeneration(this, target, trackUri);
   }
 
   regenerateCulturalAnnotations() {
