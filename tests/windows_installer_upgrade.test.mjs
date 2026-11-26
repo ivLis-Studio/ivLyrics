@@ -7,8 +7,14 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { zipSync } from 'fflate';
 
-const shell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
-const canRun = process.platform === 'win32' ||
+const isWindows = process.platform === 'win32';
+const shell = isWindows ? 'powershell.exe' : 'pwsh';
+// A PowerShell 7 runner passes its module paths through Node unchanged. Let
+// Windows PowerShell 5.1 resolve its own modules for the installer fixture.
+const shellEnv = isWindows
+    ? Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PSMODULEPATH'))
+    : process.env;
+const canRun = isWindows ||
     spawnSync(shell, ['-NoProfile', '-NonInteractive', '-Command', 'exit 0'], { stdio: 'ignore' }).status === 0;
 const builtVersion = process.env.IVLYRICS_TEST_PACKAGE_VERSION;
 
@@ -41,7 +47,7 @@ test('Windows installation and removal validate or restore the active profile', 
         '-Uninstaller', fileURLToPath(new URL('../updater/uninstall.ps1', import.meta.url)),
         '-CompleteZip', complete, '-BrokenZip', broken, '-MirrorZip', mirror,
         ...(builtVersion ? ['-Version', builtVersion] : []),
-    ], { encoding: 'utf8', timeout: 90_000 });
+    ], { encoding: 'utf8', timeout: 90_000, env: shellEnv });
     assert.ifError(result.error);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.match(result.stdout, /PASS a silent config write failure aborts installation/);
@@ -60,7 +66,7 @@ test('Windows installation and removal validate or restore the active profile', 
     assert.match(result.stdout, /PASS upgrade rollback/);
     assert.match(result.stdout, /PASS a route injection failure rolls back even with exit code zero/);
     assert.match(result.stdout, /PASS a skipped app refresh rolls back even with exit code zero/);
-    if (process.platform === 'win32') assert.match(result.stdout, /PASS NTFS junction rollback and upgrade/);
+    if (isWindows) assert.match(result.stdout, /PASS NTFS junction rollback and upgrade/);
     assert.match(result.stdout, /PASS removal retains installation after exit-code/);
     assert.match(result.stdout, /PASS a silent config write failure aborts removal/);
     assert.match(result.stdout, /PASS removal retains installation after version-mismatch/);
