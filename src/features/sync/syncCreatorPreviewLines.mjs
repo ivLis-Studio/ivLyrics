@@ -210,7 +210,7 @@ export function buildSyncCreatorPreviewLines({
 					endTime: Math.max(...partSyllables.map(syllable => syllable.endTime))
 				});
 			}
-			if (builtParts.length > 1) {
+			if (builtParts.length > 0) {
 				const leadPart = builtParts.find(part => part.role === 'lead') || builtParts[0];
 				const backgroundParts = builtParts.filter(part => part !== leadPart);
 				const allTimes = builtParts.flatMap(part => [part.startTime, part.endTime]).filter(Number.isFinite);
@@ -246,6 +246,7 @@ export function buildSyncCreatorPreviewLines({
 					}
 				};
 			}
+			return untimedLine();
 		}
 		const syllables = buildCharSyllables(chars, charTimesMs, absoluteStart);
 		if (syllables.length === 0) return untimedLine();

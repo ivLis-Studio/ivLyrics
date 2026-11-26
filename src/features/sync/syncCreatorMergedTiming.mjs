@@ -1,8 +1,10 @@
 import {
 	resolveSyncCreatorManualSplitState, preserveSyncCreatorParallelTimingRuns,
 } from "./parallelTiming.mjs";
-import { normalizeSyncCreatorGranularity, normalizeSyncCreatorTimeSequence } from "./timingGranularity.mjs";
+import { isFiniteSyncCreatorTime, normalizeSyncCreatorGranularity, normalizeSyncCreatorTimeSequence } from "./timingGranularity.mjs";
 import { SYNC_CREATOR_DEFAULT_SPEAKER, SYNC_CREATOR_DEFAULT_KIND } from "./syncCreatorVocalStyles.mjs";
+import { createSyncCreatorMergedLayout } from "./syncCreatorMergedLayout.mjs";
+import { createSyncCreatorLyricDocument } from "./syncCreatorLyricText.mjs";
 
 const partIds = 'abcdefghijklmnopqrstuvwxyz'.split('');
 
@@ -23,15 +25,14 @@ export function distributeSyncCreatorManualSplitDraft(drafts, {
 	return next;
 }
 
-export function prepareSyncCreatorLineMerge({
-	currentStart, currentMergedLineIndexes, nextMergeLineIndexes, getLineEndAtIndex,
+function prepareMergedTiming({
+	currentStart, nextMergedLineIndexes, sourceGroups, getLineEndAtIndex,
 	lineCharOffsets, syncData, manualParallelSplitDrafts,
 }) {
-	const nextMergedLineIndexes = [...currentMergedLineIndexes, ...nextMergeLineIndexes];
 	const mergedEnd = getLineEndAtIndex(nextMergedLineIndexes.at(-1));
 	const sourceLinesByStart = new Map((syncData?.lines || []).map(line => [line.start, line]));
 	const ownersByIndex = new Map();
-	for (const group of [currentMergedLineIndexes, nextMergeLineIndexes]) {
+	for (const group of sourceGroups) {
 		const owner = { start: lineCharOffsets[group[0]], end: getLineEndAtIndex(group.at(-1)) };
 		for (const index of group) ownersByIndex.set(index, owner);
 	}
@@ -55,23 +56,70 @@ export function prepareSyncCreatorLineMerge({
 	return { nextMergedLineIndexes, mergedEnd, ownersByIndex, hasManualSplitState, mergedManualSplitPoints };
 }
 
+export function prepareSyncCreatorLineMerge({ currentMergedLineIndexes, nextMergeLineIndexes, ...timing }) {
+	return prepareMergedTiming({
+		...timing,
+		nextMergedLineIndexes: [...currentMergedLineIndexes, ...nextMergeLineIndexes],
+		sourceGroups: [currentMergedLineIndexes, nextMergeLineIndexes],
+	});
+}
+
+export function restoreSyncCreatorDraftMergeTiming(syncData, lyricsText, {
+	mergedLineDrafts = {}, manualParallelSplitDrafts = {},
+}, editingVersion, timing) {
+	if (!syncData?.lines?.length || !mergedLineDrafts || !Object.keys(mergedLineDrafts).length) return syncData;
+
+	const lyricDocument = createSyncCreatorLyricDocument(lyricsText);
+	const { lineIndexByStart, lineCharOffsets, getLineEndAtIndex } = lyricDocument;
+	const draftLayout = createSyncCreatorMergedLayout(lyricDocument, mergedLineDrafts, syncData);
+	let restored = syncData;
+	for (const key of Object.keys(mergedLineDrafts)) {
+		const currentStart = Number(key);
+		const lineIndex = lineIndexByStart.get(currentStart);
+		if (lineIndex === undefined || draftLayout.findMergedOwnerLineIndex(lineIndex) >= 0) continue;
+		const nextMergedLineIndexes = draftLayout.getMergedLineIndexesForStart(lineIndex);
+		if (nextMergedLineIndexes.length < 2) continue;
+
+		const savedLayout = createSyncCreatorMergedLayout(lyricDocument, {}, restored);
+		const endIndex = nextMergedLineIndexes.at(-1);
+		const sourceOwners = new Set(nextMergedLineIndexes.map(index => {
+			const owner = savedLayout.findMergedOwnerLineIndex(index);
+			return owner < 0 ? index : owner;
+		}));
+		const sourceGroups = [...sourceOwners].map(index => savedLayout.getMergedLineIndexesForStart(index));
+		if (sourceGroups.some(group => group[0] < lineIndex || group.at(-1) > endIndex)) continue;
+		const separateRows = nextMergedLineIndexes.slice(1).some(index => savedLayout.getSavedLineAtIndex(index));
+		const alreadyGrouped = sourceGroups.length === 1 && savedLayout.getSavedLineAtIndex(lineIndex)?.end === getLineEndAtIndex(endIndex);
+		if (alreadyGrouped && !separateRows) continue;
+
+		const plan = prepareMergedTiming({
+			currentStart, nextMergedLineIndexes, sourceGroups, getLineEndAtIndex,
+			lineCharOffsets, syncData: restored, manualParallelSplitDrafts,
+		});
+		restored = mergeSyncCreatorLineTiming(restored, {
+			...plan, currentStart, lineCharOffsets, getLineEndAtIndex, editingVersion,
+		}, timing).data;
+	}
+	return restored;
+}
+
 export function mergeSyncCreatorLineTiming(prev, {
 	currentStart, mergedEnd, nextMergedLineIndexes, ownersByIndex, hasManualSplitState, mergedManualSplitPoints,
-	lineCharOffsets, getLineEndAtIndex, lyricsLines, editingVersion,
+	lineCharOffsets, getLineEndAtIndex, editingVersion,
 }, {
-	inheritSyncCreatorParallelPartChars, sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
+	sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
 	sanitizeSyncCreatorSpeakerFallback, sanitizeSyncCreatorSpeakerColor, normalizeSyncCreatorKind,
 	normalizeSyncCreatorHiddenRanges, normalizeSyncCreatorStyleRanges, sanitizeSyncCreatorParallel,
+	getSyncCreatorSyncDataValidationError,
 }) {
-	if (!prev || !Array.isArray(prev.lines)) return prev;
+	if (!prev || !Array.isArray(prev.lines)) return { data: prev };
 
 	const linesByStart = new Map(prev.lines.map(line => [line.start, line]));
 
 	const getPartSnapshot = (lineIndex) => {
 		const lineStart = lineCharOffsets[lineIndex];
 		const lineEnd = getLineEndAtIndex(lineIndex);
-		const lineChars = Array.from(lyricsLines[lineIndex] || '');
-		if (!Number.isInteger(lineStart) || lineEnd < lineStart || lineChars.length === 0) return null;
+		if (!Number.isInteger(lineStart) || lineEnd < lineStart) return null;
 
 		const directLine = linesByStart.get(lineStart);
 		const timingSource = directLine || linesByStart.get(ownersByIndex.get(lineIndex).start);
@@ -82,9 +130,7 @@ export function mergeSyncCreatorLineTiming(prev, {
 				&& Number(range?.end) >= lineEnd
 			)
 		);
-		const chars = inheritSyncCreatorParallelPartChars({ ranges: [{ start: lineStart, end: lineEnd }] }, timingSource);
-		if (!Array.isArray(chars) || chars.length !== lineChars.length) return null;
-		const sliced = sliceSyncCreatorLineTiming(timingSource, lineStart, lineEnd);
+		const sliced = sliceSyncCreatorLineTiming(timingSource, lineStart, lineEnd, { keepParallel: true });
 
 		const sourceSpeaker = directLine?.speaker || existingPart?.speaker || timingSource?.speaker;
 		const speaker = normalizeSyncCreatorSpeaker(sourceSpeaker) || SYNC_CREATOR_DEFAULT_SPEAKER;
@@ -97,7 +143,9 @@ export function mergeSyncCreatorLineTiming(prev, {
 		return {
 			start: lineStart,
 			end: lineEnd,
-			chars,
+			chars: sliced?.chars,
+			...(sliced?.unitLayout ? { unitLayout: sliced.unitLayout } : {}),
+			...(isFiniteSyncCreatorTime(sliced?.lastCharEnd) ? { lastCharEnd: sliced.lastCharEnd } : {}),
 			parallel: sliced?.parallel,
 			hiddenRanges: sliced?.hiddenRanges || [],
 			styleRanges: sliced?.styleRanges || [],
@@ -117,78 +165,81 @@ export function mergeSyncCreatorLineTiming(prev, {
 	};
 
 	const snapshots = nextMergedLineIndexes.map(getPartSnapshot);
-	const mergedLine = snapshots.every(Boolean)
-		? {
-			start: currentStart,
-			end: mergedEnd,
-			chars: normalizeSyncCreatorTimeSequence(
-				snapshots.flatMap(snapshot => snapshot.chars),
-				'word'
-			),
-			// Parallel parts carry their own precise timing. Keep only one line-level
-			// start mark instead of duplicating every character timestamp here.
-			granularity: 'line',
-			speaker: snapshots[0].speaker,
-			...(snapshots[0]['speaker-fallback'] ? { 'speaker-fallback': snapshots[0]['speaker-fallback'] } : {}),
-			...(snapshots[0]['speaker-color'] ? { 'speaker-color': snapshots[0]['speaker-color'] } : {}),
-			kind: snapshots[0].kind,
-			...(snapshots.some(snapshot => snapshot.hiddenRanges.length) ? {
-				hiddenRanges: normalizeSyncCreatorHiddenRanges(snapshots.flatMap(snapshot => snapshot.hiddenRanges))
-			} : {}),
-			...(snapshots.some(snapshot => snapshot.styleRanges.length) ? {
-				styleRanges: normalizeSyncCreatorStyleRanges(snapshots.flatMap(snapshot => snapshot.styleRanges), currentStart, mergedEnd)
-			} : {}),
-			mergedLineContinuationStarts: nextMergedLineIndexes.slice(1).map(index => lineCharOffsets[index]),
-			parallel: sanitizeSyncCreatorParallel(preserveSyncCreatorParallelTimingRuns({
-				layout: 'stack',
-				...(hasManualSplitState ? { manualSplitPoints: mergedManualSplitPoints } : {}),
-				hiddenRanges: snapshots.flatMap(snapshot => snapshot.parallel?.hiddenRanges || []),
-				parts: snapshots.flatMap((snapshot, index) => snapshot.parallel?.parts || [{
-					role: index === 0 ? 'lead' : 'background',
-					granularity: snapshot.granularity,
-					speaker: snapshot.speaker,
-					...(snapshot['speaker-fallback'] ? { 'speaker-fallback': snapshot['speaker-fallback'] } : {}),
-					...(snapshot['speaker-color'] ? { 'speaker-color': snapshot['speaker-color'] } : {}),
-					kind: snapshot.kind,
-					ranges: [{ start: snapshot.start, end: snapshot.end }],
-					join: [],
-					chars: snapshot.chars
-				}]).map((part, index) => ({ ...part, id: partIds[index] || `p${index + 1}` }))
-			}))
-		}
-		: null;
-	if (!mergedLine) return prev;
+	const firstRecorded = snapshots.find(snapshot => snapshot?.chars);
+	if (!firstRecorded || snapshots.some(snapshot => !snapshot)) return { data: prev };
+	const initialTime = firstRecorded.chars[0];
+	const mergedLine = {
+		start: currentStart,
+		end: mergedEnd,
+		chars: normalizeSyncCreatorTimeSequence(
+			snapshots.flatMap(snapshot => snapshot.chars ?? new Array(snapshot.end - snapshot.start + 1).fill(initialTime)),
+			'word'
+		),
+		// Parallel parts carry their own precise timing. Keep only one line-level
+		// start mark instead of duplicating every character timestamp here.
+		granularity: 'line',
+		speaker: snapshots[0].speaker,
+		...(snapshots[0]['speaker-fallback'] ? { 'speaker-fallback': snapshots[0]['speaker-fallback'] } : {}),
+		...(snapshots[0]['speaker-color'] ? { 'speaker-color': snapshots[0]['speaker-color'] } : {}),
+		kind: snapshots[0].kind,
+		...(snapshots.some(snapshot => snapshot.hiddenRanges.length) ? {
+			hiddenRanges: normalizeSyncCreatorHiddenRanges(snapshots.flatMap(snapshot => snapshot.hiddenRanges))
+		} : {}),
+		...(snapshots.some(snapshot => snapshot.styleRanges.length) ? {
+			styleRanges: normalizeSyncCreatorStyleRanges(snapshots.flatMap(snapshot => snapshot.styleRanges), currentStart, mergedEnd)
+		} : {}),
+		mergedLineContinuationStarts: nextMergedLineIndexes.slice(1).map(index => lineCharOffsets[index]),
+		parallel: sanitizeSyncCreatorParallel(preserveSyncCreatorParallelTimingRuns({
+			layout: 'stack',
+			...(hasManualSplitState ? { manualSplitPoints: mergedManualSplitPoints } : {}),
+			hiddenRanges: snapshots.flatMap(snapshot => snapshot.parallel?.hiddenRanges || []),
+			parts: snapshots.flatMap((snapshot, index) => snapshot.parallel?.parts || [{
+				role: index === 0 ? 'lead' : 'background',
+				granularity: snapshot.granularity,
+				speaker: snapshot.speaker,
+				...(snapshot['speaker-fallback'] ? { 'speaker-fallback': snapshot['speaker-fallback'] } : {}),
+				...(snapshot['speaker-color'] ? { 'speaker-color': snapshot['speaker-color'] } : {}),
+				kind: snapshot.kind,
+				ranges: [{ start: snapshot.start, end: snapshot.end }],
+				join: [],
+				chars: snapshot.chars,
+				...(snapshot.unitLayout ? { unitLayout: snapshot.unitLayout } : {}),
+				...(snapshot.lastCharEnd !== undefined ? { lastCharEnd: snapshot.lastCharEnd } : {})
+			}]).map((part, index) => ({ ...part, id: partIds[index] || `p${index + 1}` }))
+		}))
+	};
 
-	const lines = prev.lines
-		.filter(line => line.start < currentStart || line.start > mergedEnd);
+	const issue = getSyncCreatorSyncDataValidationError({ lines: [mergedLine] });
+	if (issue) return { data: prev, issue };
 
+	const lines = prev.lines.filter(line => line.start < currentStart || line.start > mergedEnd);
 	lines.push(mergedLine);
-
 	lines.sort((a, b) => a.start - b.start);
-	return lines.length > 0 ? {
-		...prev,
-		version: editingVersion,
-		lines
-	} : null;
+	return { data: { ...prev, version: editingVersion, lines } };
 }
 
 export function unmergeSyncCreatorLineTiming(prev, {
-	lineStart, mergedEnd, currentMergedLineIndexes, lineCharOffsets, getLineEndAtIndex, lyricsLines, editingVersion,
+	lineStart, currentMergedLineIndexes, lineCharOffsets, getLineEndAtIndex, editingVersion,
 }, {
-	inheritSyncCreatorParallelPartChars, sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
+	sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
 	sanitizeSyncCreatorSpeakerFallback, sanitizeSyncCreatorSpeakerColor, normalizeSyncCreatorKind,
 }) {
 	if (!prev || !Array.isArray(prev.lines)) return prev;
-	const mergedLine = prev.lines.find(line => line.start === lineStart);
-	if (!mergedLine || Number(mergedLine.end) < mergedEnd) return prev;
+	const linesByStart = new Map(prev.lines.map(line => [line.start, line]));
+	const mergedLine = linesByStart.get(lineStart);
+	const savedEnd = Number(mergedLine?.end);
+	if (!Number.isInteger(savedEnd) || savedEnd <= getLineEndAtIndex(currentMergedLineIndexes[0])) return prev;
 
 	const restoredLines = currentMergedLineIndexes
 		.map((lineIndex) => {
 			const start = lineCharOffsets[lineIndex];
 			const end = getLineEndAtIndex(lineIndex);
-			const lineChars = Array.from(lyricsLines[lineIndex] || '');
-			if (!Number.isInteger(start) || end < start || lineChars.length === 0) return null;
+			if (!Number.isInteger(start) || end < start || start > savedEnd) return null;
 
+			const restored = sliceSyncCreatorLineTiming(mergedLine, start, Math.min(end, savedEnd));
+			// Older work could retain an independent continuation when recording
+			// the parent. Keep that row if the parent has no recorded vocal for it.
+			if (!restored) return start === lineStart ? null : linesByStart.get(start);
 			const part = mergedLine.parallel?.parts?.find(item =>
 				Array.isArray(item?.ranges)
 				&& item.ranges.some(range =>
@@ -196,27 +247,20 @@ export function unmergeSyncCreatorLineTiming(prev, {
 					&& Number(range?.end) >= end
 				)
 			);
-			const chars = inheritSyncCreatorParallelPartChars({ ranges: [{ start, end }] }, mergedLine);
-			if (!Array.isArray(chars) || chars.length !== lineChars.length) return null;
-
 			const speaker = normalizeSyncCreatorSpeaker(part?.speaker || mergedLine.speaker) || SYNC_CREATOR_DEFAULT_SPEAKER;
 			const kind = normalizeSyncCreatorKind(part?.kind || mergedLine.kind) || SYNC_CREATOR_DEFAULT_KIND;
 			const granularity = part ? normalizeSyncCreatorGranularity(part.granularity || mergedLine.granularity) : 'character';
-			const restored = sliceSyncCreatorLineTiming(mergedLine, start, end);
-			if (!restored) return null;
 			const speakerFallback = sanitizeSyncCreatorSpeakerFallback(speaker, part?.['speaker-fallback'] || mergedLine['speaker-fallback'], true, part?.speaker || mergedLine.speaker);
 			const speakerColor = sanitizeSyncCreatorSpeakerColor(speaker, part?.['speaker-color'] || mergedLine['speaker-color'], true, speakerFallback);
 			return {
-				...restored, granularity: restored.parallel ? 'character' : granularity, speaker, kind,
+				...restored, granularity: restored.parallel ? restored.granularity : granularity, speaker, kind,
 				'speaker-fallback': speakerFallback || undefined,
 				'speaker-color': speakerColor || undefined
 			};
 		})
 		.filter(Boolean);
-	if (restoredLines.length !== currentMergedLineIndexes.length) return prev;
-
 	const lines = prev.lines
-		.filter(line => line.start < lineStart || line.start > mergedEnd);
+		.filter(line => line.start < lineStart || line.start > savedEnd);
 	lines.push(...restoredLines);
 	lines.sort((a, b) => a.start - b.start);
 	return lines.length > 0

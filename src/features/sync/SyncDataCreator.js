@@ -10,6 +10,7 @@ import { useSyncCreatorNavigation } from '#ivlyrics/features/sync/syncCreatorNav
 import { useSyncCreatorVocalEditor } from '#ivlyrics/features/sync/syncCreatorVocalEditor.mjs';
 import { useSyncCreatorScoreState, useSyncCreatorScoreObservation } from '#ivlyrics/features/sync/syncCreatorScoreState.mjs';
 import { useSyncCreatorLineActions } from '#ivlyrics/features/sync/syncCreatorLineActions.mjs';
+import { restoreSyncCreatorDraftMergeTiming } from '#ivlyrics/features/sync/syncCreatorMergedTiming.mjs';
 import { collectSyncCreatorLineTimes } from '#ivlyrics/features/sync/syncCreatorOffsetTiming.mjs';
 import { useSyncCreatorOffsetActions } from '#ivlyrics/features/sync/syncCreatorOffsetActions.mjs';
 import { pageLyricsMemoryCache } from '#ivlyrics/lyrics/pageMemoryCache.mjs';
@@ -255,6 +256,16 @@ export function createSyncDataCreator({
 		compactSyncCreatorSyncData,
 		mergeSyncCreatorParallelTemplate,
 	} = syncCreatorVocalLayout;
+
+	const mergedLineTiming = {
+		sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
+		sanitizeSyncCreatorSpeakerFallback, sanitizeSyncCreatorSpeakerColor, normalizeSyncCreatorKind,
+		normalizeSyncCreatorHiddenRanges, normalizeSyncCreatorStyleRanges, sanitizeSyncCreatorParallel,
+		getSyncCreatorSyncDataValidationError,
+	};
+	const restoreDraftMergeTiming = (data, lyricsText, drafts) => restoreSyncCreatorDraftMergeTiming(
+		data, lyricsText, drafts, SYNC_CREATOR_SYNC_DATA_VERSION, mergedLineTiming
+	);
 
 	const SyncDataCreator = ({ trackInfo, initialData, onClose, registerCloseRequest }) => {
 		const { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } = react;
@@ -688,7 +699,7 @@ export function createSyncDataCreator({
 		} = useSyncCreatorLineActions({
 			react, toast: Toast, i18n: I18n, editingVersion: SYNC_CREATOR_SYNC_DATA_VERSION,
 			canStartOperation: lifetime.canStartOperation,
-			song: { lyricDocument, syncData, lineCharOffsets, lyricsLines },
+			song: { lyricDocument, syncData, lineCharOffsets },
 			line: {
 				currentLineIndex, currentLineStart, currentFullLineChars, currentExistingLineData, currentMergedLineIndexes,
 				nextMergeLineIndexes, currentLineMergedWithNext, currentAutoMergeSplitPoints, currentAutoMergeSplitPointSet,
@@ -699,11 +710,7 @@ export function createSyncDataCreator({
 				setMultiVocalMode, setActiveParallelPartId, setMergedLineDrafts, setManualParallelSplitDrafts,
 				setParentheticalLayoutDrafts, setPendingParentheticalLayoutDecision,
 			},
-			timing: {
-				inheritSyncCreatorParallelPartChars, sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
-				sanitizeSyncCreatorSpeakerFallback, sanitizeSyncCreatorSpeakerColor, normalizeSyncCreatorKind,
-				normalizeSyncCreatorHiddenRanges, normalizeSyncCreatorStyleRanges, sanitizeSyncCreatorParallel,
-			},
+			timing: mergedLineTiming,
 			editor: { claimSessionForLocalEditing, setSyncData, setMode },
 			recording: { setRecordingProgressIndex, clearRecordingLock, charTimesRef, lyricsScrollRef },
 		});
@@ -957,7 +964,10 @@ export function createSyncDataCreator({
 			source: { lyrics, lyricsLines, lyricsText, lyricsFullTextChars, lyricsLanguage, provider, addonId, selectedLrclibSource, selectedLrclibCandidateKey },
 			editor: { syncData, currentLineIndex, activeParallelPartId, multiVocalMode, syncGranularity, globalOffset },
 			drafts: { parallelPartMetaDrafts, manualParallelSplitDrafts, parentheticalLayoutDrafts, mergedLineDrafts, lineMetaDrafts, lineStyleDrafts },
-			timing: { attachSelectedLrclibSource, assertValidSyncCreatorSyncData, compactSyncCreatorSyncData, sanitizeSyncCreatorSyncData },
+			timing: {
+				attachSelectedLrclibSource, assertValidSyncCreatorSyncData, compactSyncCreatorSyncData, sanitizeSyncCreatorSyncData,
+				restoreDraftMergeTiming,
+			},
 			score,
 			session: {
 				activeSessionDraftKey, sessionTrackKey, sessionLyricsFingerprint, nextSessionClientRevision,

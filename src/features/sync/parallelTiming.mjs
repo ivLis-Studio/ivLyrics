@@ -145,21 +145,27 @@ const findSyncCreatorParallelSourcePart = (targetPart, sourceParts) => {
 const buildSyncCreatorExistingTimingIndex = (line) => {
 	const timingByAbsoluteIndex = new Map();
 	const partTimedIndexes = new Set();
+	const pendingIndexes = new Set();
 	const parts = Array.isArray(line?.parallel?.parts) ? line.parallel.parts : [];
 	for (const part of parts) {
 		const expectedLength = countSyncCreatorRangeChars(part?.ranges);
-		if (!expectedLength || !Array.isArray(part?.chars) || part.chars.length !== expectedLength) continue;
+		if (!expectedLength) continue;
+		const recorded = hasReusableSyncCreatorParallelChars(part, part);
+		// A saved parent has a valid line marker even during partial recording.
+		// Indices belonging to a pending vocal must never inherit that marker.
 		let charIndex = 0;
 		for (const range of part.ranges) {
 			const start = Number(range?.start);
 			const end = Number(range?.end);
 			if (!Number.isInteger(start) || !Number.isInteger(end) || end < start) break;
 			for (let absoluteIndex = start; absoluteIndex <= end; absoluteIndex++) {
-				const time = part.chars[charIndex++];
-				if (isFiniteSyncCreatorTime(time) && !timingByAbsoluteIndex.has(absoluteIndex)) {
+				const time = recorded ? part.chars[charIndex] : undefined;
+				if (!isFiniteSyncCreatorTime(time)) pendingIndexes.add(absoluteIndex);
+				else if (!timingByAbsoluteIndex.has(absoluteIndex)) {
 					timingByAbsoluteIndex.set(absoluteIndex, time);
 					partTimedIndexes.add(absoluteIndex);
 				}
+				charIndex++;
 			}
 		}
 	}
@@ -172,7 +178,7 @@ const buildSyncCreatorExistingTimingIndex = (line) => {
 	if (expectedLineLength && Array.isArray(line?.chars) && line.chars.length === expectedLineLength) {
 		line.chars.forEach((time, index) => {
 			const absoluteIndex = lineStart + index;
-			if (isFiniteSyncCreatorTime(time) && !timingByAbsoluteIndex.has(absoluteIndex)) {
+			if (isFiniteSyncCreatorTime(time) && !pendingIndexes.has(absoluteIndex) && !timingByAbsoluteIndex.has(absoluteIndex)) {
 				timingByAbsoluteIndex.set(absoluteIndex, time);
 			}
 		});
@@ -364,9 +370,8 @@ function createSyncCreatorParallelEditing({ getSyncCreatorSyncDataValidationErro
 		return joined;
 	};
 
-	const sliceSyncCreatorLineTiming = (line, start, end) => {
+	const sliceSyncCreatorLineTiming = (line, start, end, { keepParallel = false } = {}) => {
 		const chars = inheritSyncCreatorParallelPartChars({ ranges: [{ start, end }] }, line);
-		if (!Array.isArray(chars)) return null;
 		const sliceRanges = ranges => (Array.isArray(ranges) ? ranges : [])
 			.map(range => ({ ...range, start: Math.max(start, range.start), end: Math.min(end, range.end) }))
 			.filter(range => range.end >= range.start);
@@ -389,10 +394,14 @@ function createSyncCreatorParallelEditing({ getSyncCreatorSyncDataValidationErro
 			const slicedPart = { ...part, ranges, join, ...(Array.isArray(part.chars) ? { chars: times } : {}) };
 			// A held end belongs to the part's last character; keep it only with it.
 			if (ranges[ranges.length - 1].end !== part.ranges[part.ranges.length - 1]?.end) delete slicedPart.lastCharEnd;
-			return [slicedPart];
+			return [projectSyncCreatorUnitLayout(part, slicedPart)];
 		});
+		const recordedPart = parts.find(part => hasReusableSyncCreatorParallelChars(part, part));
+		if (!chars && !recordedPart) return null;
 		const sliced = {
-			...line, start, end, chars, granularity: 'character',
+			...line, start, end,
+			chars: chars ?? new Array(end - start + 1).fill(recordedPart.chars[0]),
+			granularity: chars ? 'character' : 'line',
 			hiddenRanges: sliceRanges(line?.hiddenRanges), styleRanges: sliceRanges(line?.styleRanges),
 			...(parts.length ? { parallel: {
 				...line.parallel, parts, hiddenRanges: sliceRanges(line.parallel.hiddenRanges),
@@ -407,7 +416,15 @@ function createSyncCreatorParallelEditing({ getSyncCreatorSyncDataValidationErro
 		if (!sliced.styleRanges.length) delete sliced.styleRanges;
 		if (!parts.length) delete sliced.parallel;
 		else if (!sliced.parallel.hiddenRanges.length) delete sliced.parallel.hiddenRanges;
-		return parts.length > 1 ? refreshSyncCreatorLineCharsFromParallel(sliced) : rejoinSyncCreatorParallelLine(sliced);
+
+		if (!chars || parts.length > 1 || (keepParallel && parts.length)) {
+			return projectSyncCreatorUnitLayout(line, refreshSyncCreatorLineCharsFromParallel(sliced));
+		}
+		const onlyPart = parts[0];
+		const partEndsAtSlice = onlyPart?.ranges.at(-1)?.end === end;
+		if (partEndsAtSlice && isFiniteSyncCreatorTime(onlyPart.lastCharEnd)) sliced.lastCharEnd = onlyPart.lastCharEnd;
+		const joined = rejoinSyncCreatorParallelLine(sliced);
+		return projectSyncCreatorUnitLayout(onlyPart?.unitLayout ? onlyPart : line, joined);
 	};
 	// Parts, ranges and merge/split markers belong inside their saved row. The
 	// displayed row can be wider than the saved one (for example after merging with

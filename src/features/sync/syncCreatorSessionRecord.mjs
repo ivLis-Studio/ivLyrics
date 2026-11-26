@@ -48,7 +48,7 @@ export function isSyncCreatorDraftTimingCleared(record) {
   );
 }
 
-export function prepareSyncCreatorSessionRestore(record, { store, sanitizeSyncData, assertValidSyncData }) {
+export function prepareSyncCreatorSessionRestore(record, { store, sanitizeSyncData, assertValidSyncData, restoreDraftMergeTiming }) {
   if (!record?.draft || !record.lyricsText) {
     throw new Error("Invalid Sync Creator recovery data.");
   }
@@ -62,11 +62,17 @@ export function prepareSyncCreatorSessionRestore(record, { store, sanitizeSyncDa
   }
 
   const flatLyricsChars = getSyncCreatorFlatLyricsCharsFromText(lyricsText);
+  const editor = record.draft.editor && typeof record.draft.editor === "object" ? record.draft.editor : {};
   let syncData = null;
   if (record.draft.syncData) {
     syncData = sanitizeSyncData(record.draft.syncData, flatLyricsChars);
     if (!syncData) throw new Error("Recovered sync data does not match the lyrics.");
     assertValidSyncData(syncData);
+    if (editor.mergedLineDrafts && restoreDraftMergeTiming) {
+      const restored = restoreDraftMergeTiming(syncData, lyricsText, editor);
+      if (restored !== syncData) assertValidSyncData(restored);
+      syncData = restored;
+    }
   }
 
   const lines = lyricsText.split("\n").map((line) => line.trim()).filter(Boolean).map((text) => ({ text }));
@@ -74,7 +80,6 @@ export function prepareSyncCreatorSessionRestore(record, { store, sanitizeSyncDa
   const sourceLines = Array.isArray(starts) && starts.length === lines.length
     ? lines.map((line, index) => Number.isFinite(starts[index]) && starts[index] >= 0 ? { ...line, startTime: starts[index] } : line)
     : lines;
-  const editor = record.draft.editor && typeof record.draft.editor === "object" ? record.draft.editor : {};
   const lineIndex = Math.max(0, Math.min(lines.length - 1, Number(editor.currentLineIndex) || 0));
   const provider = String(record.provider || record.lrclibSource?.provider || "").trim();
   const addonId = String(record.addonId || provider.split("-")[0] || "").trim();

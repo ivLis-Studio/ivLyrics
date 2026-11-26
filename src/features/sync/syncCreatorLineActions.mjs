@@ -13,7 +13,7 @@ export function useSyncCreatorLineActions({
 	react, toast: Toast, i18n: I18n, editingVersion, canStartOperation, line, song, vocal, timing, editor, recording,
 }) {
 	const { useMemo, useCallback } = react;
-	const { lyricDocument, syncData, lineCharOffsets, lyricsLines } = song;
+	const { lyricDocument, syncData, lineCharOffsets } = song;
 	const { getLineEndAtIndex } = lyricDocument;
 	const {
 		currentLineIndex, currentLineStart, currentFullLineChars, currentExistingLineData, currentMergedLineIndexes,
@@ -26,9 +26,8 @@ export function useSyncCreatorLineActions({
 		setParentheticalLayoutDrafts, setPendingParentheticalLayoutDecision,
 	} = vocal;
 	const {
-		inheritSyncCreatorParallelPartChars, sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
+		sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
 		sanitizeSyncCreatorSpeakerFallback, sanitizeSyncCreatorSpeakerColor, normalizeSyncCreatorKind,
-		normalizeSyncCreatorHiddenRanges, normalizeSyncCreatorStyleRanges, sanitizeSyncCreatorParallel,
 	} = timing;
 	const { claimSessionForLocalEditing, setSyncData, setMode } = editor;
 	const { setRecordingProgressIndex, clearRecordingLock, charTimesRef, lyricsScrollRef } = recording;
@@ -49,7 +48,6 @@ export function useSyncCreatorLineActions({
 		const nextStart = lineCharOffsets[nextIndex];
 		const nextEnd = getLineEndAtIndex(nextIndex);
 		if (!Number.isInteger(currentStart) || !Number.isInteger(nextStart) || nextEnd < nextStart) return;
-		claimSessionForLocalEditing();
 
 		const mergePlan = prepareSyncCreatorLineMerge({
 			currentStart, currentMergedLineIndexes, nextMergeLineIndexes, getLineEndAtIndex,
@@ -57,14 +55,16 @@ export function useSyncCreatorLineActions({
 		});
 		const { nextMergedLineIndexes, hasManualSplitState, mergedManualSplitPoints } = mergePlan;
 
-		setSyncData(prev => mergeSyncCreatorLineTiming(prev, {
-			...mergePlan, currentStart, lineCharOffsets, getLineEndAtIndex, lyricsLines,
-			editingVersion,
-		}, {
-			inheritSyncCreatorParallelPartChars, sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
-			sanitizeSyncCreatorSpeakerFallback, sanitizeSyncCreatorSpeakerColor, normalizeSyncCreatorKind,
-			normalizeSyncCreatorHiddenRanges, normalizeSyncCreatorStyleRanges, sanitizeSyncCreatorParallel,
-		}));
+		const applyMerge = data => mergeSyncCreatorLineTiming(data, {
+			...mergePlan, currentStart, lineCharOffsets, getLineEndAtIndex, editingVersion,
+		}, timing);
+		const merged = applyMerge(syncData);
+		if (merged.issue) {
+			Toast.error(merged.issue);
+			return;
+		}
+		claimSessionForLocalEditing();
+		setSyncData(prev => prev === syncData ? merged.data : applyMerge(prev).data);
 
 		setMultiVocalMode(true);
 		setActiveParallelPartId('a');
@@ -86,10 +86,10 @@ export function useSyncCreatorLineActions({
 		nextMergeLineIndexes,
 		getLineEndAtIndex,
 		lineCharOffsets,
-		lyricsLines,
 		manualParallelSplitDrafts,
 		resetAfterLayoutChange,
-		syncData
+		syncData,
+		timing,
 	]);
 
 	const deleteCurrentLineSync = useCallback(() => {
@@ -137,8 +137,8 @@ export function useSyncCreatorLineActions({
 		const mergedEnd = getLineEndAtIndex(currentMergedLineIndexes[currentMergedLineIndexes.length - 1]);
 
 		const layout = { lineStart, mergedEnd, currentMergedLineIndexes, lineCharOffsets, getLineEndAtIndex };
-		setSyncData(prev => unmergeSyncCreatorLineTiming(prev, { ...layout, lyricsLines, editingVersion }, {
-			inheritSyncCreatorParallelPartChars, sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
+		setSyncData(prev => unmergeSyncCreatorLineTiming(prev, { ...layout, editingVersion }, {
+			sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
 			sanitizeSyncCreatorSpeakerFallback, sanitizeSyncCreatorSpeakerColor, normalizeSyncCreatorKind,
 		}));
 
@@ -153,7 +153,6 @@ export function useSyncCreatorLineActions({
 		currentMergedLineIndexes,
 		getLineEndAtIndex,
 		lineCharOffsets,
-		lyricsLines,
 		resetAfterLayoutChange
 	]);
 	const toggleManualParallelSplitPoint = useCallback((splitPoint) => {

@@ -10,7 +10,7 @@ export function useSyncCreatorSessionEditor({
 	source: { lyrics, lyricsLines, lyricsText, lyricsFullTextChars, lyricsLanguage, provider, addonId, selectedLrclibSource, selectedLrclibCandidateKey },
 	editor: { syncData, currentLineIndex, activeParallelPartId, multiVocalMode, syncGranularity, globalOffset },
 	drafts: { parallelPartMetaDrafts, manualParallelSplitDrafts, parentheticalLayoutDrafts, mergedLineDrafts, lineMetaDrafts, lineStyleDrafts },
-	timing: { attachSelectedLrclibSource, assertValidSyncCreatorSyncData, compactSyncCreatorSyncData, sanitizeSyncCreatorSyncData },
+	timing: { attachSelectedLrclibSource, assertValidSyncCreatorSyncData, compactSyncCreatorSyncData, sanitizeSyncCreatorSyncData, restoreDraftMergeTiming },
 	score: { scorePendingEventsRef, scorePendingEffectsRef },
 	session: {
 		activeSessionDraftKey, sessionTrackKey, sessionLyricsFingerprint, nextSessionClientRevision,
@@ -125,6 +125,7 @@ export function useSyncCreatorSessionEditor({
 			store: syncCreatorDraftStore,
 			sanitizeSyncData: sanitizeSyncCreatorSyncData,
 			assertValidSyncData: assertValidSyncCreatorSyncData,
+			restoreDraftMergeTiming,
 		});
 		if (options.validateOnly === true) return validatedRecord;
 		if (options.automatic === true && sessionAutoRecoveryBlockedRef.current) return null;

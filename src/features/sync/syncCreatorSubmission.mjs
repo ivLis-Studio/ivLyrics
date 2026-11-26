@@ -23,8 +23,6 @@ function inspectSyncCreatorSubmission({
             incomplete = true;
             continue;
         }
-        if (!multiVocalMode) continue;
-
         const parts = lineData.parallel?.parts;
         if (Array.isArray(parts) && parts.length > 1) {
             // The delivery snapshot already includes the final vocal boundaries.
@@ -32,11 +30,11 @@ function inspectSyncCreatorSubmission({
                 if (!hasReusableSyncCreatorParallelChars(part, part)) {
                     return { issue: { key: 'syncCreator.lineAllPartsMissingSync', lineNumber, fallback: `Sync every vocal part on line ${lineNumber}.` } };
                 }
-                if (!isSpeakerComplete(part)) {
+                if (multiVocalMode && !isSpeakerComplete(part)) {
                     return { issue: { key: 'syncCreator.linePartMetaRequired', lineNumber, fallback: `Select SPEAKER and text effect for every vocal part on line ${lineNumber}.` } };
                 }
             }
-        } else if (!isSpeakerComplete(getLineSpeaker(lineData))) {
+        } else if (multiVocalMode && !isSpeakerComplete(getLineSpeaker(lineData))) {
             return { issue: { key: 'syncCreator.lineMetaRequired', lineNumber, fallback: `Select SPEAKER and text effect for line ${lineNumber}.` } };
         }
     }

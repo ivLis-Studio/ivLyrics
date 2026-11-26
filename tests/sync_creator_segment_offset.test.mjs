@@ -199,11 +199,7 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
     vm.runInContext(`globalThis.readLineActions = () => useSyncCreatorLineActions({
         react: { useCallback, useMemo }, toast: Toast, i18n: I18n, editingVersion: SYNC_CREATOR_SYNC_DATA_VERSION, canStartOperation,
         song: globalThis, line: globalThis, vocal: globalThis, editor: globalThis, recording: globalThis,
-        timing: {
-            inheritSyncCreatorParallelPartChars, sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
-            sanitizeSyncCreatorSpeakerFallback, sanitizeSyncCreatorSpeakerColor, normalizeSyncCreatorKind,
-            normalizeSyncCreatorHiddenRanges, normalizeSyncCreatorStyleRanges, sanitizeSyncCreatorParallel,
-        },
+        timing: mergedLineTiming,
     });`, context);
     for (const name of ['mergeCurrentLineWithNext', 'deleteCurrentLineSync', 'resetCurrentLineManualSplit', 'toggleManualParallelSplitPoint']) {
         context.api[name] = (...args) => context.readLineActions()[name](...args);
@@ -1007,6 +1003,85 @@ test('merging another source row does not restore a previously removed split bou
     assert.deepEqual(plain(editor.api.getSyncCreatorRejoinedLineChars(editor.line())), expected);
 });
 
+test('merging recorded vocals into an unrecorded first row keeps the recorded parts editable and exportable', async () => {
+    const rows = ['PRE', 'ABCD', 'EFGH', 'IJKL'];
+    const editor = createEditor({ rows });
+    editor.context.syncData.lines = editor.context.syncData.lines.filter(line => line.start !== 3);
+    editor.context.syncData.lines[2].lastCharEnd = 33;
+    editor.context.currentLineIndex = 2; editor.render();
+    editor.api.mergeCurrentLineWithNext(); editor.render();
+    editor.context.currentLineIndex = 1; editor.render();
+    editor.api.mergeCurrentLineWithNext(); editor.render('a');
+    assert.deepEqual(editor.times(), []);
+    editor.render('b');
+    assert.deepEqual(editor.times(), [21, 21.25, 21.5, 21.75]);
+    editor.render('c');
+    assert.deepEqual(editor.times(), [31, 31.25, 31.5, 31.75]);
+    editor.shift(100);
+    const wire = await editor.export();
+    assert.equal(wire.lines[1].parallel.parts[0].chars, undefined);
+    assert.equal(wire.lines[1].parallel.parts[2].lastCharEnd, 33.1);
+
+    const reopened = createEditor({ rows });
+    reopened.recover(editor.record());
+    reopened.api.unmergeCurrentLine(); reopened.render();
+    assert.deepEqual(plain(reopened.context.syncData.lines.map(row => row.start)), [0, 7, 11]);
+    reopened.context.currentLineIndex = 3; reopened.render();
+    assert.deepEqual(reopened.times(), [31.1, 31.35, 31.6, 31.85]);
+    assert.equal(reopened.line().lastCharEnd, 33.1);
+});
+
+test('restoring an older unmaterialized merge draft keeps continuations with independently saved timing', async () => {
+    const rows = ['PRE', 'ABCD', 'EFGH', 'IJKL'];
+    const editor = createEditor({ rows });
+    const olderSession = editor.record();
+    olderSession.draft.syncData = plain(editor.context.syncData);
+    olderSession.draft.syncData.lines = olderSession.draft.syncData.lines.filter(line => line.start !== 3);
+    olderSession.draft.editor.mergedLineDrafts = { 3: [7, 11] };
+    const reopened = createEditor({ rows });
+    reopened.recover(olderSession);
+    reopened.render('b');
+    assert.deepEqual(reopened.times(), [21, 21.25, 21.5, 21.75]);
+    reopened.render('c');
+    assert.deepEqual(reopened.times(), [31, 31.25, 31.5, 31.75]);
+    const exported = await reopened.export();
+    assert.deepEqual(plain(exported.lines.map(line => [line.start, line.end])), [[0, 2], [3, 14]]);
+    assert.equal(exported.lines[1].parallel.parts[0].chars, undefined);
+});
+
+test('unmerging a partially recorded group never saves the unrecorded row with placeholder marks', () => {
+    const editor = createEditor();
+    editor.context.syncData.lines = editor.context.syncData.lines.filter(line => line.start !== 7);
+    editor.api.mergeCurrentLineWithNext(); editor.render('a');
+    editor.api.commitCurrentLineSync([12, 12.25, 12.5, 12.75]); editor.render();
+    const preview = editor.livePreview()[1];
+    assert.equal(preview.vocals.lead.text, 'ABCD');
+    assert.deepEqual(preview.vocals.background, []);
+    editor.api.unmergeCurrentLine(); editor.render();
+    assert.deepEqual(plain(editor.context.syncData.lines.map(row => row.start)), [0, 3]);
+    assert.deepEqual(editor.times(), [12, 12.25, 12.5, 12.75]);
+    editor.context.currentLineIndex = 2; editor.render();
+    assert.equal(editor.line(), undefined);
+    assert.equal(editor.context.preview.getCharSyncTime(2, 0), null);
+});
+
+test('a merge that would exceed the vocal limit leaves timing, layout and the draft intact', () => {
+    const editor = createEditor();
+    const continuation = editor.context.syncData.lines[2];
+    continuation.parallel = { layout: 'stack', parts: Array.from({ length: 16 }, (_, index) => ({
+        id: `voice${index}`, role: index === 0 ? 'lead' : 'background', granularity: 'character',
+        ranges: [{ start: 7, end: 10 }], join: [], chars: continuation.chars,
+    })) };
+    const errors = [];
+    editor.context.Toast.error = message => errors.push(message);
+    const previous = plain(editor.context.syncData);
+    editor.api.mergeCurrentLineWithNext(); editor.render();
+    assert.match(errors[0], /parallel.parts cannot exceed 16/);
+    assert.deepEqual(plain(editor.context.syncData), previous);
+    assert.deepEqual(plain(editor.context.currentMergedLineIndexes), [1]);
+    assert.deepEqual(plain(editor.context.mergedLineDrafts), {});
+});
+
 test('merging into an existing group preserves every continuation and its vocal timing', async () => {
     const rows = ['PRE', 'ABCD', 'EFGH', 'IJKL'];
     const editor = createEditor({ rows });
@@ -1398,9 +1473,10 @@ test('offsetting a part after merging with an untimed lyric never saves a part o
         [[{ start: 3, end: 6 }], [{ start: 7, end: 9 }]], 'the displayed row still offers both vocals');
     editor.shift(100);
     const saved = plain(editor.line());
-    assert.equal(saved.end, 6);
-    assert.deepEqual(saved.parallel.parts.map(part => part.ranges), [[{ start: 3, end: 6 }]]);
+    assert.equal(saved.end, 9);
+    assert.deepEqual(saved.parallel.parts.map(part => part.ranges), [[{ start: 3, end: 6 }], [{ start: 7, end: 9 }]]);
     assert.deepEqual(saved.parallel.parts[0].chars, [11.1, 11.35, 11.6, 11.85]);
+    assert.equal(saved.parallel.parts[1].chars, undefined, 'the wider saved row does not invent timing for EFG');
     assert.doesNotThrow(() => editor.api.assertValidSyncCreatorSyncData(editor.context.syncData));
     assert.deepEqual(plain(editor.context.currentParallelData.parts.map(part => part.id)), ['a', 'b'],
         'the untimed vocal can still be recorded on the merged row');

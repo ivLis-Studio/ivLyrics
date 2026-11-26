@@ -176,25 +176,27 @@ test('several timing entries on one source row do not cover a later unrecorded r
 	assert.deepEqual(dialogs, ['syncCreator.incompleteConfirm']);
 });
 
-test('a materialized vocal with no timing blocks submission even if the editor template looks complete', async () => {
-	const errors = [];
-	const options = submitOptions({
-		setBusy: () => assert.fail('an unrecorded vocal cannot enter the submission pipeline'),
-		translate: key => key, toast: { error: message => errors.push(message) },
-	}, { getSyncService: () => assert.fail('an unrecorded vocal must not be submitted') }, () => true);
-	options.vocals.multiVocalMode = true;
-	options.vocals.metadata.sanitizeParallel = value => value;
-	Object.assign(options.vocals.coverage, {
-		getMergedLineIndexes: () => [0], getParallelTemplate: () => null,
-		getLineSpeaker: () => ({}), isSpeakerComplete: () => true,
+for (const multiVocalMode of [true, false]) {
+	test(`a materialized vocal with no timing blocks submission with multi-vocal mode ${multiVocalMode}`, async () => {
+		const errors = [];
+		const options = submitOptions({
+			setBusy: () => assert.fail('an unrecorded vocal cannot enter the submission pipeline'),
+			translate: key => key, toast: { error: message => errors.push(message) },
+		}, { getSyncService: () => assert.fail('an unrecorded vocal must not be submitted') }, () => true);
+		options.vocals.multiVocalMode = multiVocalMode;
+		options.vocals.metadata.sanitizeParallel = value => value;
+		Object.assign(options.vocals.coverage, {
+			getMergedLineIndexes: () => [0], getParallelTemplate: () => null,
+			getLineSpeaker: () => ({}), isSpeakerComplete: () => true,
+		});
+		options.timing.materialize = data => ({ ...data, lines: [{ ...data.lines[0], parallel: { parts: [
+			{ id: 'lead', ranges: [{ start: 0, end: 0 }], chars: [1] },
+			{ id: 'background', ranges: [{ start: 0, end: 0 }] },
+		] } }] });
+		await submitSyncCreatorEdits(options);
+		assert.deepEqual(errors, ['syncCreator.lineAllPartsMissingSync']);
 	});
-	options.timing.materialize = data => ({ ...data, lines: [{ ...data.lines[0], parallel: { parts: [
-		{ id: 'lead', ranges: [{ start: 0, end: 0 }], chars: [1] },
-		{ id: 'background', ranges: [{ start: 0, end: 0 }] },
-	] } }] });
-	await submitSyncCreatorEdits(options);
-	assert.deepEqual(errors, ['syncCreator.lineAllPartsMissingSync']);
-});
+}
 
 test('the submitted provider is the same provider used to validate the snapshot', async () => {
 	const errors = [];
