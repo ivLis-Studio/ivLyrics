@@ -177,7 +177,8 @@ export function createSettingsStorage({
       }
       throw error;
     }
-    batch?.commit();
+    const cleanupError = batch?.commit();
+    if (cleanupError) logger.warn("[ivLyrics] Settings were restored. Import marker cleanup will be retried on startup.", cleanupError);
     for (const [key] of entries) rememberStorageKey(key);
     flushStorageKeys();
     await persistence?.flush?.();

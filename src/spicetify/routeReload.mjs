@@ -92,7 +92,10 @@ export function requestAppRouteReload({
         }
         if (request.settingsReturn) {
             try {
-                queueSettingsReturn(getStorage(), request.settingsReturn);
+                const destination = typeof request.settingsReturn === "function"
+                    ? request.settingsReturn()
+                    : request.settingsReturn;
+                if (destination) queueSettingsReturn(getStorage(), destination);
             } catch (error) {
                 reportError("[ivLyrics] Failed to queue settings reopen:", error);
             }

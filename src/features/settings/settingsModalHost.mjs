@@ -15,6 +15,11 @@ const INITIAL_FOCUS_SELECTOR = '.settings-close-btn, button:not([disabled]), inp
 export const getSettingsModalOpen = (host) => getRuntimeService(OPEN_SERVICE, host);
 export const getSettingsModalClose = (host) => getRuntimeService(CLOSE_SERVICE, host);
 
+export function isSettingsModalOpen(host) {
+  const overlay = host.document.getElementById(OVERLAY_ID);
+  return Boolean(overlay && !overlay.classList.contains("is-closing"));
+}
+
 export function registerSettingsModalOpen(host, open) {
   publishRuntimeService(OPEN_SERVICE, open, host);
 }

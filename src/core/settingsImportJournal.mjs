@@ -88,7 +88,13 @@ export function beginSettingsImportBatch(storage, entries, durable) {
     restoreId: journal?.id,
     commit() {
       batch.commit();
-      journal?.clear();
+      try {
+        journal?.clear();
+      } catch (error) {
+        // The offsets receipt already proves the restore committed. Keep
+        // the marker for startup to remove when native storage is writable.
+        return error;
+      }
     },
     rollback() {
       batch.rollback();

@@ -421,12 +421,15 @@ export function createSettingsPersistence({
         restoreId: batch.restoreId,
         commit() {
           updateRecord(entries.map(([key]) => [key, storage.getItem(key)]));
-          batch.commit();
+          return batch.commit();
         },
         rollback() {
           refreshResetRevisions();
           if (reset === resetRevisions.get(namespace)) batch.rollback();
-          else batch.commit();
+          else {
+            const cleanupError = batch.commit();
+            if (cleanupError) throw cleanupError;
+          }
         },
       };
     },

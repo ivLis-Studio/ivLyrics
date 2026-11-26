@@ -59,7 +59,7 @@ import { createSettingsPerformanceControls } from "#ivlyrics/features/settings/s
 import { createCdSettingsCatalog, isCdSettingsKey } from "#ivlyrics/features/settings/settingsCdCatalog.mjs";
 import { createSettingsDestinationResolver } from "#ivlyrics/features/settings/settingsDestinations.mjs";
 import {
-  mountSettingsModal, registerSettingsModalOpen, restoreSettingsOnFirstLyricsMount,
+  isSettingsModalOpen, mountSettingsModal, registerSettingsModalOpen, restoreSettingsOnFirstLyricsMount,
 } from "#ivlyrics/features/settings/settingsModalHost.mjs";
 import { createReactMountBoundary } from "#ivlyrics/spicetify/routeReactDom.mjs";
 import { createSettingsCacheActions } from "#ivlyrics/features/settings/settingsCacheActions.mjs";
@@ -271,7 +271,7 @@ export function createSettingsPage({
   const ConfigCloudSync = createSettingsCloudSyncPanel({
     react, translate: (key) => I18n.t(key),
     listenForAccountChange,
-    isClosing: () => document.getElementById("ivLyrics-settings-overlay")?.classList.contains("is-closing") === true,
+    isClosing: () => !isSettingsModalOpen(window),
     account: {
       getAuthToken: () => Utils.getAuthToken(),
       captureAccountSession: () => Utils.captureAccountSession(),
@@ -979,7 +979,9 @@ export function createSettingsPage({
     requestAppRouteReload({
       host: window,
       getHistory: () => Spicetify?.Platform?.History,
-      settingsReturn: reopenSettings ? { initialTab, initialSettingKey } : undefined,
+      settingsReturn: reopenSettings
+        ? () => isSettingsModalOpen(window) && { initialTab, initialSettingKey }
+        : undefined,
       delay,
     });
   }

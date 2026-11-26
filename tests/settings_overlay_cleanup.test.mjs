@@ -4,12 +4,17 @@ import test from "node:test";
 import vm from "node:vm";
 import { createDomHarness } from "./fixtures/playbar_harness.mjs";
 import { mountSettingsModal, getSettingsModalClose } from "../src/features/settings/settingsModalHost.mjs";
+import { requestAppRouteReload, ROUTE_RESTORE_KEY, SETTINGS_RETURN_KEY } from "../src/spicetify/routeReload.mjs";
+import * as settingsModalHost from "../src/features/settings/settingsModalHost.mjs";
 import { useSettingsModalSearch } from "../src/features/settings/useSettingsModalSearch.mjs";
 
 const source = readSettingsSource();
 const start = source.indexOf("function openConfig(options = {}) {"), end = source.indexOf("\nfunction queueReloadIntoIvLyrics(", start);
 assert.ok(start >= 0 && end > start);
 const openConfigSource = source.slice(start, end);
+const reloadEnd = source.indexOf("\nregisterSettingsModalOpen(", end);
+assert.ok(reloadEnd > end);
+const reloadConfigSource = source.slice(end, reloadEnd);
 
 for (const immediate of [false, true]) {
   for (const failUnmount of [false, true]) {
@@ -64,6 +69,34 @@ function mountFixture(h, { render = () => {}, renderer = { render }, renderConte
     isEditableField,
   });
 }
+
+test("settings reload writes a return destination only for a dialog the user leaves open", () => {
+  for (const close of ["before scheduling", "during delay", "leave open"]) {
+    const h = createDomHarness();
+    const { context, window } = h;
+    const saved = new Map();
+    let reloads = 0;
+    const history = { replace() {} };
+    window.localStorage = { setItem: (key, value) => saved.set(key, value) };
+    window.location = { reload: () => reloads++ };
+    Object.assign(context, {
+      requestAppRouteReload, isSettingsModalOpen: settingsModalHost.isSettingsModalOpen,
+      Spicetify: { Platform: { History: history } },
+    });
+    vm.runInContext(reloadConfigSource, context);
+    mountFixture(h);
+    if (close === "before scheduling") getSettingsModalClose(window)(true);
+    context.queueReloadIntoIvLyrics({ reopenSettings: true, initialTab: "general", delay: 700 });
+    if (close === "during delay") {
+      h.advance(650);
+      getSettingsModalClose(window)();
+    }
+    h.advance(700);
+    assert.equal(reloads, 1);
+    assert.ok(saved.has(ROUTE_RESTORE_KEY));
+    assert.equal(saved.has(SETTINGS_RETURN_KEY), close === "leave open", close);
+  }
+});
 
 test("a modern settings root opens and focuses only after its content commits", () => {
   const h = createDomHarness();

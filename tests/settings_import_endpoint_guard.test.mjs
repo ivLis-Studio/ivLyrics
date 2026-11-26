@@ -4,6 +4,7 @@ import test from "node:test";
 import { normalizeImportedConfig } from "#ivlyrics/core/settingsBackupPolicy.mjs";
 import { createSettingsStorage } from "#ivlyrics/core/createSettingsStorage.mjs";
 import { createFileTransfer } from "#ivlyrics/core/fileTransfer.mjs";
+import { SETTINGS_IMPORT_JOURNAL_KEY, recoverInterruptedSettingsImport } from "#ivlyrics/core/settingsImportJournal.mjs";
 
 import { createSettingsBackupActions } from "#ivlyrics/features/settings/settingsBackupActions.mjs";
 
@@ -106,6 +107,40 @@ test("a failed settings write leaves both earlier settings and offsets intact", 
   }), /fixture storage write failed/);
   assert.deepEqual(Object.fromEntries(values), { [font]: "24", [family]: "Original" });
   assert.equal(offsetWrites, 0);
+});
+
+test("a committed settings restore can leave its interrupted import marker for startup cleanup", async () => {
+  const font = "ivLyrics:visual:font-size";
+  const values = new Map([[font, "24"]]);
+  const warnings = [];
+  const failure = new Error("fixture marker cleanup failed");
+  let cleanupBlocked = true, receipt, offsets;
+  const localStorage = {
+    getItem: key => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem(key) {
+      if (cleanupBlocked && key === SETTINGS_IMPORT_JOURNAL_KEY) throw failure;
+      values.delete(key);
+    },
+  };
+  const storage = createSettingsStorage({
+    localStorage,
+    offsetStore: {
+      importOffsets: async (value, { restoreId }) => { offsets = value; receipt = restoreId; return true; },
+    },
+    logger: { warn: (...args) => warnings.push(args) },
+  });
+  const expected = { "spotify:track:fixture": 120 };
+  await storage.importConfig({ [font]: 38, "ivLyrics:track-sync-offsets": expected });
+  assert.equal(values.get(font), "38");
+  assert.deepEqual({ ...offsets }, expected);
+  assert.equal(JSON.parse(values.get(SETTINGS_IMPORT_JOURNAL_KEY)).id, receipt);
+  assert.equal(warnings.at(-1)?.[1], failure);
+
+  cleanupBlocked = false;
+  assert.equal(await recoverInterruptedSettingsImport(localStorage, async () => receipt), 0);
+  assert.equal(values.has(SETTINGS_IMPORT_JOURNAL_KEY), false);
+  assert.equal(values.get(font), "38");
 });
 
 test("offset import failure rolls back settings and serializes a queued cloud import", async () => {
