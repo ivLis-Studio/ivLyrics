@@ -76,6 +76,18 @@ export function createAppUpdateMethods({ host, t, getStorage }) {
     }
   }
 
+  function reconcileUpdateDialog({ hasUpdate, currentVersion, latestVersion }, existing) {
+    if (!hasUpdate || wasDismissed(latestVersion)) {
+      if (existing?.available) setAppUpdateInfo(host, null);
+      return;
+    }
+    if (!existing?.available || existing.latestVersion !== latestVersion || existing.currentVersion !== currentVersion) {
+      setAppUpdateInfo(host, {
+        available: true, currentVersion, latestVersion, releaseUrl: getAppReleaseUrl(latestVersion),
+      });
+    }
+  }
+
   return {
     /**
      * Detect platform
@@ -153,10 +165,13 @@ export function createAppUpdateMethods({ host, t, getStorage }) {
       pendingVersionCheck = fetchStableVersion(host, t, currentVersion, displayedVersion, this.compareVersions)
         .then(latestVersion => {
           const hasUpdate = this.compareVersions(latestVersion, currentVersion) > 0;
-          if (!hasUpdate && displayedUpdate?.available && getAppUpdateInfo(host) === displayedUpdate) {
-            setAppUpdateInfo(host, null);
+          const result = { hasUpdate, currentVersion, latestVersion };
+          // Manual checks update a dialog that was already open without opening
+          // one or replacing a newer dialog published during the lookup.
+          if (displayedUpdate?.available && getAppUpdateInfo(host) === displayedUpdate) {
+            reconcileUpdateDialog(result, displayedUpdate);
           }
-          return { hasUpdate, currentVersion, latestVersion };
+          return result;
         })
         .catch(error => ({
           hasUpdate: false,
@@ -204,30 +219,7 @@ export function createAppUpdateMethods({ host, t, getStorage }) {
           return updateInfo;
         }
 
-        if (updateInfo.hasUpdate) {
-          const { latestVersion, currentVersion } = updateInfo;
-          const isDismissed = wasDismissed(latestVersion);
-          const existing = getAppUpdateInfo(host);
-
-          writeRuntimeDebug(host,
-            "[ivLyrics] Update available:",
-            updateInfo.latestVersion,
-            "Dismissed:",
-            isDismissed
-          );
-
-          if (isDismissed) {
-            if (existing?.available) setAppUpdateInfo(host, null);
-          } else if (!existing?.available || existing.latestVersion !== latestVersion
-            || existing.currentVersion !== currentVersion) {
-            setAppUpdateInfo(host, {
-              available: true, currentVersion, latestVersion, releaseUrl: getAppReleaseUrl(latestVersion),
-            });
-          }
-        } else {
-          writeRuntimeDebug(host, "[ivLyrics] Already up to date");
-        }
-
+        if (updateInfo.hasUpdate) reconcileUpdateDialog(updateInfo, getAppUpdateInfo(host));
         return updateInfo;
       } catch (error) {
         // Silently fail for automatic update checks to avoid spam

@@ -4,7 +4,7 @@ import { renderSettingsAboutUpdateSection } from "../src/features/settings/setti
 import { createSettingsUpdateButton } from "../src/features/settings/settingsUpdateButton.mjs";
 import { createAppUpdateMethods } from "../src/features/updates/appUpdates.mjs";
 import { schedulePageUpdateCheck, waitForPageUpdateCheck } from "../src/features/updates/pageUpdateCheck.mjs";
-import { waitForAppUpdateDialogClose } from "../src/features/updates/updateDialogState.mjs";
+import { setAppUpdateInfo, waitForAppUpdateDialogClose } from "../src/features/updates/updateDialogState.mjs";
 
 function updateService(fetch, getStorage) {
   const timers = new Map();
@@ -59,7 +59,7 @@ test('a stalled version response body times out and falls back in mirror order',
 
 test('overlapping version checks share one request and a later check fetches again', async () => {
   let requests = 0;
-  const { updates } = updateService(async () => {
+  const { updates, host } = updateService(async () => {
     requests++;
     const version = requests === 1 ? '7.2.0' : '7.2.1';
     return { ok: true, text: async () => version };
@@ -70,6 +70,7 @@ test('overlapping version checks share one request and a later check fetches aga
   assert.equal(requests, 1);
   assert.equal((await updates.checkForUpdates()).latestVersion, '7.2.1');
   assert.equal(requests, 2);
+  assert.equal(host.ivLyrics_updateInfo, undefined);
 });
 
 test('failed version checks clear all timers and can be retried', async () => {
@@ -124,6 +125,39 @@ test('a confirmed withdrawal clears an open banner and releases the startup dial
   assert.equal(host.ivLyrics_updateInfo, null);
   await waitForClose;
   assert.equal(closed, true);
+});
+
+test('a manual version check reconciles an open banner with the current release marker', async () => {
+  let latest = '7.2.3';
+  const { updates, host } = updateService(async () => ({ ok: true, text: async () => latest }), () => ({
+    getItem: key => key.endsWith(':7.2.1') ? 'dismissed' : null,
+  }));
+  await updates.showUpdateNotificationIfAvailable();
+  assert.equal(host.ivLyrics_updateInfo.latestVersion, '7.2.3');
+
+  latest = '7.2.2';
+  assert.equal((await updates.checkForUpdates()).latestVersion, '7.2.2');
+  assert.equal(host.ivLyrics_updateInfo.latestVersion, '7.2.2');
+  assert.match(host.ivLyrics_updateInfo.releaseUrl, /\/v7\.2\.2$/);
+
+  const closed = waitForAppUpdateDialogClose(host);
+  latest = '7.2.1';
+  assert.equal((await updates.checkForUpdates()).hasUpdate, true);
+  assert.equal(host.ivLyrics_updateInfo, null);
+  await closed;
+});
+
+test('an automatic check cannot clear a banner opened during its version lookup', async () => {
+  let finishRequest;
+  const pendingResponse = new Promise(resolve => { finishRequest = resolve; });
+  const { updates, host } = updateService(() => pendingResponse);
+
+  const check = updates.showUpdateNotificationIfAvailable();
+  setAppUpdateInfo(host, { available: true, currentVersion: '7.2.0', latestVersion: '7.2.1' });
+  finishRequest({ ok: true, text: async () => '7.2.0' });
+
+  assert.equal((await check).hasUpdate, false);
+  assert.equal(host.ivLyrics_updateInfo.latestVersion, '7.2.1');
 });
 
 test('version checks bypass mirrors whose marker is older than the open update', async () => {
