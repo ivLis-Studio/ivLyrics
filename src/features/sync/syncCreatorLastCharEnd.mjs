@@ -9,7 +9,7 @@ const matchesPart = (candidate, part) =>
 
 export function createSyncCreatorLastCharEnd({
 	currentExistingLineData, currentLineStart, activeParallelPart, getSyncCreatorRejoinedLineChars,
-	claimSessionForLocalEditing, setSyncData, toast: Toast, i18n: I18n,
+	canStartOperation, claimSessionForLocalEditing, setSyncData, toast: Toast, i18n: I18n,
 }) {
 	// Held end of the current target's last character (lastCharEnd): a final note
 	// that lasts longer than the natural last-character duration.
@@ -28,6 +28,7 @@ export function createSyncCreatorLastCharEnd({
 		return { lastTime, value: isFiniteSyncCreatorTime(target.lastCharEnd) ? target.lastCharEnd : null };
 	};
 	const setCurrentLastCharEnd = (nextValue) => {
+		if (!canStartOperation()) return;
 		const info = getCurrentLastCharEndInfo();
 		if (!info) return;
 		if (nextValue !== null && (!isFiniteSyncCreatorTime(nextValue) || nextValue <= info.lastTime

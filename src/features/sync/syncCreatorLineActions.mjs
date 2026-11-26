@@ -11,7 +11,7 @@ function removeLineDraft(drafts, lineStart) {
 }
 
 export function useSyncCreatorLineActions({
-	react, toast: Toast, i18n: I18n, editingVersion, line, song, vocal, timing, editor, recording,
+	react, toast: Toast, i18n: I18n, editingVersion, canStartOperation, line, song, vocal, timing, editor, recording,
 }) {
 	const { useMemo, useCallback } = react;
 	const { lyricDocument, syncData, lineCharOffsets, lyricsLines } = song;
@@ -43,7 +43,7 @@ export function useSyncCreatorLineActions({
 	}, [setMode, setRecordingProgressIndex, clearRecordingLock, charTimesRef, lyricsScrollRef]);
 
 	const mergeCurrentLineWithNext = useCallback(() => {
-		if (!canMergeCurrentLineWithNext) return;
+		if (!canStartOperation() || !canMergeCurrentLineWithNext) return;
 
 		const currentStart = lineCharOffsets[currentLineIndex] ?? 0;
 		const nextStart = lineCharOffsets[currentNextMergeLineIndex];
@@ -79,6 +79,7 @@ export function useSyncCreatorLineActions({
 		Toast.success(I18n.t('syncCreator.mergedWithNextLine') || 'Merged with the next line as separate vocal parts.');
 	}, [
 		canMergeCurrentLineWithNext,
+		canStartOperation,
 		claimSessionForLocalEditing,
 		currentLineIndex,
 		currentMergedLineIndexes,
@@ -92,16 +93,17 @@ export function useSyncCreatorLineActions({
 	]);
 
 	const deleteCurrentLineSync = useCallback(() => {
-		if (!syncData || !syncData.lines) return;
+		if (!canStartOperation() || !Array.isArray(syncData?.lines)) return;
 		claimSessionForLocalEditing();
 		const lineStart = lineCharOffsets[currentLineIndex];
 
 		setSyncData(prev => {
+			if (!Array.isArray(prev?.lines)) return prev;
 			const newLines = prev.lines.filter(l => l.start !== lineStart);
 			return newLines.length > 0 ? { ...prev, lines: newLines } : null;
 		});
 		clearRecordingLock();
-	}, [syncData, lineCharOffsets, currentLineIndex, claimSessionForLocalEditing, clearRecordingLock]);
+	}, [canStartOperation, syncData, lineCharOffsets, currentLineIndex, claimSessionForLocalEditing, clearRecordingLock]);
 
 	const currentManualSplitPoints = useMemo(() => {
 		return resolveSyncCreatorManualSplitState(
@@ -120,13 +122,14 @@ export function useSyncCreatorLineActions({
 	const hasManualDraftSplit = Array.isArray(manualParallelSplitDrafts[currentLineStart])
 		&& manualParallelSplitDrafts[currentLineStart].length > 0;
 	const resetCurrentLineManualSplit = useCallback(() => {
+		if (!canStartOperation()) return;
 		claimSessionForLocalEditing();
 		const lineStart = lineCharOffsets[currentLineIndex];
 		// An explicit empty override also suppresses persisted manual boundaries.
 		// Deleting the draft would immediately resurrect the saved manual split.
 		setManualParallelSplitDrafts(prev => ({ ...prev, [lineStart]: [] }));
 		resetAfterLayoutChange();
-	}, [claimSessionForLocalEditing, lineCharOffsets, currentLineIndex, resetAfterLayoutChange]);
+	}, [canStartOperation, claimSessionForLocalEditing, lineCharOffsets, currentLineIndex, resetAfterLayoutChange]);
 	const unmergeCurrentLine = useCallback(() => {
 		if (!currentLineMergedWithNext || currentMergedLineIndexes.length <= 1) return;
 		claimSessionForLocalEditing();
@@ -154,7 +157,7 @@ export function useSyncCreatorLineActions({
 		resetAfterLayoutChange
 	]);
 	const toggleManualParallelSplitPoint = useCallback((splitPoint) => {
-		if (!multiVocalMode || currentFullLineChars.length < 2) return;
+		if (!canStartOperation() || !multiVocalMode || currentFullLineChars.length < 2) return;
 		const normalizedSplitPoint = Number(splitPoint);
 		if (!Number.isInteger(normalizedSplitPoint) || normalizedSplitPoint <= 0 || normalizedSplitPoint >= currentFullLineChars.length) {
 			return;
@@ -191,6 +194,7 @@ export function useSyncCreatorLineActions({
 		});
 		resetAfterLayoutChange();
 	}, [
+		canStartOperation,
 		multiVocalMode,
 		currentFullLineChars.length,
 		currentAutoMergeSplitPointSet,
@@ -203,7 +207,7 @@ export function useSyncCreatorLineActions({
 	]);
 	const resolveParentheticalLayoutDecision = useCallback((layoutMode) => {
 		const decision = pendingParentheticalLayoutDecision;
-		if (!decision || !Number.isInteger(Number(decision.lineStart))) return;
+		if (!canStartOperation() || !decision || !Number.isInteger(Number(decision.lineStart))) return;
 		claimSessionForLocalEditing();
 		const safeMode = layoutMode === 'grouped' ? 'grouped' : 'separate';
 		const lineStart = Number(decision.lineStart);
@@ -214,13 +218,14 @@ export function useSyncCreatorLineActions({
 		}));
 		setPendingParentheticalLayoutDecision(null);
 		resetAfterLayoutChange();
-	}, [claimSessionForLocalEditing, pendingParentheticalLayoutDecision, resetAfterLayoutChange]);
+	}, [canStartOperation, claimSessionForLocalEditing, pendingParentheticalLayoutDecision, resetAfterLayoutChange]);
 	const enableManualMultiVocalMode = useCallback(() => {
+		if (!canStartOperation()) return;
 		claimSessionForLocalEditing();
 		setMultiVocalMode(true);
 		setActiveParallelPartId('');
 		resetAfterLayoutChange();
-	}, [claimSessionForLocalEditing, resetAfterLayoutChange]);
+	}, [canStartOperation, claimSessionForLocalEditing, resetAfterLayoutChange]);
 
 	return {
 		mergeCurrentLineWithNext, deleteCurrentLineSync,

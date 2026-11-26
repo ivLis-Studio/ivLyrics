@@ -684,6 +684,7 @@ export function createSyncDataCreator({
 			toggleManualParallelSplitPoint, resolveParentheticalLayoutDecision, enableManualMultiVocalMode,
 		} = useSyncCreatorLineActions({
 			react, toast: Toast, i18n: I18n, editingVersion: SYNC_CREATOR_SYNC_DATA_VERSION,
+			canStartOperation: lifetime.canStartOperation,
 			song: { lyricDocument, syncData, lineCharOffsets, lyricsLines },
 			line: {
 				currentLineIndex, currentLineStart, currentFullLineChars, currentExistingLineData, currentMergedLineIndexes,
@@ -910,7 +911,7 @@ export function createSyncDataCreator({
 		});
 
 		const { adjustGlobalOffset, adjustCurrentLineOffset } = useSyncCreatorOffsetActions({
-			react, toast: Toast, i18n: I18n, mode, syncData,
+			react, toast: Toast, i18n: I18n, mode, syncData, canStartOperation: lifetime.canStartOperation,
 			target: {
 				currentLineStart, currentLineCharCount: currentLineChars.length,
 				currentParallelTemplate, activeParallelPart, activeParallelTargetId,
@@ -1375,6 +1376,7 @@ export function createSyncDataCreator({
 
 		const { getCurrentLastCharEndInfo, setCurrentLastCharEnd } = createSyncCreatorLastCharEnd({
 			currentExistingLineData, currentLineStart, activeParallelPart, getSyncCreatorRejoinedLineChars,
+			canStartOperation: lifetime.canStartOperation,
 			claimSessionForLocalEditing, setSyncData, toast: Toast, i18n: I18n,
 		});
 		// The stable shortcut listener reads the latest "End now" action.

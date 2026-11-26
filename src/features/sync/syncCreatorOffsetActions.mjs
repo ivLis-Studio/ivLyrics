@@ -4,7 +4,7 @@ import {
 import { isFiniteSyncCreatorTime } from './timingGranularity.mjs';
 
 export function useSyncCreatorOffsetActions({
-	react, toast: Toast, i18n: I18n, mode, syncData, target, refs, timing, editor,
+	react, toast: Toast, i18n: I18n, mode, syncData, canStartOperation, target, refs, timing, editor,
 }) {
 	const { useCallback } = react;
 	const { currentLineStart, currentLineCharCount, currentParallelTemplate, activeParallelPart, activeParallelTargetId } = target;
@@ -13,12 +13,14 @@ export function useSyncCreatorOffsetActions({
 	const { claimSessionForLocalEditing, resetCurrentSyncInput, setSyncData, setGlobalOffset } = editor;
 
 	const adjustGlobalOffset = useCallback((deltaMs) => {
+		if (!canStartOperation()) return;
 		claimSessionForLocalEditing();
 		setSyncData(prev => shiftSyncCreatorGlobalTiming(prev, deltaMs));
 		setGlobalOffset(prev => prev + deltaMs);
-	}, [claimSessionForLocalEditing, setSyncData, setGlobalOffset]);
+	}, [canStartOperation, claimSessionForLocalEditing, setSyncData, setGlobalOffset]);
 
 	const adjustCurrentLineOffset = useCallback((deltaMs) => {
+		if (!canStartOperation()) return;
 		// Right-drag offset ranges only exist outside record mode (entering
 		// record clears them). Read the ref synchronously in the click handler.
 		// Locks are record-mode-only and released on mode exit, so no lock
@@ -67,7 +69,7 @@ export function useSyncCreatorOffsetActions({
 			requestedDeltaSec, currentLineStart, currentParallelTemplate, activeParallelPart,
 		}, { mergeSyncCreatorParallelTemplate, refreshSyncCreatorLineCharsFromParallel, clipSyncCreatorLineToBounds }));
 	}, [
-		claimSessionForLocalEditing, resetCurrentSyncInput, currentLineStart, currentLineCharCount,
+		canStartOperation, claimSessionForLocalEditing, resetCurrentSyncInput, currentLineStart, currentLineCharCount,
 		currentParallelTemplate, activeParallelPart, activeParallelTargetId, mode, syncData,
 		offsetSelectionRangeRef, offsetSelectionTargetRef, mergeSyncCreatorParallelTemplate,
 		refreshSyncCreatorLineCharsFromParallel, clipSyncCreatorLineToBounds, setSyncData, Toast, I18n,

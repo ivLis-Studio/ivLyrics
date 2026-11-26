@@ -15,6 +15,7 @@ function createEditor(t, mode) {
             currentLineStart: h.context.currentLineStart,
             activeParallelPart: h.context.activeParallelPart,
             getSyncCreatorRejoinedLineChars: h.api.getSyncCreatorRejoinedLineChars,
+            canStartOperation: () => h.context.isRecordingInputOpen(),
             claimSessionForLocalEditing: h.context.claimSessionForLocalEditing,
             setSyncData: h.context.setSyncData, toast: h.context.Toast, i18n: h.context.I18n,
         });
@@ -60,6 +61,15 @@ test('End now ignores IME composition', t => {
     let prevented = 0;
     h.press('`', 16, { isComposing: true, preventDefault() { prevented++; } });
     assert.equal(prevented, 0);
+    assert.equal(h.line().lastCharEnd, undefined);
+    assert.equal(claims(), 0);
+});
+
+test('an already rendered end-time control cannot edit timing during close', t => {
+    const { h, claims } = createEditor(t, 'idle');
+    h.context.isRecordingInputOpen = () => false;
+    h.context.Spicetify.Player.getProgress = () => 16000;
+    h.context.lastCharEndShortcutRef.current();
     assert.equal(h.line().lastCharEnd, undefined);
     assert.equal(claims(), 0);
 });

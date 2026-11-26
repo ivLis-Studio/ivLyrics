@@ -101,7 +101,7 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
         openImportPicker: createSyncCreatorImportPicker({ isEditorOpen: () => true, captureDraftOwnership: () => () => true }),
         prepareLrclibSourceForImport() { throw new Error('fixture unexpectedly replaced the lyrics for an import'); },
         selectedLrclibCandidateKey: '', selectedLrclibSource: null, activeSessionDraftKey: '',
-        claimSessionForLocalEditing() {}, clearRecordingLock() {}, clearPointerRecording() {},
+        canStartOperation: () => true, claimSessionForLocalEditing() {}, clearRecordingLock() {}, clearPointerRecording() {},
         getActiveRecordingLockRange: () => null, getCurrentSyncTargetSavedChars: () => [],
         setRecordingProgressIndex() {}, syncSessionUiFromRecord() {}, announceHistoryStatus() {},
         setProviderValue(value) { context.providerRef.current = context.provider = value; },
@@ -196,7 +196,7 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
             exportSyncData, importSyncData, handleSubmit, buildScoreSnapshot, repairScoreSnapshot,
         };`, context);
     vm.runInContext(`globalThis.readLineActions = () => useSyncCreatorLineActions({
-        react: { useCallback, useMemo }, toast: Toast, i18n: I18n, editingVersion: SYNC_CREATOR_SYNC_DATA_VERSION,
+        react: { useCallback, useMemo }, toast: Toast, i18n: I18n, editingVersion: SYNC_CREATOR_SYNC_DATA_VERSION, canStartOperation,
         song: globalThis, line: globalThis, vocal: globalThis, editor: globalThis, recording: globalThis,
         timing: {
             inheritSyncCreatorParallelPartChars, sliceSyncCreatorLineTiming, normalizeSyncCreatorSpeaker,
@@ -204,13 +204,13 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
             normalizeSyncCreatorHiddenRanges, normalizeSyncCreatorStyleRanges, sanitizeSyncCreatorParallel,
         },
     });`, context);
-    for (const name of ['mergeCurrentLineWithNext', 'resetCurrentLineManualSplit', 'toggleManualParallelSplitPoint']) {
+    for (const name of ['mergeCurrentLineWithNext', 'deleteCurrentLineSync', 'resetCurrentLineManualSplit', 'toggleManualParallelSplitPoint']) {
         context.api[name] = (...args) => context.readLineActions()[name](...args);
     }
     context.api.unmergeCurrentLine = () =>
         context.api.toggleManualParallelSplitPoint(context.currentAutoMergeSplitPoints[0]);
     vm.runInContext(`globalThis.readOffsetActions = () => useSyncCreatorOffsetActions({
-        react: { useCallback }, toast: Toast, i18n: I18n, mode, syncData,
+        react: { useCallback }, toast: Toast, i18n: I18n, mode, syncData, canStartOperation,
         target: { currentLineStart, currentLineCharCount: currentLineChars.length, currentParallelTemplate, activeParallelPart, activeParallelTargetId },
         refs: globalThis,
         timing: { mergeSyncCreatorParallelTemplate, refreshSyncCreatorLineCharsFromParallel, clipSyncCreatorLineToBounds },
@@ -610,6 +610,24 @@ test('partial removal joins overlapping recorded parts without flattening them a
     editor.render('a'); assert.deepEqual(editor.times(), shifted.slice(0, 2));
     editor.render('b'); assert.deepEqual(editor.times(), shifted.slice(2, 4));
     editor.render('c'); assert.deepEqual(editor.times(), shifted.slice(4));
+});
+
+test('new layout and timing edits preserve the draft while the editor cannot accept input', () => {
+    const editor = createEditor();
+    const before = editor.record().draft;
+    editor.context.canStartOperation = () => false;
+    editor.api.adjustGlobalOffset(100);
+    editor.api.adjustCurrentLineOffset(-100);
+    editor.api.toggleManualParallelSplitPoint(2);
+    editor.api.resetCurrentLineManualSplit();
+    editor.api.mergeCurrentLineWithNext();
+    editor.api.deleteCurrentLineSync();
+    assert.deepEqual(editor.record().draft, before);
+    assert.equal(editor.context.globalOffset, 0);
+
+    editor.context.canStartOperation = () => true;
+    editor.shift(100);
+    assert.notDeepEqual(editor.record().draft, before);
 });
 
 test('source timing, full-line offsets, selected offsets and global offsets are each applied once in any order', async () => {
