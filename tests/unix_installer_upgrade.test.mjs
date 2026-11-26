@@ -218,19 +218,24 @@ if [ "$1" = '-f' ]; then
     printf 'register\n' >> "$IVL_TEST_ROOT/events"
     [ ! -f "$IVL_TEST_ROOT/protocol-failure" ] || exit 1
     printf '%s\n' "$2" > "$IVL_TEST_ROOT/registered-handler"
-elif [ "$1" = '-u' ] && [ -f "$IVL_TEST_ROOT/default-handler" ]; then
-    [ "$(tail -n +2 "$IVL_TEST_ROOT/default-handler")" != "$2" ] || rm "$IVL_TEST_ROOT/default-handler"
+elif [ "$1" = '-u' ]; then
+    if [ -f "$IVL_TEST_ROOT/default-handler" ] && [ "$(tail -n +2 "$IVL_TEST_ROOT/default-handler")" = "$2" ]; then
+        rm "$IVL_TEST_ROOT/default-handler"
+    fi
+    if [ -f "$IVL_TEST_ROOT/registered-handler" ] && [ "$(cat "$IVL_TEST_ROOT/registered-handler")" = "$2" ]; then
+        rm "$IVL_TEST_ROOT/registered-handler"
+    fi
 fi
 `);
     command('osascript', String.raw`
 [ "$*" = '-l JavaScript - ivlyrics-updater://update' ] || exit 1
 cat > /dev/null
 read -r delay < "$IVL_TEST_ROOT/handler-delay"
-if [ "$delay" -gt 0 ]; then
+if [ "$delay" -gt 0 ] && [ -f "$IVL_TEST_ROOT/registered-handler" ]; then
     printf '%s\n' "$((delay - 1))" > "$IVL_TEST_ROOT/handler-delay"
     exit 0
 fi
-if [ -s "$IVL_TEST_ROOT/stale-handler-lookups" ]; then
+if [ -s "$IVL_TEST_ROOT/stale-handler-lookups" ] && [ -f "$IVL_TEST_ROOT/registered-handler" ]; then
     printf 'kr.ivlis.ivlyrics.updater\n'
     head -1 "$IVL_TEST_ROOT/stale-handler-lookups"
     sed -n '2,$p' "$IVL_TEST_ROOT/stale-handler-lookups" > "$IVL_TEST_ROOT/remaining-lookups"
@@ -240,6 +245,10 @@ fi
 if [ -f "$IVL_TEST_ROOT/default-handler" ]; then
     cat "$IVL_TEST_ROOT/default-handler"
 elif [ -f "$IVL_TEST_ROOT/registered-handler" ]; then
+    if [ -f "$IVL_TEST_ROOT/blocked-selection" ] &&
+        cmp -s "$IVL_TEST_ROOT/blocked-selection" "$IVL_TEST_ROOT/registered-handler"; then
+        exit 0
+    fi
     printf 'kr.ivlis.ivlyrics.updater\n'
     cat "$IVL_TEST_ROOT/registered-handler"
 fi
@@ -296,18 +305,23 @@ fi
         XDG_DATA_HOME: join(root, 'desktop data'),
     };
     return {
-        app, apps, legacyBundle, backupBundle, secondBackupBundle,
+        root, app, apps, legacyBundle, backupBundle, secondBackupBundle,
         desktopFile: join(env.XDG_DATA_HOME, 'applications', 'ivlyrics-updater.desktop'),
         run: (args, overrides) => spawnSync('bash', [installer, ...(args || [])], {
             encoding: 'utf8', timeout: 15000, env: { ...env, ...overrides },
         }),
+        runProtocolRegistration: () => spawnSync('bash', [
+            join(app, 'updater/unix/register-updater-protocol.sh'), app,
+        ], { encoding: 'utf8', timeout: 15000, env }),
         startPausedInstall: (phase = 'APPLY') => spawn('bash', [installer], {
             detached: true, stdio: 'ignore', env: { ...env, [`IVL_TEST_PAUSE_${phase}`]: 'true' },
         }),
         uninstall: () => runUninstaller(env),
         readEvents: () => readFileSync(log, 'utf8').trim().split('\n').filter(Boolean),
         readApps: () => readFileSync(join(root, 'custom-apps'), 'utf8').trim(),
-        readLaunchServices: () => readFileSync(join(root, 'launch-services'), 'utf8').trimEnd().split('\n'),
+        readLaunchServices: () => existsSync(join(root, 'launch-services'))
+            ? readFileSync(join(root, 'launch-services'), 'utf8').trimEnd().split('\n')
+            : [],
         repairProtocolRegistration: () => rmSync(protocolFailure),
     };
 }
@@ -450,7 +464,7 @@ if (builtVersion) {
             assert.ok(script.stdout.includes(`set updaterScript to "${handler}"`), script.stdout);
             assert.ok(script.stdout.includes('runUpdater(theURL)'), script.stdout);
             assert.ok(!existsSync(fx.legacyBundle));
-            assert.deepEqual(fx.readLaunchServices(), ['-u', fx.legacyBundle, '-f', bundle]);
+            assert.deepEqual(fx.readLaunchServices(), ['-f', bundle, '-u', fx.legacyBundle]);
         } else {
             const desktop = readFileSync(fx.desktopFile, 'utf8').split('\n');
             assert.ok(desktop.includes(`Exec=/bin/bash "${handler}" %u`));
@@ -470,10 +484,41 @@ if (builtVersion) {
         assert.match(failed.stdout, /Updater protocol registration failed/);
         assert.equal(readFileSync(join(fx.app, 'version.txt'), 'utf8').trim(), builtVersion);
         assert.equal(fx.readApps(), 'other|ivLyrics');
+        assert.ok(existsSync(fx.legacyBundle), 'the legacy updater must remain available after registration fails');
+        assert.ok(!existsSync(join(fx.app, 'updater/macos/ivLyrics Updater.app')));
         fx.repairProtocolRegistration();
         const repaired = fx.run();
         assert.equal(repaired.status, 0, repaired.stdout + repaired.stderr);
         assert.deepEqual(fx.readEvents(), ['probe', 'probe', `apply:${builtVersion}`, 'register', 'register']);
+    });
+
+    test('failed macOS handler selection restores the previous bundle and displaced registrations', {
+        skip: !canRun || process.platform !== 'darwin',
+    }, context => {
+        const archive = readFileSync(new URL('../dist/ivLyrics.zip', import.meta.url));
+        const fx = installerFixture(context, { archive, releaseVersion: builtVersion });
+        const bundle = join(fx.app, 'updater/macos/ivLyrics Updater.app');
+        const installed = fx.run();
+        assert.equal(installed.status, 0, installed.stdout + installed.stderr);
+        writeFileSync(join(bundle, 'previous-marker'), 'previous bundle');
+        mkdirSync(fx.backupBundle, { recursive: true });
+        mkdirSync(fx.secondBackupBundle, { recursive: true });
+        writeFileSync(join(fx.root, 'default-handler'), `kr.ivlis.ivlyrics.updater\n${fx.backupBundle}\n`);
+        writeFileSync(join(fx.root, 'stale-handler-lookups'), `${fx.backupBundle}\n${fx.secondBackupBundle}\n`);
+        writeFileSync(join(fx.root, 'blocked-selection'), `${bundle}\n`);
+        rmSync(join(fx.root, 'registered-handler'));
+        rmSync(join(fx.root, 'launch-services'));
+
+        const failed = fx.runProtocolRegistration();
+
+        assert.equal(failed.status, 1, failed.stdout + failed.stderr);
+        assert.match(failed.stderr, /macOS has not selected the installed app/);
+        assert.equal(readFileSync(join(bundle, 'previous-marker'), 'utf8'), 'previous bundle');
+        assert.deepEqual(fx.readLaunchServices(), [
+            '-f', bundle, '-u', fx.backupBundle, '-u', fx.secondBackupBundle, '-u', bundle,
+            '-f', fx.secondBackupBundle, '-f', fx.backupBundle,
+        ]);
+        assert.equal(readFileSync(join(fx.root, 'registered-handler'), 'utf8').trim(), fx.backupBundle);
     });
 
     test('the macOS installer removes only the stale ivLyrics handler registration', {
@@ -486,7 +531,7 @@ if (builtVersion) {
         const result = fx.run();
         assert.equal(result.status, 0, result.stdout + result.stderr);
         assert.deepEqual(fx.readLaunchServices(), [
-            '-u', fx.legacyBundle, '-f', join(fx.app, 'updater/macos/ivLyrics Updater.app'), '-u', fx.backupBundle,
+            '-f', join(fx.app, 'updater/macos/ivLyrics Updater.app'), '-u', fx.backupBundle, '-u', fx.legacyBundle,
         ]);
         assert.equal(readFileSync(join(fx.backupBundle, 'marker'), 'utf8'), 'existing bundle');
     });
@@ -501,8 +546,8 @@ if (builtVersion) {
         const result = fx.run();
         assert.equal(result.status, 0, result.stdout + result.stderr);
         assert.deepEqual(fx.readLaunchServices(), [
-            '-u', fx.legacyBundle, '-f', join(fx.app, 'updater/macos/ivLyrics Updater.app'),
-            '-u', fx.backupBundle, '-u', fx.secondBackupBundle,
+            '-f', join(fx.app, 'updater/macos/ivLyrics Updater.app'),
+            '-u', fx.backupBundle, '-u', fx.secondBackupBundle, '-u', fx.legacyBundle,
         ]);
     });
 
@@ -516,9 +561,9 @@ if (builtVersion) {
         const result = fx.run();
         assert.equal(result.status, 1, result.stdout + result.stderr);
         assert.match(result.stdout, /Updater protocol registration failed/);
-        assert.deepEqual(fx.readLaunchServices(), [
-            '-u', fx.legacyBundle, '-f', join(fx.app, 'updater/macos/ivLyrics Updater.app'),
-        ]);
+        assert.match(result.stderr, /macOS has assigned ivlyrics-updater:\/\/ to another application/);
+        assert.deepEqual(fx.readLaunchServices(), []);
+        assert.ok(existsSync(fx.legacyBundle));
     });
 }
 

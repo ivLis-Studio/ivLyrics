@@ -43,14 +43,16 @@ ObjC.import("AppKit");
 function run(args) {
     const app = $.NSWorkspace.sharedWorkspace.URLForApplicationToOpenURL($.NSURL.URLWithString(args[0]));
     if (app.isNil()) return "";
-    const id = ObjC.unwrap($.NSBundle.bundleWithURL(app).bundleIdentifier) || "";
+    const bundle = $.NSBundle.bundleWithURL(app);
+    if (bundle.isNil()) return "";
+    const id = ObjC.unwrap(bundle.bundleIdentifier) || "";
     return id + "\n" + ObjC.unwrap(app.URLByResolvingSymlinksInPath.path);
 }
 JS
 }
 
 verify_macos_updater_handler() {
-    local lsregister="$1" app_path="$2" bundle_id="$3"
+    local lsregister="$1" app_path="$2" bundle_id="$3" removed_log="$4"
     local selected stale_path previous_path retries=0
     local -a removed_paths=("$app_path")
 
@@ -77,6 +79,7 @@ verify_macos_updater_handler() {
                 fi
             done
             if [[ -n "$stale_path" ]]; then
+                printf '%s\0' "$stale_path" >> "$removed_log" || return 1
                 "$lsregister" -u "$stale_path" || return 1
                 removed_paths+=("$stale_path")
                 retries=0
@@ -94,6 +97,30 @@ verify_macos_updater_handler() {
     done
 }
 
+cleanup_macos_registration() {
+    local status="$1" stale_path
+    if [[ "$committed" = false ]]; then
+        if [[ "$registration_attempted" = true ]]; then
+            "$lsregister" -u "$app_path" >/dev/null 2>&1 || true
+        fi
+        if { [[ "$candidate_installed" = true ]] && ! rm -rf -- "$app_path"; } ||
+            { [[ -e "$staging/previous.app" ]] && ! mv "$staging/previous.app" "$app_path"; }; then
+            echo "Could not restore the previous updater bundle. Recovery directory: $staging" >&2
+            return 1
+        fi
+        while IFS= read -r -d '' stale_path; do
+            if [[ -d "$stale_path" && "$stale_path" != "$original_path" ]]; then
+                "$lsregister" -f "$stale_path" || echo "Could not restore updater registration: $stale_path" >&2
+            fi
+        done < "$removed_log"
+        if [[ "$registration_attempted" = true && -d "$original_path" ]]; then
+            "$lsregister" -f "$original_path" || echo "Could not restore updater registration: $original_path" >&2
+        fi
+    fi
+    rm -rf -- "$staging"
+    return "$status"
+}
+
 register_macos() (
     local updater_script="${APP_DIR}/updater/unix/ivlyrics-updater.sh"
     local macos_dir="${APP_DIR}/updater/macos"
@@ -104,6 +131,8 @@ register_macos() (
     local lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
     lsregister="$(type -P lsregister || printf '%s' "$lsregister")"
     local escaped_updater_script staging candidate generated_applescript plist
+    local original_handler original_path removed_log
+    local candidate_installed=false registration_attempted=false committed=false
 
     if [[ ! -f "$updater_script" ]]; then
         echo "Updater script not found in app directory: $updater_script" >&2
@@ -117,12 +146,22 @@ register_macos() (
         echo "osacompile is required to register ivlyrics-updater:// on macOS." >&2
         return 1
     fi
+    if [[ ! -x "$lsregister" ]]; then
+        echo "Launch Services registration is unavailable." >&2
+        return 1
+    fi
+
+    original_handler=$(read_macos_updater_handler) || return 1
+    if [[ -n "$original_handler" && "$original_handler" != "$bundle_id"$'\n'/* ]]; then
+        echo "macOS has assigned ivlyrics-updater:// to another application." >&2
+        return 1
+    fi
+    original_path=${original_handler#*$'\n'}
 
     staging=$(mktemp -d "${macos_dir}/.updater-bundle.XXXXXX")
-    trap 'if [[ -d "$staging/previous.app" && ! -e "$app_path" ]]; then
-              mv "$staging/previous.app" "$app_path" || exit 1
-          fi
-          rm -rf "$staging"' EXIT
+    removed_log="$staging/removed-handlers"
+    : > "$removed_log"
+    trap 'cleanup_macos_registration "$?"' EXIT
     candidate="$staging/ivLyrics Updater.app"
     generated_applescript="$staging/ivlyrics-updater.applescript"
 
@@ -165,18 +204,17 @@ EOF
         mv "$app_path" "$staging/previous.app"
     fi
     mv "$candidate" "$app_path"
-
-    if [[ -d "$legacy_app_path" && -x "$lsregister" ]]; then
-        "$lsregister" -u "$legacy_app_path" >/dev/null 2>&1 || true
-    fi
-    rm -rf "$legacy_updater_root"
-
-    if [[ ! -x "$lsregister" ]]; then
-        echo "Launch Services registration is unavailable." >&2
-        return 1
-    fi
+    candidate_installed=true
+    registration_attempted=true
     "$lsregister" -f "$app_path"
-    verify_macos_updater_handler "$lsregister" "$(cd "$app_path" && pwd -P)" "$bundle_id"
+    verify_macos_updater_handler "$lsregister" "$(cd "$app_path" && pwd -P)" "$bundle_id" "$removed_log"
+    committed=true
+
+    if [[ -d "$legacy_app_path" && ! "$legacy_app_path" -ef "$app_path" ]]; then
+        "$lsregister" -u "$legacy_app_path" >/dev/null 2>&1 || true
+        rm -rf -- "$legacy_app_path"
+        rmdir -- "$legacy_updater_root" 2>/dev/null || true
+    fi
 
     echo "Registered ivlyrics-updater:// protocol for macOS."
 )
