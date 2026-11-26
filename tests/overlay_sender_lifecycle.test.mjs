@@ -72,6 +72,12 @@ function load(text) {
     listeners: [window.counts(), document.counts(), player.counts()], timers: [...timers].map(([id, t]) => [id, t.ms]),
   });
   return {overlay, helper, window, player, trace, state, workers, values, pendingFetches, clock,
+    replacePlayer() {
+      const replacement = surface('replacement-player');
+      replacement.data = player.data;
+      context.Spicetify.Player = replacement;
+      return replacement;
+    },
     setPlaybackUri: uri => { playbackUri = uri; },
     timerCallbacks: ms => [...timers.values()].filter(timer => timer.ms === ms).map(timer => timer.fn),
     removePlayerThrows: value => { removePlayerThrows = value; },
@@ -575,12 +581,75 @@ test('teardown retains the detached-player exception path and missing-remove-lis
     assert.equal(h.helper._storageListener, null); assert.equal(h.helper._visibilityChangeListener, null);
     assert.equal(h.window.counts()['ivLyrics:lyrics-ready'], 0);
     assert.equal(h.player.counts().songchange, 1, 'the detached player retains its inaccessible listener');
-    return serial({state: h.state(), songListenerRetained: !!h.helper._songChangeListener, trace: h.trace});
+    const result = serial({state: h.state(), songListenerRetained: !!h.helper._songChangeListener, trace: h.trace});
+    if (text === source) {
+      const generation = h.helper._deliveryGeneration;
+      h.player.dispatchEvent({type: 'songchange'});
+      assert.equal(h.helper._deliveryGeneration, generation, 'callbacks left in a detached player are inert');
+    }
+    return result;
   };
   for (const missing of [false, true]) {
     const actual = run(source, missing);
     if (baseline) assert.deepEqual(actual, run(baseline, missing));
   }
+});
+
+test('teardown removes subscriptions from the player that registered them', () => {
+  const h = load(source);
+  h.overlay.init();
+  h.helper.init();
+  const replacement = h.replacePlayer();
+  h.overlay.destroy();
+  assert.equal(h.player.counts().songchange, 1, 'only the helper still owns a listener on the original player');
+  h.overlay.init();
+  assert.equal(replacement.counts().songchange, 1);
+  h.helper.destroy();
+  assert.equal(h.player.counts().songchange, 0);
+  assert.equal(replacement.counts().songchange, 1);
+  h.overlay.destroy();
+  assert.equal(replacement.counts().songchange, 0);
+});
+
+test('offset duplicates and edits for another track do not resend the playing track', async () => {
+  const h = load(source);
+  const sender = h.overlay;
+  h.player.getDuration = () => 120000;
+  const uri = h.player.data.item.uri;
+  const pending = () => new Promise(setImmediate);
+  const event = (type, detail) => h.window.dispatchEvent({type, detail});
+  const packets = () => h.trace.filter(([kind, url, body]) => kind === 'fetch' && url.endsWith('/lyrics') && typeof body === 'object');
+  let reads = 0;
+  sender.getSyncOffset = async function (trackUri) {
+    ++reads;
+    return -(this._offsetCache[trackUri] || 0);
+  };
+  sender.init();
+  sender.isConnected = true;
+  const initial = sender.sendLyrics({uri}, [{startTime: 1000, text: 'Lyric'}]);
+  await pending();
+  assert.equal(packets().length, 1);
+  h.pendingFetches[0].resolve({ok: true});
+  await initial;
+
+  event('ivLyrics:offset-changed', {trackUri: 'spotify:track:next', offset: 300});
+  h.window.dispatchEvent({type: 'storage', key: 'lyrics-delay:spotify:track:next'});
+  await pending();
+  assert.equal(reads, 1, 'another track does not require reading the current offset');
+  assert.equal(packets().length, 1);
+  assert.equal(sender._offsetCache['spotify:track:next'], 300);
+
+  event('ivLyrics:offset-changed', {trackUri: uri, offset: 100});
+  await pending();
+  assert.equal(packets().length, 2, 'a changed active offset is sent');
+  h.pendingFetches[1].resolve({ok: true});
+  await pending();
+  event('ivLyrics:offset-changed', {trackUri: uri, offset: 100});
+  event('ivLyrics:delay-changed', {trackUri: uri});
+  event('ivLyrics:global-offset-changed', {offset: 0});
+  await pending();
+  assert.equal(packets().length, 2, 'duplicate offset notifications do not repeat the packet');
+  sender.destroy();
 });
 
 test('disabling helper invalidates its queued delivery without altering the overlay delivery', async () => {

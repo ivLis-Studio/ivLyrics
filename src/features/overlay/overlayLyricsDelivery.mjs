@@ -2,6 +2,7 @@ import { isPlaybackLyricsTargetCurrent } from "../../core/playbackPositionServic
 import { getLyricSupplementRetention, getLyricSupplementVisibility } from "../../lyrics/lyricSupplementPresentation.mjs";
 
 const LYRICS_SEND_RETRY_DELAYS = [250, 750];
+const OFFSET_REFRESH_REASONS = new Set(['lyrics-delay', 'global-offset', 'offset-event']);
 const isSameTrackKind = (previous, next) => previous?.uri === next.uri
     && (previous?.isDjNarration === true) === (next.isDjNarration === true);
 
@@ -329,16 +330,19 @@ export function createOverlayLyricsDelivery({
             const trackUri = offsetUpdate?.trackUri;
             const trackOffset = Number(offsetUpdate?.offset);
             if (trackUri && Number.isFinite(trackOffset)) {
-                this._offsetCache = { ...this._offsetCache, [trackUri]: trackOffset };
+                if (!Object.is(this._offsetCache[trackUri], trackOffset)) {
+                    this._offsetCache = { ...this._offsetCache, [trackUri]: trackOffset };
+                }
             } else if (sendReason !== 'global-offset' && sendReason !== 'lyrics-delay') {
                 this._offsetCache = {};
             }
+            if (trackUri && trackUri !== this._lastTrackInfo?.uri) return;
             if (this._lastTrackInfo && this._lastLyrics) {
                 debug(this.LOG_TAG, '가사 재전송:', sendReason);
                 await this.sendLyrics(
                     this._lastTrackInfo,
                     this._lastLyrics,
-                    true,
+                    !OFFSET_REFRESH_REASONS.has(sendReason),
                     sendReason,
                     this._lastPresentationContext
                 );

@@ -1,6 +1,6 @@
 import { isPronunciationDisplayMode } from "./translationPresentation.mjs";
 import { areLiterallyEquivalentLyrics } from "./translationTextComparison.mjs";
-import { hasStyleDependentLyricTranslation, matchesLyricTranslationStyle } from "./lyricPresentationIdentity.mjs";
+import { hasStyleDependentLyricTranslation, matchesLyricTranslationStyle, normalizeLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
 import { isEditedLyricSupplement } from "./lyricSupplementEdits.mjs";
 
 export const getLyricSupplementVisibility = (presentationContext = null) => {
@@ -110,6 +110,7 @@ export function createLyricSupplementPresentation({ getDisplayComparison, hashSo
           context.displayMode2 || 'none',
           context.pronunciationNotation || 'translation',
           context.translationTargetLanguage || '',
+          normalizeLyricSourceLanguage(context.detectedLanguage),
           hashSourceText(sourceText)
       ]);
   };

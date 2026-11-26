@@ -342,6 +342,7 @@ export default function LyricsServiceExtension() {
                     lyricsType: snapshot.lyricsType,
                     displayMode1: snapshot.displayMode1,
                     displayMode2: snapshot.displayMode2,
+                    detectedLanguage: snapshot.detectedLanguage === null ? 'auto' : snapshot.detectedLanguage,
                     pronunciationNotation: snapshot.pronunciationNotation,
                     translationTargetLanguage: snapshot.translationTargetLanguage,
                     translationStyle: snapshot.translationStyle,

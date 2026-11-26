@@ -146,6 +146,7 @@ export function createFullLyricsRequest({
                 karaokeSource: lyricsType === 'karaoke' ? lyricsResult.karaokeSource || null : null,
                 displayMode1: mode1,
                 displayMode2: mode2,
+                detectedLanguage: detectedLanguage || 'auto',
                 pronunciationNotation,
                 translationTargetLanguage,
                 translationStyle,

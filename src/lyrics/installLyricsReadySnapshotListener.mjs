@@ -20,7 +20,7 @@ export function installLyricsReadySnapshotListener(host, publishSnapshot) {
             displayMode1: detail.displayMode1,
             displayMode2: detail.displayMode2,
             pronunciationNotation: detail.pronunciationNotation,
-            detectedLanguage: detail.detectedLanguage,
+            detectedLanguage: detail.detectedLanguage ?? undefined,
             translationTargetLanguage: detail.translationTargetLanguage,
             translationStyle: detail.translationStyle,
             translationSourceText: detail.translationSourceText,

@@ -521,6 +521,32 @@ test('a new style never retains the previous translation through events, snapsho
 	}
 });
 
+test('same-text updates retain supplements only for the matching source language', async () => {
+	const h = load();
+	const trackInfo = { uri, title: 'Title', artist: 'Artist' };
+	const context = { ...richContext(), trackInfo, displayMode1: 'gemini_romaji', displayMode2: 'gemini_ko' };
+	h.publisher.publishLyricsReady({ ...context, lyrics: richLyrics(), detectedLanguage: 'ja' });
+	await flush();
+
+	// Legacy and timing-only updates can omit the language.
+	h.publisher.publishLyricsReady({ ...context, lyrics: rawLyrics(), presentationComplete: false });
+	await flush();
+	assert.equal(h.service.getLyricsSnapshot(uri).detectedLanguage, 'ja');
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name));
+
+	h.publisher.publishLyricsReady({ ...context, lyrics: rawLyrics(), detectedLanguage: 'zh', presentationComplete: false });
+	await flush();
+	const snapshot = h.service.getLyricsSnapshot(uri);
+	assert.equal(snapshot.detectedLanguage, 'zh');
+	assert.ok(snapshot.displayLyrics.every(line => !line.phoneticText && !line.text2));
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), [null, null], [null, null]);
+	await h.service.sendLyricsSnapshotToConsumers(trackInfo, snapshot, { forceResend: true });
+	for (const name of ['overlay', 'helper']) {
+		assert.equal(h[name]._lastPresentationContext.detectedLanguage, 'zh');
+		assertSupplements(h.last(name), [null, null], [null, null]);
+	}
+});
+
 test('ownerless overlay refreshes a delivered translation when the style changes', async () => {
 	const h = load({ globalFallback: true });
 	const trackInfo = { uri, title: 'Title', artist: 'Artist' };
