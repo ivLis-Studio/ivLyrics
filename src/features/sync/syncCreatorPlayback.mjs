@@ -229,7 +229,7 @@ function startSyncCreatorPositionPolling({
 export function useSyncCreatorPlayback({
     react, lyricsLines, lyricsText, syncData, sourceLines, lineIndexByStart, findMergedOwnerLineIndex,
     mode, currentLineIndex, isLoading, pendingMultiVocalDecision, pendingPlaybackNavigationRef, manualPreviewExitRef,
-    getProgress, setPosition, setCurrentLineIndex, lyricsScrollRef, scheduleInterval, cancelInterval,
+    getProgress, setPosition, setCurrentLineIndex, lyricsScrollRef, scheduleInterval, cancelInterval, canStartOperation,
 }) {
     const timeline = react.useMemo(() => (
         buildSyncCreatorPlaybackTimeline(lyricsLines, syncData, sourceLines, lineIndexByStart, findMergedOwnerLineIndex)
@@ -238,6 +238,7 @@ export function useSyncCreatorPlayback({
     const navigation = react.useRef(null);
     react.useLayoutEffect(() => {
         function selectPlaybackLine(position, { preview } = {}) {
+            if (!canStartOperation()) return;
             const initializing = pendingPlaybackNavigationRef.current;
             const following = preview && mode === "preview" && !manualPreviewExitRef.current;
             if (isLoading || !lyricsText || pendingMultiVocalDecision || (!initializing && !following) || position === null) return;
@@ -258,7 +259,7 @@ export function useSyncCreatorPlayback({
             selectPlaybackLine(readSyncCreatorPosition(getProgress()));
         }
     }, [mode, timeline, currentLineIndex, isLoading, lyricsText, pendingMultiVocalDecision,
-        pendingPlaybackNavigationRef, manualPreviewExitRef, getProgress, setCurrentLineIndex, lyricsScrollRef]);
+        pendingPlaybackNavigationRef, manualPreviewExitRef, getProgress, setCurrentLineIndex, lyricsScrollRef, canStartOperation]);
 
     react.useLayoutEffect(() => startSyncCreatorPositionPolling({
         mode, getProgress, setPosition, scheduleInterval, cancelInterval,

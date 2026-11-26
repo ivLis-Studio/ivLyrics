@@ -650,6 +650,7 @@ export function createSyncDataCreator({
 
 		const playbackTimeline = useSyncCreatorPlayback({
 			react, lyricsLines, lyricsText, syncData, sourceLines: lyrics?.synced,
+			canStartOperation: lifetime.canStartOperation,
 			lineIndexByStart, findMergedOwnerLineIndex, mode, currentLineIndex, isLoading, pendingMultiVocalDecision,
 			pendingPlaybackNavigationRef, manualPreviewExitRef, getProgress: getEditorProgress,
 			setPosition, setCurrentLineIndex, lyricsScrollRef,
@@ -920,7 +921,7 @@ export function createSyncDataCreator({
 		});
 
 		const { goToPrevLine, goToNextLine, goToFirstLine, handleSeek, handleSeekOffset } = useSyncCreatorNavigation({
-			react, host: window, getPlayer: getEditorPlayer,
+			react, host: window, getPlayer: getEditorPlayer, canStartOperation: lifetime.canStartOperation,
 			editor: {
 				mode, lyricsText, lyricsLines, previousNavigableLineIndex, nextNavigableLineIndex, activeParallelTargetId, currentParallelParts,
 			},

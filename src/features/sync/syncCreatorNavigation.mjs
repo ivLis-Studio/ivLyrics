@@ -1,7 +1,8 @@
+import { isKeyboardShortcutComposition } from '#ivlyrics/core/keyboardShortcut.mjs';
 import { seekSyncCreatorByOffset, seekSyncCreatorFromProgressBar } from './syncCreatorSeek.mjs';
 
 export function useSyncCreatorNavigation({
-	react: { useCallback, useEffect }, host: window, getPlayer,
+	react: { useCallback, useEffect }, host, getPlayer, canStartOperation,
 	editor: { mode, lyricsText, lyricsLines, previousNavigableLineIndex, nextNavigableLineIndex, activeParallelTargetId, currentParallelParts },
 	refs: { manualPreviewExitRef, lyricsScrollRef, pendingParallelNavigationRef },
 	actions: { setMode, setCurrentLineIndex, claimSessionForLocalEditing, resetCurrentSyncInput, setActiveParallelPartId, selectParallelPart },
@@ -14,100 +15,66 @@ export function useSyncCreatorNavigation({
 		setMode(prev => (prev === 'preview' ? 'idle' : prev));
 	}, [mode]);
 
-	const goToPrevLine = useCallback(() => {
-		leavePreviewForLineNavigation();
-		if (previousNavigableLineIndex >= 0) {
-			claimSessionForLocalEditing();
-			setCurrentLineIndex(previousNavigableLineIndex);
-			if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
-		}
-	}, [claimSessionForLocalEditing, leavePreviewForLineNavigation, previousNavigableLineIndex]);
-
-	const goToNextLine = useCallback(() => {
-		leavePreviewForLineNavigation();
-		if (nextNavigableLineIndex >= 0) {
-			claimSessionForLocalEditing();
-			setCurrentLineIndex(nextNavigableLineIndex);
-			if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
-		}
-	}, [claimSessionForLocalEditing, leavePreviewForLineNavigation, nextNavigableLineIndex]);
-
-	const goToSyncTarget = useCallback((lineIndex, edge = 'first') => {
-		if (lineIndex < 0 || lineIndex >= lyricsLines.length) return;
+	const selectLine = useCallback((lineIndex, parallelEdge) => {
+		if (lineIndex < 0) return;
 		claimSessionForLocalEditing();
-		resetCurrentSyncInput();
-		pendingParallelNavigationRef.current = { lineIndex, edge };
+		if (parallelEdge) {
+			resetCurrentSyncInput();
+			pendingParallelNavigationRef.current = { lineIndex, edge: parallelEdge };
+		}
 		setCurrentLineIndex(lineIndex);
-		setActiveParallelPartId('');
+		if (parallelEdge) setActiveParallelPartId('');
 		if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
-	}, [claimSessionForLocalEditing, lyricsLines.length, resetCurrentSyncInput]);
+	}, [claimSessionForLocalEditing, lyricsScrollRef, pendingParallelNavigationRef, resetCurrentSyncInput,
+		setCurrentLineIndex, setActiveParallelPartId]);
 
-	const goToPreviousSyncTarget = useCallback(() => {
+	const navigateLine = useCallback(lineIndex => {
+		if (!canStartOperation()) return;
 		leavePreviewForLineNavigation();
-		const currentPartIndex = currentParallelParts.findIndex(part => part.id === activeParallelTargetId);
-		if (currentPartIndex > 0) {
-			selectParallelPart(currentParallelParts[currentPartIndex - 1].id);
-			return;
-		}
-		if (previousNavigableLineIndex < 0) return;
-		goToSyncTarget(previousNavigableLineIndex, 'last');
-	}, [
-		activeParallelTargetId,
-		currentParallelParts,
-		goToSyncTarget,
-		leavePreviewForLineNavigation,
-		previousNavigableLineIndex,
-		selectParallelPart
-	]);
-
-	const goToNextSyncTarget = useCallback(() => {
-		leavePreviewForLineNavigation();
-		const currentPartIndex = currentParallelParts.findIndex(part => part.id === activeParallelTargetId);
-		if (currentPartIndex >= 0 && currentPartIndex < currentParallelParts.length - 1) {
-			selectParallelPart(currentParallelParts[currentPartIndex + 1].id);
-			return;
-		}
-		if (nextNavigableLineIndex < 0) return;
-		goToSyncTarget(nextNavigableLineIndex, 'first');
-	}, [
-		activeParallelTargetId,
-		currentParallelParts,
-		goToSyncTarget,
-		leavePreviewForLineNavigation,
-		nextNavigableLineIndex,
-		selectParallelPart
-	]);
+		selectLine(lineIndex);
+	}, [canStartOperation, leavePreviewForLineNavigation, selectLine]);
+	const goToPrevLine = useCallback(() => navigateLine(previousNavigableLineIndex), [navigateLine, previousNavigableLineIndex]);
+	const goToNextLine = useCallback(() => navigateLine(nextNavigableLineIndex), [navigateLine, nextNavigableLineIndex]);
+	const goToFirstLine = useCallback(() => navigateLine(0), [navigateLine]);
 
 	useEffect(() => {
 		const handleLineNavigationShortcut = (event) => {
 			if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
-			if (event.isComposing || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+			if (event.defaultPrevented || isKeyboardShortcutComposition(event)
+				|| event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
 			const target = event.target;
 			if (
 				target?.isContentEditable
 				|| ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName)
 				|| target?.closest?.('[role="dialog"], [role="separator"], [role="slider"], [role="listbox"], [role="menu"], [role="menuitem"], [aria-haspopup]')
 			) return;
-			if (!lyricsText || lyricsLines.length === 0) return;
+			if (!canStartOperation() || !lyricsText || lyricsLines.length === 0) return;
 
 			event.preventDefault();
 			event.stopPropagation();
-			if (event.key === 'ArrowUp') goToPreviousSyncTarget();
-			else goToNextSyncTarget();
+			leavePreviewForLineNavigation();
+			const previous = event.key === 'ArrowUp';
+			const currentPartIndex = currentParallelParts.findIndex(part => part.id === activeParallelTargetId);
+			const nextPart = currentPartIndex < 0 ? null : currentParallelParts[currentPartIndex + (previous ? -1 : 1)];
+			if (nextPart) {
+				selectParallelPart(nextPart.id);
+				return;
+			}
+			const lineIndex = previous ? previousNavigableLineIndex : nextNavigableLineIndex;
+			if (lineIndex < lyricsLines.length) selectLine(lineIndex, previous ? 'last' : 'first');
 		};
 
-		window.addEventListener('keydown', handleLineNavigationShortcut, true);
-		return () => window.removeEventListener('keydown', handleLineNavigationShortcut, true);
-	}, [goToNextSyncTarget, goToPreviousSyncTarget, lyricsLines.length, lyricsText]);
+		host.addEventListener('keydown', handleLineNavigationShortcut, true);
+		return () => host.removeEventListener('keydown', handleLineNavigationShortcut, true);
+	}, [host, canStartOperation, leavePreviewForLineNavigation, activeParallelTargetId,
+		currentParallelParts, selectParallelPart, previousNavigableLineIndex, nextNavigableLineIndex,
+		selectLine, lyricsLines.length, lyricsText]);
 
-	const goToFirstLine = useCallback(() => {
-		leavePreviewForLineNavigation();
-		claimSessionForLocalEditing();
-		setCurrentLineIndex(0);
-		if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
-	}, [claimSessionForLocalEditing, leavePreviewForLineNavigation]);
-
-	const handleSeek = useCallback(event => seekSyncCreatorFromProgressBar(getPlayer(), event), [getPlayer]);
-	const handleSeekOffset = useCallback(offsetMs => seekSyncCreatorByOffset(getPlayer(), offsetMs), [getPlayer]);
+	const handleSeek = useCallback(event => {
+		if (canStartOperation()) seekSyncCreatorFromProgressBar(getPlayer(), event);
+	}, [canStartOperation, getPlayer]);
+	const handleSeekOffset = useCallback(offsetMs => {
+		if (canStartOperation()) seekSyncCreatorByOffset(getPlayer(), offsetMs);
+	}, [canStartOperation, getPlayer]);
 	return { goToPrevLine, goToNextLine, goToFirstLine, handleSeek, handleSeekOffset };
 }

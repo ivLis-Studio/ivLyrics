@@ -42,7 +42,7 @@ const createEditor = ({ progress = 0, playing = true, draftStore = null } = {}) 
 	let timerId = 0;
 	let cleanup;
 	const context = vm.createContext({
-		console, structuredClone, buildSyntheticLrclibResult,
+		console, structuredClone, buildSyntheticLrclibResult, lifetime,
 		useCallback: callback => callback,
 		useMemo: callback => callback(),
 		useEffect: callback => { cleanup = callback(); },
@@ -573,6 +573,30 @@ test('stopping preview prevents an already scheduled playback sample from moving
 	editor.poll();
 	assert.equal(editor.context.currentLineIndex, 1);
 	editor.dispose();
+});
+
+test('playback keeps its clock but defers line selection during close and resumes after save failure', async t => {
+	const editor = createEditor({ progress: 1000 });
+	t.after(editor.dispose);
+	const { context, lifetime } = editor;
+	editor.setLyrics(timedLines(5));
+	editor.render({ mode: 'preview', isLoading: false, currentLineIndex: 1 });
+	const save = deferred();
+	const closing = lifetime.requestClose({
+		stopRecording() {}, saveDraft: () => save.promise, onSaveError() {}, onClosed: () => assert.fail('save was rejected'),
+	});
+	try {
+		editor.setProgress(3500);
+		editor.poll();
+		assert.equal(context.position, 3500);
+		assert.equal(context.currentLineIndex, 1);
+		assert.deepEqual(editor.calls.selections, []);
+	} finally {
+		save.resolve(false);
+		await closing;
+	}
+	editor.poll();
+	assert.deepEqual(editor.calls.selections, [3]);
 });
 
 test('a source change cannot retire a working draft while close is saving it', async () => {

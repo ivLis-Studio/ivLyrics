@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createSyncCreatorEditorLifetime } from '#ivlyrics/features/sync/syncCreatorEditorLifetime.mjs';
 import { useSyncCreatorNavigation } from "#ivlyrics/features/sync/syncCreatorNavigation.mjs";
 import test from 'node:test';
 
@@ -15,6 +16,7 @@ const createEditor = ({
 } = {}) => {
 	let keydown = null;
 	const seeks = [];
+	const lifetime = createSyncCreatorEditorLifetime(() => true);
 	const context = {
 		console,
 		useCallback: callback => callback,
@@ -48,20 +50,21 @@ const createEditor = ({
 	context.setActiveParallelPartId = value => { context.activeParallelTargetId = value; };
 	const api = useSyncCreatorNavigation({
 		react: { useCallback: context.useCallback, useEffect: context.useEffect },
-		host: context.window, getPlayer: () => context.Spicetify.Player,
+		host: context.window, getPlayer: () => context.Spicetify.Player, canStartOperation: lifetime.canStartOperation,
 		editor: context, refs: context, actions: context,
 	});
-	const press = (key) => {
+	const press = (key, event = {}) => {
 		const called = { preventDefault: 0, stopPropagation: 0 };
 		keydown({
 			key,
 			target: {},
+			...event,
 			preventDefault: () => { called.preventDefault++; },
 			stopPropagation: () => { called.stopPropagation++; },
 		});
 		return called;
 	};
-	return { context, api, press, seeks };
+	return { context, api, press, seeks, lifetime };
 };
 
 test('line navigation buttons leave preview and change the edited line', () => {
@@ -127,6 +130,55 @@ test('navigation outside preview keeps the current mode', () => {
 		editor.press('ArrowDown');
 		assert.equal(editor.context.mode, mode);
 	}
+});
+
+test('arrow shortcuts respect composition, native controls and prior handlers', () => {
+	const editor = createEditor();
+	for (const event of [
+		{ isComposing: true }, { keyCode: 229 }, { shiftKey: true }, { defaultPrevented: true },
+		{ target: { isContentEditable: true } }, { target: { tagName: 'SELECT' } },
+		{ target: { closest: () => ({}) } },
+	]) {
+		assert.deepEqual(editor.press('ArrowDown', event), { preventDefault: 0, stopPropagation: 0 });
+	}
+	assert.equal(editor.context.mode, 'preview');
+	assert.equal(editor.context.currentLineIndex, 0);
+});
+
+test('navigation and seeking stay suspended while close saves and recover on failure', async () => {
+	const editor = createEditor({ currentLineIndex: 1, previousNavigableLineIndex: 0, nextNavigableLineIndex: 2 });
+	const { Player: player } = editor.context.Spicetify;
+	player.getProgress = () => 5000;
+	player.getDuration = () => 10000;
+	let finishSave;
+	const saving = new Promise(resolve => { finishSave = resolve; });
+	const close = {
+		stopRecording() {}, saveDraft: () => saving, onSaveError() {}, onClosed() {},
+	};
+	const attempt = editor.lifetime.requestClose(close);
+	try {
+		editor.api.goToNextLine();
+		editor.api.goToPrevLine();
+		editor.api.goToFirstLine();
+		editor.api.handleSeek({ clientX: 100, currentTarget: { getBoundingClientRect: () => ({ left: 0, width: 200 }) } });
+		editor.api.handleSeekOffset(500);
+		assert.deepEqual(editor.press('ArrowDown'), { preventDefault: 0, stopPropagation: 0 });
+		assert.equal(editor.context.currentLineIndex, 1);
+		assert.equal(editor.context.mode, 'preview');
+		assert.deepEqual(editor.seeks, []);
+	} finally {
+		finishSave(false);
+		await attempt;
+	}
+
+	assert.equal(editor.press('ArrowDown').preventDefault, 1);
+	assert.equal(editor.context.currentLineIndex, 2);
+	editor.api.handleSeekOffset(500);
+	assert.deepEqual(editor.seeks, [5500]);
+	await editor.lifetime.requestClose({ ...close, saveDraft: () => true });
+	assert.equal(editor.press('ArrowUp').preventDefault, 0);
+	editor.api.goToFirstLine();
+	assert.equal(editor.context.currentLineIndex, 2);
 });
 
 test('seek controls accept the zero pixel boundary and ignore unavailable geometry or playback', () => {
