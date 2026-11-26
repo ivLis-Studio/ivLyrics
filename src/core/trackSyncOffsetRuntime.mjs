@@ -2,6 +2,7 @@ import { getRuntimeService, publishRuntimeService } from "../spicetify/runtimeSe
 import { createRuntimeDebugLogger } from "../spicetify/runtimeDebug.mjs";
 import { createTrackSyncOffsetStore, migrateTrackSyncOffsets } from "./trackSyncOffsetStore.mjs";
 import { readSettingsDatabaseRecovery } from "./settingsRuntime.mjs";
+import { createTrackSyncOffsetEdits } from "./trackSyncOffsetEdits.mjs";
 
 const SERVICE_NAME = "TrackSyncDB";
 
@@ -26,10 +27,20 @@ export function getTrackSyncOffsetStore(host, options = {}) {
         await migration;
         return operation(...args);
     };
+    const setOffset = afterMigration(store.setOffset);
+    const edits = createTrackSyncOffsetEdits({
+        readOffset: afterMigration(store.getOffset),
+        writeOffset: setOffset,
+        publishOffset(trackUri, offset) {
+            const Event = host.CustomEvent ?? globalThis.CustomEvent;
+            host.dispatchEvent?.(new Event("ivLyrics:offset-changed", { detail: { trackUri, offset } }));
+        },
+        reportError: (...args) => logger.error(...args),
+    });
 
     return publishRuntimeService(SERVICE_NAME, {
-        getOffset: afterMigration(store.getOffset),
-        setOffset: afterMigration(store.setOffset),
+        ...edits,
+        setOffset,
         clearOffset: afterMigration(store.clearOffset),
         getAllOffsets: afterMigration(store.getAllOffsets),
         importOffsets: afterMigration(store.importOffsets),

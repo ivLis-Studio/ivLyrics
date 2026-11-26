@@ -1,134 +1,85 @@
 import { clampSyncOffset } from "./syncOffsetValues.mjs";
 
-export function createTrackSyncOffsetTools({ react, host, readUtils, createEvent, reportError }) {
+export function createTrackSyncOffsetTools({ react, host, readUtils, readTrackOffsets, readCurrentTrackUri, reportError }) {
   const { useState, useRef, useEffect } = react;
+  const useCommitEffect = react.useLayoutEffect || useEffect;
 
-  const pendingTrackSyncOffsetWrites = new Map();
-  let trackSyncOffsetWriteLoop = null;
-
-  const startTrackSyncOffsetWriteLoop = () => {
-    if (trackSyncOffsetWriteLoop) return;
-
-    trackSyncOffsetWriteLoop = (async () => {
-      while (pendingTrackSyncOffsetWrites.size > 0) {
-        const [trackUri, offset] =
-          pendingTrackSyncOffsetWrites.entries().next().value;
-        pendingTrackSyncOffsetWrites.delete(trackUri);
-        try {
-          const persisted = await readUtils().setTrackSyncOffset(trackUri, offset, {
-            dispatch: false,
-          });
-          if (persisted && !pendingTrackSyncOffsetWrites.has(trackUri)) {
-            host.dispatchEvent(createEvent("ivLyrics:offset-changed", {
-              detail: { trackUri, offset },
-            }));
-          }
-        } catch (error) {
-          reportError("[ivLyrics] Failed to persist track sync offset:", error);
-        }
-      }
-    })()
-      .catch((error) => {
-        reportError("[ivLyrics] Track sync offset write loop failed:", error);
-      })
-      .finally(() => {
-        trackSyncOffsetWriteLoop = null;
-        if (pendingTrackSyncOffsetWrites.size > 0) {
-          startTrackSyncOffsetWriteLoop();
-        }
-      });
-  };
-
-  const queueTrackSyncOffsetWrite = (trackUri, offset) => {
-    pendingTrackSyncOffsetWrites.set(trackUri, offset);
-    startTrackSyncOffsetWriteLoop();
-  };
-
-  // Current-track and global offsets as the toolbar shows and edits them. The
-  // track value goes through the quick sync pill's write queue and event, so
-  // both stay in step; the global value through Utils, as before.
-  const useToolbarSyncOffsets = (trackUri) => {
-    const [trackOffset, setTrackOffset] = useState(0);
-    const [loadedTrackUri, setLoadedTrackUri] = useState(null);
-    const [globalOffset, setGlobalOffset] = useState(() => clampSyncOffset(readUtils().getGlobalSyncOffset?.() || 0));
+  function useTrackSyncOffset(trackUri) {
+    const [snapshot, setSnapshot] = useState(null);
     const trackOffsetRef = useRef(0);
-    const loadSeqRef = useRef(0);
+    const ownerRef = useRef(null);
 
-    useEffect(() => {
+    useCommitEffect(() => {
+      const owner = { trackUri, loaded: false };
+      ownerRef.current = owner;
       trackOffsetRef.current = 0;
-      setTrackOffset(0);
-      setLoadedTrackUri(null);
-      const loadSeq = ++loadSeqRef.current;
+      setSnapshot(null);
       if (!trackUri) return undefined;
 
-      let active = true;
-      const apply = (offset) => {
-        if (!active || loadSeqRef.current !== loadSeq) return;
+      let receivedLiveOffset = false;
+      const apply = value => {
+        const offset = clampSyncOffset(value);
+        owner.loaded = true;
         trackOffsetRef.current = offset;
-        setTrackOffset(offset);
-        setLoadedTrackUri(trackUri);
+        setSnapshot({ trackUri, offset });
       };
-      Promise.resolve(readUtils().getTrackSyncOffset(trackUri))
-        .then((savedOffset) => apply(clampSyncOffset(savedOffset)))
-        .catch((error) => {
-          reportError("[ivLyrics] Failed to load track sync offset:", error);
-          apply(0);
-        });
+      const handleOffsetChange = ({ detail }) => {
+        if (detail?.trackUri !== trackUri || ownerRef.current !== owner) return;
+        receivedLiveOffset = true;
+        apply(detail.offset);
+      };
+      const ownsRead = () => ownerRef.current === owner && !receivedLiveOffset;
+      host.addEventListener("ivLyrics:offset-changed", handleOffsetChange);
+      Promise.resolve().then(() => readTrackOffsets().getOffset(trackUri)).then(offset => {
+        if (ownsRead()) apply(offset);
+      }, error => {
+        if (!ownsRead()) return;
+        reportError("[ivLyrics] Failed to load track sync offset:", error);
+        apply(0);
+      });
       return () => {
-        active = false;
+        ownerRef.current = null;
+        host.removeEventListener("ivLyrics:offset-changed", handleOffsetChange);
       };
     }, [trackUri]);
 
-    useEffect(() => {
-      const handleTrackOffsetChange = (event) => {
-        if (!trackUri || event.detail?.trackUri !== trackUri) return;
-        const nextOffset = clampSyncOffset(event.detail?.offset);
-        loadSeqRef.current += 1;
-        trackOffsetRef.current = nextOffset;
-        setTrackOffset(nextOffset);
-        setLoadedTrackUri(trackUri);
-      };
-      const handleGlobalOffsetChange = (event) => {
-        setGlobalOffset(clampSyncOffset(event.detail?.offset));
-      };
-      host.addEventListener("ivLyrics:offset-changed", handleTrackOffsetChange);
-      host.addEventListener("ivLyrics:global-offset-changed", handleGlobalOffsetChange);
-      return () => {
-        host.removeEventListener("ivLyrics:offset-changed", handleTrackOffsetChange);
-        host.removeEventListener("ivLyrics:global-offset-changed", handleGlobalOffsetChange);
-      };
-    }, [trackUri]);
-
-    const isTrackOffsetLoaded = Boolean(trackUri && loadedTrackUri === trackUri);
-    const changeTrackOffset = (nextOffset) => {
-      if (!isTrackOffsetLoaded) return;
-      const safeOffset = clampSyncOffset(nextOffset);
-      loadSeqRef.current += 1;
-      trackOffsetRef.current = safeOffset;
-      setTrackOffset(safeOffset);
-      host.dispatchEvent(createEvent("ivLyrics:offset-changed", {
-        detail: { trackUri, offset: safeOffset },
-      }));
-      queueTrackSyncOffsetWrite(trackUri, safeOffset);
-    };
-    const changeGlobalOffset = (nextOffset) => {
-      const safeOffset = clampSyncOffset(nextOffset);
-      setGlobalOffset(safeOffset);
-      readUtils().setGlobalSyncOffset?.(safeOffset);
+    const isTrackOffsetLoaded = Boolean(trackUri && snapshot?.trackUri === trackUri);
+    const changeTrackOffset = value => {
+      const owner = ownerRef.current;
+      if (!owner?.loaded || owner.trackUri !== trackUri) return false;
+      const playbackUri = readCurrentTrackUri?.();
+      if (playbackUri && playbackUri !== trackUri) return false;
+      readTrackOffsets().queueOffset(trackUri, value);
+      return true;
     };
 
     return {
-      trackOffset,
+      trackOffset: isTrackOffsetLoaded ? snapshot.offset : 0,
       isTrackOffsetLoaded,
-      globalOffset,
       trackOffsetRef,
       changeTrackOffset,
-      changeGlobalOffset,
     };
-  };
+  }
 
-  return {
-    queueTrackSyncOffsetWrite,
-    useToolbarSyncOffsets,
-  };
+  function useToolbarSyncOffsets(trackUri) {
+    const trackOffset = useTrackSyncOffset(trackUri);
+    const [globalOffset, setGlobalOffset] = useState(() => clampSyncOffset(readUtils().getGlobalSyncOffset?.() || 0));
+    useEffect(() => {
+      const handleGlobalOffsetChange = event => setGlobalOffset(clampSyncOffset(event.detail?.offset));
+      host.addEventListener("ivLyrics:global-offset-changed", handleGlobalOffsetChange);
+      return () => host.removeEventListener("ivLyrics:global-offset-changed", handleGlobalOffsetChange);
+    }, []);
+
+    return {
+      ...trackOffset,
+      globalOffset,
+      changeGlobalOffset(value) {
+        const offset = clampSyncOffset(value);
+        setGlobalOffset(offset);
+        readUtils().setGlobalSyncOffset?.(offset);
+      },
+    };
+  }
+
+  return { useTrackSyncOffset, useToolbarSyncOffsets };
 }

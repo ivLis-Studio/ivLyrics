@@ -1,10 +1,10 @@
 import { joinToolbarClasses } from "../createToolbarControls.mjs";
-import { clampSyncOffset, formatSyncOffset, formatCommunityVideoSyncSeconds } from "./syncOffsetValues.mjs";
+import { formatSyncOffset, formatCommunityVideoSyncSeconds } from "./syncOffsetValues.mjs";
 import { createTrackSyncOffsetTools } from "./createTrackSyncOffsetTools.mjs";
 import { createCommunityVideoSync } from "./createCommunityVideoSync.mjs";
 
 export function createSyncAdjustmentControls({
-  react, host, readUtils, translate, notify, controls,
+  react, host, readUtils, readTrackOffsets, readCurrentTrackUri, translate, notify, controls,
   createEvent = (type, init) => new CustomEvent(type, init),
   reportError = (...args) => console.error(...args),
 }) {
@@ -13,8 +13,8 @@ export function createSyncAdjustmentControls({
     ToolbarButton, IvLyricsToolbarIcon, ToolbarOffsetSteps, ToolbarPanelSection,
     ToolbarPanelGroup, ToolbarPanelRow, ToolbarRangeField, ToolbarToggleRow,
   } = controls;
-  const { queueTrackSyncOffsetWrite, useToolbarSyncOffsets } = createTrackSyncOffsetTools({
-    react, host, readUtils, createEvent, reportError,
+  const { useTrackSyncOffset, useToolbarSyncOffsets } = createTrackSyncOffsetTools({
+    react, host, readUtils, readTrackOffsets, readCurrentTrackUri, reportError,
   });
   const videoSync = createCommunityVideoSync({ react, host, readUtils, translate, notify, createEvent, reportError });
   const { useCurrentVideoSync, useCurrentVideoSyncShare, getCurrentVideoCaptionStartTime, readActiveCommunityVideoInfo } = videoSync;
@@ -160,77 +160,20 @@ export function createSyncAdjustmentControls({
   };
 
   const TrackSyncAdjustPill = react.memo(({ trackUri, lyricsAdjustable = true, videoTrackUri = trackUri }) => {
-    const [offset, setOffset] = useState(0);
-    const [loadedTrackUri, setLoadedTrackUri] = useState(null);
+    const {
+      trackOffset: offset, isTrackOffsetLoaded: isOffsetLoaded,
+      trackOffsetRef, changeTrackOffset,
+    } = useTrackSyncOffset(trackUri);
     const [interactionFeedback, setInteractionFeedback] = useState(null);
-    const activeTrackUriRef = useRef(trackUri || null);
-    const optimisticOffsetRef = useRef(0);
-    const loadSeqRef = useRef(0);
     const feedbackSeqRef = useRef(0);
     const feedbackTimerRef = useRef(null);
-    const isOffsetLoaded = Boolean(
-      trackUri && loadedTrackUri === trackUri
-    );
-
     useEffect(() => {
-      activeTrackUriRef.current = trackUri || null;
-      optimisticOffsetRef.current = 0;
-      setLoadedTrackUri(null);
-      setOffset(0);
       setInteractionFeedback(null);
-      if (feedbackTimerRef.current) {
-        host.clearTimeout(feedbackTimerRef.current);
-        feedbackTimerRef.current = null;
-      }
-      const loadSeq = ++loadSeqRef.current;
-      if (!trackUri) return undefined;
-
-      let active = true;
-      Promise.resolve(readUtils().getTrackSyncOffset(trackUri))
-        .then((savedOffset) => {
-          if (!active || loadSeqRef.current !== loadSeq || activeTrackUriRef.current !== trackUri) {
-            return;
-          }
-          const safeOffset = clampSyncOffset(savedOffset);
-          optimisticOffsetRef.current = safeOffset;
-          setOffset(safeOffset);
-          setLoadedTrackUri(trackUri);
-        })
-        .catch((error) => {
-          if (!active || loadSeqRef.current !== loadSeq || activeTrackUriRef.current !== trackUri) {
-            return;
-          }
-          reportError("[ivLyrics] Failed to load track sync offset:", error);
-          optimisticOffsetRef.current = 0;
-          setOffset(0);
-          setLoadedTrackUri(trackUri);
-        });
-
       return () => {
-        active = false;
-        loadSeqRef.current += 1;
-      };
-    }, [trackUri]);
-
-    useEffect(() => () => {
-      if (feedbackTimerRef.current) {
-        host.clearTimeout(feedbackTimerRef.current);
-      }
-    }, []);
-
-    useEffect(() => {
-      const handleOffsetChange = (event) => {
-        if (!trackUri || event.detail?.trackUri !== trackUri) return;
-        const nextOffset = clampSyncOffset(event.detail?.offset);
-        loadSeqRef.current += 1;
-        optimisticOffsetRef.current = nextOffset;
-        setOffset(nextOffset);
-        setLoadedTrackUri(trackUri);
-      };
-
-      host.addEventListener("ivLyrics:offset-changed", handleOffsetChange);
-      return () => {
-        host.removeEventListener("ivLyrics:offset-changed", handleOffsetChange);
+        if (feedbackTimerRef.current !== null) {
+          host.clearTimeout(feedbackTimerRef.current);
+          feedbackTimerRef.current = null;
+        }
       };
     }, [trackUri]);
 
@@ -280,22 +223,6 @@ export function createSyncAdjustmentControls({
       return () => host.removeEventListener("keydown", handleKeyDown);
     }, [videoTrackUri]);
 
-    const handleOffsetChange = (newOffset) => {
-      if (
-        !isOffsetLoaded ||
-        !trackUri ||
-        activeTrackUriRef.current !== trackUri
-      ) return;
-      const safeOffset = clampSyncOffset(newOffset);
-      loadSeqRef.current += 1;
-      optimisticOffsetRef.current = safeOffset;
-      setOffset(safeOffset);
-      host.dispatchEvent(createEvent("ivLyrics:offset-changed", {
-        detail: { trackUri, offset: safeOffset }
-      }));
-      queueTrackSyncOffsetWrite(trackUri, safeOffset);
-    };
-
     const showInteractionFeedback = (kind, event, step = 0) => {
       const feedbackId = ++feedbackSeqRef.current;
       const nextFeedback = {
@@ -330,7 +257,7 @@ export function createSyncAdjustmentControls({
       }
 
       setInteractionFeedback(nextFeedback);
-      if (feedbackTimerRef.current) {
+      if (feedbackTimerRef.current !== null) {
         host.clearTimeout(feedbackTimerRef.current);
       }
       feedbackTimerRef.current = host.setTimeout(() => {
@@ -361,7 +288,7 @@ export function createSyncAdjustmentControls({
           onClick: (event) => {
             if (showsVideo) {
               if (!applyVideoStep(step)) return;
-            } else handleOffsetChange(optimisticOffsetRef.current + step);
+            } else if (!changeTrackOffset(trackOffsetRef.current + step)) return;
             showInteractionFeedback("step", event, step);
           },
           onPointerUp: (event) => event.currentTarget.blur(),
@@ -399,9 +326,7 @@ export function createSyncAdjustmentControls({
                 const current = readActiveVideo();
                 const currentStart = getCurrentVideoCaptionStartTime(current);
                 if (currentStart === null || !applyVideoStep(-currentStart * 1000)) return;
-              } else if (optimisticOffsetRef.current !== 0) {
-                handleOffsetChange(0);
-              }
+              } else if (trackOffsetRef.current !== 0 && !changeTrackOffset(0)) return;
               showInteractionFeedback("reset", event);
             },
             onPointerUp: (event) => event.currentTarget.blur(),

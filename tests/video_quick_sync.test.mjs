@@ -1,5 +1,5 @@
 import { readPcStylesheet } from "../.github/scripts/pc_stylesheet.mjs";
-import { createTrackSyncOffsetTools } from "../src/app/toolbar/sync/createTrackSyncOffsetTools.mjs";
+import { createTrackSyncOffsetEdits } from "../src/core/trackSyncOffsetEdits.mjs";
 import { writeFirstLyricTime, clearFirstLyricTime } from "../src/features/video/videoSyncRuntimeState.mjs";
 import { resolveLyricsVideoSource, renderLyricsVideoBackground } from "../src/lyrics/lyricsPageFullscreenView.mjs";
 import { createVideoDriftState, planVideoDriftCorrection } from "../src/features/video/videoDriftCorrection.mjs";
@@ -240,6 +240,64 @@ test("without a video the sync pill stays the lyric pill, with no switch", () =>
     assert.deepEqual(pill.buttons().filter((button) => button.props.className === "lyrics-track-sync-step").map(text),
         ["−100ms", "−50ms", "−10ms", "+10ms", "+50ms", "+100ms"]);
     assert.equal(pressKey(env, "BracketRight").defaultPrevented, false);
+});
+
+test("quick sync keeps the pending offset when its controls reopen before the save commits", async () => {
+    const env = createEnvironment(), gate = deferred(), writes = [];
+    const other = "spotify:track:second";
+    env.lyricOffsets.set(TRACK, 25);
+    env.lyricOffsets.set(other, -40);
+    env.Utils.setTrackSyncOffset = async (uri, offset) => {
+        writes.push([uri, offset]);
+        if (writes.length === 1) await gate.promise;
+        env.lyricOffsets.set(uri, offset);
+        return true;
+    };
+    let pill = mount(env);
+    await flush();
+    pill.button("+50ms").props.onClick();
+    pill.unmount();
+    pill = mount(env, "TrackSyncAdjustPill", { trackUri: other });
+    await flush();
+    assert.equal(currentValue(pill), "-40ms");
+    pill.update({ trackUri: TRACK });
+    await flush();
+    try {
+        assert.equal(currentValue(pill), "+75ms");
+        pill.button("+10ms").props.onClick();
+    } finally {
+        gate.resolve();
+        await flush();
+    }
+    assert.deepEqual(writes, [[TRACK, 75], [TRACK, 85]]);
+    assert.equal(currentValue(pill), "+85ms");
+});
+
+test("a failed quick sync save restores the stored offset", async () => {
+    const env = createEnvironment(), gate = deferred();
+    env.lyricOffsets.set(TRACK, 25);
+    env.Utils.setTrackSyncOffset = async () => gate.promise;
+    const pill = mount(env);
+    await flush();
+    pill.button("+50ms").props.onClick();
+    await flush();
+    assert.equal(currentValue(pill), "+75ms");
+    gate.resolve(false);
+    await flush();
+    assert.equal(currentValue(pill), "+25ms");
+});
+
+test("quick sync ignores an old control after playback has switched tracks", async () => {
+    const env = createEnvironment(), writes = [];
+    env.Utils.setTrackSyncOffset = async (...args) => { writes.push(args); return true; };
+    env.playbackTrackUri = TRACK;
+    const pill = mount(env);
+    await flush();
+    env.playbackTrackUri = "spotify:track:next";
+    pill.button("+50ms").props.onClick();
+    await flush();
+    assert.deepEqual(writes, []);
+    assert.equal(currentValue(pill), "0ms");
 });
 
 test("Lyrics/Video switch edits one canonical anchor, including rapid taps before render", async () => {
@@ -536,18 +594,23 @@ test("lyric offsets persist the final rapid adjustment for each track", async ()
             return true;
         },
     };
-    const { queueTrackSyncOffsetWrite } = createTrackSyncOffsetTools({
-        react: {},
-        host,
-        readUtils: () => utils,
-        createEvent: (type, options) => new CustomEvent(type, options),
+    const { queueOffset } = createTrackSyncOffsetEdits({
+        readOffset: () => 0,
+        writeOffset: (trackUri, offset) => utils.setTrackSyncOffset(trackUri, offset, { dispatch: false }),
+        publishOffset: (trackUri, offset) => host.dispatchEvent(new CustomEvent("ivLyrics:offset-changed", {
+            detail: { trackUri, offset },
+        })),
         reportError: error => assert.fail(error),
     });
-    queueTrackSyncOffsetWrite(TRACK, 10);
-    queueTrackSyncOffsetWrite(TRACK, 20);
-    queueTrackSyncOffsetWrite(TRACK, 30);
-    queueTrackSyncOffsetWrite(otherTrack, -20);
+    queueOffset(TRACK, 10);
+    queueOffset(TRACK, 20);
+    queueOffset(TRACK, 30);
+    queueOffset(otherTrack, -20);
     assert.deepEqual(writes, [{ trackUri: TRACK, offset: 10 }]);
+    assert.deepEqual(published, [
+        { trackUri: TRACK, offset: 10 }, { trackUri: TRACK, offset: 20 },
+        { trackUri: TRACK, offset: 30 }, { trackUri: otherTrack, offset: -20 },
+    ]);
     gate.resolve();
     await flush();
     assert.deepEqual(writes, [
@@ -555,7 +618,32 @@ test("lyric offsets persist the final rapid adjustment for each track", async ()
         { trackUri: TRACK, offset: 30 },
         { trackUri: otherTrack, offset: -20 },
     ]);
-    assert.deepEqual(published, writes.slice(1));
+    assert.deepEqual(published.slice(4), writes.slice(1));
+});
+
+test("an older offset read and a failed write cannot undo a committed newer edit", async () => {
+    const slowRead = deferred(), rollbackRead = deferred();
+    const deliveries = [];
+    let reads = 0;
+    const offsets = createTrackSyncOffsetEdits({
+        readOffset: () => ++reads === 1 ? slowRead.promise : rollbackRead.promise,
+        writeOffset: async (_uri, offset) => offset !== 50,
+        publishOffset: (_uri, offset) => deliveries.push(offset),
+        reportError: (...args) => assert.fail(args.join(" ")),
+    });
+    const initialRead = offsets.getOffset(TRACK);
+    await flush();
+    offsets.queueOffset(TRACK, 50);
+    await flush();
+    assert.equal(reads, 2, "the failed write is reconciling against storage");
+    offsets.queueOffset(TRACK, 65);
+    assert.equal(await offsets.getOffset(TRACK), 65);
+    await flush();
+    rollbackRead.resolve(25);
+    slowRead.resolve(25);
+    assert.equal(await initialRead, 65);
+    await flush();
+    assert.deepEqual(deliveries, [50, 65, 65]);
 });
 
 test("writes coalesce per track and cannot replace another video's stored selection", async () => {

@@ -8,6 +8,7 @@ import { createToolbarTranslationPreferences } from "#ivlyrics/app/toolbar/toolb
 import { getMountedLyricsPage as getToolbarLyricsPage } from "#ivlyrics/spicetify/lyricsPageEffects.mjs";
 import { refreshLyricsPage as refreshPageFromToolbar } from "#ivlyrics/spicetify/lyricsPageActions.mjs";
 import { createSyncAdjustmentControls } from "#ivlyrics/app/toolbar/sync/createSyncAdjustmentControls.mjs";
+import { getTrackSyncOffsetStore } from "#ivlyrics/core/trackSyncOffsetRuntime.mjs";
 import { formatSyncOffset } from "#ivlyrics/app/toolbar/sync/syncOffsetValues.mjs";
 import { getRuntimeService as getMenuRuntimeService } from "#ivlyrics/spicetify/runtimeServices.mjs";
 import { getSettingsModalClose } from "#ivlyrics/features/settings/settingsModalHost.mjs";
@@ -144,6 +145,8 @@ export function createOptionsMenu({
     react,
     host: window,
     readUtils: () => Utils,
+    readTrackOffsets: () => getTrackSyncOffsetStore(window),
+    readCurrentTrackUri: () => Spicetify.Player.data?.item?.uri,
     translate,
     notify,
     controls: {
