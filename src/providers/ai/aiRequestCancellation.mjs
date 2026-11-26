@@ -7,6 +7,10 @@ export function supersededAiRequest(cause) {
     return Object.assign(new Error('AI request superseded', { cause }), { name: 'AbortError', superseded: true });
 }
 
+export function throwIfAiRequestSuperseded(signal) {
+    if (signal?.aborted) throw supersededAiRequest(signal.reason);
+}
+
 export function throwIfAiRequestAborted(signal) {
     if (signal?.aborted) throw signal.reason ?? supersededAiRequest();
 }

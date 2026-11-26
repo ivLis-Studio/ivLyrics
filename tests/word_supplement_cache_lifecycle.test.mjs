@@ -243,3 +243,31 @@ test("mounted word stacks use changed reading and gloss settings on the next rev
   assert.deepEqual(readingCalls, ["romaji", "gemini_romaji"]);
   assert.equal(glossCalls.length, 1);
 });
+
+test("retiring a track aborts its active AI batches and releases waiters before the transport settles", async () => {
+  const started = new Map();
+  const gloss = ({ words, signal }) => {
+    const wait = deferred();
+    started.set(words[0], { ...wait, signal });
+    return wait.promise;
+  };
+  const h = load({ gloss });
+  const lookup = (trackId, surface) => h.api.getWordGlosses([{ wordKey: 0, surface }], surface, "ja", { trackId });
+  const retired = lookup("T1", "生");
+  const kept = lookup("T2", "死");
+  await h.flush();
+  h.api.clearCaches("T1");
+
+  const old = started.get("生");
+  const other = started.get("死");
+  assert.equal(old?.signal?.aborted, true);
+  assert.equal(other?.signal?.aborted, false);
+  assert.deepEqual(await retired, [""]);
+  assert.equal(h.events.at(-1).active, true);
+
+  old.resolve(["old"]);
+  other.resolve(["life ends"]);
+  assert.deepEqual(await kept, ["life ends"]);
+  assert.deepEqual(h.writes.map(([trackId]) => trackId), ["T2"]);
+  assert.equal(h.events.at(-1).active, false);
+});

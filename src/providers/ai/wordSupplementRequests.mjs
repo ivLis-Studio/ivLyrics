@@ -1,5 +1,6 @@
 import { getTranslationLanguageInfo } from "./promptLanguages.mjs";
 import { isChinesePronunciationTask, stripWordListPrefix } from "./pronunciationPolicy.mjs";
+import { isSupersededAbort, throwIfAiRequestSuperseded } from "./aiRequestCancellation.mjs";
 
 const normalizeWords = words => Array.isArray(words) ? words.map(word => String(word ?? '')) : [];
 
@@ -41,7 +42,8 @@ ${safeWords.join('\n')}`;
 }
 
 export async function requestWordSupplement(manager, options, type) {
-    const { words, lineText = '', targetLang = 'en', sourceLang = 'auto', notation = 'latin' } = options;
+    const { words, lineText = '', targetLang = 'en', sourceLang = 'auto', notation = 'latin', signal } = options;
+    throwIfAiRequestSuperseded(signal);
     const isPronunciation = type === 'wordPronunciation';
     const safeWords = normalizeWords(words);
     if (safeWords.length === 0) return [];
@@ -66,6 +68,7 @@ export async function requestWordSupplement(manager, options, type) {
 
     let lastError = null;
     for (const addon of providers) {
+        throwIfAiRequestSuperseded(signal);
         if (typeof addon.translateLyrics !== 'function') continue;
         try {
             const raw = await manager._callProvider(addon, 'translateLyrics', {
@@ -79,7 +82,9 @@ export async function requestWordSupplement(manager, options, type) {
                 onLine: null,
                 onStreamReset: null,
                 endpointCapability: 'wordSupplements',
+                ...(signal ? { signal } : {}),
             });
+            throwIfAiRequestSuperseded(signal);
             const value = isPronunciation ? raw?.phonetic : raw?.translation ?? raw?.vi;
             const lines = Array.isArray(value)
                 ? value.map(line => String(line ?? ''))
@@ -91,11 +96,14 @@ export async function requestWordSupplement(manager, options, type) {
             manager.emit('ai:request:success', { type, provider: addon.id });
             return lines.map((line, index) => stripWordListPrefix(line, safeWords[index]).trim());
         } catch (error) {
+            throwIfAiRequestSuperseded(signal);
+            if (isSupersededAbort(error)) throw error;
             console.warn(`[AIAddonManager] Provider ${addon.id} failed for ${type}:`, error?.message || error);
             lastError = error;
         }
     }
 
+    throwIfAiRequestSuperseded(signal);
     manager.emit('ai:request:error', { type, error: lastError?.message || 'failed' });
     throw lastError || new Error(manager._t('aiProviders.allProvidersFailed', 'All AI providers failed to process the request.'));
 }

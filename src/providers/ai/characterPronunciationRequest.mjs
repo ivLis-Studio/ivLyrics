@@ -1,4 +1,4 @@
-import { isSupersededAbort, supersededAiRequest } from './aiRequestCancellation.mjs';
+import { isSupersededAbort, supersededAiRequest, throwIfAiRequestSuperseded } from './aiRequestCancellation.mjs';
 
 export function notifyCharacterPronunciationProgress(params, progress) {
     if (typeof params?.onProgress !== 'function' || params.signal?.aborted) return;
@@ -298,6 +298,8 @@ export async function generateCharacterPronunciationChunks(manager, debug, addon
 }
 
 export async function generateCharacterPronunciation(manager, debug, params) {
+    const signal = params?.signal;
+    throwIfAiRequestSuperseded(signal);
     const providers = manager.getEnabledProvidersFor('characterPronunciation');
 
     if (providers.length === 0) {
@@ -342,6 +344,7 @@ export async function generateCharacterPronunciation(manager, debug, params) {
     });
 
     for (let providerIndex = 0; providerIndex < providers.length; providerIndex++) {
+        throwIfAiRequestSuperseded(signal);
         const addon = providers[providerIndex];
         if (typeof addon.generateCharacterPronunciation !== 'function') continue;
 
@@ -360,6 +363,7 @@ export async function generateCharacterPronunciation(manager, debug, params) {
                 percent: 0
             });
 
+            throwIfAiRequestSuperseded(signal);
             const mergedLines = sourceLines.map((text, lineIndex) => ({
                 index: lineIndex,
                 unitMode,
@@ -391,9 +395,11 @@ export async function generateCharacterPronunciation(manager, debug, params) {
                 remaining: 0,
                 percent: 100
             });
+            throwIfAiRequestSuperseded(signal);
             manager.emit('ai:request:success', { type: 'characterPronunciation', provider: addon.id });
             return { lines: mergedLines, provider: addon.id };
         } catch (e) {
+            throwIfAiRequestSuperseded(signal);
             if (isSupersededAbort(e)) throw e;
             console.warn(`[AIAddonManager] Provider ${addon.id} failed for generateCharacterPronunciation:`, e.message);
             manager._notifyCharacterPronunciationProgress(params, {
@@ -412,6 +418,7 @@ export async function generateCharacterPronunciation(manager, debug, params) {
         }
     }
 
+    throwIfAiRequestSuperseded(signal);
     const errorMsg = truncationError?.message || lastError?.message || manager._t('aiProviders.allProvidersFailed', 'All AI providers failed to process the request.');
     manager.emit('ai:request:error', { type: 'characterPronunciation', error: errorMsg });
     throw new Error(errorMsg);

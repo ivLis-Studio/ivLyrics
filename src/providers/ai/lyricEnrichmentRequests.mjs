@@ -1,6 +1,9 @@
 import { normalizeCulturalAnnotationsResult } from "./culturalAnnotations.mjs";
+import { throwIfAiRequestSuperseded } from "./aiRequestCancellation.mjs";
 
 export async function requestMotionDirection(manager, params, { debug }) {
+    const signal = params?.signal;
+    throwIfAiRequestSuperseded(signal);
     if (!Array.isArray(params?.lines) || params.lines.length === 0) {
         throw new Error('No lyrics lines provided');
     }
@@ -13,10 +16,12 @@ export async function requestMotionDirection(manager, params, { debug }) {
         providers: providers.map((provider) => provider.id),
         params: { title: params.title, artist: params.artist, lineCount: params.lines.length }
     });
+    throwIfAiRequestSuperseded(signal);
     const motionDirectionPrompt = manager.buildMotionDirectionPrompt(params);
     return manager._runProviderFallback(providers, 'generateMotionDirection', 'motionDirection', async (addon) => {
         debug('[AIAddonManager] Trying motion direction provider: ' + addon.id);
         const result = await manager._callProvider(addon, 'generateMotionDirection', { ...params, motionDirectionPrompt });
+        throwIfAiRequestSuperseded(signal);
         const direction = result && typeof result === 'object' && result.direction && typeof result.direction === 'object'
             ? result.direction
             : result;
@@ -25,10 +30,12 @@ export async function requestMotionDirection(manager, params, { debug }) {
         }
         manager.emit('ai:request:success', { type: 'motionDirection', provider: addon.id });
         return direction;
-    });
+    }, null, signal);
 }
 
 export async function requestLyricsStudy(manager, params, { getAddonDebug, debug }) {
+    const signal = params?.signal;
+    throwIfAiRequestSuperseded(signal);
     const providers = manager.getEnabledProvidersFor('lyricsStudy');
 
     if (providers.length === 0) {
@@ -59,6 +66,7 @@ export async function requestLyricsStudy(manager, params, { getAddonDebug, debug
             lyricsStudyPrompt: manager.buildLyricsStudyPrompt(params)
         });
 
+        throwIfAiRequestSuperseded(signal);
         if (getAddonDebug()?.isEnabled()) {
             getAddonDebug().timeEnd('ai', 'generateLyricsStudy');
         }
@@ -70,10 +78,12 @@ export async function requestLyricsStudy(manager, params, { getAddonDebug, debug
             getAddonDebug().timeEnd('ai', 'generateLyricsStudy');
             getAddonDebug().error('ai', 'generateLyricsStudy all providers failed');
         }
-    });
+    }, signal);
 }
 
 export async function requestCulturalAnnotations(manager, params, { debug }) {
+    const signal = params?.signal;
+    throwIfAiRequestSuperseded(signal);
     let providers = manager.getEnabledProvidersFor('culturalAnnotations');
     if (params?.provider) {
         providers = providers.filter(addon => addon.id === params.provider);
@@ -97,6 +107,7 @@ export async function requestCulturalAnnotations(manager, params, { debug }) {
                 providerName: addon.name || addon.id
             });
         }
+        throwIfAiRequestSuperseded(signal);
         debug(`[AIAddonManager] Trying cultural annotations provider: ${addon.id}`);
         const result = normalizeCulturalAnnotationsResult(
             await manager._callProvider(addon, 'generateCulturalAnnotations', {
@@ -110,7 +121,8 @@ export async function requestCulturalAnnotations(manager, params, { debug }) {
             addon.id
         );
 
+        throwIfAiRequestSuperseded(signal);
         manager.emit('ai:request:success', { type: 'culturalAnnotations', provider: addon.id });
         return result;
-    });
+    }, null, signal);
 }

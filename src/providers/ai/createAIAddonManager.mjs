@@ -167,8 +167,8 @@ export function createAIAddonManager({ getStoredValue, setStoredValue, getOwnSto
             return callAiProvider(addon, method, params);
         }
 
-        _runProviderFallback(providers, method, type, attempt, onAllFailed = null) {
-            return runAiProviderFallback(this, providers, method, type, attempt, onAllFailed);
+        _runProviderFallback(providers, method, type, attempt, onAllFailed = null, signal) {
+            return runAiProviderFallback(this, providers, method, type, attempt, onAllFailed, signal);
         }
 
         /**

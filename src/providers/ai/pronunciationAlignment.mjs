@@ -8,7 +8,7 @@ import {
     PRONUNCIATION_BATCH_UNITS,
     runParallelBatches,
 } from './pronunciationPolicy.mjs';
-import { supersededAiRequest } from './aiRequestCancellation.mjs';
+import { supersededAiRequest, throwIfAiRequestSuperseded } from './aiRequestCancellation.mjs';
 
 export function buildTimedPronunciationChunks(items, { maxUnits = 420, maxItems = 24 } = {}) {
     const chunks = [];
@@ -93,6 +93,7 @@ async function alignPronunciationBatches(manager, items, output, request, signal
  * @returns {Promise<Map<number, string[]>>} Unit pronunciations for the items AI aligned.
  */
 export async function requestTimedPronunciation(manager, { items = [], lyricsText = '', sourceLang = 'auto', signal } = {}) {
+    throwIfAiRequestSuperseded(signal);
     const safeItems = (Array.isArray(items) ? items : [])
         .filter(item => Number.isInteger(item?.i) && Array.isArray(item?.u) && item.u.length > 0 && String(item?.r ?? '').trim());
     if (safeItems.length === 0) return new Map();
@@ -110,6 +111,7 @@ export async function requestTimedPronunciation(manager, { items = [], lyricsTex
 
     let lastError = null;
     for (const addon of providers) {
+        throwIfAiRequestSuperseded(signal);
         const aligned = new Map();
         const runChunk = async (chunk) => {
             const prompt = buildTimedPronunciationPrompt({ items: chunk, lyricsText, sourceLang });
@@ -132,11 +134,13 @@ export async function requestTimedPronunciation(manager, { items = [], lyricsTex
             manager.emit('ai:request:success', { type: 'timedPronunciation', provider: addon.id });
             return aligned;
         } catch (error) {
+            throwIfAiRequestSuperseded(signal);
             if (isSupersededAbort(error)) throw error;
             console.warn(`[AIAddonManager] Provider ${addon.id} failed for timedPronunciation:`, error?.message || error);
             lastError = error;
         }
     }
+    throwIfAiRequestSuperseded(signal);
     manager.emit('ai:request:error', { type: 'timedPronunciation', error: lastError?.message || 'failed' });
     throw lastError || new Error(manager._t('aiProviders.allProvidersFailed', 'All AI providers failed to process the request.'));
 }
@@ -151,6 +155,7 @@ export async function requestTimedPronunciation(manager, { items = [], lyricsTex
  */
 export async function requestPronunciationSlots(manager, params = {}, debug) {
     const { signal } = params;
+    throwIfAiRequestSuperseded(signal);
     const notation = normalizeLyricsPronunciationNotation(params.pronunciationNotation);
     const lines = (Array.isArray(params.lines) ? params.lines : [])
         .filter(line => Number.isInteger(line?.i) && Array.isArray(line?.u) && line.u.length > 0);
@@ -171,6 +176,7 @@ export async function requestPronunciationSlots(manager, params = {}, debug) {
 
     let lastError = null;
     for (const addon of providers) {
+        throwIfAiRequestSuperseded(signal);
         const slots = new Map();
         const accept = (line, value) => {
             if (signal?.aborted) return false;
@@ -227,6 +233,7 @@ export async function requestPronunciationSlots(manager, params = {}, debug) {
         }
         lastError = lastError || new Error('Pronunciation slot response had no usable lines');
     }
+    throwIfAiRequestSuperseded(signal);
     manager.emit('ai:request:error', { type: 'pronunciationSlots', error: lastError?.message || 'failed' });
     throw lastError || new Error(manager._t('aiProviders.allProvidersFailed', 'All AI providers failed to process the request.'));
 }

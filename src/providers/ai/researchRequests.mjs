@@ -3,13 +3,13 @@ import {
     isResearchWebSearchFailure,
     normalizeResearchResult,
 } from './researchDocument.mjs';
-import { isSupersededAbort, throwIfAiRequestAborted } from './aiRequestCancellation.mjs';
+import { isSupersededAbort, throwIfAiRequestSuperseded } from './aiRequestCancellation.mjs';
 
 const PROVIDER_RESEARCH_REQUEST_TIMEOUT_MS = 480_000;
 
 export async function requestResearch(manager, params, { getAddonDebug, debug }) {
     const signal = params?.signal;
-    throwIfAiRequestAborted(signal);
+    throwIfAiRequestSuperseded(signal);
     const providers = manager.getEnabledProvidersFor('research');
 
     if (providers.length === 0) {
@@ -32,6 +32,7 @@ export async function requestResearch(manager, params, { getAddonDebug, debug })
     let lastError = null;
 
     for (const addon of providers) {
+        throwIfAiRequestSuperseded(signal);
         const method = typeof addon.generateResearch === 'function' ? 'generateResearch' : 'generateTMI';
         if (typeof addon[method] !== 'function') continue;
         let activeWebSearchStatus = 'searching';
@@ -76,7 +77,7 @@ export async function requestResearch(manager, params, { getAddonDebug, debug })
             try {
                 result = await callResearchProvider(true);
             } catch (webSearchError) {
-                throwIfAiRequestAborted(signal);
+                throwIfAiRequestSuperseded(signal);
                 if (isSupersededAbort(webSearchError)) throw webSearchError;
                 // A generation failure (for example MAX_TOKENS) is not a
                 // web-search failure. Retrying it without search would run
@@ -94,7 +95,7 @@ export async function requestResearch(manager, params, { getAddonDebug, debug })
                 result = await callResearchProvider(false);
             }
 
-            throwIfAiRequestAborted(signal);
+            throwIfAiRequestSuperseded(signal);
 
             const normalized = normalizeResearchResult(result, params);
             if (!normalized || typeof normalized !== 'object') {
@@ -113,6 +114,7 @@ export async function requestResearch(manager, params, { getAddonDebug, debug })
                 complete: true,
                 webSearchStatus: normalized._research.web_search
             });
+            throwIfAiRequestSuperseded(signal);
 
             if (getAddonDebug()?.isEnabled()) {
                 getAddonDebug().timeEnd('ai', 'generateResearch');
@@ -120,7 +122,7 @@ export async function requestResearch(manager, params, { getAddonDebug, debug })
             manager.emit('ai:request:success', { type: 'research', provider: addon.id });
             return normalized;
         } catch (error) {
-            throwIfAiRequestAborted(signal);
+            throwIfAiRequestSuperseded(signal);
             if (isSupersededAbort(error)) throw error;
             console.warn(`[AIAddonManager] Provider ${addon.id} failed for generateResearch:`, error.message);
             reportProgress(null, { reset: true, error: error.message });
@@ -128,6 +130,7 @@ export async function requestResearch(manager, params, { getAddonDebug, debug })
         }
     }
 
+    throwIfAiRequestSuperseded(signal);
     console.error('[AIAddonManager] All Research providers failed');
     if (getAddonDebug()?.isEnabled()) {
         getAddonDebug().timeEnd('ai', 'generateResearch');

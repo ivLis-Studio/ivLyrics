@@ -198,3 +198,108 @@ test('cancelling while a pronunciation batch waits for a retry does not launch m
     assert.equal((await errors)[0].superseded, true);
     assert.deepEqual(called, [1]);
 });
+
+function createFixtureManager(addons = []) {
+    const storage = new Map();
+    const manager = createAIAddonManager({
+        getStoredValue: key => storage.get(key),
+        setStoredValue: (key, value) => storage.set(key, value),
+        getI18n: () => null, getAddonDebug: () => null, debug() {},
+    });
+    for (const addon of addons) {
+        manager.register({
+            name: addon.id, author: 'Fixture', description: 'Fixture', version: '1',
+            getSettingsUI() {}, ...addon,
+        });
+        manager.setProviderEnabled(addon.id, true);
+    }
+    manager.setProviderOrder(addons.map(addon => addon.id));
+    return manager;
+}
+
+test('a returned translation cannot be cleared by a late provider stream reset', async () => {
+    let callbacks;
+    const observed = [];
+    const manager = createFixtureManager([{
+        id: 'legacy-stream', supports: { translate: true },
+        translateLyrics(params) {
+            callbacks = params;
+            params.onLine(0, 'Current reading');
+            return { translation: ['Current reading'] };
+        },
+    }]);
+    await manager.translateLyrics({
+        text: 'テスト', lang: 'en', onLine: (_index, text) => observed.push(text),
+        onStreamReset: detail => observed.push(detail.reason),
+    });
+    callbacks.onLine(0, 'Old line');
+    callbacks.onStreamReset({ reason: 'late reset' });
+    assert.deepEqual(observed, ['Current reading']);
+});
+
+test('Research ignores callbacks from the failed web-search attempt after switching to generation', async context => {
+    context.mock.method(console, 'warn', () => {});
+    let failedAttempt;
+    const progress = [];
+    const manager = createFixtureManager([{
+        id: 'legacy-research', supports: { research: true },
+        generateResearch({ webSearch, onResearchProgress }) {
+            if (webSearch) {
+                failedAttempt = onResearchProgress;
+                throw new Error('web search unavailable');
+            }
+            failedAttempt(null, { stage: 'retired search' });
+            onResearchProgress(null, { stage: 'active generation' });
+            return { title: 'Fixture' };
+        },
+    }]);
+    await manager.generateResearch({
+        title: 'Fixture', artist: 'Artist',
+        onProgress: (_value, detail) => { if (detail.stage) progress.push(detail.stage); },
+    });
+    failedAttempt(null, { stage: 'retired after completion' });
+    assert.deepEqual(progress, ['active generation']);
+});
+
+test('aborted requests skip start, loading, and terminal events', async () => {
+    const observed = [];
+    const manager = createFixtureManager([{
+        id: 'feature', supports: { translate: true, culturalAnnotations: true },
+        translateLyrics() { assert.fail('an aborted request cannot reach the provider'); },
+        generateCulturalAnnotations() { assert.fail('an aborted request cannot reach the provider'); },
+    }]);
+    for (const event of ['start', 'success', 'error']) manager.on('ai:request:' + event, () => observed.push(event));
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(manager.translateLyrics({ text: '歌', lang: 'en', signal: controller.signal }),
+        { name: 'AbortError', superseded: true });
+    assert.deepEqual(observed, []);
+
+    const duringStart = new AbortController();
+    manager.on('ai:request:start', () => duringStart.abort());
+    await assert.rejects(manager.generateCulturalAnnotations({
+        lines: [{ text: '歌' }], signal: duringStart.signal,
+        onProviderLoading: () => observed.push('loading'),
+    }), { name: 'AbortError', superseded: true });
+    assert.deepEqual(observed, ['start']);
+});
+
+test('cancelling a word supplement aborts the provider and skips fallback', async () => {
+    const starts = Promise.withResolvers();
+    const manager = createFixtureManager([{
+        id: 'word-slow', supports: { translate: true, wordSupplements: true },
+        translateLyrics({ signal }) {
+            starts.resolve(signal);
+            return new Promise(() => {});
+        },
+    }, {
+        id: 'word-fallback', supports: { translate: true, wordSupplements: true },
+        translateLyrics() { assert.fail('a retired word request must not start fallback'); },
+    }]);
+    const caller = new AbortController();
+    const pending = manager.generateWordGloss({ words: ['生'], signal: caller.signal });
+    const providerSignal = await starts.promise;
+    caller.abort();
+    await assert.rejects(pending, { name: 'AbortError', superseded: true });
+    assert.equal(providerSignal.aborted, true);
+});

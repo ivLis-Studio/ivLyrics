@@ -437,13 +437,13 @@ export function createWordSupplementService({
 				const batchKey = JSON.stringify(["pron", trackId, normalizeLanguage(language), targetLang, notation, mode]);
 				const slice = await enqueueWordBatch({
 					kind: "pronunciation",
-					batchKey,
+					batchKey, trackId,
 					generation,
 					isWanted,
 					words: cores,
 					lineText: sourceText,
-					run: (allWords, allLineTexts) => manager.generateWordPronunciation({
-						words: allWords,
+					run: (allWords, allLineTexts, signal) => manager.generateWordPronunciation({
+						words: allWords, signal,
 						lineText: allLineTexts.join("\n"),
 						targetLang,
 						sourceLang: language,
@@ -602,13 +602,13 @@ export function createWordSupplementService({
 			const batchKey = `gloss::${trackId}::${targetLang}::${sourceLangKey}`;
 			const slice = await enqueueWordBatch({
 				kind: "gloss",
-				batchKey,
+				batchKey, trackId,
 				generation,
 				isWanted,
 				words: glossCores,
 				lineText: sourceText,
-				run: (allWords, allLineTexts) => manager.generateWordGloss({
-					words: allWords,
+				run: (allWords, allLineTexts, signal) => manager.generateWordGloss({
+					words: allWords, signal,
 					lineText: allLineTexts.join("\n"),
 					targetLang,
 					sourceLang: sourceLangKey,
@@ -646,6 +646,7 @@ export function createWordSupplementService({
 					if (key.startsWith(prefix)) cache.delete(key);
 				}
 			}
+			wordBatcher.clear(trackId);
 			return;
 		}
 		cacheGeneration += 1;
