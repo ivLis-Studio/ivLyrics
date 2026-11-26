@@ -32,6 +32,7 @@ export function useSyncCreatorLrclibActions({
 		if (!candidate) return;
 
 		const sourceChangeRequestId = beginSyncCreatorSourceChange();
+		if (sourceChangeRequestId === null) return;
 		const ownsCandidates = searchRequests.captureCandidates();
 		resetSyncCreatorLyricsLoadingState();
 
@@ -126,6 +127,7 @@ export function useSyncCreatorLrclibActions({
 		const knownLrclibSources = [selectedLrclibSourceRef.current, lyrics?.lrclibSource];
 		const inputRevision = lrclibIdInputRevisionRef.current;
 		const sourceChangeRequestId = beginSyncCreatorSourceChange();
+		if (sourceChangeRequestId === null) return;
 		const ownsCandidates = searchRequests.captureCandidates();
 		setIsLoadingLrclibId(true);
 		resetSyncCreatorLyricsLoadingState();
@@ -267,6 +269,7 @@ export function useSyncCreatorLrclibActions({
 	// Authoring uses the official LRCLIB entry so submitted timings have a stable source.
 	const loadLyrics = useCallback(async () => {
 		const sourceChangeRequestId = beginSyncCreatorSourceChange();
+		if (sourceChangeRequestId === null) return;
 		const ownsCandidates = searchRequests.captureCandidates();
 		const recoverDraft = captureOfflineDraftRecovery?.(sourceChangeRequestId);
 		resetSyncCreatorLyricsLoadingState({ resetProvider: true });

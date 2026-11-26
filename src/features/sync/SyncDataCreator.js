@@ -61,7 +61,6 @@ import {
 import {
     SYNC_CREATOR_DEFAULT_GRANULARITY,
     createSyncCreatorGranularityTools,
-    normalizeSyncCreatorGranularity,
     projectTimedUnits,
 } from '#ivlyrics/features/sync/timingGranularity.mjs';
 import { createSyncCreatorValidation } from '#ivlyrics/features/sync/timingValidation.mjs';
@@ -94,6 +93,7 @@ import {
 	clearSyncCreatorPublishedCaches, createSyncCreatorPublicationActions, createSyncCreatorPublicationRunner,
 } from '#ivlyrics/features/sync/syncCreatorPublication.mjs';
 import { createSyncCreatorEditorLifetime } from '#ivlyrics/features/sync/syncCreatorEditorLifetime.mjs';
+import { createSyncCreatorEditorCommands } from '#ivlyrics/features/sync/syncCreatorEditorCommands.mjs';
 import { createSyncCreatorImportPicker, exportSyncCreatorFile } from '#ivlyrics/features/sync/syncCreatorFileTransfer.mjs';
 import { applySyncCreatorImportedSession } from '#ivlyrics/features/sync/syncCreatorSessionReplacement.mjs';
 import { useSyncCreatorVisibility } from '#ivlyrics/features/sync/syncCreatorVisibility.mjs';
@@ -384,8 +384,8 @@ export function createSyncDataCreator({
 			() => lifetime.captureOperation(captureDraftOwnership()), [lifetime, captureDraftOwnership],
 		);
 		const lrclibSearchRequests = useMemo(() => createLrclibSearchRequests({
-			isOpen: isEditorOpen, setPending: setIsSearchingLrclib,
-		}), [isEditorOpen]);
+			isOpen: isEditorOpen, canStart: lifetime.canStartOperation, setPending: setIsSearchingLrclib,
+		}), [isEditorOpen, lifetime]);
 		useLayoutEffect(() => () => { lrclibSearchRequests.dispose(); }, [lrclibSearchRequests]);
 		const runPublication = useMemo(() => createSyncCreatorPublicationRunner({
 			isEditorOpen: lifetime.canStartOperation, captureDraftOwnership: captureEditorDraftOwnership,
@@ -451,7 +451,7 @@ export function createSyncDataCreator({
 			clearLrclibCandidateState, beginSyncCreatorSourceChange, applyLoadedLyricsResult, captureOfflineDraftRecovery,
 			resolveMultiVocalDecision, previewLrclibCandidate, resetSyncCreatorLyricsLoadingState, prepareImportedLyricsSource, readPublishedSync,
 		} = useSyncCreatorSourceChange({
-			react, i18n: I18n, toast: Toast,
+			react, i18n: I18n, toast: Toast, canStartOperation: lifetime.canStartOperation,
 			track: { trackId, trackIsrc, trackName, artistName, albumName, sessionTrackKey },
 			lrclib: {
 				lrclibCandidates, previewLrclibCandidateKey, selectedLrclibCandidateKey, lrclibIdInputEditedRef,
@@ -800,14 +800,6 @@ export function createSyncDataCreator({
 			charScrollMetricsRef.current = [];
 		}, [setRecordingProgressIndex, clearRecordingLock, clearPointerRecording]);
 
-		const handleSyncGranularityChange = useCallback((nextValue) => {
-			const nextGranularity = normalizeSyncCreatorGranularity(nextValue);
-			if (nextGranularity === syncGranularity) return;
-			claimSessionForLocalEditing();
-			resetCurrentSyncInput();
-			setSyncGranularity(nextGranularity);
-		}, [claimSessionForLocalEditing, resetCurrentSyncInput, syncGranularity]);
-
 		const {
 			offsetSelectionRange, offsetSelectionRangeRef, offsetSelectionTargetRef,
 			clearOffsetSelection, clearLyricTextSelection, applyOffsetSelectionRange,
@@ -916,26 +908,6 @@ export function createSyncDataCreator({
 			layout: { isLineCoveredByMergedPrevious, getMergedLineIndexesForStart, getParallelTemplateForLineData },
 		});
 
-		const toggleMode = useCallback((newMode) => {
-			claimSessionForLocalEditing();
-			if (mode === newMode) {
-				clearLyricTextSelection();
-				clearOffsetSelection();
-				setMode('idle');
-			} else {
-				if (newMode === 'record' && !isCurrentSyncTargetMetaComplete) {
-					showMissingMetaToast();
-					return;
-				}
-				clearLyricTextSelection();
-				clearOffsetSelection();
-				manualPreviewExitRef.current = false;
-				setMode(newMode);
-				const player = getEditorPlayer();
-				if (player && !player.isPlaying()) player.play();
-			}
-		}, [claimSessionForLocalEditing, clearLyricTextSelection, clearOffsetSelection, mode, isCurrentSyncTargetMetaComplete, showMissingMetaToast, getEditorPlayer]);
-
 		const { adjustGlobalOffset, adjustCurrentLineOffset } = useSyncCreatorOffsetActions({
 			react, toast: Toast, i18n: I18n, mode, syncData,
 			target: {
@@ -946,36 +918,6 @@ export function createSyncDataCreator({
 			timing: { mergeSyncCreatorParallelTemplate, refreshSyncCreatorLineCharsFromParallel, clipSyncCreatorLineToBounds },
 			editor: { claimSessionForLocalEditing, resetCurrentSyncInput, setSyncData, setGlobalOffset },
 		});
-
-		const resetFromStart = useCallback(async () => {
-			const confirmed = window.confirm(
-				I18n.t('syncCreator.resetConfirm')
-				|| '현재 작업 중인 싱크 데이터가 모두 삭제됩니다.\n정말 처음부터 다시 시작할까요?'
-			);
-			if (!confirmed) return;
-			const ownsDraft = captureDraftOwnership();
-			const cleared = await deleteActiveSyncCreatorDraft({
-				resumeAutosave: true,
-				isDraftCurrent: () => isEditorOpen() && ownsDraft(),
-			});
-			if (!cleared || !isEditorOpen()) return;
-
-			resetCurrentSyncInput();
-			pendingPlaybackNavigationRef.current = false;
-			setCurrentLineIndex(0);
-			setSyncData(null);
-			setParallelPartMetaDrafts({});
-			setManualParallelSplitDrafts({});
-			setParentheticalLayoutDrafts({});
-			setPendingParentheticalLayoutDecision(null);
-			setMergedLineDrafts({});
-			setLineMetaDrafts({});
-			setLineStyleDrafts({});
-			setGlobalOffset(0);
-			setMode('idle');
-			getEditorPlayer()?.seek(0);
-			if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
-		}, [captureDraftOwnership, deleteActiveSyncCreatorDraft, getEditorPlayer, isEditorOpen, resetCurrentSyncInput]);
 
 		const { goToPrevLine, goToNextLine, goToFirstLine, handleSeek, handleSeekOffset } = useSyncCreatorNavigation({
 			react, host: window, getPlayer: getEditorPlayer,
@@ -1506,6 +1448,18 @@ export function createSyncDataCreator({
 			translate: (...args) => I18n.t(...args),
 			glyphFontSize: s.charSpan?.fontSize,
 			borderColor: TOSS_BORDER,
+		});
+
+		const { changeGranularity: handleSyncGranularityChange, toggleMode, resetFromStart } = createSyncCreatorEditorCommands({
+			lifetime, mode, syncGranularity, isCurrentSyncTargetMetaComplete, getPlayer: getEditorPlayer,
+			refs: { manualPreviewExitRef, pendingPlaybackNavigationRef, lyricsScrollRef },
+			draft: { claimSessionForLocalEditing, captureEditorDraftOwnership, deleteActiveSyncCreatorDraft },
+			editor: {
+				clearLyricTextSelection, clearOffsetSelection, resetCurrentSyncInput,
+				setMode, setSyncGranularity, setCurrentLineIndex, setSyncData,
+			},
+			layout: sessionReplacementLayout,
+			dialog: { showMissingMetaToast, confirm: message => window.confirm(message), translate: key => I18n.t(key) },
 		});
 
 		const showRightRail = Boolean(lyricsText && lyricsLines.length > 0);

@@ -7,8 +7,11 @@ import {
 } from './syncCreatorLoadedSource.mjs';
 import { findRecoverableSyncCreatorSession, findUnsubmittedSyncCreatorSession } from './syncCreatorSessionRecord.mjs';
 
+const allowSourceChange = () => true;
+
 export function useSyncCreatorSourceChange({
 	react, i18n: I18n, toast: Toast, track, lrclib, editor, session, services,
+	canStartOperation = allowSourceChange,
 }) {
 	const { useCallback, useMemo, useRef } = react;
 	const { trackId, trackIsrc, trackName, artistName, albumName, sessionTrackKey } = track;
@@ -50,6 +53,7 @@ export function useSyncCreatorSourceChange({
 		setLrclibSearchMeta(null);
 	}, [setSelectedLrclibSourceValue]);
 	const beginSyncCreatorSourceChange = useCallback(() => {
+		if (!canStartOperation()) return null;
 		searchRequests.cancel();
 		scoreInputRef.current = null;
 		scorePendingEffectsRef.current?.clear();
@@ -57,7 +61,7 @@ export function useSyncCreatorSourceChange({
 		sourceDraftGenerationRef.current = sessionEditorRevisionRef.current;
 		setIsLoadingLrclibId(false);
 		return requestId;
-	}, [beginDraftSourceChange, searchRequests, sessionEditorRevisionRef]);
+	}, [beginDraftSourceChange, canStartOperation, searchRequests, sessionEditorRevisionRef]);
 
 	const captureOfflineDraftRecovery = (sourceChangeRequestId) => {
 		const ownsLoad = () => ownsSourceDraft(sourceChangeRequestId);

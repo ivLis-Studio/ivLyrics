@@ -70,7 +70,7 @@ export function createLockedEditor({ text = 'ABCDEF', saved = [10, 11, 12, 13, 1
 		const handleDragMove = (...args) => readPointerRecorder().handleDragMove(...args);
 		const handleDragEnd = (...args) => readPointerRecorder().handleDragEnd(...args);
 		const handleDragCancel = (...args) => readPointerRecorder().handleDragCancel(...args);`,
-		section('\tconst resetCurrentSyncInput =', '\tconst handleSyncGranularityChange ='),
+		section('\tconst resetCurrentSyncInput =', '\t// Offset-selection range for preview/idle'),
 		section('\tconst lifetimeRef =', '\tconst captureEditorDraftOwnership ='),
 		section('\tconst closeEditor =', '\tuseLayoutEffect(() => registerCloseRequest'),
 	].join('\n');

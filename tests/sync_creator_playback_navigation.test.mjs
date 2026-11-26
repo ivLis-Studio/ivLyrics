@@ -1,6 +1,8 @@
 import { buildSyncCreatorPlaybackTimeline, getSyncCreatorPlaybackLineIndex } from '#ivlyrics/features/sync/syncCreatorPlayback.mjs';
 import { useSyncCreatorSourceChange } from '#ivlyrics/features/sync/syncCreatorSourceChange.mjs';
 import { createSyncCreatorSessionLifecycle, createSyncCreatorSessionRefs } from '#ivlyrics/features/sync/syncCreatorSessionLifecycle.mjs';
+import { createSyncCreatorEditorLifetime } from '#ivlyrics/features/sync/syncCreatorEditorLifetime.mjs';
+import { createSyncCreatorEditorCommands } from '#ivlyrics/features/sync/syncCreatorEditorCommands.mjs';
 import { buildSyntheticLrclibResult } from '#ivlyrics/features/sync/syncCreatorLrclibLyrics.mjs';
 import { readSyncCreatorFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from 'node:assert/strict';
@@ -18,10 +20,7 @@ const slice = (startMarker, endMarker) => {
 	return source.slice(start, end);
 };
 const helpersSource = source.slice(0, source.indexOf('const SyncDataCreator ='));
-const callbackSources = [
-	slice('\tconst toggleMode =', '\tconst { adjustGlobalOffset, adjustCurrentLineOffset }'),
-	slice('\tconst applySyncCreatorSessionRecord =', '\tconst { addManualCheckpoint,'),
-].join('\n');
+const callbackSources = slice('\tconst applySyncCreatorSessionRecord =', '\tconst { addManualCheckpoint,');
 const playbackSource = slice('\tconst playbackTimeline =', '\tconst { setRecordingProgressIndex, applyRecordingProgressVisual, invalidateRecordingPaint }');
 const plain = value => JSON.parse(JSON.stringify(value));
 const deferred = () => {
@@ -34,6 +33,7 @@ const deferred = () => {
 // React setters and player/storage I/O are controlled here; the already-validated
 // sync fixture passes through the sanitizer boundary without migration.
 const createEditor = ({ progress = 0, playing = true, draftStore = null } = {}) => {
+	const lifetime = createSyncCreatorEditorLifetime(() => true);
 	const calls = { seek: [], play: 0, selections: [], positions: [], toasts: [] };
 	const timers = new Map();
 	const layoutEffects = [], refs = [];
@@ -80,6 +80,7 @@ const createEditor = ({ progress = 0, playing = true, draftStore = null } = {}) 
 	for (const [, name] of callbackSources.matchAll(/\b(\w+Ref)\.current/g)) context[name] ??= { current: null };
 	Object.assign(context, {
 		pendingPlaybackNavigationRef: { current: true },
+		manualPreviewExitRef: { current: false },
 		lyricsScrollRef: { current: { scrollLeft: 50 } },
 		scoreInputRef: { current: null },
 		scorePendingEffectsRef: { current: new Map() },
@@ -121,11 +122,15 @@ const createEditor = ({ progress = 0, playing = true, draftStore = null } = {}) 
 	vm.runInContext(`globalThis.makeCallbacks = () => {
 		const { mode, pendingMultiVocalDecision } = globalThis;
 		${callbackSources}
-		return { toggleMode, applySyncCreatorSessionRecord };
+		return { applySyncCreatorSessionRecord };
 	};`, context);
 	for (const name of Object.keys(context.makeCallbacks())) {
 		context[name] = (...args) => context.makeCallbacks()[name](...args);
 	}
+	context.toggleMode = requested => createSyncCreatorEditorCommands({
+		lifetime, mode: context.mode, isCurrentSyncTargetMetaComplete: context.isCurrentSyncTargetMetaComplete,
+		getPlayer: () => context.Spicetify.Player, refs: context, draft: session, editor: context, dialog: context,
+	}).toggleMode(requested);
 	const services = vm.runInContext(`({
 		readSyncCreatorSyncService, readSyncCreatorCodec, sanitizeSyncCreatorSyncData, debugSyncCreatorSource,
 	})`, context);
@@ -133,6 +138,7 @@ const createEditor = ({ progress = 0, playing = true, draftStore = null } = {}) 
 	const sourceChange = () => useSyncCreatorSourceChange({
 		react: { ...context, useRef: () => draftGenerationRef }, i18n: context.I18n, toast: context.Toast,
 		track: context, lrclib: { ...context, searchRequests: { cancel() {} } }, editor: context, session: context, services,
+		canStartOperation: lifetime.canStartOperation,
 	});
 	for (const name of ['beginSyncCreatorSourceChange', 'applyLoadedLyricsResult', 'resolveMultiVocalDecision', 'captureOfflineDraftRecovery']) {
 		context[name] = (...args) => sourceChange()[name](...args);
@@ -144,7 +150,7 @@ const createEditor = ({ progress = 0, playing = true, draftStore = null } = {}) 
 		vm.runInContext(`(() => { ${playbackSource}\nglobalThis.playbackTimeline = playbackTimeline; })();`, context);
 	};
 	return {
-		context, calls, timers,
+		context, calls, timers, lifetime,
 		setProgress: value => { progress = value; },
 		setPlaying: value => { playing = value; },
 		render,
@@ -555,6 +561,36 @@ test('mode toggles retain paused play, stop and recording metadata checks withou
 	assert.equal(editor.context.mode, 'record');
 	assert.equal(editor.calls.play, 2);
 	assert.deepEqual(editor.calls.seek, []);
+});
+
+test('stopping preview prevents an already scheduled playback sample from moving the editor', () => {
+	const editor = createEditor({ progress: 1000 });
+	editor.setLyrics(timedLines(7));
+	editor.startPolling({ mode: 'preview', isLoading: false, currentLineIndex: 1 });
+	editor.context.toggleMode('preview');
+	assert.equal(editor.context.mode, 'idle');
+	editor.setProgress(5300);
+	editor.poll();
+	assert.equal(editor.context.currentLineIndex, 1);
+	editor.dispose();
+});
+
+test('a source change cannot retire a working draft while close is saving it', async () => {
+	const editor = createEditor();
+	const save = deferred();
+	const { context, lifetime } = editor;
+	const generation = context.sessionWriteGenerationRef.current;
+	const closing = lifetime.requestClose({
+		stopRecording() {}, saveDraft: () => save.promise, onSaveError() {}, onClosed: () => assert.fail('save was rejected'),
+	});
+	try {
+		assert.equal(context.beginSyncCreatorSourceChange(), null);
+		assert.equal(context.sessionWriteGenerationRef.current, generation);
+	} finally {
+		save.resolve(false);
+		await closing;
+	}
+	assert.equal(typeof context.beginSyncCreatorSourceChange(), 'number');
 });
 
 test('automatic draft recovery aligns to playback while manual and validation-only restores retain their contract', () => {

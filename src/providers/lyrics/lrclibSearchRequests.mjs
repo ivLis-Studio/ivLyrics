@@ -1,4 +1,4 @@
-export function createLrclibSearchRequests({ isOpen, setPending }) {
+export function createLrclibSearchRequests({ isOpen, canStart = isOpen, setPending }) {
 	let active = null;
 	let candidateRevision = 0;
 
@@ -12,7 +12,7 @@ export function createLrclibSearchRequests({ isOpen, setPending }) {
 
 	return {
 		begin() {
-			if (!isOpen()) return null;
+			if (!canStart()) return null;
 			dispose();
 			const request = new AbortController();
 			active = request;

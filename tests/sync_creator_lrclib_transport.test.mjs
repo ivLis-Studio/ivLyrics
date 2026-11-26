@@ -68,6 +68,18 @@ test('a click event is never treated as an LRCLIB id', async () => {
   assert.equal(h.context.lrclibIdInputEditedRef.current, false, 'a loaded typed id may be mirrored again');
 });
 
+test('LRCLIB source actions leave the editor alone when a transition cannot start', async () => {
+  const h = harness({ fetch: async () => assert.fail('a blocked source must not start a request') });
+  h.context.beginSyncCreatorSourceChange = () => null;
+  h.context.lrclibCandidates = [candidate];
+  const api = h.setUpActions();
+  await api.loadLrclibById();
+  await api.loadLyrics();
+  await api.applySelectedLrclibCandidate(candidate.candidateKey);
+  assert.deepEqual(h.calls, []);
+  assert.deepEqual(h.messages, []);
+});
+
 test('missing transport, failed network, HTTP errors and invalid JSON stop editor loading cleanly', async () => {
   for (const transport of [
     undefined, { fetch: async () => null },

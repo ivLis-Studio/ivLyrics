@@ -1,5 +1,5 @@
 // A replacement already includes its source's layout and timing edits.
-function clearLayoutDrafts(layout) {
+export function clearSyncCreatorLayoutDrafts(layout) {
 	layout.setParallelPartMetaDrafts({});
 	layout.setManualParallelSplitDrafts({});
 	layout.setParentheticalLayoutDrafts({});
@@ -33,7 +33,7 @@ export function applySyncCreatorImportedSession(data, target, { draft, layout, e
 	}) || draft.activeSessionDraftKey;
 	draft.beginDraftImport(draftKey);
 	draft.adoptImportedDraftKey(draftKey);
-	clearLayoutDrafts(layout);
+	clearSyncCreatorLayoutDrafts(layout);
 	layout.setGlobalOffset(0);
 	setReplacementVocalMode(data, layout);
 	editor.resetCurrentSyncInput();
@@ -46,7 +46,7 @@ export async function restoreSyncCreatorPublishedSession(data, { draft, layout, 
 	const ownsDraft = await draft.deleteActiveSyncCreatorDraft({ resumeAutosave: true, isDraftCurrent });
 	if (!ownsDraft || !isEditorOpen()) return false;
 	editor.resetCurrentSyncInput();
-	clearLayoutDrafts(layout);
+	clearSyncCreatorLayoutDrafts(layout);
 	setReplacementVocalMode(data, layout);
 	layout.setGlobalOffset(0);
 	editor.setCurrentLineIndex(0);

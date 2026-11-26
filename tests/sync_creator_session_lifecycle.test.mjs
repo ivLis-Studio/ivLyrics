@@ -6,6 +6,7 @@ import {
 import { useSyncCreatorSessionCheckpoints } from '#ivlyrics/features/sync/syncCreatorSessionCheckpoints.mjs';
 import { useSyncCreatorSessionPersistence } from '#ivlyrics/features/sync/syncCreatorSessionPersistence.mjs';
 import { createSyncCreatorEditorLifetime } from '#ivlyrics/features/sync/syncCreatorEditorLifetime.mjs';
+import { createSyncCreatorEditorCommands } from '#ivlyrics/features/sync/syncCreatorEditorCommands.mjs';
 import { applySyncCreatorImportedSession } from '#ivlyrics/features/sync/syncCreatorSessionReplacement.mjs';
 
 const sourceA = { draftKey: 'A', draft: { lines: ['original'] }, clientRevision: 10 };
@@ -43,6 +44,56 @@ function createSession(store = {}, logger = console) {
 	});
 	return { store, refs, attrs, events, pendingPlaybackNavigationRef, ui, i18n, toast, cancelTimer, actions, storage };
 }
+
+test('a reset queued behind storage is retired when close begins and can be retried after a failed save', async () => {
+	const deletionReady = deferred();
+	const closingSave = deferred();
+	const lifetime = createSyncCreatorEditorLifetime(() => true);
+	const mutations = [];
+	const h = createSession({
+		async deleteDraft(key, { beforeDelete }) {
+			await deletionReady.promise;
+			if (!beforeDelete()) return false;
+			mutations.push(['delete', key]);
+			return true;
+		},
+	});
+	h.refs.activeSessionDraftKeyRef.current = 'A';
+	h.refs.latestSessionRecordRef.current = sourceA;
+	const commands = createSyncCreatorEditorCommands({
+		lifetime, mode: 'preview', syncGranularity: 'character', isCurrentSyncTargetMetaComplete: true,
+		getPlayer: () => ({ seek: position => mutations.push(['seek', position]) }),
+		refs: { manualPreviewExitRef: ref(false), pendingPlaybackNavigationRef: h.pendingPlaybackNavigationRef, lyricsScrollRef: ref(null) },
+		draft: { ...h.actions, captureEditorDraftOwnership: () => lifetime.captureOperation(h.actions.captureDraftOwnership()) },
+		editor: {
+			clearLyricTextSelection: noop, clearOffsetSelection: noop, resetCurrentSyncInput: () => mutations.push(['reset-input']),
+			setMode: mode => mutations.push(['mode', mode]), setSyncGranularity: granularity => mutations.push(['granularity', granularity]),
+			setCurrentLineIndex: index => mutations.push(['line', index]), setSyncData: data => mutations.push(['data', data]),
+		},
+		layout: Object.fromEntries([
+			'setParallelPartMetaDrafts', 'setManualParallelSplitDrafts', 'setParentheticalLayoutDrafts', 'setMergedLineDrafts',
+			'setLineMetaDrafts', 'setLineStyleDrafts', 'setPendingParentheticalLayoutDecision', 'setGlobalOffset',
+		].map(name => [name, noop])),
+		dialog: { showMissingMetaToast: assert.fail, confirm: () => true, translate: h.i18n.t },
+	});
+	const first = commands.resetFromStart();
+	const close = lifetime.requestClose({
+		stopRecording: noop, saveDraft: () => closingSave.promise, onSaveError: noop,
+		onClosed: () => assert.fail('failed save must keep the editor open'),
+	});
+	commands.changeGranularity('word');
+	commands.toggleMode('preview');
+	await commands.resetFromStart();
+	deletionReady.resolve();
+	await first;
+	assert.deepEqual(mutations, []);
+	assert.equal(h.refs.latestSessionRecordRef.current, sourceA);
+	closingSave.resolve(false);
+	await close;
+	await commands.resetFromStart();
+	assert.deepEqual(mutations, [['delete', 'A'], ['reset-input'], ['line', 0], ['data', null], ['mode', 'idle'], ['seek', 0]]);
+	assert.equal(h.refs.latestSessionRecordRef.current, null);
+});
 
 test('source change flushes the previous draft and invalidates its pending operations', () => {
 	const saved = [];
