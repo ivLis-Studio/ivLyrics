@@ -1,5 +1,6 @@
 import { useSettingsScrollNavigation } from '../src/features/settings/useSettingsScrollNavigation.mjs';
 import { findSettingsTarget, scheduleSettingsDestination } from '../src/features/settings/settingsNavigationTarget.mjs';
+import { useSettingsVisibleSections } from '../src/features/settings/useSettingsVisibleSections.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -159,4 +160,91 @@ test('a replacement menu owns scroll restoration even before the older frame is 
   h.step();
   assert.equal(h.trace.length, 2);
   assert.equal(h.frames.size, 0);
+});
+
+test('section tabs and scroll highlighting share one scan and update when a section is hidden in place', () => {
+  const host = new EventTarget();
+  const frames = new Map();
+  const timers = new Map();
+  let nextId = 0;
+  let mutation;
+  let options;
+  let scans = 0;
+  let rowState = {};
+  let dispose;
+  const sections = ['first', 'later'].map((key, index) => ({
+    hidden: false,
+    label: key,
+    closest(selector) { return selector === '[hidden]' && this.hidden ? this : null; },
+    getClientRects: () => [true],
+    getAttribute: () => key,
+    querySelector() { return { textContent: this.label }; },
+    getBoundingClientRect: () => ({ top: index * 100 - container.scrollTop }),
+  }));
+  const container = Object.assign(new EventTarget(), {
+    scrollTop: 0, scrollHeight: 500, clientHeight: 200,
+    getBoundingClientRect: () => ({ top: 0 }),
+    querySelector: () => ({ querySelectorAll() { scans++; return sections; } }),
+  });
+  Object.assign(host, {
+    requestAnimationFrame(callback) { frames.set(++nextId, callback); return nextId; },
+    cancelAnimationFrame: id => frames.delete(id),
+    setTimeout(callback) { timers.set(++nextId, callback); return nextId; },
+    clearTimeout: id => timers.delete(id),
+    MutationObserver: class {
+      constructor(callback) { mutation = callback; }
+      observe(_element, config) { options = config; }
+      disconnect() {}
+    },
+  });
+  const react = {
+    useState: () => [rowState, update => { rowState = update(rowState); }],
+    useEffect: effect => { dispose = effect(); },
+  };
+  const active = [];
+  useSettingsVisibleSections(react, {
+    host, activeTab: 'fullscreen', changedView: false, fullscreenView: 'basic',
+    settingsContentRef: { current: container },
+    pageHeadRef: { current: null },
+    isProgrammaticScrollRef: { current: false },
+    activeSectionSignal: { set: value => active.push(value) },
+    pinnedSectionRef: { current: null }, pageWheelRef: { current: {} },
+  });
+  const step = () => {
+    const pending = [...frames.values()];
+    frames.clear();
+    pending.forEach(callback => callback());
+  };
+  step();
+  assert.equal(scans, 1);
+  assert.deepEqual(rowState.fullscreen.map(item => item.key), ['first', 'later']);
+  assert.equal(active.at(-1), 'first');
+
+  container.scrollTop = 130;
+  container.dispatchEvent(new Event('scroll'));
+  container.dispatchEvent(new Event('scroll'));
+  assert.equal(frames.size, 1);
+  step();
+  assert.equal(scans, 1, 'scrolling measures cached section nodes');
+  assert.equal(active.at(-1), 'later');
+
+  assert.deepEqual(options.attributeFilter, ['hidden']);
+  assert.equal(options.characterData, true);
+  sections[1].hidden = true;
+  sections[0].label = 'Updated title';
+  mutation();
+  mutation();
+  step();
+  assert.equal(scans, 2);
+  assert.deepEqual(rowState.fullscreen, [{ key: 'first', label: 'Updated title' }]);
+  assert.equal(active.at(-1), 'first');
+
+  container.dispatchEvent(new Event('scrollend'));
+  container.dispatchEvent(new Event('scroll'));
+  dispose();
+  assert.equal(frames.size, 0);
+  assert.equal(timers.size, 0);
+  mutation();
+  host.dispatchEvent(new Event('resize'));
+  assert.equal(frames.size, 0);
 });
