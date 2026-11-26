@@ -1,5 +1,5 @@
 import { createSyncCreatorSessionRecord, isSyncCreatorDraftTimingCleared, prepareSyncCreatorSessionRestore } from './syncCreatorSessionRecord.mjs';
-import { getSyncCreatorSourceLineStarts } from './syncCreatorPlayback.mjs';
+import { getSyncCreatorSourceLineStarts } from './syncCreatorPlaybackTimeline.mjs';
 import { extractLyricsText } from './syncCreatorLrclibLyrics.mjs';
 import { SYNC_CREATOR_SOURCE_ADDON_ID } from './lrclibSyncSource.mjs';
 import { normalizeSyncCreatorGranularity } from './timingGranularity.mjs';

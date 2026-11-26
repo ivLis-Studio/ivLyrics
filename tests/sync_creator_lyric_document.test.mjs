@@ -3,7 +3,7 @@ import test from "node:test";
 import { createSyncCreatorLyricDocument } from "#ivlyrics/features/sync/syncCreatorLyricText.mjs";
 import { createSyncCreatorMergedLayout } from "#ivlyrics/features/sync/syncCreatorMergedLayout.mjs";
 import { countSyncCreatorCompletedLines, isSyncCreatorLineSynced } from "#ivlyrics/features/sync/syncCreatorLineCompletion.mjs";
-import { buildSyncCreatorPlaybackTimeline } from "#ivlyrics/features/sync/syncCreatorPlayback.mjs";
+import { buildSyncCreatorPlaybackTimeline } from "#ivlyrics/features/sync/syncCreatorPlaybackTimeline.mjs";
 
 test("the editor preserves Unicode code-point offsets and separately trims the submitted text", () => {
     const document = createSyncCreatorLyricDocument("  e\u0301😀 \n\n한글\n");

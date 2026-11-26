@@ -146,9 +146,7 @@ function startSyncCreatorPreviewPainting({
     let lastPreviewPosition = NaN;
     paintedIndex.current = -2;
 
-    function paint() {
-        if (disposed) return;
-        const position = Number(getProgress() || 0);
+    function paintPosition(position) {
         const seconds = position / 1000;
         onParallelProgress(seconds);
         // Poll for seeks and resume while skipping duplicate work on paused frames.
@@ -166,6 +164,14 @@ function startSyncCreatorPreviewPainting({
                 onPlaybackProgress(progressIndex, seconds);
             }
         }
+    }
+
+    function paint() {
+        if (disposed) return;
+        const sample = getProgress();
+        // The editor may retain its track across a short Spotify handoff.
+        // A missing sample is not a seek to the start of the song.
+        if (sample != null) paintPosition(Number(sample || 0));
         if (!disposed) frameId = scheduleFrame(paint);
     }
 

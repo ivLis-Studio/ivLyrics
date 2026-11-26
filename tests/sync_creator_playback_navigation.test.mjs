@@ -1,4 +1,4 @@
-import { buildSyncCreatorPlaybackTimeline, getSyncCreatorPlaybackLineIndex } from '#ivlyrics/features/sync/syncCreatorPlayback.mjs';
+import { buildSyncCreatorPlaybackTimeline, getSyncCreatorPlaybackLineIndex } from '#ivlyrics/features/sync/syncCreatorPlaybackTimeline.mjs';
 import { useSyncCreatorSourceChange } from '#ivlyrics/features/sync/syncCreatorSourceChange.mjs';
 import { createSyncCreatorSessionLifecycle, createSyncCreatorSessionRefs } from '#ivlyrics/features/sync/syncCreatorSessionLifecycle.mjs';
 import { createSyncCreatorEditorLifetime } from '#ivlyrics/features/sync/syncCreatorEditorLifetime.mjs';
@@ -71,7 +71,7 @@ const createEditor = ({ progress = 0, playing = true, draftStore = null } = {}) 
 		lyrics: null, lyricsLines: [], lyricsText: '', syncData: null, currentLineIndex: 0,
 		isLoading: true, pendingMultiVocalDecision: null, mode: 'idle', position: 0,
 		isCurrentSyncTargetMetaComplete: true,
-		isLineCoveredByMergedPrevious: () => false,
+		findMergedOwnerLineIndex: () => -1,
 		showMissingMetaToast: () => calls.toasts.push('missing metadata'),
 		clearRecordingLock: () => {}, syncSessionUiFromRecord: () => {}, announceHistoryStatus: () => {},
 		clearLyricTextSelection: () => {}, clearOffsetSelection: () => {},
@@ -455,7 +455,7 @@ test('a background save changing the write generation does not cancel the curren
 test('merged continuation rows are excluded from the production timeline memo', () => {
 	const editor = createEditor({ progress: 2500 });
 	editor.setLyrics(timedLines(4));
-	editor.render({ isLoading: false, isLineCoveredByMergedPrevious: index => index === 1 || index === 2 });
+	editor.render({ isLoading: false, findMergedOwnerLineIndex: index => index === 1 || index === 2 ? 0 : -1 });
 	assert.deepEqual(plain(editor.context.playbackTimeline).map(entry => entry.lineIndex), [0, 3]);
 	assert.equal(editor.context.currentLineIndex, 0);
 	editor.context.mode = 'preview';
@@ -651,4 +651,33 @@ test('restore rejects timing from a different provider, LRCLIB ID, text or a man
 		assert.equal(editor.context.currentLineIndex, 1);
 		assert.equal(editor.context.playbackTimeline.length, 0);
 	}
+});
+
+test('preview follows a merged line whose only source timestamp is on its continuation', () => {
+	const editor = createEditor({ progress: 3500 });
+	const lines = [
+		{ text: 'Before merge', startTime: 1000 },
+		{ text: 'Merged lead', startTime: null },
+		{ text: 'Merged continuation', startTime: 3000 },
+		{ text: 'After merge', startTime: 5500 },
+	];
+	editor.setLyrics(lines);
+	editor.render({
+		isLoading: false, mode: 'preview',
+		findMergedOwnerLineIndex: index => index === 2 ? 1 : -1,
+	});
+	assert.deepEqual(plain(editor.context.playbackTimeline), [
+		{ lineIndex: 0, startTime: 1000 }, { lineIndex: 1, startTime: 3000 }, { lineIndex: 3, startTime: 5500 },
+	]);
+	assert.equal(editor.context.currentLineIndex, 1);
+
+	const start = createSyncCreatorLyricDocument(editor.context.lyricsText).lineCharOffsets[1];
+	editor.render({ syncData: { lines: [{ start, chars: [4.2] }] } });
+	assert.equal(editor.context.playbackTimeline[1].startTime, 4200, 'the committed merged head replaces the source fallback');
+	for (const [position, index] of [[3500, 0], [4500, 1], [6000, 3], [4500, 1]]) {
+		editor.setProgress(position);
+		editor.poll();
+		assert.equal(editor.context.currentLineIndex, index);
+	}
+	editor.dispose();
 });

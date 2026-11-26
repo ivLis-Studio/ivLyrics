@@ -103,7 +103,7 @@ export function readSyncCreatorFixture() {
     const entry = inlineSyncCreatorInputHooks(readSyncCreatorSource())
         .replace("import { useSyncCreatorSessionEditor } from '#ivlyrics/features/sync/syncCreatorSessionEditor.mjs';",
             "import { createSyncCreatorSessionRecord, prepareSyncCreatorSessionRestore } from '#ivlyrics/features/sync/syncCreatorSessionRecord.mjs';\n"
-            + "import { getSyncCreatorSourceLineStarts } from '#ivlyrics/features/sync/syncCreatorPlayback.mjs';\n"
+            + "import { getSyncCreatorSourceLineStarts } from '#ivlyrics/features/sync/syncCreatorPlaybackTimeline.mjs';\n"
             + "import { extractLyricsText } from '#ivlyrics/features/sync/syncCreatorLrclibLyrics.mjs';")
         .replace(/^\tconst \{ buildSyncCreatorSessionRecord, applySyncCreatorSessionRecord \} = useSyncCreatorSessionEditor\(\{[\s\S]+?^\t\}\);/m,
             () => sessionCallbacks)

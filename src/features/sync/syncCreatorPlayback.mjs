@@ -1,16 +1,6 @@
-import { normalizeSyncCreatorStandaloneParentheticalLines } from "./syncCreatorLyricText.mjs";
+import { buildSyncCreatorPlaybackTimeline, getSyncCreatorPlaybackLineIndex } from "./syncCreatorPlaybackTimeline.mjs";
 import { readSyncCreatorDuration, readSyncCreatorPosition } from "./syncCreatorSeek.mjs";
 import { isFiniteSyncCreatorTime } from "./timingGranularity.mjs";
-
-function buildLineIndex(lyricsLines) {
-    const indexByStart = new Map();
-    let offset = 0;
-    lyricsLines.forEach((line, index) => {
-        indexByStart.set(offset, index);
-        offset += Array.from(line).length;
-    });
-    return indexByStart;
-}
 
 const SYNC_CREATOR_PREVIEW_POSITION_UPDATE_INTERVAL_MS = 100;
 const SYNC_CREATOR_RECORD_POSITION_UPDATE_INTERVAL_MS = 50;
@@ -57,50 +47,6 @@ const getSyncCreatorPreviewProgressIndex = (chars, currentTimeSec, ordered = fal
 	if (nextCharTime === null || nextCharTime <= currentCharTime) return index;
 	return index + Math.max(0, Math.min(1, (currentTimeSec - currentCharTime) / (nextCharTime - currentCharTime)));
 };
-export function getSyncCreatorSourceLineStarts(lyricsLines, sourceLines) {
-	const source = (Array.isArray(sourceLines) ? sourceLines : []).filter(line => (
-		typeof line?.text === 'string' && line.text.trim()
-	));
-	const normalizedSource = normalizeSyncCreatorStandaloneParentheticalLines(source.map(line => line.text).join('\n'))
-		.split('\n').map((text, index) => ({ text: text.trim(), startTime: source[index]?.startTime })).filter(line => line.text);
-	// Only use LRCLIB timing when it belongs to this exact lyric text/order.
-	if (normalizedSource.length !== lyricsLines.length
-		|| normalizedSource.some((line, index) => line.text !== lyricsLines[index])) return [];
-	return normalizedSource.map(({ startTime }) => Number.isFinite(startTime) && startTime >= 0 ? startTime : null);
-}
-
-const buildSyncCreatorPlaybackTimeline = (lyricsLines, syncData, sourceLines, lineIndexByStart) => {
-	const timings = new Map();
-	getSyncCreatorSourceLineStarts(lyricsLines, sourceLines).forEach((startTime, index) => {
-		if (startTime !== null) timings.set(index, startTime);
-	});
-	const indexesByStart = lineIndexByStart || buildLineIndex(lyricsLines);
-	for (const line of Array.isArray(syncData?.lines) ? syncData.lines : []) {
-		const index = indexesByStart.get(line.start);
-		if (index === undefined) continue;
-		let firstTime = Infinity;
-		for (const chars of [line.chars, ...(line.parallel?.parts || []).map(part => part.chars)]) {
-			for (const time of Array.isArray(chars) ? chars : []) {
-				if (typeof time === 'number' && Number.isFinite(time) && time >= 0) firstTime = Math.min(firstTime, time);
-			}
-		}
-		if (Number.isFinite(firstTime)) timings.set(index, firstTime * 1000);
-	}
-	return [...timings].map(([lineIndex, startTime]) => ({ lineIndex, startTime }))
-		.sort((left, right) => left.startTime - right.startTime || left.lineIndex - right.lineIndex);
-};
-const getSyncCreatorPlaybackLineIndex = (timeline, positionMs) => {
-	if (!timeline.length || !Number.isFinite(positionMs) || positionMs < 0) return -1;
-	let low = 0;
-	let high = timeline.length;
-	while (low < high) {
-		const middle = Math.floor((low + high) / 2);
-		if (timeline[middle].startTime <= positionMs) low = middle + 1;
-		else high = middle;
-	}
-	return low > 0 ? timeline[low - 1].lineIndex : 0;
-};
-
 const createSyncCreatorPositionStore = (initialPosition = 0) => {
 	let value = initialPosition;
 	const listeners = new Set();
@@ -281,14 +227,13 @@ function startSyncCreatorPositionPolling({
 }
 
 export function useSyncCreatorPlayback({
-    react, lyricsLines, lyricsText, syncData, sourceLines, lineIndexByStart, isLineCoveredByMergedPrevious,
+    react, lyricsLines, lyricsText, syncData, sourceLines, lineIndexByStart, findMergedOwnerLineIndex,
     mode, currentLineIndex, isLoading, pendingMultiVocalDecision, pendingPlaybackNavigationRef, manualPreviewExitRef,
     getProgress, setPosition, setCurrentLineIndex, lyricsScrollRef, scheduleInterval, cancelInterval,
 }) {
     const timeline = react.useMemo(() => (
-        buildSyncCreatorPlaybackTimeline(lyricsLines, syncData, sourceLines, lineIndexByStart)
-            .filter(entry => !isLineCoveredByMergedPrevious(entry.lineIndex))
-    ), [lyricsLines, syncData, sourceLines, lineIndexByStart, isLineCoveredByMergedPrevious]);
+        buildSyncCreatorPlaybackTimeline(lyricsLines, syncData, sourceLines, lineIndexByStart, findMergedOwnerLineIndex)
+    ), [lyricsLines, syncData, sourceLines, lineIndexByStart, findMergedOwnerLineIndex]);
 
     const navigation = react.useRef(null);
     react.useLayoutEffect(() => {
@@ -323,10 +268,8 @@ export function useSyncCreatorPlayback({
 }
 
 export {
-    buildSyncCreatorPlaybackTimeline,
     createSyncCreatorPlaybackViews,
     createSyncCreatorPositionStore,
-    getSyncCreatorPlaybackLineIndex,
     getSyncCreatorPreviewProgressIndex,
     startSyncCreatorPositionPolling,
 };

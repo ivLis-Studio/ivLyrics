@@ -42,6 +42,7 @@ export function useSyncCreatorLineWorkspace({
 	);
 	const {
 		getMergedLineIndexesForStart,
+		findMergedOwnerLineIndex,
 		isLineCoveredByMergedPrevious,
 		findNavigableLineIndex,
 		getAutoMergeSplitPointsForLine,
@@ -327,7 +328,7 @@ export function useSyncCreatorLineWorkspace({
 	);
 
 	return {
-		currentLineStart, currentExistingLineData, getLineEndAtIndex, getMergedLineIndexesForStart,
+		currentLineStart, currentExistingLineData, getLineEndAtIndex, getMergedLineIndexesForStart, findMergedOwnerLineIndex,
 		isLineCoveredByMergedPrevious, findNavigableLineIndex, currentMergedLineIndexes,
 		currentLineMergedWithNext, currentLineCoveredByPrevious, previousNavigableLineIndex, nextNavigableLineIndex,
 		currentFullLineChars, currentAutoMergeSplitPoints, currentAutoMergeSplitPointSet, currentNextMergeLineIndex,

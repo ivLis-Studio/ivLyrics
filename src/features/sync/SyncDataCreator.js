@@ -529,7 +529,7 @@ export function createSyncDataCreator({
 		}, [activeSessionDraftKey, activeSessionDraftKeyRef]);
 
 		const {
-			currentLineStart, currentExistingLineData, getMergedLineIndexesForStart,
+			currentLineStart, currentExistingLineData, getMergedLineIndexesForStart, findMergedOwnerLineIndex,
 			isLineCoveredByMergedPrevious, findNavigableLineIndex, currentMergedLineIndexes,
 			currentLineMergedWithNext, currentLineCoveredByPrevious, previousNavigableLineIndex, nextNavigableLineIndex,
 			currentFullLineChars, currentAutoMergeSplitPoints, currentAutoMergeSplitPointSet, currentNextMergeLineIndex,
@@ -650,7 +650,7 @@ export function createSyncDataCreator({
 
 		const playbackTimeline = useSyncCreatorPlayback({
 			react, lyricsLines, lyricsText, syncData, sourceLines: lyrics?.synced,
-			lineIndexByStart, isLineCoveredByMergedPrevious, mode, currentLineIndex, isLoading, pendingMultiVocalDecision,
+			lineIndexByStart, findMergedOwnerLineIndex, mode, currentLineIndex, isLoading, pendingMultiVocalDecision,
 			pendingPlaybackNavigationRef, manualPreviewExitRef, getProgress: getEditorProgress,
 			setPosition, setCurrentLineIndex, lyricsScrollRef,
 			scheduleInterval: scheduleSyncCreatorPositionPoll, cancelInterval: cancelSyncCreatorPositionPoll,

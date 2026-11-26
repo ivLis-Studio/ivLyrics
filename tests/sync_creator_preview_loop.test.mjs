@@ -1002,3 +1002,25 @@ test("line and word granularity accept equal timestamps including time zero", ()
 		preview.dispose();
 	}
 });
+
+test('a temporarily unavailable editing track does not repaint either vocal at time zero', () => {
+	const preview = createPreview({ initialPosition: 1300 });
+	const renderer = attachParallelRenderer(preview);
+	const { row } = renderer.mount(part('background', [0, 0.5, 1, 1.5]));
+	const active = () => Array.from(preview.context.charElementsRef.current, element => element.style.background);
+	preview.tick();
+	assert.deepEqual(active(), ['progress', 'progress', 'progress', 'synced']);
+	assert.deepEqual(backgrounds(row), active());
+	for (const position of [undefined, null]) {
+		preview.setProgress(position);
+		preview.tick(3);
+		assert.deepEqual(active(), ['progress', 'progress', 'progress', 'synced']);
+		assert.deepEqual(backgrounds(row), active());
+	}
+	assert.deepEqual(preview.parallelCalls, [1.3]);
+	preview.setProgress(0);
+	preview.tick();
+	assert.deepEqual(active(), ['progress', 'synced', 'synced', 'synced']);
+	assert.deepEqual(backgrounds(row), active());
+	preview.dispose();
+});

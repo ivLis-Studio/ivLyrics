@@ -1,5 +1,5 @@
 import { getLyricsTypographyStyleVariables } from "#ivlyrics/lyrics/lyricsTypography.mjs";
-import { getSyncCreatorPlaybackLineIndex } from "./syncCreatorPlayback.mjs";
+import { getSyncCreatorPlaybackLineIndex } from "./syncCreatorPlaybackTimeline.mjs";
 import { sanitizeSyncCreatorLastCharEnds } from "./timingValidation.mjs";
 import { buildSyncCreatorPreviewLines } from "./syncCreatorPreviewLines.mjs";
 import { getCachedPreviewCharReadings, getSyncCreatorPreviewFuriganaMap } from "./syncCreatorPreviewReadings.mjs";
