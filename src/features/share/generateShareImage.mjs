@@ -5,6 +5,8 @@ import { readShareArtwork, measureHeaderBlock, drawBackground, drawHeader } from
 import { measureLyricsBlocks, drawLyricsBlocks } from "./shareImageLyricsLayout.mjs";
 
 const DEFAULT_FONT_STACK = '"Pretendard Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+const FIT_KEYS = ['fontSize', 'coverSize', 'coverRadius', 'padding', 'blockGap', 'innerGap',
+  'pronSize', 'transSize', 'wordReadingSize', 'wordGlossSize', 'trackTitleSize', 'trackArtistSize'];
 
 function stackFor(name) {
   const value = String(name || '').trim().replace(/"/g, '');
@@ -32,6 +34,39 @@ function resolveExportFonts(cfg) {
     phonetic: stackFor(visual['phonetic-font-family']),
     translation: stackFor(visual['translation-font-family']),
   };
+}
+
+function measureImageContent(ctx, lyrics, cfg, fonts, width) {
+  const originalFontSize = cfg.fontSize;
+  const pronFontSize = Math.max(8, cfg.pronSize ?? 20);
+  const transFontSize = Math.max(8, cfg.transSize ?? 22);
+  const measured = measureLyricsBlocks(
+    ctx, lyrics, cfg, fonts, originalFontSize, pronFontSize, transFontSize, width - cfg.padding * 2
+  );
+  const headerHeight = measureHeaderBlock(cfg);
+  const footerHeight = cfg.showWatermark ? 60 : 30;
+  const height = headerHeight + measured.totalLyricsHeight + footerHeight + cfg.padding * 2;
+  return { ...measured, originalFontSize, pronFontSize, transFontSize, headerHeight, footerHeight, height };
+}
+
+function fitImageContent(ctx, lyrics, cfg, fonts, width) {
+  const ratio = Number(cfg.aspectRatio);
+  const fixedHeight = Number.isFinite(ratio) && ratio > 0 ? width / ratio : null;
+  let layout = measureImageContent(ctx, lyrics, cfg, fonts, width);
+  const height = fixedHeight ?? layout.height;
+  if (layout.height > height && layout.totalLyricsHeight > 0) {
+    const chrome = layout.headerHeight + layout.footerHeight + cfg.padding * 2;
+    const fit = (height - chrome) / layout.totalLyricsHeight;
+    if (fit > 0 && fit < 1) {
+      cfg = { ...cfg };
+      for (const key of FIT_KEYS) cfg[key] = (cfg[key] ?? 0) * fit;
+      layout = measureImageContent(ctx, lyrics, cfg, fonts, width);
+    }
+  }
+  // Wrapped annotations and their minimum sizes can still exceed the frame.
+  // Fit the measured content as a unit while the background fills the image.
+  const scale = Math.min(1, height / layout.height);
+  return { cfg, layout, height, scale };
 }
 
 /**
@@ -86,55 +121,22 @@ export async function generateImage(options, { signal } = {}) {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
 
-  // 폰트 크기 (타입별 절대 px: 1번 슬라이더는 원어에만 영향)
-  // 비율이 정해져 있고 내용이 넘치면 전체를 축소해 비율을 정확히 맞춤
-  const FIT_KEYS = ['fontSize', 'coverSize', 'coverRadius', 'padding', 'blockGap', 'innerGap',
-    'pronSize', 'transSize', 'wordReadingSize', 'wordGlossSize', 'trackTitleSize', 'trackArtistSize'];
-  const measureAll = (active) => {
-    const originalFontSize = active.fontSize;
-    const pronFontSize = Math.max(8, active.pronSize ?? 20);
-    const transFontSize = Math.max(8, active.transSize ?? 22);
-    const maxTextWidth = width - active.padding * 2;
-    const measured = measureLyricsBlocks(
-      ctx, lyrics, active, fonts, originalFontSize, pronFontSize, transFontSize, maxTextWidth
-    );
-    const headerHeight = measureHeaderBlock(active);
-    const footerHeight = active.showWatermark ? 60 : 30;
-    const height = active.padding + headerHeight + measured.totalLyricsHeight + footerHeight + active.padding;
-    return { ...measured, originalFontSize, pronFontSize, transFontSize, maxTextWidth, headerHeight, footerHeight, height };
-  };
-
-  let eff = artwork.image ? cfg : { ...cfg, showCover: false };
-  let layout = measureAll(eff);
-  let calculatedHeight = layout.height;
-  if (cfg.aspectRatio) {
-    const ratioHeight = width / cfg.aspectRatio;
-    const chrome = layout.headerHeight + layout.footerHeight + eff.padding * 2;
-    if (calculatedHeight > ratioHeight && layout.totalLyricsHeight > 0) {
-      const fit = (ratioHeight - chrome) / layout.totalLyricsHeight;
-      if (fit > 0 && fit < 1) {
-        const scaled = { ...eff };
-        for (const key of FIT_KEYS) scaled[key] = (scaled[key] ?? 0) * fit;
-        eff = scaled;
-        layout = measureAll(eff);
-        calculatedHeight = ratioHeight;
-      } else {
-        calculatedHeight = Math.max(calculatedHeight, ratioHeight);
-      }
-    } else {
-      calculatedHeight = Math.max(calculatedHeight, ratioHeight);
-    }
-  }
-  const { processedLyrics, originalFontSize, pronFontSize, transFontSize, maxTextWidth } = layout;
+  const sourceCfg = artwork.image ? cfg : { ...cfg, showCover: false };
+  const { cfg: eff, layout, height, scale } = fitImageContent(ctx, lyrics, sourceCfg, fonts, width);
+  const { processedLyrics, originalFontSize, pronFontSize, transFontSize } = layout;
 
   canvas.width = Math.round(width * exportScale);
-  canvas.height = Math.round(calculatedHeight * exportScale);
+  canvas.height = Math.round(height * exportScale);
   if (exportScale !== 1 && typeof ctx.setTransform === 'function') {
     ctx.setTransform(exportScale, 0, 0, exportScale, 0, 0);
   }
 
   // ========== 배경 렌더링 ==========
-  drawBackground(ctx, eff, artwork, width, calculatedHeight);
+  drawBackground(ctx, eff, artwork, width, height);
+  if (scale < 1) {
+    const contentScale = exportScale * scale;
+    ctx.setTransform(contentScale, 0, 0, contentScale, (canvas.width - width * contentScale) / 2, 0);
+  }
 
   let currentY = eff.padding;
 
@@ -154,7 +156,7 @@ export async function generateImage(options, { signal } = {}) {
     ctx.font = `500 13px ${fonts.original}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText('Spotify', width / 2, calculatedHeight - eff.padding + 10);
+    ctx.fillText('Spotify', width / 2, height / scale - Math.max(1, eff.padding - 10));
   };
   if (cfg.showWatermark) {
     drawWatermark();

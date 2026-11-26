@@ -373,6 +373,7 @@ class LyricsContainer extends react.Component {
     if (lyrics !== currentLyrics || isLoading || (item?.uri && uri !== item.uri)) return null;
     return {
       uri,
+      sourceLanguage: this.provideLanguageCode(lyrics, { publish: false }) || "auto",
       name: item?.name || item?.metadata?.title || '',
       artist: item?.artists?.map(a => a.name).join(', ') || item?.metadata?.artist_name || '',
       cover: pageTrackIdentity.getTrackArtwork(item),

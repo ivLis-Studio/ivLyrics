@@ -193,7 +193,7 @@ export function createWordSupplementService({
 	// Kana and Hangul are unambiguous: a line containing them is Japanese
 	// or Korean no matter how many English words surround them (mixed lines
 	// like "これが all I see" must not resolve to English).
-	const inferLanguageFromText = (text) => {
+	const inferLanguageFromText = (text, sourceLanguage) => {
 		const value = String(text ?? "");
 		if (!value.trim()) return "auto";
 		if (/[\u3040-\u30ff]/u.test(value)) return "ja";
@@ -220,8 +220,8 @@ export function createWordSupplementService({
 			// user actually configured supplements for, else the legacy
 			// default.
 			try {
-				const global = getSourceLanguage();
-				if (isSuitableSourceLanguage(global)) return String(global);
+				const songLanguage = sourceLanguage ?? getSourceLanguage();
+				if (isSuitableSourceLanguage(songLanguage)) return String(songLanguage);
 			} catch { /* ignore */ }
 			try {
 				const configured = preferredConfiguredCjkLanguage();
@@ -235,12 +235,11 @@ export function createWordSupplementService({
 	// Song-level detection wins when available; per-line inference rescues
 	// views where the global value is still "auto". This also keeps
 	// mixed-language songs correct line by line.
-	const resolveSourceLanguage = (lineText = "") => {
-		const global = getSourceLanguage();
-		if (isSuitableSourceLanguage(global)) return global;
-		const inferred = inferLanguageFromText(lineText);
+	const resolveSourceLanguage = (lineText = "", songLanguage = getSourceLanguage()) => {
+		if (isSuitableSourceLanguage(songLanguage)) return songLanguage;
+		const inferred = inferLanguageFromText(lineText, songLanguage);
 		if (isSuitableSourceLanguage(inferred)) return inferred;
-		return global;
+		return songLanguage;
 	};
 
 	const isSuitableSourceLanguage = (language) => {

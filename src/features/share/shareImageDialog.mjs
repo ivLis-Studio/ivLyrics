@@ -98,32 +98,39 @@ export function createShareImageModal({
     // (which both consume `selectedLines`) stay in sync.
     const isWordExport = currentSettings.lyricsDetail === 'word';
     const supplementTrackId = getWordSupplementTrackId(trackInfo?.uri);
+    const sourceLanguage = trackInfo?.sourceLanguage || 'auto';
+    const showPronunciation = Boolean(currentSettings.showPronunciation);
+    const showTranslation = Boolean(currentSettings.showTranslation);
+    const wordRequest = react.useMemo(() => isWordExport && selectedLinesBase.length ? {
+      lines: selectedLinesBase, trackId: supplementTrackId, sourceLanguage, showPronunciation, showTranslation,
+    } : null, [isWordExport, selectedLinesBase, supplementTrackId, sourceLanguage, showPronunciation, showTranslation]);
     const [wordDetails, setWordDetails] = react.useState(null);
-    const activeWordDetails = isWordExport && wordDetails?.lines === selectedLinesBase
-      && wordDetails.trackId === supplementTrackId
-      ? wordDetails.details : null;
-    const wordDetailsPending = isWordExport && selectedLinesBase.length > 0 && !activeWordDetails;
+    const activeWordDetails = wordDetails?.request === wordRequest ? wordDetails.details : null;
+    const wordDetailsPending = Boolean(wordRequest && !activeWordDetails);
     react.useEffect(() => {
-      if (!wordDetailsPending) return undefined;
+      if (!wordRequest || !isOpen()) return undefined;
       let cancelled = false;
+      const wanted = () => !cancelled && isOpen();
       const load = async () => {
         let details;
         try {
-          details = await resolveShareWordDetails(selectedLinesBase, {
+          const { lines, trackId, ...presentation } = wordRequest;
+          details = await resolveShareWordDetails(lines, {
+            ...presentation,
             segmenter: readSegmenter(),
             supplements: readSupplements(),
-            options: { trackId: supplementTrackId, wanted: () => !cancelled && isOpen() },
+            options: { trackId, wanted },
           });
         } catch {
           details = new Map();
         }
-        if (!cancelled && isOpen()) setWordDetails({ lines: selectedLinesBase, trackId: supplementTrackId, details });
+        if (wanted()) setWordDetails({ request: wordRequest, details });
       };
       void load();
       return () => {
         cancelled = true;
       };
-    }, [wordDetailsPending, selectedLinesBase, supplementTrackId]);
+    }, [wordRequest]);
     const selectedLines = react.useMemo(() => {
       if (!activeWordDetails?.size) return selectedLinesBase;
       return selectedLinesBase.map((line) => (

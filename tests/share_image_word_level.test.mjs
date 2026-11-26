@@ -1,6 +1,7 @@
 import { DEFAULT_SETTINGS, PRESETS } from '../src/features/share/shareImagePresets.mjs';
 import { getShareImageRenderOptions } from '../src/features/share/shareImageRenderOptions.mjs';
 import { normalizeShareImageLyrics, resolveShareWordDetails } from '../src/features/share/shareImageLyricSelection.mjs';
+import { createFixtureWordSupplementService } from './fixtures/word-supplement-service.mjs';
 import { readShareImageRendererFixture } from './fixtures/legacy-page-source.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -67,6 +68,41 @@ test('aspect ratio is enforced exactly with many lines', async () => {
   });
   assert.equal(canvas.width, 500);
   assert.equal(canvas.height, Math.round(500 / (9 / 16)));
+});
+
+test('landscape shares preserve the selected dimensions with a large header and padding', async () => {
+  const { api, canvas, calls } = loadRenderer({ cover: true });
+  const image = await api.generateImage({
+    lyrics: [{ originalText: 'Landscape lyric' }], trackName: 'Song', artistName: 'Artist',
+    albumCover: 'https://i.scdn.co/image/landscape-large-header', template: 'cover',
+    customSettings: {
+      backgroundType: 'solid', showCover: true, coverPosition: 'center', coverSize: 200,
+      showTrackInfo: true, trackTitleSize: 48, trackArtistSize: 36, showWatermark: true,
+      aspectRatio: 16 / 9, padding: 100, imageWidth: 720, exportScale: 2,
+    },
+  });
+  assert.equal(image.canvas, canvas);
+  assert.deepEqual([canvas.width, canvas.height], [1440, 810]);
+  assert.ok(calls.text.some(({ text }) => text === 'Landscape lyric'));
+  assert.ok(calls.text.every(({ pixelY }) => pixelY >= 0 && pixelY < canvas.height));
+});
+
+test('fitting many annotated words keeps the last visible row within the exported image', async () => {
+  const { api, canvas, calls } = loadRenderer();
+  const lyrics = Array.from({ length: 10 }, (_, index) => ({
+    originalText: 'Fixture lyric',
+    words: Array.from({ length: 10 }, (_, word) => ({
+      w: 'Annotated word ' + word, reading: 'reading of this expression', gloss: 'meaning of this expression',
+    })),
+    transText: `Final phrase ${index}`,
+  }));
+  await api.generateImage({ lyrics, template: 'word', width: 720, output: 'dataUrl', customSettings: {
+    aspectRatio: 16 / 9, showTrackInfo: true, showPronunciation: true, showTranslation: true,
+    showWatermark: true, wordReadingSize: 40, wordGlossSize: 40,
+  } });
+  assert.deepEqual([canvas.width, canvas.height], [720, 405]);
+  assert.ok(calls.text.find(({ text }) => text === 'Final phrase 9').pixelY < canvas.height);
+  assert.ok(calls.text.find(({ text }) => text === 'Spotify').pixelY < canvas.height);
 });
 
 test('track title and artist styling reaches the canvas', async () => {
@@ -136,6 +172,32 @@ test('word readings and glosses run together for the captured track and fail ind
   assert.deepEqual(calls, [['reading', options], ['gloss', options]]);
   reading.reject(new Error('Pronunciation unavailable'));
   assert.deepEqual((await pending).get(3), [{ w: '日本', reading: '', gloss: 'Japan' }]);
+});
+
+test('word export uses the captured song language and skips hidden annotations', async () => {
+  const fixture = {
+    Utils: { getDetectedLanguage: () => 'zh' },
+    CONFIG: { visual: { 'translation-mode:japanese': 'romaji', 'translation-mode-2:japanese': 'gemini_translate' } },
+  };
+  createFixtureWordSupplementService(fixture);
+  const api = fixture.ivLyricsWordSupplements, calls = [];
+  const details = await resolveShareWordDetails([{ idx: 0, originalText: '青空' }], {
+    segmenter: { segmentLyrics(text, language) { calls.push(['segment', language]); return [text]; } },
+    supplements: {
+      ...api,
+      resolveReadingMode: () => 'romaji',
+      isGlossModeActive: () => true,
+      getWordReadings: async (_words, language, _mode, _text, options) => {
+        calls.push(['reading', language, options.trackId]);
+        return ['aozora'];
+      },
+      getWordGlosses: async () => { calls.push(['gloss']); return ['blue sky']; },
+    },
+    sourceLanguage: 'ja', showTranslation: false, options: { trackId: 'original-track' },
+  });
+  assert.equal(api.resolveSourceLanguage('青空', 'auto'), 'ja', 'a captured unknown language still infers without using the new song');
+  assert.deepEqual(calls, [['segment', 'ja'], ['reading', 'ja', 'original-track']]);
+  assert.deepEqual(details.get(0), [{ w: '青空', reading: 'aozora', gloss: '' }]);
 });
 
 test('preview, export and palette extraction share one normalized artwork load', async () => {
@@ -248,7 +310,11 @@ function loadRenderer({ cover = false } = {}) {
     set textAlign(value) { this._textAlign = value; calls.textAlign.push(String(value)); },
     get textAlign() { return this._textAlign; },
     setTransform: (...args) => { calls.transform = args; },
-    fillText: (text, x, y) => { calls.fillText.push(String(text)); calls.text.push({ text: String(text), x, y, font: ctx.font }); },
+    fillText: (text, x, y) => {
+      calls.fillText.push(String(text));
+      const pixelY = calls.transform ? y * calls.transform[3] + calls.transform[5] : y;
+      calls.text.push({ text: String(text), x, y, font: ctx.font, pixelY });
+    },
     measureText: (text) => ({ width: String(text).length * 10 }),
     fillRect: () => {},
     drawImage: () => {},

@@ -23,26 +23,26 @@ export function normalizeShareImageLyrics(lyrics) {
 // supplements as the karaoke view (segmenter + ivLyricsWordSupplements).
 // Returns a Map of line idx -> [{w, reading, gloss}]. Lines without data are
 // absent from the map so the renderer falls back to line rendering.
-export async function resolveShareWordDetails(lines, { segmenter, supplements, options }) {
+export async function resolveShareWordDetails(lines, {
+  segmenter, supplements, sourceLanguage, showPronunciation = true, showTranslation = true, options,
+}) {
   const details = new Map();
-  if (!segmenter?.segmentLyrics) return details;
+  if (!segmenter?.segmentLyrics || options?.wanted?.() === false) return details;
   await Promise.all((lines || []).map(async (line) => {
     try {
       const text = line?.originalText || line?.displayText || '';
       if (!text.trim()) return;
-      const sourceLang = supplements?.resolveSourceLanguage
-        ? supplements.resolveSourceLanguage(text)
-        : 'auto';
+      const sourceLang = supplements?.resolveSourceLanguage?.(text, sourceLanguage) || sourceLanguage || 'auto';
       const surfaces = segmenter.segmentLyrics(text, sourceLang);
       if (!surfaces || surfaces.length === 0) return;
       const units = surfaces.map((surface) => ({ surface }));
       const [readings, glosses] = await Promise.allSettled([
         (async () => {
-          const mode = supplements?.resolveReadingMode?.(sourceLang);
+          const mode = showPronunciation && supplements?.resolveReadingMode?.(sourceLang);
           if (mode) return supplements.getWordReadings(units, sourceLang, mode, text, options);
         })(),
         (async () => {
-          if (supplements?.isGlossModeActive?.(sourceLang)) {
+          if (showTranslation && supplements?.isGlossModeActive?.(sourceLang)) {
             return supplements.getWordGlosses(units, text, sourceLang, options);
           }
         })(),
