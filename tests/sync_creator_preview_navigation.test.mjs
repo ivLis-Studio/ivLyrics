@@ -38,7 +38,6 @@ const createEditor = ({
 		activeParallelTargetId,
 		claimSessionForLocalEditing() {},
 		resetCurrentSyncInput() {},
-		selectParallelPart(partId) { context.activeParallelTargetId = partId; },
 		Spicetify: { Player: { seek: position => seeks.push(position) } },
 	};
 	context.setMode = value => {
@@ -146,7 +145,7 @@ test('arrow shortcuts respect composition, native controls and prior handlers', 
 });
 
 test('navigation and seeking stay suspended while close saves and recover on failure', async () => {
-	const editor = createEditor({ currentLineIndex: 1, previousNavigableLineIndex: 0, nextNavigableLineIndex: 2 });
+	const editor = createEditor({ currentLineIndex: 1, previousNavigableLineIndex: 0, nextNavigableLineIndex: 2, activeParallelTargetId: 'lead' });
 	const { Player: player } = editor.context.Spicetify;
 	player.getProgress = () => 5000;
 	player.getDuration = () => 10000;
@@ -160,11 +159,13 @@ test('navigation and seeking stay suspended while close saves and recover on fai
 		editor.api.goToNextLine();
 		editor.api.goToPrevLine();
 		editor.api.goToFirstLine();
+		editor.api.selectParallelPart('background');
 		editor.api.handleSeek({ clientX: 100, currentTarget: { getBoundingClientRect: () => ({ left: 0, width: 200 }) } });
 		editor.api.handleSeekOffset(500);
 		assert.deepEqual(editor.press('ArrowDown'), { preventDefault: 0, stopPropagation: 0 });
 		assert.equal(editor.context.currentLineIndex, 1);
 		assert.equal(editor.context.mode, 'preview');
+		assert.equal(editor.context.activeParallelTargetId, 'lead');
 		assert.deepEqual(editor.seeks, []);
 	} finally {
 		finishSave(false);
@@ -173,6 +174,8 @@ test('navigation and seeking stay suspended while close saves and recover on fai
 
 	assert.equal(editor.press('ArrowDown').preventDefault, 1);
 	assert.equal(editor.context.currentLineIndex, 2);
+	editor.api.selectParallelPart('background');
+	assert.equal(editor.context.activeParallelTargetId, 'background');
 	editor.api.handleSeekOffset(500);
 	assert.deepEqual(editor.seeks, [5500]);
 	await editor.lifetime.requestClose({ ...close, saveDraft: () => true });

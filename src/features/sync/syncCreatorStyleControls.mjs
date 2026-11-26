@@ -200,7 +200,7 @@ export const renderSyncCreatorLineInspector = ({
 	line: { trackId, currentLineStart, activeParallelPart, currentLineMeta, lyricsLines },
 	selection: { mode, offsetSelectionRange, currentLineStyleRanges, currentLineCharRefs, currentLineChars },
 	customSpeaker: { customSpeakerMetaMemoryRef, bulkCustomSpeakerColor, bulkCustomSpeakerFallback, setBulkCustomSpeakerColor, setBulkCustomSpeakerFallback },
-	actions: { updateCurrentLineStyleRanges, updateParallelPartMeta, updateCurrentLineMeta, requestSongVocalSpeaker },
+	actions: { canStartOperation, updateCurrentLineStyleRanges, updateCurrentVocalMeta, requestSongVocalSpeaker },
 }) => {
 	const {
 		getSyncCreatorSpeakerTextColor, isSyncCreatorCustomSpeaker, sanitizeSyncCreatorSpeakerFallback,
@@ -226,27 +226,18 @@ export const renderSyncCreatorLineInspector = ({
 		true,
 		targetSpeaker
 	);
-	const updateSpeakerMeta = (field, value) => {
+	const updateSpeakerMeta = (patch) => {
 		if (hasInspectorSelectionTarget) {
 			// Range patches replace speaker metadata atomically. A color-only
 			// patch would otherwise be ignored and revert the visible input.
-			updateCurrentLineStyleRanges({
+			return updateCurrentLineStyleRanges({
 				speaker: targetSpeaker,
 				'speaker-color': targetSpeakerColor,
 				'speaker-fallback': targetSpeakerFallback,
-				[field]: value
+				...patch
 			});
-			return;
 		}
-		if (activeParallelPart) updateParallelPartMeta(activeParallelPart.id, field, value);
-		else updateCurrentLineMeta(field, value);
-	};
-	const updateSpeakerRangeMeta = (speakerMeta) => {
-		updateCurrentLineStyleRanges({
-			speaker: speakerMeta.speaker,
-			'speaker-color': speakerMeta.color,
-			'speaker-fallback': speakerMeta.fallback
-		});
+		return updateCurrentVocalMeta(patch);
 	};
 	const customSpeakerMemoryKey = `${trackId || 'track'}:${currentLineStart}:${activeParallelPart?.id || 'line'}`;
 	const targetRememberedCustomSpeakerMeta = customSpeakerMetaMemoryRef.current.get(customSpeakerMemoryKey) || {};
@@ -263,41 +254,38 @@ export const renderSyncCreatorLineInspector = ({
 			remembered: rememberedCustomSpeakerMeta
 		});
 		if (!transition) return;
+		if (!updateSpeakerMeta({
+			speaker: transition.speaker,
+			'speaker-color': transition.color,
+			'speaker-fallback': transition.fallback,
+		})) return;
 		customSpeakerMetaMemoryRef.current.set(customSpeakerMemoryKey, transition.remembered);
 		if (isSyncCreatorCustomSpeaker(transition.speaker)) {
 			setBulkCustomSpeakerColor(transition.color);
 			setBulkCustomSpeakerFallback(transition.fallback);
 		}
-		if (hasInspectorSelectionTarget) {
-			updateSpeakerRangeMeta(transition);
-			return;
-		}
-		updateSpeakerMeta('speaker', transition.speaker);
-		updateSpeakerMeta('speaker-fallback', transition.fallback);
-		updateSpeakerMeta('speaker-color', transition.color);
 	};
 	const updateSpeakerColor = (value) => {
 		const color = normalizeSyncCreatorSpeakerColor(value);
 		if (!color) return false;
+		if (!updateSpeakerMeta({ 'speaker-color': color })) return true;
 		customSpeakerMetaMemoryRef.current.set(customSpeakerMemoryKey, {
 			color,
 			fallback: normalizeSyncCreatorSpeakerFallback(targetSpeakerFallback)
 				|| rememberedCustomSpeakerMeta.fallback
 		});
 		setBulkCustomSpeakerColor(color);
-		updateSpeakerMeta('speaker-color', color);
 		return true;
 	};
 	const updateSpeakerFallback = (value) => {
 		const fallback = normalizeSyncCreatorSpeakerFallback(value);
-		if (!fallback) return;
+		if (!fallback || !updateSpeakerMeta({ 'speaker-fallback': fallback })) return;
 		customSpeakerMetaMemoryRef.current.set(customSpeakerMemoryKey, {
 			color: normalizeSyncCreatorSpeakerColor(targetSpeakerColor)
 				|| rememberedCustomSpeakerMeta.color,
 			fallback
 		});
 		setBulkCustomSpeakerFallback(fallback);
-		updateSpeakerMeta('speaker-fallback', fallback);
 	};
 	const inspectorSelectionStart = hasInspectorSelectionTarget ? offsetSelectionRange.start : -1;
 	const inspectorSelectionEnd = hasInspectorSelectionTarget ? offsetSelectionRange.end : -1;
@@ -355,6 +343,7 @@ export const renderSyncCreatorLineInspector = ({
 							if (event.key === 'Enter') event.currentTarget.blur();
 						},
 						onBlur: (event) => {
+							if (!canStartOperation()) return;
 							if (updateSpeakerColor(event.target.value)) return;
 							event.target.value = sanitizeSyncCreatorSpeakerColor(targetSpeaker, targetSpeakerColor, true, targetSpeakerFallback);
 							Toast.error(I18n.t('syncCreator.speakerCustomColorInvalid') || 'Enter a valid HEX color.');

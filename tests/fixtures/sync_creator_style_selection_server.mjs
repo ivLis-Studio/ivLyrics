@@ -1,5 +1,5 @@
 import { readClassicLanguageFixture } from "./language-source.mjs";
-import { readSyncCreatorFixture, readSyncCreatorVocalEditorSource } from "./legacy-page-source.mjs";
+import { readSyncCreatorFixture } from "./legacy-page-source.mjs";
 // Offline production-source selection, partial-style controls and character renderer.
 // node tests/fixtures/sync_creator_style_selection_server.mjs /path/to/react18/node_modules [port]
 import { createServer } from 'node:http';
@@ -56,15 +56,25 @@ function SelectionFixture(){
     context:{mode,hasLine:true,isEditorOpen:()=>true,isCurrentSyncTargetMetaComplete,showMissingMetaToast,getCharIndexFromPoint,
       handleDragStart,handleDragMove:noop,handleDragEnd:noop,handleDragCancel:noop,applyRecordingLockRange,applyOffsetSelectionRange},
   });
-  const { applySyncCreatorStyleRangePatch } = syncCreatorVocalStyles;
-  ${section(readSyncCreatorVocalEditorSource(), '\tconst updateCurrentLineStyleRanges =', '\tconst applySongVocalSpeaker =')}
+  const lifetime={canStartOperation:()=>true};
+  const { updateCurrentLineStyleRanges, updateCurrentVocalMeta: commitVocalMeta }=useSyncCreatorVocalEditor({
+    react, styles:syncCreatorVocalStyles, toast:Toast, i18n:I18n, syncDataVersion:SYNC_CREATOR_SYNC_DATA_VERSION,
+    canStartOperation:lifetime.canStartOperation,
+    target:{mode,multiVocalMode:Boolean(activeParallelPart),currentLineIndex,currentLineStart,currentLineText,currentFullLineChars,
+      activeParallelPart,activeParallelTargetId,currentLineCharRefs,currentLineStyleRanges},
+    song:{trackId,lyricsLines,lineCharOffsets:[currentLineStart],syncData},bulkSpeaker:{},layout:{},
+    refs:{offsetSelectionRangeRef,offsetSelectionTargetRef,scorePendingEffectsRef,customSpeakerMetaMemoryRef},
+    edit:{claimSessionForLocalEditing,setLineStyleDrafts,setSyncData,setLineMetaDrafts:noop,setParallelPartMetaDrafts:noop},
+  });
   useSyncCreatorSelectionReset({react,target:pointerTarget,clearLyricTextSelection,clearOffsetSelection});
   const usePrimaryCharacterPronunciation=false,hasCurrentLineFurigana=false,hasCurrentLineCharacterPronunciation=false,currentLineRenderedPronunciationUnits=[];
   ${part("\tconst {\n\t\t'furigana-font-size': furiganaFontSize,", "\tconst currentLineData =")}
   const textEffectsDisabled=true;
   const requestSongVocalSpeaker=noop;
-  const updateCurrentLineMeta=(field,value)=>{wholeTargetWrites.current.push(['line',field,value]);setSyncData(previous=>({...previous,lines:previous.lines.map(line=>({...line,[field]:value}))}));};
-  const updateParallelPartMeta=(id,field,value)=>{wholeTargetWrites.current.push(['part',id,field,value]);};
+  const updateCurrentVocalMeta=patch=>{
+    for(const [field,value] of Object.entries(patch))wholeTargetWrites.current.push(activeParallelPart?['part',activeParallelPart.id,field,value]:['line',field,value]);
+    return commitVocalMeta(patch);
+  };
   ${part('\tconst updateCurrentTextEffect =', '\tconst syncGranularityRecordingHint =')}
   const currentRecordingCharIndex=-1,isRecordingLockArmed=false,recordingLockRange=null,recordingLockIndex=-1,currentLockedPlaybackIndex=null,currentLinePreviewIndex=-1,currentLinePlayedMarks=null,useFixedPrimaryCharacterCells=false;
   const currentLineFuriganaMap=new Map(),currentLineCharacterPronunciationMap=new Map();

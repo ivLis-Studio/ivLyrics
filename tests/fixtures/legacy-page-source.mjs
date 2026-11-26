@@ -39,10 +39,6 @@ export const readSyncCreatorSource = () => readFactoryDeclarations(
     "features/sync/SyncDataCreator.js", "createSyncDataCreator", "\t", "SyncDataCreator,",
 );
 
-export const readSyncCreatorVocalEditorSource = () => readFactoryDeclarations(
-    "features/sync/syncCreatorVocalEditor.mjs", "useSyncCreatorVocalEditor", "\t", "updateParallelPartMeta,", { preserveIndent: true },
-);
-
 export function readSyncCreatorScoreHandlersSource() {
     const source = read("features/sync/syncCreatorScoreState.mjs");
     const start = source.indexOf("\tconst ensureScoreTracker =");

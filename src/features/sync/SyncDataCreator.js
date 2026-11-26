@@ -817,16 +817,6 @@ export function createSyncDataCreator({
 				setRecordingLockIndexValue, buildLockedCharTimes, setRecordingProgressIndex, clearPointerRecording },
 		});
 
-		const selectParallelPart = useCallback((partId) => {
-			if (!partId) return;
-			if (activeParallelTargetId !== partId) {
-				claimSessionForLocalEditing();
-				resetCurrentSyncInput();
-			}
-			setActiveParallelPartId(partId);
-			if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
-		}, [activeParallelTargetId, claimSessionForLocalEditing, resetCurrentSyncInput]);
-
 		const lastCharEndShortcutRef = useRef(null);
 		const keyboardShortcutContextRef = useRef(null);
 		// Refresh the recording target before a key or a running interval can use it.
@@ -892,15 +882,15 @@ export function createSyncDataCreator({
 		});
 
 		const {
-			updateParallelPartMeta, updateCurrentLineMeta, updateCurrentLineStyleRanges, requestSongVocalSpeaker, applyBulkCustomSpeaker,
+			updateCurrentVocalMeta, updateCurrentLineStyleRanges, requestSongVocalSpeaker, applyBulkCustomSpeaker,
 		} = useSyncCreatorVocalEditor({
 			react, styles: syncCreatorVocalStyles, toast: Toast, i18n: I18n,
-			syncDataVersion: SYNC_CREATOR_SYNC_DATA_VERSION,
+			syncDataVersion: SYNC_CREATOR_SYNC_DATA_VERSION, canStartOperation: lifetime.canStartOperation,
 			target: {
 				mode, multiVocalMode, currentLineIndex, currentLineStart, currentLineText, currentFullLineChars,
-				activeParallelTargetId, currentLineCharRefs, currentLineStyleRanges,
+				activeParallelPart, activeParallelTargetId, currentLineCharRefs, currentLineStyleRanges,
 			},
-			song: { trackId, lyricsLines, lineCharOffsets, syncData, lineMetaDrafts, parallelPartMetaDrafts },
+			song: { trackId, lyricsLines, lineCharOffsets, syncData },
 			bulkSpeaker: {
 				bulkCustomSpeakerColor, bulkCustomSpeakerFallback,
 				setBulkCustomSpeakerColor, setBulkCustomSpeakerFallback, setShowBulkCustomSpeakerDialog,
@@ -921,14 +911,14 @@ export function createSyncDataCreator({
 			editor: { claimSessionForLocalEditing, resetCurrentSyncInput, setSyncData, setGlobalOffset },
 		});
 
-		const { goToPrevLine, goToNextLine, goToFirstLine, handleSeek, handleSeekOffset } = useSyncCreatorNavigation({
+		const { goToPrevLine, goToNextLine, goToFirstLine, selectParallelPart, handleSeek, handleSeekOffset } = useSyncCreatorNavigation({
 			react, host: window, getPlayer: getEditorPlayer, canStartOperation: lifetime.canStartOperation,
 			editor: {
 				mode, lyricsText, lyricsLines, previousNavigableLineIndex, nextNavigableLineIndex, activeParallelTargetId, currentParallelParts,
 			},
 			refs: { manualPreviewExitRef, lyricsScrollRef, pendingParallelNavigationRef },
 			actions: {
-				setMode, setCurrentLineIndex, claimSessionForLocalEditing, resetCurrentSyncInput, setActiveParallelPartId, selectParallelPart,
+				setMode, setCurrentLineIndex, claimSessionForLocalEditing, resetCurrentSyncInput, setActiveParallelPartId,
 			},
 		});
 
@@ -1335,16 +1325,15 @@ export function createSyncDataCreator({
 				updateCurrentLineStyleRanges({ kind: value });
 				return;
 			}
-			if (activeParallelPart) updateParallelPartMeta(activeParallelPart.id, 'kind', value);
-			else updateCurrentLineMeta('kind', value);
-		}, [mode, activeParallelPart, offsetSelectionRange, updateCurrentLineMeta, updateParallelPartMeta, updateCurrentLineStyleRanges]);
+			updateCurrentVocalMeta({ kind: value });
+		}, [mode, activeParallelPart, offsetSelectionRange, updateCurrentVocalMeta, updateCurrentLineStyleRanges]);
 
 		const renderLineInspector = () => renderSyncCreatorLineInspector({
 			react, i18n: I18n, toast: Toast, styles: s, vocalStyles: syncCreatorVocalStyles,
 			line: { trackId, currentLineStart, activeParallelPart, currentLineMeta, lyricsLines },
 			selection: { mode, offsetSelectionRange, currentLineStyleRanges, currentLineCharRefs, currentLineChars },
 			customSpeaker: { customSpeakerMetaMemoryRef, bulkCustomSpeakerColor, bulkCustomSpeakerFallback, setBulkCustomSpeakerColor, setBulkCustomSpeakerFallback },
-			actions: { updateCurrentLineStyleRanges, updateParallelPartMeta, updateCurrentLineMeta, requestSongVocalSpeaker },
+			actions: { canStartOperation: lifetime.canStartOperation, updateCurrentLineStyleRanges, updateCurrentVocalMeta, requestSongVocalSpeaker },
 		});
 
 		const syncGranularityRecordingHint = getSyncCreatorRecordingHint(syncGranularity, I18n);

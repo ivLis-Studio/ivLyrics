@@ -61,7 +61,7 @@ export function createLockedEditor({ text = 'ABCDEF', saved = [10, 11, 12, 13, 1
 		section('\tconst setRecordingLockIndexValue =', '\t// 트랙 정보'),
 		section('\tconst getCurrentSyncTargetSavedChars =', '\tconst {\n\t\tcurrentLineText,'),
 		section('\tconst [offsetSelectionRange, setOffsetSelectionRange]', '\tconst applyRecordingLockRange ='),
-		section('\tconst applyRecordingLockRange =', '\n\tconst selectParallelPart'),
+		section('\tconst applyRecordingLockRange =', '\n\tconst lastCharEndShortcutRef'),
 		`const readPointerRecorder = () => {
 			${section('\tconst { start: handleDragStart,', '\tconst closeEditor =')}
 			return { handleDragStart, handleDragMove, handleDragEnd, handleDragCancel };

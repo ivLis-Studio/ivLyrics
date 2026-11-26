@@ -4,7 +4,7 @@ import {
 } from './syncCreatorVocalStyles.mjs';
 
 export function useSyncCreatorVocalEditor({
-	react: { useCallback }, toast: Toast, i18n: I18n, syncDataVersion: SYNC_CREATOR_SYNC_DATA_VERSION,
+	react: { useCallback }, toast: Toast, i18n: I18n, syncDataVersion: SYNC_CREATOR_SYNC_DATA_VERSION, canStartOperation,
 	styles: {
 		normalizeSyncCreatorMetaFieldValue, applySyncCreatorStyleRangePatch, normalizeSyncCreatorStyleRanges,
 		resolveSyncCreatorBulkSpeakerMeta, isSyncCreatorCustomSpeaker, applySyncCreatorSpeakerMeta,
@@ -13,9 +13,9 @@ export function useSyncCreatorVocalEditor({
 	},
 	target: {
 		mode, multiVocalMode, currentLineIndex, currentLineStart, currentLineText, currentFullLineChars,
-		activeParallelTargetId, currentLineCharRefs, currentLineStyleRanges,
+		activeParallelPart, activeParallelTargetId, currentLineCharRefs, currentLineStyleRanges,
 	},
-	song: { trackId, lyricsLines, lineCharOffsets, syncData, lineMetaDrafts, parallelPartMetaDrafts },
+	song: { trackId, lyricsLines, lineCharOffsets, syncData },
 	bulkSpeaker: {
 		bulkCustomSpeakerColor, bulkCustomSpeakerFallback,
 		setBulkCustomSpeakerColor, setBulkCustomSpeakerFallback, setShowBulkCustomSpeakerDialog,
@@ -24,87 +24,70 @@ export function useSyncCreatorVocalEditor({
 	edit: { claimSessionForLocalEditing, setParallelPartMetaDrafts, setLineMetaDrafts, setLineStyleDrafts, setSyncData },
 	layout: { isLineCoveredByMergedPrevious, getMergedLineIndexesForStart, getParallelTemplateForLineData },
 }) {
-	const updateParallelPartMeta = useCallback((partId, field, value) => {
-		const safeValue = normalizeSyncCreatorMetaFieldValue(field, value);
-		const shouldDelete = (field === 'speaker-color' || field === 'speaker-fallback') && !safeValue;
-		if (!partId || !field || (!safeValue && !shouldDelete)) return;
-		claimSessionForLocalEditing();
+	const updateCurrentVocalMeta = useCallback((patch) => {
+		if (!canStartOperation()) return false;
 		const lineStart = lineCharOffsets[currentLineIndex];
-		const draftKey = `${lineStart}:${partId}`;
-		if (field === 'kind') {
-			scorePendingEffectsRef.current.set(`part:${draftKey}`, { start: lineStart, partId, expectedKind: safeValue });
-		}
-		setParallelPartMetaDrafts(prev => ({
-			...prev,
-			[draftKey]: {
-				...(prev[draftKey] || {}),
-				[field]: shouldDelete ? '' : safeValue
+		if (!Number.isInteger(lineStart)) return false;
+
+		const draftPatch = {};
+		for (const [field, value] of Object.entries(patch)) {
+			const normalized = normalizeSyncCreatorMetaFieldValue(field, value);
+			if (normalized || field === 'speaker-color' || field === 'speaker-fallback') {
+				draftPatch[field] = normalized;
 			}
-		}));
+		}
+		const fields = Object.entries(draftPatch);
+		if (!fields.length) return false;
 
-		setSyncData(prev => {
-			if (!prev || !Array.isArray(prev.lines)) return prev;
-			return {
-				...prev,
-				lines: prev.lines.map(line => {
-					if (line.start !== lineStart || !Array.isArray(line.parallel?.parts)) return line;
-					return {
-						...line,
-						parallel: {
-							...line.parallel,
-							parts: line.parallel.parts.map(part => {
-								if (part.id !== partId) return part;
-								const nextPart = { ...part };
-								if (shouldDelete) delete nextPart[field];
-								else nextPart[field] = safeValue;
-								return nextPart;
-							})
-						}
-					};
-				})
-			};
-		});
-	}, [lineCharOffsets, currentLineIndex, claimSessionForLocalEditing]);
-
-	const updateCurrentLineMeta = useCallback((field, value) => {
-		const safeValue = normalizeSyncCreatorMetaFieldValue(field, value);
-		const shouldDelete = (field === 'speaker-color' || field === 'speaker-fallback') && !safeValue;
-		if (!field || (!safeValue && !shouldDelete)) return;
 		claimSessionForLocalEditing();
-		const lineStart = lineCharOffsets[currentLineIndex];
-		const shouldOmitDefaultValue = !multiVocalMode && (
-			(field === 'speaker' && safeValue === SYNC_CREATOR_DEFAULT_SPEAKER)
-			|| (field === 'kind' && safeValue === SYNC_CREATOR_DEFAULT_KIND)
-		);
-		if (field === 'kind') {
-			scorePendingEffectsRef.current.set(`line:${lineStart}`, { start: lineStart, expectedKind: safeValue });
+		const partId = activeParallelPart?.id;
+		const draftKey = partId ? `${lineStart}:${partId}` : lineStart;
+		const setDrafts = partId ? setParallelPartMetaDrafts : setLineMetaDrafts;
+		if (draftPatch.kind) {
+			const key = partId ? `part:${draftKey}` : `line:${lineStart}`;
+			const effect = { start: lineStart, expectedKind: draftPatch.kind };
+			if (partId) effect.partId = partId;
+			scorePendingEffectsRef.current.set(key, effect);
 		}
-		setLineMetaDrafts(prev => ({
-			...prev,
-			[lineStart]: {
-				...(prev[lineStart] || {}),
-				[field]: shouldDelete ? '' : safeValue
-			}
-		}));
+		setDrafts(prev => ({ ...prev, [draftKey]: { ...prev[draftKey], ...draftPatch } }));
 
+		const applyPatch = (target) => {
+			const next = { ...target };
+			for (const [field, value] of fields) {
+				const isLineDefault = !partId && !multiVocalMode && (
+					(field === 'speaker' && value === SYNC_CREATOR_DEFAULT_SPEAKER)
+					|| (field === 'kind' && value === SYNC_CREATOR_DEFAULT_KIND)
+				);
+				if (!value || isLineDefault) delete next[field];
+				else next[field] = value;
+			}
+			return next;
+		};
 		setSyncData(prev => {
-			if (!prev || !Array.isArray(prev.lines)) return prev;
+			if (!Array.isArray(prev?.lines)) return prev;
 			return {
 				...prev,
 				lines: prev.lines.map(line => {
 					if (line.start !== lineStart) return line;
-					if (!shouldOmitDefaultValue && !shouldDelete) {
-						return { ...line, [field]: safeValue };
-					}
-					const nextLine = { ...line };
-					delete nextLine[field];
-					return nextLine;
-				})
+					if (!partId) return applyPatch(line);
+					if (!Array.isArray(line.parallel?.parts)) return line;
+					return {
+						...line,
+						parallel: {
+							...line.parallel,
+							parts: line.parallel.parts.map(part => part.id === partId ? applyPatch(part) : part),
+						},
+					};
+				}),
 			};
 		});
-	}, [lineCharOffsets, currentLineIndex, multiVocalMode, claimSessionForLocalEditing]);
+		return true;
+	}, [canStartOperation, lineCharOffsets, currentLineIndex, activeParallelPart?.id, multiVocalMode,
+		claimSessionForLocalEditing, setLineMetaDrafts, setParallelPartMetaDrafts, setSyncData,
+		normalizeSyncCreatorMetaFieldValue, scorePendingEffectsRef]);
 
 	const updateCurrentLineStyleRanges = useCallback((patch) => {
+		if (!canStartOperation()) return false;
 		// Selection coordinates belong to the displayed vocal, not necessarily
 		// the full row. Reject old targets before the clearing effect runs.
 		const range = mode !== 'record' ? offsetSelectionRangeRef.current : null;
@@ -152,6 +135,7 @@ export function useSyncCreatorVocalEditor({
 		});
 		return true;
 	}, [
+		canStartOperation,
 		claimSessionForLocalEditing,
 		currentFullLineChars.length,
 		currentLineStart,
@@ -175,18 +159,13 @@ export function useSyncCreatorVocalEditor({
 		const rememberedCustomMeta = { color: speakerColor, fallback: speakerFallback };
 
 		const syncLinesByStart = new Map((Array.isArray(syncData?.lines) ? syncData.lines : []).map(line => [line.start, line]));
-		const nextLineMetaDrafts = {};
-		const nextParallelPartMetaDrafts = {};
+		const lineStarts = [];
+		const partKeys = [];
 
 		lyricsLines.forEach((lineText, index) => {
 			const lineStart = lineCharOffsets[index];
 			if (!Number.isInteger(lineStart)) return;
-			nextLineMetaDrafts[lineStart] = {
-				...(lineMetaDrafts[lineStart] || {}),
-				speaker,
-				'speaker-color': speakerColor,
-				'speaker-fallback': speakerFallback
-			};
+			lineStarts.push(lineStart);
 			if (isCustomSpeaker) {
 				customSpeakerMetaMemoryRef.current.set(
 					`${trackId || 'track'}:${lineStart}:line`,
@@ -208,12 +187,7 @@ export function useSyncCreatorVocalEditor({
 			if (Array.isArray(template?.parts)) {
 				template.parts.forEach(part => {
 					if (!part?.id) return;
-					nextParallelPartMetaDrafts[`${lineStart}:${part.id}`] = {
-						...(parallelPartMetaDrafts[`${lineStart}:${part.id}`] || {}),
-						speaker,
-						'speaker-color': speakerColor,
-						'speaker-fallback': speakerFallback
-					};
+					partKeys.push(`${lineStart}:${part.id}`);
 					if (isCustomSpeaker) {
 						customSpeakerMetaMemoryRef.current.set(
 							`${trackId || 'track'}:${lineStart}:${part.id}`,
@@ -224,14 +198,17 @@ export function useSyncCreatorVocalEditor({
 			}
 		});
 
-		setLineMetaDrafts(prev => ({
-			...prev,
-			...nextLineMetaDrafts
-		}));
-		setParallelPartMetaDrafts(prev => ({
-			...prev,
-			...nextParallelPartMetaDrafts
-		}));
+		const patchDrafts = (previous, keys) => {
+			const next = { ...previous };
+			for (const key of keys) {
+				next[key] = {
+					...previous[key], speaker, 'speaker-color': speakerColor, 'speaker-fallback': speakerFallback,
+				};
+			}
+			return next;
+		};
+		setLineMetaDrafts(prev => patchDrafts(prev, lineStarts));
+		setParallelPartMetaDrafts(prev => patchDrafts(prev, partKeys));
 		setSyncData(prev => {
 			if (!prev || !Array.isArray(prev.lines)) return prev;
 			return {
@@ -255,8 +232,6 @@ export function useSyncCreatorVocalEditor({
 		lyricsLines,
 		lineCharOffsets,
 		syncData,
-		lineMetaDrafts,
-		parallelPartMetaDrafts,
 		trackId,
 		claimSessionForLocalEditing,
 		isLineCoveredByMergedPrevious,
@@ -264,6 +239,7 @@ export function useSyncCreatorVocalEditor({
 		getParallelTemplateForLineData
 	]);
 	const requestSongVocalSpeaker = useCallback((value, customSeed = {}) => {
+		if (!canStartOperation()) return;
 		const speaker = normalizeSyncCreatorSpeaker(value);
 		if (!speaker) return;
 		if (!isSyncCreatorCustomSpeaker(speaker)) {
@@ -281,8 +257,9 @@ export function useSyncCreatorVocalEditor({
 		setBulkCustomSpeakerFallback(fallback);
 		setBulkCustomSpeakerColor(color);
 		setShowBulkCustomSpeakerDialog(true);
-	}, [applySongVocalSpeaker, bulkCustomSpeakerColor, bulkCustomSpeakerFallback]);
+	}, [canStartOperation, applySongVocalSpeaker, bulkCustomSpeakerColor, bulkCustomSpeakerFallback]);
 	const applyBulkCustomSpeaker = useCallback(() => {
+		if (!canStartOperation()) return;
 		const color = normalizeSyncCreatorSpeakerColor(bulkCustomSpeakerColor);
 		if (!color) {
 			Toast.error(I18n.t('syncCreator.speakerCustomColorInvalid') || 'Enter a valid HEX color.');
@@ -294,9 +271,9 @@ export function useSyncCreatorVocalEditor({
 		setBulkCustomSpeakerFallback(fallback);
 		applySongVocalSpeaker('CUSTOM', { color, fallback });
 		setShowBulkCustomSpeakerDialog(false);
-	}, [applySongVocalSpeaker, bulkCustomSpeakerColor, bulkCustomSpeakerFallback]);
+	}, [canStartOperation, applySongVocalSpeaker, bulkCustomSpeakerColor, bulkCustomSpeakerFallback]);
 
 	return {
-		updateParallelPartMeta, updateCurrentLineMeta, updateCurrentLineStyleRanges, requestSongVocalSpeaker, applyBulkCustomSpeaker,
+		updateCurrentVocalMeta, updateCurrentLineStyleRanges, requestSongVocalSpeaker, applyBulkCustomSpeaker,
 	};
 }

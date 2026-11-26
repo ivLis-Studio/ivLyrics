@@ -5,7 +5,7 @@ export function useSyncCreatorNavigation({
 	react: { useCallback, useEffect }, host, getPlayer, canStartOperation,
 	editor: { mode, lyricsText, lyricsLines, previousNavigableLineIndex, nextNavigableLineIndex, activeParallelTargetId, currentParallelParts },
 	refs: { manualPreviewExitRef, lyricsScrollRef, pendingParallelNavigationRef },
-	actions: { setMode, setCurrentLineIndex, claimSessionForLocalEditing, resetCurrentSyncInput, setActiveParallelPartId, selectParallelPart },
+	actions: { setMode, setCurrentLineIndex, claimSessionForLocalEditing, resetCurrentSyncInput, setActiveParallelPartId },
 }) {
 	// Preview follows playback on its own. Any manual line navigation means the
 	// user wants to edit that line, so it leaves preview before moving. The ref
@@ -36,6 +36,16 @@ export function useSyncCreatorNavigation({
 	const goToPrevLine = useCallback(() => navigateLine(previousNavigableLineIndex), [navigateLine, previousNavigableLineIndex]);
 	const goToNextLine = useCallback(() => navigateLine(nextNavigableLineIndex), [navigateLine, nextNavigableLineIndex]);
 	const goToFirstLine = useCallback(() => navigateLine(0), [navigateLine]);
+	const selectParallelPart = useCallback(partId => {
+		if (!partId || !canStartOperation()) return;
+		if (activeParallelTargetId !== partId) {
+			claimSessionForLocalEditing();
+			resetCurrentSyncInput();
+		}
+		setActiveParallelPartId(partId);
+		if (lyricsScrollRef.current) lyricsScrollRef.current.scrollLeft = 0;
+	}, [canStartOperation, activeParallelTargetId, claimSessionForLocalEditing, resetCurrentSyncInput,
+		setActiveParallelPartId, lyricsScrollRef]);
 
 	useEffect(() => {
 		const handleLineNavigationShortcut = (event) => {
@@ -76,5 +86,5 @@ export function useSyncCreatorNavigation({
 	const handleSeekOffset = useCallback(offsetMs => {
 		if (canStartOperation()) seekSyncCreatorByOffset(getPlayer(), offsetMs);
 	}, [canStartOperation, getPlayer]);
-	return { goToPrevLine, goToNextLine, goToFirstLine, handleSeek, handleSeekOffset };
+	return { goToPrevLine, goToNextLine, goToFirstLine, selectParallelPart, handleSeek, handleSeekOffset };
 }
