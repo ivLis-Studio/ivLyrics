@@ -17,6 +17,7 @@ export default {
     "nowplaying": "Texty v panelu",
     "debug": "Ladění",
     "about": "O aplikaci",
+    "assistant": "AI asistent",
     "searchResults": "Výsledky vyhledávání"
   },
   "search": {
@@ -48,7 +49,8 @@ export default {
         "behavior": "Tok",
         "surface": "Zobrazení",
         "providers": "Zdroj",
-        "system": "Systém"
+        "system": "Systém",
+        "assistant": "AI"
       },
       "generalDesc": "Výchozí nastavení jazyka, překrytí plochy a základního pracovního prostoru.",
       "appearanceDesc": "Pozadí, typografie, pohyb a kompozice obrazovky.",
@@ -60,7 +62,8 @@ export default {
       "aiProvidersDesc": "Konfigurace poskytovatele překladu a zpracování AI.",
       "advancedDesc": "Detekce, mezipaměť, pomocné aplikace a pokročilé ovládací prvky.",
       "debugDesc": "Diagnostika, nástroje pro obnovu a nástroje pro odstraňování problémů.",
-      "aboutDesc": "Podrobnosti o verzi, kontrola aktualizací, zásluhy a poznámky k vydání."
+      "aboutDesc": "Podrobnosti o verzi, kontrola aktualizací, zásluhy a poznámky k vydání.",
+      "assistantDesc": "Popište vlastními slovy, co chcete. Najde správná nastavení, vysvětlí je a změní je za vás."
     },
     "background": {
       "none": "Minimální",
@@ -86,6 +89,37 @@ export default {
       "emptyDesc": "Všechna nastavení mají výchozí hodnoty",
       "count": "Nastavení: {count}",
       "resetConfirm": "Obnovit výchozí hodnoty u {count} nastavení?"
+    },
+    "assistant": {
+      "intro": "Napište, co chcete změnit. Najdu odpovídající nastavení, použiju je a zobrazím je tady, abyste je mohli doladit.",
+      "providerNote": "Používá vaše poskytovatele AI, kteří mají zapnutou funkci „Asistent nastavení“. Vaše zpráva a seznam nastavení ivLyrics se odešlou tomuto poskytovateli.",
+      "placeholder": "Zeptejte se na cokoli o nastavení, např. „Na celé obrazovce automaticky skrývej ovladač“",
+      "send": "Odeslat",
+      "stop": "Zastavit",
+      "newChat": "Nový chat",
+      "thinking": "Procházím nastavení…",
+      "examplesTitle": "Zkuste se zeptat",
+      "examples": {
+        "autoHide": "Na celé obrazovce automaticky skrývej ovladač",
+        "fontSize": "Zvětši texty písní",
+        "translation": "Přelož texty do angličtiny",
+        "performance": "Stránka s texty se seká. Odlehči ji."
+      },
+      "noProviderTitle": "Žádný poskytovatel AI není připraven",
+      "noProviderDesc": "Přidejte klíč API k poskytovateli AI, například ChatGPT, Gemini nebo Claude, povolte ho a nechte u něj zapnutou funkci „Asistent nastavení“.",
+      "openProviders": "Otevřít Poskytovatele AI",
+      "error": "Požadavek na AI selhal: {message}",
+      "invalidResponse": "Odpověď AI se nepodařilo přečíst. Zkuste to znovu.",
+      "stopped": "Zastaveno.",
+      "changedCount": "Změněná nastavení: {count}",
+      "undo": "Vrátit zpět",
+      "undone": "Změny byly vráceny",
+      "adjusted": "Upraveno do povoleného rozsahu: {settings}",
+      "skipped": "Nepodařilo se změnit: {settings}",
+      "openInSettings": "Otevřít v nastavení",
+      "you": "Vy",
+      "name": "Asistent",
+      "askAi": "Zeptat se AI asistenta"
     },
     "controls": {
       "colorPickerAriaLabel": "Výběr barvy {name}",
@@ -536,7 +570,8 @@ export default {
         "characterPronunciation": "Výslovnost znaků",
         "culturalAnnotations": "Kulturní kontext",
         "wordSupplements": "Podrobnosti slov",
-        "motionDirection": "Režie animace"
+        "motionDirection": "Režie animace",
+        "settingsAssistant": "Asistent nastavení"
       },
       "noEnabledProviders": "Nejsou povoleni žádní poskytovatelé AI. Povolte v nastavení alespoň jednoho poskytovatele.",
       "noPronunciationProviders": "Žádný zapnutý poskytovatel AI neumí vytvořit výslovnost. V nastavení Poskytovatelé AI zapněte u některého poskytovatele „Výslovnost“.",

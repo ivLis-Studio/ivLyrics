@@ -193,7 +193,7 @@ test('primary capability order, inherited pronunciation and saved additional cap
     const before = chips();
     assert.deepEqual(before.map(chip => chip.children[0]), [
         'Pronunciation', 'Translation', 'Metadata', 'TMI', 'Research web search', 'Learning',
-        'Character pronunciation', 'Cultural context', 'Word details', 'Motion direction'
+        'Character pronunciation', 'Cultural context', 'Word details', 'Motion direction', 'Settings assistant'
     ]);
     assert.equal(before[0].props['aria-pressed'], false);
     before[1].props.onClick();

@@ -15,6 +15,7 @@ export default {
     "nowplaying": "Testo nel pannello",
     "debug": "Debug",
     "about": "Info",
+    "assistant": "Assistente AI",
     "lyricsProviders": "Provider di testi",
     "aiProviders": "Provider AI",
     "searchResults": "Risultati ricerca"
@@ -48,7 +49,8 @@ export default {
         "behavior": "Flusso",
         "surface": "Vista",
         "providers": "Fonte",
-        "system": "Sistema"
+        "system": "Sistema",
+        "assistant": "AI"
       },
       "generalDesc": "Lingua, overlay desktop e impostazioni principali.",
       "appearanceDesc": "Sfondi, tipografia, animazioni e composizione dello schermo.",
@@ -60,7 +62,8 @@ export default {
       "aiProvidersDesc": "Configurazione dei provider IA per traduzione ed elaborazione.",
       "advancedDesc": "Rilevamento, cache, app di supporto e controlli avanzati.",
       "debugDesc": "Diagnostica, strumenti di recupero e risoluzione dei problemi.",
-      "aboutDesc": "Versione, controllo aggiornamenti, crediti e note di rilascio."
+      "aboutDesc": "Versione, controllo aggiornamenti, crediti e note di rilascio.",
+      "assistantDesc": "Chiedi con parole tue: trova le impostazioni giuste, te le spiega e le modifica per te."
     },
     "background": {
       "none": "Minimal",
@@ -86,6 +89,37 @@ export default {
       "emptyDesc": "Tutte le impostazioni hanno il valore predefinito",
       "count": "{count} impostazioni",
       "resetConfirm": "Ripristinare {count} impostazioni ai valori predefiniti?"
+    },
+    "assistant": {
+      "intro": "Dimmi cosa vuoi cambiare. Troverò le impostazioni giuste, le applicherò e te le mostrerò qui per rifinirle.",
+      "providerNote": "Usa i tuoi provider AI con «Assistente impostazioni» attivo. Il tuo messaggio e l'elenco delle impostazioni di ivLyrics vengono inviati a quel provider.",
+      "placeholder": "Chiedi qualsiasi cosa sulle impostazioni, ad es. «Nascondi automaticamente il controller a schermo intero»",
+      "send": "Invia",
+      "stop": "Interrompi",
+      "newChat": "Nuova chat",
+      "thinking": "Sto esaminando le impostazioni…",
+      "examplesTitle": "Prova a chiedere",
+      "examples": {
+        "autoHide": "Nascondi automaticamente il controller a schermo intero",
+        "fontSize": "Ingrandisci i testi",
+        "translation": "Traduci i testi in inglese",
+        "performance": "La pagina dei testi è lenta. Rendila più leggera."
+      },
+      "noProviderTitle": "Nessun provider AI pronto",
+      "noProviderDesc": "Aggiungi la tua chiave API a un provider AI come ChatGPT, Gemini o Claude, attivalo e lascia attivo «Assistente impostazioni».",
+      "openProviders": "Apri Provider AI",
+      "error": "Richiesta AI non riuscita: {message}",
+      "invalidResponse": "Impossibile leggere la risposta dell'AI. Riprova.",
+      "stopped": "Interrotto.",
+      "changedCount": "{count} impostazioni modificate",
+      "undo": "Annulla",
+      "undone": "Modifiche annullate",
+      "adjusted": "Adattato all'intervallo consentito: {settings}",
+      "skipped": "Impossibile modificare: {settings}",
+      "openInSettings": "Apri nelle impostazioni",
+      "you": "Tu",
+      "name": "Assistente",
+      "askAi": "Chiedi all'assistente AI"
     },
     "controls": {
       "colorPickerAriaLabel": "Selettore colore {name}",
@@ -536,7 +570,8 @@ export default {
         "characterPronunciation": "Pronuncia per carattere",
         "culturalAnnotations": "Contesto culturale",
         "wordSupplements": "Dettagli parole",
-        "motionDirection": "Regia motion"
+        "motionDirection": "Regia motion",
+        "settingsAssistant": "Assistente impostazioni"
       },
       "noEnabledProviders": "Nessun fornitore AI abilitato. Abilita almeno un fornitore nelle impostazioni.",
       "noPronunciationProviders": "Nessun provider AI attivo può generare la pronuncia. Attiva «Pronuncia» per un provider nelle impostazioni Provider AI.",

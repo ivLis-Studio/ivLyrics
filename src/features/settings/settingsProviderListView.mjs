@@ -42,6 +42,7 @@ export function createSettingsProviderListView({ react, translate }) {
     culturalAnnotations: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-20c3 3 4.5 6.3 4.5 10S15 19 12 22M12 2C9 5 7.5 8.3 7.5 12S9 19 12 22M2 12h20",
     wordSupplements: "M3 6h4l2 12h2l3-12h4l3 12M4.5 13h3M14.5 13h5M4 20h16",
     motionDirection: "M3 7h12v10H3V7Zm12 4 6-3v8l-6-3",
+    settingsAssistant: "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12ZM12 8l.8 2.2L15 11l-2.2.8L12 14l-.8-2.2L9 11l2.2-.8L12 8Z",
     arrow: "m9 6 6 6-6 6",
   });
 

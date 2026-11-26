@@ -17,6 +17,7 @@ export default {
     "nowplaying": "패널 가사",
     "debug": "디버그",
     "about": "정보",
+    "assistant": "AI 어시스턴트",
     "searchResults": "검색 결과"
   },
   "search": {
@@ -48,7 +49,8 @@ export default {
         "behavior": "동작",
         "surface": "화면",
         "providers": "소스",
-        "system": "관리"
+        "system": "관리",
+        "assistant": "AI"
       },
       "generalDesc": "언어, 데스크톱 오버레이, 기본 동작을 정리합니다.",
       "appearanceDesc": "배경, 타이포그래피, 모션, 레이아웃을 조정합니다.",
@@ -60,7 +62,8 @@ export default {
       "aiProvidersDesc": "AI 번역 및 처리 제공자를 설정합니다.",
       "advancedDesc": "감지, 캐시, 헬퍼 연동 등 고급 기능을 다룹니다.",
       "debugDesc": "진단, 복구, 문제 해결 도구를 제공합니다.",
-      "aboutDesc": "버전, 업데이트, 기여자, 패치 노트를 확인합니다."
+      "aboutDesc": "버전, 업데이트, 기여자, 패치 노트를 확인합니다.",
+      "assistantDesc": "원하는 걸 편하게 말하면 맞는 설정을 찾아 설명하고 바로 바꿔 드려요."
     },
     "background": {
       "none": "미니멀",
@@ -86,6 +89,37 @@ export default {
       "emptyDesc": "모든 설정이 기본값입니다",
       "count": "{count}개",
       "resetConfirm": "{count}개 설정을 기본값으로 되돌릴까요?"
+    },
+    "assistant": {
+      "intro": "바꾸고 싶은 걸 말해 주세요. 맞는 설정을 찾아 바로 적용하고, 여기서 더 조정할 수 있게 보여 드릴게요.",
+      "providerNote": "AI 제공자에서 '설정 어시스턴트'가 켜진 제공자를 사용해요. 입력한 메시지와 ivLyrics 설정 목록이 해당 제공자로 전송됩니다.",
+      "placeholder": "예: 전체화면에서 컨트롤러 자동으로 숨겨 줘",
+      "send": "보내기",
+      "stop": "중지",
+      "newChat": "새 대화",
+      "thinking": "설정을 살펴보는 중…",
+      "examplesTitle": "이렇게 물어보세요",
+      "examples": {
+        "autoHide": "전체화면에서 컨트롤러 자동으로 숨겨 줘",
+        "fontSize": "가사 글자 좀 키워 줘",
+        "translation": "가사를 영어로 번역해 줘",
+        "performance": "가사 화면이 버벅여요. 가볍게 해 줘"
+      },
+      "noProviderTitle": "사용할 수 있는 AI 제공자가 없어요",
+      "noProviderDesc": "ChatGPT, Gemini, Claude 같은 AI 제공자에 API 키를 넣고 활성화한 다음 '설정 어시스턴트' 기능을 켜 주세요.",
+      "openProviders": "AI 제공자 열기",
+      "error": "AI 요청에 실패했어요: {message}",
+      "invalidResponse": "AI 응답을 읽지 못했어요. 다시 시도해 주세요.",
+      "stopped": "중지했어요.",
+      "changedCount": "설정 {count}개를 바꿨어요",
+      "undo": "되돌리기",
+      "undone": "변경을 되돌렸어요",
+      "adjusted": "허용 범위에 맞게 조정했어요: {settings}",
+      "skipped": "바꾸지 못한 설정: {settings}",
+      "openInSettings": "설정에서 열기",
+      "you": "나",
+      "name": "어시스턴트",
+      "askAi": "AI 어시스턴트에게 물어보기"
     },
     "controls": {
       "colorPickerAriaLabel": "{name} 색상 선택",
@@ -540,7 +574,8 @@ export default {
         "characterPronunciation": "글자 발음",
         "culturalAnnotations": "문화적 배경",
         "wordSupplements": "단어 상세",
-        "motionDirection": "모션 연출"
+        "motionDirection": "모션 연출",
+        "settingsAssistant": "설정 어시스턴트"
       },
       "noEnabledProviders": "활성화된 AI 제공자가 없습니다. 설정에서 최소 하나 이상의 제공자를 활성화해주세요.",
       "noPronunciationProviders": "발음을 생성할 수 있는 AI 제공자가 켜져 있지 않습니다. AI 제공자 설정에서 제공자의 '발음' 기능을 켜 주세요.",

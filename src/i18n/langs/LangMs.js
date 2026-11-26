@@ -17,6 +17,7 @@ export default {
     "nowplaying": "Lirik Panel",
     "debug": "Nyahpepijat",
     "about": "Perihal",
+    "assistant": "Pembantu AI",
     "searchResults": "Keputusan Carian"
   },
   "search": {
@@ -48,7 +49,8 @@ export default {
         "behavior": "Gelagat",
         "surface": "Skrin",
         "providers": "Sumber",
-        "system": "Urus"
+        "system": "Urus",
+        "assistant": "AI"
       },
       "generalDesc": "Urus bahasa, tindihan desktop, dan gelagat asas.",
       "appearanceDesc": "Laraskan latar belakang, tipografi, gerakan, dan susun atur.",
@@ -60,7 +62,8 @@ export default {
       "aiProvidersDesc": "Tetapkan penyedia terjemahan AI dan pemprosesan.",
       "advancedDesc": "Kendalikan fungsi lanjutan seperti pengesanan, cache, dan penyepaduan pembantu.",
       "debugDesc": "Menyediakan alat diagnostik, pemulihan, dan penyelesaian masalah.",
-      "aboutDesc": "Semak versi, kemas kini, penyumbang, dan nota tampalan."
+      "aboutDesc": "Semak versi, kemas kini, penyumbang, dan nota tampalan.",
+      "assistantDesc": "Nyatakan dengan kata-kata anda sendiri. Ia akan mencari tetapan yang sesuai, menerangkannya dan mengubahnya untuk anda."
     },
     "background": {
       "none": "Minimalis",
@@ -86,6 +89,37 @@ export default {
       "emptyDesc": "Semua tetapan masih lalai",
       "count": "{count} tetapan",
       "resetConfirm": "Set semula {count} tetapan kepada lalai?"
+    },
+    "assistant": {
+      "intro": "Beritahu saya apa yang anda mahu ubah. Saya akan cari tetapan yang sepadan, menggunakannya dan memaparkannya di sini supaya anda boleh memperhalusinya.",
+      "providerNote": "Menggunakan penyedia AI anda yang menghidupkan “Pembantu tetapan”. Mesej anda dan senarai tetapan ivLyrics akan dihantar kepada penyedia tersebut.",
+      "placeholder": "Tanya apa sahaja tentang tetapan, cth. “Sembunyikan pengawal secara automatik dalam skrin penuh”",
+      "send": "Hantar",
+      "stop": "Henti",
+      "newChat": "Sembang baharu",
+      "thinking": "Sedang menyemak tetapan…",
+      "examplesTitle": "Cuba tanya",
+      "examples": {
+        "autoHide": "Sembunyikan pengawal secara automatik dalam skrin penuh",
+        "fontSize": "Besarkan lirik",
+        "translation": "Terjemahkan lirik ke bahasa Inggeris",
+        "performance": "Halaman lirik terasa perlahan. Jadikan lebih ringan."
+      },
+      "noProviderTitle": "Tiada penyedia AI yang sedia",
+      "noProviderDesc": "Tambah kunci API anda pada penyedia AI seperti ChatGPT, Gemini atau Claude, aktifkannya dan pastikan “Pembantu tetapan” dihidupkan.",
+      "openProviders": "Buka Penyedia AI",
+      "error": "Permintaan AI gagal: {message}",
+      "invalidResponse": "Jawapan AI tidak dapat dibaca. Sila cuba lagi.",
+      "stopped": "Dihentikan.",
+      "changedCount": "{count} tetapan diubah",
+      "undo": "Buat asal",
+      "undone": "Perubahan dibuat asal",
+      "adjusted": "Dilaraskan mengikut julat yang dibenarkan: {settings}",
+      "skipped": "Tidak dapat diubah: {settings}",
+      "openInSettings": "Buka dalam tetapan",
+      "you": "Anda",
+      "name": "Pembantu",
+      "askAi": "Tanya pembantu AI"
     },
     "controls": {
       "colorPickerAriaLabel": "Pemilih warna {name}",
@@ -536,7 +570,8 @@ export default {
         "characterPronunciation": "Sebutan Huruf",
         "culturalAnnotations": "Konteks budaya",
         "wordSupplements": "Perincian perkataan",
-        "motionDirection": "Arahan gerakan"
+        "motionDirection": "Arahan gerakan",
+        "settingsAssistant": "Pembantu tetapan"
       },
       "noEnabledProviders": "Tiada penyedia AI yang aktif. Sila aktifkan sekurang-kurangnya satu penyedia dalam tetapan.",
       "noPronunciationProviders": "Tiada penyedia AI aktif yang boleh menjana sebutan. Hidupkan “Sebutan” untuk salah satu penyedia dalam tetapan Penyedia AI.",

@@ -17,6 +17,7 @@ export default {
     "nowplaying": "Panel Lyrics",
     "debug": "Debug",
     "about": "About",
+    "assistant": "AI Assistant",
     "searchResults": "Search Results"
   },
   "search": {
@@ -48,7 +49,8 @@ export default {
         "behavior": "Flow",
         "surface": "View",
         "providers": "Source",
-        "system": "Ops"
+        "system": "Ops",
+        "assistant": "AI"
       },
       "generalDesc": "Language, desktop overlay, and core workspace defaults.",
       "appearanceDesc": "Backgrounds, typography, motion, and screen composition.",
@@ -60,7 +62,8 @@ export default {
       "aiProvidersDesc": "AI translation and processing provider configuration.",
       "advancedDesc": "Detection, cache, helper apps, and advanced controls.",
       "debugDesc": "Diagnostics, recovery utilities, and troubleshooting tools.",
-      "aboutDesc": "Version details, update checks, credits, and patch notes."
+      "aboutDesc": "Version details, update checks, credits, and patch notes.",
+      "assistantDesc": "Ask in your own words. It finds the right settings, explains them and changes them for you."
     },
     "background": {
       "none": "Minimal",
@@ -86,6 +89,37 @@ export default {
       "emptyDesc": "Every setting is at its default",
       "count": "{count} settings",
       "resetConfirm": "Reset {count} settings to their defaults?"
+    },
+    "assistant": {
+      "intro": "Tell me what you want to change. I'll find the matching settings, apply them and show them here so you can fine-tune them.",
+      "providerNote": "Uses your AI providers that have “Settings assistant” turned on. Your message and the list of ivLyrics settings are sent to that provider.",
+      "placeholder": "Ask anything about settings, e.g. “Hide the controller automatically in fullscreen”",
+      "send": "Send",
+      "stop": "Stop",
+      "newChat": "New chat",
+      "thinking": "Looking through the settings…",
+      "examplesTitle": "Try asking",
+      "examples": {
+        "autoHide": "Hide the controller automatically in fullscreen",
+        "fontSize": "Make the lyrics bigger",
+        "translation": "Translate lyrics into English",
+        "performance": "The lyrics page feels slow. Make it lighter."
+      },
+      "noProviderTitle": "No AI provider is ready",
+      "noProviderDesc": "Add your API key to an AI provider such as ChatGPT, Gemini or Claude, enable it, and keep “Settings assistant” on for it.",
+      "openProviders": "Open AI Providers",
+      "error": "The AI request failed: {message}",
+      "invalidResponse": "The AI's answer could not be read. Please try again.",
+      "stopped": "Stopped.",
+      "changedCount": "{count} settings changed",
+      "undo": "Undo",
+      "undone": "Changes undone",
+      "adjusted": "Adjusted to the allowed range: {settings}",
+      "skipped": "Could not change: {settings}",
+      "openInSettings": "Open in settings",
+      "you": "You",
+      "name": "Assistant",
+      "askAi": "Ask the AI assistant"
     },
     "controls": {
       "colorPickerAriaLabel": "{name} color picker",
@@ -540,7 +574,8 @@ export default {
         "characterPronunciation": "Character pronunciation",
         "culturalAnnotations": "Cultural context",
         "wordSupplements": "Word details",
-        "motionDirection": "Motion direction"
+        "motionDirection": "Motion direction",
+        "settingsAssistant": "Settings assistant"
       },
       "noEnabledProviders": "No AI providers enabled. Please enable at least one provider in settings.",
       "noPronunciationProviders": "No enabled AI provider can generate pronunciation. Turn on Pronunciation for an AI provider in AI Providers settings.",

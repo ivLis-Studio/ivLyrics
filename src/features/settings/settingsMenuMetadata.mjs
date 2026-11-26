@@ -1,4 +1,5 @@
 export const SETTINGS_TAB_TRANSLATION_KEYS = {
+  assistant: "tabs.assistant",
   general: "tabs.general",
   appearance: "tabs.appearance",
   performance: "tabs.performance",
@@ -14,6 +15,13 @@ export const SETTINGS_TAB_TRANSLATION_KEYS = {
 
 export function createSettingsMenuMetadata(activeTab, translate, getSettingsText) {
   const tabMeta = {
+    assistant: {
+      label: translate(SETTINGS_TAB_TRANSLATION_KEYS.assistant) || "AI Assistant",
+      description: getSettingsText(
+        "settingsUi.nav.assistantDesc",
+        "Ask in your own words. It finds the right settings, explains them and changes them for you."
+      ),
+    },
     general: {
       label: translate(SETTINGS_TAB_TRANSLATION_KEYS.general),
       description: getSettingsText(
@@ -96,6 +104,9 @@ export function createSettingsMenuMetadata(activeTab, translate, getSettingsText
   const activeTabMeta = tabMeta[activeTab] || tabMeta.general;
 
   const sidebarTabs = [
+    // The AI settings assistant (settingsAssistantPanel.mjs) is a chat, not
+    // a list of rows; settingsGuide.mjs lists it as the first menu.
+    { id: "assistant", icon: "assistant", group: "assistant" },
     { id: "general", icon: "general", group: "general" },
     { id: "lyrics-providers", icon: "lyrics-providers", group: "sources" },
     { id: "ai-providers", icon: "ai-providers", group: "sources" },
@@ -109,6 +120,10 @@ export function createSettingsMenuMetadata(activeTab, translate, getSettingsText
     { id: "about", icon: "about", group: "system" },
   ].map((tab) => ({ ...tab, ...tabMeta[tab.id] }));
   const sidebarGroups = [
+    {
+      id: "assistant",
+      label: getSettingsText("settingsUi.nav.badges.assistant", "AI"),
+    },
     {
       id: "general",
       label: translate(SETTINGS_TAB_TRANSLATION_KEYS.general) || "General",

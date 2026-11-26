@@ -15,6 +15,7 @@ export default {
     "nowplaying": "Panneau latéral",
     "debug": "Débogage",
     "about": "À propos",
+    "assistant": "Assistant IA",
     "lyricsProviders": "Fournisseurs de paroles",
     "aiProviders": "Fournisseurs d'IA",
     "searchResults": "Résultats"
@@ -48,7 +49,8 @@ export default {
         "behavior": "Flux",
         "surface": "Vue",
         "providers": "Source",
-        "system": "Système"
+        "system": "Système",
+        "assistant": "IA"
       },
       "generalDesc": "Langue, overlay bureau et réglages principaux.",
       "appearanceDesc": "Arrière-plans, typographie, animations et composition de l’écran.",
@@ -60,7 +62,8 @@ export default {
       "aiProvidersDesc": "Configuration des fournisseurs IA pour la traduction et le traitement.",
       "advancedDesc": "Détection, cache, applications auxiliaires et options avancées.",
       "debugDesc": "Diagnostic, outils de récupération et dépannage.",
-      "aboutDesc": "Version, mises à jour, crédits et notes de version."
+      "aboutDesc": "Version, mises à jour, crédits et notes de version.",
+      "assistantDesc": "Décrivez ce que vous voulez avec vos mots : il trouve les bons paramètres, les explique et les modifie pour vous."
     },
     "background": {
       "none": "Minimal",
@@ -86,6 +89,37 @@ export default {
       "emptyDesc": "Tous les paramètres sont à leur valeur par défaut",
       "count": "{count} paramètres",
       "resetConfirm": "Rétablir {count} paramètres à leur valeur par défaut ?"
+    },
+    "assistant": {
+      "intro": "Dites-moi ce que vous voulez changer. Je trouve les paramètres correspondants, je les applique et je les affiche ici pour que vous puissiez les ajuster.",
+      "providerNote": "Utilise vos fournisseurs d'IA pour lesquels « Assistant des paramètres » est activé. Votre message et la liste des paramètres d'ivLyrics sont envoyés à ce fournisseur.",
+      "placeholder": "Posez votre question, p. ex. « Masquer automatiquement le contrôleur en plein écran »",
+      "send": "Envoyer",
+      "stop": "Arrêter",
+      "newChat": "Nouvelle discussion",
+      "thinking": "Recherche dans les paramètres…",
+      "examplesTitle": "Essayez par exemple",
+      "examples": {
+        "autoHide": "Masquer automatiquement le contrôleur en plein écran",
+        "fontSize": "Agrandir les paroles",
+        "translation": "Traduire les paroles en anglais",
+        "performance": "La page des paroles rame, il faudrait l'alléger."
+      },
+      "noProviderTitle": "Aucun fournisseur d'IA n'est prêt",
+      "noProviderDesc": "Ajoutez votre clé API à un fournisseur d'IA comme ChatGPT, Gemini ou Claude, activez-le et laissez « Assistant des paramètres » activé.",
+      "openProviders": "Ouvrir Fournisseurs d'IA",
+      "error": "La requête IA a échoué : {message}",
+      "invalidResponse": "Impossible de lire la réponse de l'IA. Veuillez réessayer.",
+      "stopped": "Arrêté.",
+      "changedCount": "{count} paramètres modifiés",
+      "undo": "Annuler",
+      "undone": "Modifications annulées",
+      "adjusted": "Ajusté à la plage autorisée : {settings}",
+      "skipped": "Impossible de modifier : {settings}",
+      "openInSettings": "Ouvrir dans les paramètres",
+      "you": "Vous",
+      "name": "Assistant",
+      "askAi": "Demander à l'assistant IA"
     },
     "controls": {
       "colorPickerAriaLabel": "Sélecteur de couleur {name}",
@@ -536,7 +570,8 @@ export default {
         "characterPronunciation": "Prononciation par caractère",
         "culturalAnnotations": "Contexte culturel",
         "wordSupplements": "Détails des mots",
-        "motionDirection": "Réalisation motion"
+        "motionDirection": "Réalisation motion",
+        "settingsAssistant": "Assistant des paramètres"
       },
       "noEnabledProviders": "Aucun fournisseur d'IA activé. Veuillez en activer au moins un dans les paramètres.",
       "noPronunciationProviders": "Aucun fournisseur d'IA activé ne peut générer la prononciation. Activez « Prononciation » pour un fournisseur dans les paramètres Fournisseurs d'IA.",

@@ -919,6 +919,62 @@ export const createSettingsModalCss = (APP_NAME) => getSettingsSurfaceTokenCss(`
 #${APP_NAME}-config-container .settings-empty-icon svg { width: 22px; height: 22px; }
 #${APP_NAME}-config-container .settings-empty-state b { font-size: 14px; font-weight: 500; color: var(--text); }
 
+/* ---------------------------------------------------------------- AI settings assistant */
+/* The chat fills the page so the message box stays at the bottom. */
+#${APP_NAME}-config-container .settings-page:has(> .settings-assistant) { display: flex; flex-direction: column; min-height: 100%; padding-bottom: 0; }
+#${APP_NAME}-config-container .settings-assistant { flex: 1 0 auto; display: flex; flex-direction: column; gap: 12px; padding-top: 16px; }
+#${APP_NAME}-config-container .settings-assistant-notice { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r-lg); border: 1px solid var(--line); background: var(--surface); color: var(--text-2); font-size: 13px; }
+#${APP_NAME}-config-container .settings-assistant-notice > svg { width: 18px; height: 18px; flex: 0 0 auto; color: var(--accent-text); }
+#${APP_NAME}-config-container .settings-assistant-notice-text { display: grid; gap: 2px; flex: 1; min-width: 0; }
+#${APP_NAME}-config-container .settings-assistant-notice-text b { font-weight: 500; color: var(--text); }
+#${APP_NAME}-config-container .settings-assistant-thread { flex: 1 0 auto; display: flex; flex-direction: column; gap: 18px; min-height: 240px; }
+#${APP_NAME}-config-container .settings-assistant-empty { display: grid; justify-items: center; gap: 10px; padding: 40px 12px 24px; text-align: center; color: var(--text-2); font-size: 13.5px; }
+/* Chat text breaks between words (Korean keeps words whole); text without spaces still wraps. */
+#${APP_NAME}-config-container .settings-assistant-empty p, #${APP_NAME}-config-container .settings-assistant-text, #${APP_NAME}-config-container .settings-assistant-bubble, #${APP_NAME}-config-container .settings-assistant-note { word-break: keep-all; overflow-wrap: anywhere; }
+#${APP_NAME}-config-container .settings-assistant-empty p { max-width: 520px; margin: 0; text-wrap: balance; }
+#${APP_NAME}-config-container .settings-assistant-examples-title { margin-top: 8px; font-size: 12px; font-weight: 500; color: var(--text-3); }
+#${APP_NAME}-config-container .settings-assistant-examples { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 640px; }
+#${APP_NAME}-config-container .settings-assistant-example { padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); font-size: 12.5px; line-height: 1.4; transition: background var(--t-fast), border-color var(--t-fast); }
+#${APP_NAME}-config-container .settings-assistant-example:hover:not(:disabled) { background: var(--surface-3); border-color: var(--line-3); }
+#${APP_NAME}-config-container .settings-assistant-example:disabled { opacity: .5; }
+#${APP_NAME}-config-container .settings-assistant-msg { display: flex; gap: 10px; min-width: 0; }
+#${APP_NAME}-config-container .settings-assistant-msg.is-user { justify-content: flex-end; }
+#${APP_NAME}-config-container .settings-assistant-bubble { max-width: min(78%, 620px); margin: 0; padding: 9px 13px; border-radius: 14px 14px 4px 14px; background: var(--ink); color: var(--ink-text); font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+#${APP_NAME}-config-container .settings-assistant-avatar { display: grid; place-items: center; flex: 0 0 auto; width: 28px; height: 28px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface-2); color: var(--accent-text); }
+#${APP_NAME}-config-container .settings-assistant-avatar svg { width: 15px; height: 15px; }
+#${APP_NAME}-config-container .settings-assistant-body { display: grid; gap: 8px; flex: 1; min-width: 0; padding-top: 3px; }
+#${APP_NAME}-config-container .settings-assistant-text { margin: 0; color: var(--text); font-size: 13.5px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+#${APP_NAME}-config-container .settings-assistant-msg.is-error .settings-assistant-text { color: var(--danger); }
+#${APP_NAME}-config-container .settings-assistant-msg.is-invalid .settings-assistant-text, #${APP_NAME}-config-container .settings-assistant-msg.is-stopped .settings-assistant-text { color: var(--text-3); }
+#${APP_NAME}-config-container .settings-assistant-changes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+#${APP_NAME}-config-container .settings-assistant-changes .settings-pill svg { width: 12px; height: 12px; }
+#${APP_NAME}-config-container .settings-assistant-note { margin: 0; font-size: 12px; color: var(--text-3); }
+#${APP_NAME}-config-container .settings-assistant-note.is-warning { color: var(--warn); }
+#${APP_NAME}-config-container .settings-assistant-body > .option-list-wrapper { overflow: hidden; border-radius: var(--r-lg); border: 1px solid var(--line); background: var(--surface); }
+#${APP_NAME}-config-container .settings-assistant-link { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r-lg); border: 1px solid var(--line); background: var(--surface); }
+#${APP_NAME}-config-container .settings-assistant-link-text { display: grid; gap: 2px; flex: 1; min-width: 0; font-size: 12.5px; color: var(--text-3); }
+#${APP_NAME}-config-container .settings-assistant-link-text b { font-size: 13.5px; font-weight: 500; color: var(--text); }
+#${APP_NAME}-config-container .settings-assistant-link-location { font-size: 11.5px; color: var(--text-4); }
+#${APP_NAME}-config-container .settings-assistant-thinking { display: inline-flex; align-items: center; gap: 8px; color: var(--text-3); }
+#${APP_NAME}-config-container .settings-assistant-dots { display: inline-flex; gap: 3px; }
+#${APP_NAME}-config-container .settings-assistant-dots i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: settings-assistant-dot 1.2s ease-in-out infinite; }
+#${APP_NAME}-config-container .settings-assistant-dots i:nth-child(2) { animation-delay: .15s; }
+#${APP_NAME}-config-container .settings-assistant-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes settings-assistant-dot { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+#${APP_NAME}-config-container .settings-assistant-composer { position: sticky; bottom: 0; z-index: 2; display: grid; gap: 8px; padding: 12px 0 16px; background: var(--bg); box-shadow: 0 -14px 14px -6px var(--bg); }
+#${APP_NAME}-config-container .settings-assistant-field { display: flex; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 14px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--surface); transition: border-color var(--t-fast), box-shadow var(--t-fast); }
+#${APP_NAME}-config-container .settings-assistant-field:focus-within { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
+/* Settings textareas default to the code font with their own focus ring; the chat field uses the text font and the field's ring. */
+#${APP_NAME}-config-container .settings-assistant-input { flex: 1; min-width: 0; min-height: 34px; max-height: 160px; padding: 7px 0; overflow-y: hidden; border: 0; border-radius: 0; background: transparent; box-shadow: none; resize: none; color: var(--text); font-family: var(--font); font-size: 13.5px; line-height: 1.5; }
+#${APP_NAME}-config-container .settings-assistant-input:focus, #${APP_NAME}-config-container .settings-assistant-input:focus-visible { border: 0; background: transparent; box-shadow: none; }
+#${APP_NAME}-config-container .settings-assistant-input::placeholder { color: var(--text-4); }
+#${APP_NAME}-config-container .settings-assistant-send { flex: 0 0 auto; width: 34px; min-height: 34px; padding: 0; }
+#${APP_NAME}-config-container .settings-assistant-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 11.5px; line-height: 1.45; color: var(--text-4); }
+#${APP_NAME}-config-container .settings-assistant-foot > span { min-width: 0; }
+#${APP_NAME}-config-container .settings-search-ask-row { flex: 0 0 auto; padding: 4px; border-top: 1px solid var(--line); }
+#${APP_NAME}-config-container .settings-search-ask .settings-search-result-icon { color: var(--accent-text); }
+#${APP_NAME}-config-container.motion-reduced .settings-assistant-dots i { animation: none !important; opacity: .6; }
+
 /* ---------------------------------------------------------------- live preview dock */
 #${APP_NAME}-config-container .settings-dock { display: flex; flex-direction: column; width: 320px; min-height: 0; overflow: hidden; border-left: 1px solid var(--line); background: var(--bg-2); transition: width var(--t-slow) var(--ease-out); }
 #${APP_NAME}-config-container .settings-dock.is-collapsed { width: 44px; }

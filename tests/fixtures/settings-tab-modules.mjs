@@ -48,6 +48,8 @@ import { createSettingsEventChannel, createVisualSettingsActions } from "../../s
 import { collectSettingsRegistry, indexSettingsSearch } from "../../src/features/settings/settingsRegistry.mjs";
 import { createSettingsFullscreenPreview, SETTINGS_CD_RAINBOW_HUES, SETTINGS_CD_STYLE_ORDER } from "../../src/features/settings/createSettingsFullscreenPreview.mjs";
 import { readSettingFlag, readSettingNumber } from "../../src/features/settings/settingsPreviewValues.mjs";
+import { createSettingsAssistantSession } from "../../src/features/settings/settingsAssistantSession.mjs";
+import { createSettingsAssistantPanel } from "../../src/features/settings/settingsAssistantPanel.mjs";
 import {
   SYNC_CREATOR_SHORTCUT_DEFAULTS, SYNC_CREATOR_AUTO_BOUNDARY_CHARS_KEY, SYNC_CREATOR_AUTO_BOUNDARY_CHARS_DEFAULT,
 } from "../../src/features/sync/syncCreatorShortcutSettings.mjs";
@@ -107,6 +109,8 @@ export const settingsTabModules = {
   SETTINGS_CD_STYLE_ORDER,
   readSettingFlag,
   readSettingNumber,
+  createSettingsAssistantSession,
+  createSettingsAssistantPanel,
 };
 
 

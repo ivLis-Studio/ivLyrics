@@ -15,6 +15,7 @@ export default {
     "nowplaying": "面板歌词",
     "debug": "调试",
     "about": "关于",
+    "assistant": "AI 助手",
     "lyricsProviders": "歌词提供商",
     "aiProviders": "AI 提供商",
     "searchResults": "搜索结果"
@@ -48,7 +49,8 @@ export default {
         "behavior": "流程",
         "surface": "视图",
         "providers": "来源",
-        "system": "系统"
+        "system": "系统",
+        "assistant": "AI"
       },
       "generalDesc": "语言、桌面悬浮窗与核心默认设置。",
       "appearanceDesc": "背景、字体、动效与画面布局。",
@@ -60,7 +62,8 @@ export default {
       "aiProvidersDesc": "AI 翻译与处理提供商配置。",
       "advancedDesc": "检测、缓存、辅助程序与高级控制。",
       "debugDesc": "诊断、恢复工具与问题排查。",
-      "aboutDesc": "版本信息、更新检查、致谢与更新日志。"
+      "aboutDesc": "版本信息、更新检查、致谢与更新日志。",
+      "assistantDesc": "用自己的话说出需求，它会找到合适的设置、加以说明并直接帮你修改。"
     },
     "background": {
       "none": "极简",
@@ -86,6 +89,37 @@ export default {
       "emptyDesc": "所有设置均为默认值",
       "count": "{count} 项",
       "resetConfirm": "要将 {count} 项设置恢复为默认值吗？"
+    },
+    "assistant": {
+      "intro": "告诉我你想改什么。我会找到相应的设置并立即应用，再显示在这里供你进一步微调。",
+      "providerNote": "将使用已开启“设置助手”的 AI 提供商。你输入的消息和 ivLyrics 设置列表会发送给该提供商。",
+      "placeholder": "关于设置的问题尽管问，例如“全屏时自动隐藏控制器”",
+      "send": "发送",
+      "stop": "停止",
+      "newChat": "新对话",
+      "thinking": "正在查看设置…",
+      "examplesTitle": "试着这样问",
+      "examples": {
+        "autoHide": "全屏时自动隐藏控制器",
+        "fontSize": "把歌词字体调大一点",
+        "translation": "把歌词翻译成英文",
+        "performance": "歌词页面有点卡，帮我调轻一些"
+      },
+      "noProviderTitle": "没有可用的 AI 提供商",
+      "noProviderDesc": "在 ChatGPT、Gemini 或 Claude 等 AI 提供商中填入 API 密钥并启用，然后开启“设置助手”。",
+      "openProviders": "打开 AI 提供商",
+      "error": "AI 请求失败：{message}",
+      "invalidResponse": "无法读取 AI 的回复，请重试。",
+      "stopped": "已停止。",
+      "changedCount": "已更改 {count} 项设置",
+      "undo": "撤销",
+      "undone": "已撤销更改",
+      "adjusted": "已调整到允许范围：{settings}",
+      "skipped": "无法更改：{settings}",
+      "openInSettings": "在设置中打开",
+      "you": "你",
+      "name": "助手",
+      "askAi": "问问 AI 助手"
     },
     "controls": {
       "colorPickerAriaLabel": "{name} 颜色选择器",
@@ -536,7 +570,8 @@ export default {
         "characterPronunciation": "逐字发音",
         "culturalAnnotations": "文化背景",
         "wordSupplements": "单词详情",
-        "motionDirection": "动态演出"
+        "motionDirection": "动态演出",
+        "settingsAssistant": "设置助手"
       },
       "noEnabledProviders": "未启用 AI 提供商。请在设置中至少启用一个提供商。",
       "noPronunciationProviders": "没有已启用的 AI 提供商可以生成发音。请在 AI 提供商设置中为某个提供商开启“发音”。",

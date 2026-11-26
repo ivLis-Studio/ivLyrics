@@ -1,6 +1,6 @@
 const AI_ADDON_CAPABILITY_ORDER = Object.freeze([
   "pronunciation", "translate", "metadata", "tmi", "researchWebSearch",
-  "lyricsStudy", "characterPronunciation", "culturalAnnotations", "wordSupplements", "motionDirection",
+  "lyricsStudy", "characterPronunciation", "culturalAnnotations", "wordSupplements", "motionDirection", "settingsAssistant",
 ]);
 
 export const getOrderedAddonCapabilities = (supports) => {
@@ -26,6 +26,7 @@ const SETTINGS_AI_CAPABILITY_LABELS = Object.freeze({
   culturalAnnotations: ["settings.aiProviders.supports.culturalAnnotations", "Cultural context"],
   wordSupplements: ["settings.aiProviders.supports.wordSupplements", "Word details"],
   motionDirection: ["settings.aiProviders.supports.motionDirection", "Motion direction"],
+  settingsAssistant: ["settings.aiProviders.supports.settingsAssistant", "Settings assistant"],
 });
 
 export const getSettingsAiCapabilityLabel = (translate, capability) => {

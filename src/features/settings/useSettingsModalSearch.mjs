@@ -6,9 +6,8 @@ import { getRecordingHotkeyControl } from "./settingsHotkeyControls.mjs";
 
 export function useSettingsModalSearch(react, {
   host, document, activeTab, changedView, settingsContentRef, interfaceLanguage,
-  getPerformanceSettingsSections, getCdSettingsSections, getSettingsText,
   translate, getAllTranslations, getDeclaredSearchIndex,
-  navigateToDestination, SettingsUiIcon, SettingsOutlineIcon,
+  navigateToDestination, askAssistant, SettingsUiIcon, SettingsOutlineIcon,
 }) {
   const searchInputRef = react.useRef(null);
   const searchBoxRef = react.useRef(null);
@@ -30,12 +29,7 @@ export function useSettingsModalSearch(react, {
     setSearchActiveIndex(0);
   };
 
-  const searchableSettings = react.useMemo(() => buildSettingsSearchCatalog({
-    translate,
-    getPerformanceSettingsSections,
-    getSettingsText,
-    getCdSettingsSections,
-  }), [interfaceLanguage]);
+  const searchableSettings = react.useMemo(() => buildSettingsSearchCatalog({ translate }), [interfaceLanguage]);
 
   const discoveredSearchSettings = useSettingsSearchIndex(react, {
     host,
@@ -66,6 +60,16 @@ export function useSettingsModalSearch(react, {
     navigateToDestination(item.sectionKey, item.settingKey);
   };
 
+  const askAssistantAbout = askAssistant ? (query) => {
+    const question = String(query || "").trim();
+    if (!question) return;
+    setSearchPanelOpen(false);
+    setSearchQuery("");
+    setSearchActiveIndex(0);
+    document?.activeElement?.blur?.();
+    askAssistant(question);
+  } : null;
+
   const handleSearchKeyDown = (event) => {
     const results = getVisibleSearchResults();
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -80,6 +84,8 @@ export function useSettingsModalSearch(react, {
       event.preventDefault();
       const activeIndex = Math.min(searchActiveIndex, results.length - 1);
       if (activeIndex >= 0) pickSearchResult(results[activeIndex]);
+      // Nothing matched: ask the AI assistant instead.
+      else askAssistantAbout?.(searchQuery);
     }
   };
 
@@ -91,6 +97,7 @@ export function useSettingsModalSearch(react, {
     translate,
     pickSearchResult,
     setSearchActiveIndex,
+    askAssistant: askAssistantAbout,
     SettingsUiIcon,
     SettingsOutlineIcon,
   });

@@ -12,7 +12,7 @@ export function createEndpointId() {
  * support flag: endpoints without web search serve Research through
  * plain chat completions instead of the Responses API.
  */
-export const ENDPOINT_CAPABILITIES = ['pronunciation', 'translate', 'metadata', 'tmi', 'researchWebSearch', 'lyricsStudy', 'characterPronunciation', 'culturalAnnotations', 'wordSupplements', 'motionDirection'];
+export const ENDPOINT_CAPABILITIES = ['pronunciation', 'translate', 'metadata', 'tmi', 'researchWebSearch', 'lyricsStudy', 'characterPronunciation', 'culturalAnnotations', 'wordSupplements', 'motionDirection', 'settingsAssistant'];
 export const ENDPOINT_CAPABILITY_FALLBACKS = {
     pronunciation: 'Pronunciation',
     translate: 'Translation',
@@ -23,7 +23,8 @@ export const ENDPOINT_CAPABILITY_FALLBACKS = {
     characterPronunciation: 'Character pronunciation',
     culturalAnnotations: 'Cultural context',
     wordSupplements: 'Word details',
-    motionDirection: 'Motion direction'
+    motionDirection: 'Motion direction',
+    settingsAssistant: 'Settings assistant'
 };
 
 export function isEndpointCapabilityEnabled(capabilities, capability) {

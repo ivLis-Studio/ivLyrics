@@ -32,11 +32,38 @@ function highlightText(react, text, query) {
 
 export function renderSettingsSearchPanel(react, {
   searchQuery, searchPanelOpen, searchResults, searchActiveIndex,
-  translate, pickSearchResult, setSearchActiveIndex, SettingsUiIcon, SettingsOutlineIcon,
+  translate, pickSearchResult, setSearchActiveIndex, askAssistant, SettingsUiIcon, SettingsOutlineIcon,
 }) {
   if (!searchQuery.trim() || !searchPanelOpen) {
     return null;
   }
+
+  // Questions in plain words ("how do I hide the controller?") rarely match a
+  // setting name; the last row hands the query to the AI settings assistant.
+  const askRow = askAssistant ? react.createElement(
+    "div",
+    { className: "settings-search-ask-row" },
+    react.createElement(
+      "button",
+      {
+        type: "button",
+        className: "settings-search-result settings-search-ask",
+        onMouseDown: (event) => event.preventDefault(),
+        onClick: () => askAssistant(searchQuery),
+      },
+      react.createElement(
+        "span",
+        { className: "settings-search-result-icon", "aria-hidden": "true" },
+        react.createElement(SettingsOutlineIcon, { name: "assistant", size: 15 })
+      ),
+      react.createElement(
+        "span",
+        { className: "settings-search-result-main" },
+        react.createElement("b", null, translate("settingsUi.assistant.askAi") || "Ask the AI assistant"),
+        react.createElement("small", null, searchQuery.trim())
+      )
+    )
+  ) : null;
 
   const results = searchResults.slice(0, SETTINGS_SEARCH_RESULT_LIMIT);
   const activeIndex = Math.min(searchActiveIndex, Math.max(0, results.length - 1));
@@ -62,7 +89,8 @@ export function renderSettingsSearchPanel(react, {
         react.createElement(SettingsUiIcon, { name: "search", size: 20, className: "search-no-results-icon" }),
         react.createElement("h3", { className: "search-no-results-title" }, translate("search.noResults")),
         react.createElement("p", { className: "search-no-results-desc" }, translate("search.noResultsDesc"))
-      )
+      ),
+      askRow
     );
   }
 
@@ -127,7 +155,8 @@ export function renderSettingsSearchPanel(react, {
             );
           })
         )
-      )
+      ),
+      askRow
     )
   );
 }

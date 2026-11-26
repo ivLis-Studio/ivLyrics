@@ -15,6 +15,7 @@ export default {
     "nowplaying": "Lời bài hát (Panel)",
     "debug": "Gỡ lỗi",
     "about": "Thông tin",
+    "assistant": "Trợ lý AI",
     "lyricsProviders": "Nhà cung cấp lời bài hát",
     "aiProviders": "Nhà cung cấp AI",
     "searchResults": "Kết quả tìm kiếm"
@@ -48,7 +49,8 @@ export default {
         "behavior": "Luồng",
         "surface": "Giao diện",
         "providers": "Nguồn",
-        "system": "Hệ thống"
+        "system": "Hệ thống",
+        "assistant": "AI"
       },
       "generalDesc": "Ngôn ngữ, lớp phủ desktop và các thiết lập cốt lõi.",
       "appearanceDesc": "Nền, kiểu chữ, chuyển động và bố cục màn hình.",
@@ -60,7 +62,8 @@ export default {
       "aiProvidersDesc": "Cấu hình nhà cung cấp AI cho dịch và xử lý.",
       "advancedDesc": "Phát hiện, bộ nhớ đệm, ứng dụng hỗ trợ và điều khiển nâng cao.",
       "debugDesc": "Chẩn đoán, công cụ khôi phục và xử lý sự cố.",
-      "aboutDesc": "Chi tiết phiên bản, kiểm tra cập nhật, ghi công và ghi chú bản vá."
+      "aboutDesc": "Chi tiết phiên bản, kiểm tra cập nhật, ghi công và ghi chú bản vá.",
+      "assistantDesc": "Cứ nói theo cách của bạn. Trợ lý sẽ tìm đúng cài đặt, giải thích và thay đổi giúp bạn."
     },
     "background": {
       "none": "Tối giản",
@@ -86,6 +89,37 @@ export default {
       "emptyDesc": "Mọi cài đặt đều ở mặc định",
       "count": "{count} cài đặt",
       "resetConfirm": "Đặt lại {count} cài đặt về mặc định?"
+    },
+    "assistant": {
+      "intro": "Hãy cho tôi biết bạn muốn thay đổi gì. Tôi sẽ tìm các cài đặt phù hợp, áp dụng và hiển thị ở đây để bạn tinh chỉnh thêm.",
+      "providerNote": "Sử dụng các nhà cung cấp AI của bạn đã bật “Trợ lý cài đặt”. Tin nhắn của bạn và danh sách cài đặt ivLyrics sẽ được gửi đến nhà cung cấp đó.",
+      "placeholder": "Hỏi bất cứ điều gì về cài đặt, ví dụ: “Tự động ẩn bộ điều khiển khi toàn màn hình”",
+      "send": "Gửi",
+      "stop": "Dừng",
+      "newChat": "Cuộc trò chuyện mới",
+      "thinking": "Đang xem qua các cài đặt…",
+      "examplesTitle": "Thử hỏi",
+      "examples": {
+        "autoHide": "Tự động ẩn bộ điều khiển khi toàn màn hình",
+        "fontSize": "Phóng to lời bài hát",
+        "translation": "Dịch lời bài hát sang tiếng Anh",
+        "performance": "Trang lời bài hát bị giật. Làm nhẹ hơn giúp mình."
+      },
+      "noProviderTitle": "Chưa có nhà cung cấp AI nào sẵn sàng",
+      "noProviderDesc": "Thêm khóa API vào một nhà cung cấp AI như ChatGPT, Gemini hoặc Claude, bật nhà cung cấp đó và giữ “Trợ lý cài đặt” ở trạng thái bật.",
+      "openProviders": "Mở Nhà cung cấp AI",
+      "error": "Yêu cầu AI thất bại: {message}",
+      "invalidResponse": "Không đọc được câu trả lời của AI. Vui lòng thử lại.",
+      "stopped": "Đã dừng.",
+      "changedCount": "Đã thay đổi {count} cài đặt",
+      "undo": "Hoàn tác",
+      "undone": "Đã hoàn tác thay đổi",
+      "adjusted": "Đã điều chỉnh về phạm vi cho phép: {settings}",
+      "skipped": "Không thể thay đổi: {settings}",
+      "openInSettings": "Mở trong cài đặt",
+      "you": "Bạn",
+      "name": "Trợ lý",
+      "askAi": "Hỏi trợ lý AI"
     },
     "controls": {
       "colorPickerAriaLabel": "Bộ chọn màu {name}",
@@ -536,7 +570,8 @@ export default {
         "characterPronunciation": "Phát âm từng ký tự",
         "culturalAnnotations": "Bối cảnh văn hóa",
         "wordSupplements": "Chi tiết từ",
-        "motionDirection": "Đạo diễn chuyển động"
+        "motionDirection": "Đạo diễn chuyển động",
+        "settingsAssistant": "Trợ lý cài đặt"
       },
       "noEnabledProviders": "Không có nhà cung cấp AI nào được bật. Vui lòng bật ít nhất một nhà cung cấp trong cài đặt.",
       "noPronunciationProviders": "Không có nhà cung cấp AI nào đang bật có thể tạo phát âm. Hãy bật “Phát âm” cho một nhà cung cấp trong cài đặt Nhà cung cấp AI.",

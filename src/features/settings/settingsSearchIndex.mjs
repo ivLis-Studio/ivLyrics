@@ -1,9 +1,9 @@
 import { SETTINGS_TAB_TRANSLATION_KEYS } from "./settingsMenuMetadata.mjs";
 
-// Menus the search index reads. The changed-settings view repeats rows from
-// other menus, so indexing it would duplicate every result.
+// Menus the search index reads. The changed-settings view and the assistant
+// chat repeat rows from other menus, so indexing them would duplicate results.
 const SETTINGS_SEARCHABLE_TAB_SELECTOR =
-  '.tab-content[data-tab-id]:not([data-tab-id="search"]):not([data-tab-id="changed"])';
+  '.tab-content[data-tab-id]:not([data-tab-id="search"]):not([data-tab-id="changed"]):not([data-tab-id="assistant"])';
 
 const STANDALONE_TABS = new Set(["lyrics-providers", "ai-providers"]);
 const TAB_FALLBACK_LABELS = {
@@ -49,20 +49,34 @@ function mergeSearchSetting(settingsByResultKey, candidate) {
   });
 }
 
+// Adds a candidate's search words to an existing result without changing
+// where it leads or how it is named.
+function addSearchWords(settingsByResultKey, resultKey, candidate) {
+  const existing = settingsByResultKey.get(resultKey);
+  if (!existing) return;
+  settingsByResultKey.set(resultKey, {
+    ...existing,
+    i18nKeys: [...new Set([...(existing.i18nKeys || []), ...(candidate.i18nKeys || [])])],
+    directKeywords: [...new Set([...(existing.directKeywords || []), ...(candidate.directKeywords || [])])],
+  });
+}
+
 function prepareSearchCatalog(searchableSettings, declaredIndex, translate) {
   const tabLabels = Object.fromEntries(Object.entries(SETTINGS_TAB_TRANSLATION_KEYS).map(([tabId, key]) => [
     tabId, translate(key) || TAB_FALLBACK_LABELS[tabId],
   ]));
   const baseSettings = new Map();
+  const routedSettings = [];
   const manualByDestination = new Map(searchableSettings.map(setting => [
     `${setting.sectionKey}:${setting.settingKey}`, setting,
   ]));
-  // Keep the complete manually maintained index available while only the
-  // active tab is mounted. Visible controls from the active tab enrich the
-  // matching entries below without forcing every settings panel to exist.
+  // Keep the complete guide-based index (settingsSearchCatalog.mjs) available
+  // while only the active tab is mounted. Visible controls from the active tab
+  // enrich the matching entries below without forcing every panel to exist.
   searchableSettings.forEach((setting) => {
-    mergeSearchSetting(baseSettings, {
-      resultKey: `${setting.sectionKey}:${setting.settingKey || "__tab__"}`,
+    const resultKey = `${setting.sectionKey}:${setting.settingKey || "__tab__"}`;
+    const candidate = {
+      resultKey,
       section: setting.section,
       sectionKey: setting.sectionKey,
       settingKey: setting.settingKey || null,
@@ -77,14 +91,20 @@ function prepareSearchCatalog(searchableSettings, declaredIndex, translate) {
       ].filter(Boolean),
       contextKeywords: [setting.section || ""].filter(Boolean),
       preferVisibleText: false,
-    });
+      ...(setting.isTabResult ? { isTabResult: true } : {}),
+    };
+    // A layer table cell is found through its column's single result.
+    const groupKey = setting.settingKey ? declaredIndex.routing.get(resultKey) : undefined;
+    if (groupKey && groupKey !== resultKey) routedSettings.push([groupKey, candidate]);
+    else mergeSearchSetting(baseSettings, candidate);
   });
 
   // Only the active tab is mounted, so the DOM scan below cannot see rows in
   // other menus. The registry walks every menu's element tree and supplies
-  // their search entries; the manual list above still owns the aliases and
-  // translations that only it knows about.
+  // their search entries; the guide list above adds the aliases and the
+  // translations in every language.
   for (const setting of declaredIndex.entries) mergeSearchSetting(baseSettings, setting);
+  for (const [groupKey, candidate] of routedSettings) addSearchWords(baseSettings, groupKey, candidate);
   return { tabLabels, baseSettings, manualByDestination, routing: declaredIndex.routing };
 }
 

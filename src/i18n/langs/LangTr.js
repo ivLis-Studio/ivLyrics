@@ -17,6 +17,7 @@ export default {
     "nowplaying": "Panel Sözleri",
     "debug": "Hata Ayıklama",
     "about": "Hakkında",
+    "assistant": "Yapay Zeka Asistanı",
     "searchResults": "Arama Sonuçları"
   },
   "search": {
@@ -48,7 +49,8 @@ export default {
         "behavior": "Akış",
         "surface": "Görünüm",
         "providers": "Kaynak",
-        "system": "Sistem"
+        "system": "Sistem",
+        "assistant": "YZ"
       },
       "generalDesc": "Dil, masaüstü katmanı ve temel çalışma alanı varsayılanları.",
       "appearanceDesc": "Arka planlar, tipografi, hareket ve ekran düzeni.",
@@ -60,7 +62,8 @@ export default {
       "aiProvidersDesc": "Yapay zeka çevirisi ve işleme sağlayıcı yapılandırması.",
       "advancedDesc": "Algılama, önbellek, yardımcı uygulamalar ve gelişmiş kontroller.",
       "debugDesc": "Teşhis, kurtarma araçları ve sorun giderme.",
-      "aboutDesc": "Sürüm detayları, güncellemeler, krediler ve yama notları."
+      "aboutDesc": "Sürüm detayları, güncellemeler, krediler ve yama notları.",
+      "assistantDesc": "İstediğinizi kendi cümlelerinizle anlatın. Doğru ayarları bulur, açıklar ve sizin yerinize değiştirir."
     },
     "background": {
       "none": "Minimal",
@@ -86,6 +89,37 @@ export default {
       "emptyDesc": "Tüm ayarlar varsayılan değerinde",
       "count": "{count} ayar",
       "resetConfirm": "{count} ayar varsayılana sıfırlansın mı?"
+    },
+    "assistant": {
+      "intro": "Neyi değiştirmek istediğinizi söyleyin. Uygun ayarları bulup uygularım ve ince ayar yapabilmeniz için burada gösteririm.",
+      "providerNote": "“Ayar asistanı” açık olan yapay zeka sağlayıcılarınızı kullanır. Mesajınız ve ivLyrics ayarlarının listesi bu sağlayıcıya gönderilir.",
+      "placeholder": "Ayarlarla ilgili her şeyi sorabilirsiniz, ör. “Tam ekranda kontrolcüyü otomatik gizle”",
+      "send": "Gönder",
+      "stop": "Durdur",
+      "newChat": "Yeni sohbet",
+      "thinking": "Ayarlara bakılıyor…",
+      "examplesTitle": "Şunları sorabilirsiniz",
+      "examples": {
+        "autoHide": "Tam ekranda kontrolcüyü otomatik gizle",
+        "fontSize": "Şarkı sözlerini büyüt",
+        "translation": "Şarkı sözlerini İngilizceye çevir",
+        "performance": "Söz sayfası takılıyor. Daha hafif hale getir."
+      },
+      "noProviderTitle": "Hazır yapay zeka sağlayıcısı yok",
+      "noProviderDesc": "ChatGPT, Gemini veya Claude gibi bir yapay zeka sağlayıcısına API anahtarınızı ekleyin, sağlayıcıyı etkinleştirin ve “Ayar asistanı” özelliğini açık tutun.",
+      "openProviders": "Yapay Zeka Sağlayıcılarını Aç",
+      "error": "Yapay zeka isteği başarısız oldu: {message}",
+      "invalidResponse": "Yapay zekanın yanıtı okunamadı. Lütfen tekrar deneyin.",
+      "stopped": "Durduruldu.",
+      "changedCount": "{count} ayar değiştirildi",
+      "undo": "Geri al",
+      "undone": "Değişiklikler geri alındı",
+      "adjusted": "İzin verilen aralığa göre ayarlandı: {settings}",
+      "skipped": "Değiştirilemedi: {settings}",
+      "openInSettings": "Ayarlarda aç",
+      "you": "Siz",
+      "name": "Asistan",
+      "askAi": "Yapay zeka asistanına sor"
     },
     "controls": {
       "colorPickerAriaLabel": "{name} renk seçici",
@@ -536,7 +570,8 @@ export default {
         "characterPronunciation": "Karakter okunuşu",
         "culturalAnnotations": "Kültürel bağlam",
         "wordSupplements": "Kelime ayrıntıları",
-        "motionDirection": "Hareket yönetimi"
+        "motionDirection": "Hareket yönetimi",
+        "settingsAssistant": "Ayar asistanı"
       },
       "noEnabledProviders": "Etkin YZ sağlayıcısı yok. Lütfen ayarlardan en az bir sağlayıcıyı etkinleştirin.",
       "noPronunciationProviders": "Etkin hiçbir YZ sağlayıcısı telaffuz oluşturamıyor. Yapay Zeka Sağlayıcıları ayarlarından bir sağlayıcı için “Telaffuz” seçeneğini açın.",

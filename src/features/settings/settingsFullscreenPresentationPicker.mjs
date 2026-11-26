@@ -45,6 +45,21 @@ const FULLSCREEN_PRESENTATION_PRESETS = Object.freeze([
 ]);
 const FULLSCREEN_PRESENTATION_OPTIONS = FULLSCREEN_PRESENTATION_PRESETS.map(option => ({ value: option.id }));
 
+// The picker draws its own cards, so it also publishes the same choice as a
+// select row through `settingsRegistryItems`. Search, the changed-settings
+// view and the settings assistant read controls from the registry only.
+export function createFullscreenPresentationSettingItem({ translate, ConfigSelection, defaultValue }) {
+  return {
+    key: "fullscreen-focus-presentation",
+    desc: translate("vinyl.presentation.settingsTitle"),
+    info: translate("vinyl.presentation.settingsDescription"),
+    type: ConfigSelection,
+    presentation: "cards",
+    options: Object.fromEntries(FULLSCREEN_PRESENTATION_PRESETS.map((preset) => [preset.id, translate(preset.labelKey)])),
+    defaultValue: normalizeFullscreenFocusPresentation(defaultValue),
+  };
+}
+
 export function createFullscreenPresentationPicker({ react, getSettingsText }) {
   const { useEffect, useState } = react;
   const FullscreenPresentationPicker = ({ defaultValue, onChange }) => {

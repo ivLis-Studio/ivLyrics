@@ -15,6 +15,7 @@ export default {
     "nowplaying": "Panel-Songtext",
     "debug": "Debug",
     "about": "Über",
+    "assistant": "KI-Assistent",
     "lyricsProviders": "Songtext-Anbieter",
     "aiProviders": "KI-Anbieter",
     "searchResults": "Suchergebnisse"
@@ -48,7 +49,8 @@ export default {
         "behavior": "Ablauf",
         "surface": "Ansicht",
         "providers": "Quelle",
-        "system": "System"
+        "system": "System",
+        "assistant": "KI"
       },
       "generalDesc": "Sprache, Desktop-Overlay und zentrale Grundeinstellungen.",
       "appearanceDesc": "Hintergründe, Typografie, Animationen und Bildschirmaufbau.",
@@ -60,7 +62,8 @@ export default {
       "aiProvidersDesc": "Konfiguration der KI-Anbieter für Übersetzung und Verarbeitung.",
       "advancedDesc": "Erkennung, Cache, Hilfsprogramme und erweiterte Optionen.",
       "debugDesc": "Diagnose, Wiederherstellung und Werkzeuge zur Fehlersuche.",
-      "aboutDesc": "Versionsdetails, Update-Prüfung, Mitwirkende und Patchnotes."
+      "aboutDesc": "Versionsdetails, Update-Prüfung, Mitwirkende und Patchnotes.",
+      "assistantDesc": "Beschreib einfach in deinen Worten, was du möchtest. Er findet die passenden Einstellungen, erklärt sie und ändert sie für dich."
     },
     "background": {
       "none": "Minimal",
@@ -86,6 +89,37 @@ export default {
       "emptyDesc": "Alle Einstellungen haben ihren Standardwert",
       "count": "{count} Einstellungen",
       "resetConfirm": "{count} Einstellungen auf den Standardwert zurücksetzen?"
+    },
+    "assistant": {
+      "intro": "Sag mir, was du ändern möchtest. Ich suche die passenden Einstellungen, wende sie an und zeige sie dir hier, damit du sie feinjustieren kannst.",
+      "providerNote": "Verwendet deine KI-Anbieter, bei denen „Einstellungsassistent“ aktiviert ist. Deine Nachricht und die Liste der ivLyrics-Einstellungen werden an diesen Anbieter gesendet.",
+      "placeholder": "Frag einfach drauflos, z. B. „Controller im Vollbild automatisch ausblenden“",
+      "send": "Senden",
+      "stop": "Stopp",
+      "newChat": "Neuer Chat",
+      "thinking": "Einstellungen werden durchsucht…",
+      "examplesTitle": "Frag zum Beispiel",
+      "examples": {
+        "autoHide": "Controller im Vollbild automatisch ausblenden",
+        "fontSize": "Mach den Songtext größer",
+        "translation": "Übersetze den Songtext ins Englische",
+        "performance": "Die Songtext-Seite ruckelt. Mach sie leichter."
+      },
+      "noProviderTitle": "Kein KI-Anbieter bereit",
+      "noProviderDesc": "Hinterlege bei einem KI-Anbieter wie ChatGPT, Gemini oder Claude deinen API-Schlüssel, aktiviere ihn und lass „Einstellungsassistent“ dafür eingeschaltet.",
+      "openProviders": "KI-Anbieter öffnen",
+      "error": "Die KI-Anfrage ist fehlgeschlagen: {message}",
+      "invalidResponse": "Die Antwort der KI konnte nicht gelesen werden. Bitte versuch es noch einmal.",
+      "stopped": "Gestoppt.",
+      "changedCount": "{count} Einstellungen geändert",
+      "undo": "Rückgängig",
+      "undone": "Änderungen rückgängig gemacht",
+      "adjusted": "An den erlaubten Bereich angepasst: {settings}",
+      "skipped": "Konnte nicht geändert werden: {settings}",
+      "openInSettings": "In Einstellungen öffnen",
+      "you": "Du",
+      "name": "Assistent",
+      "askAi": "KI-Assistent fragen"
     },
     "controls": {
       "colorPickerAriaLabel": "{name} Farbauswahl",
@@ -536,7 +570,8 @@ export default {
         "characterPronunciation": "Zeichen-Aussprache",
         "culturalAnnotations": "Kultureller Kontext",
         "wordSupplements": "Wortdetails",
-        "motionDirection": "Motion-Regie"
+        "motionDirection": "Motion-Regie",
+        "settingsAssistant": "Einstellungsassistent"
       },
       "noEnabledProviders": "Keine KI-Anbieter aktiviert. Bitte aktiviere mindestens einen Anbieter in den Einstellungen.",
       "noPronunciationProviders": "Kein aktivierter KI-Anbieter kann die Aussprache erzeugen. Aktivieren Sie „Aussprache“ für einen Anbieter in den Einstellungen unter KI-Anbieter.",

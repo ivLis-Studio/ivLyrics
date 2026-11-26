@@ -1,6 +1,7 @@
 import {
   getResearchFontSize, RESEARCH_FONT_SIZE_KEY, RESEARCH_FONT_SIZE_MAX, RESEARCH_FONT_SIZE_MIN, RESEARCH_FONT_SIZE_STEP,
 } from "../../app/researchReaderSettings.mjs";
+import { createFullscreenPresentationSettingItem } from "./settingsFullscreenPresentationPicker.mjs";
 
 export function createFullscreenSettingsTab({
   react, t, activeTab,
@@ -250,6 +251,12 @@ react.createElement(OptionList, {
             defaultValue:
               getVisualSettings()["fullscreen-focus-presentation"] || "vinyl",
             onChange: saveVinylSetting,
+            settingsRegistryItems: () => [{
+              item: createFullscreenPresentationSettingItem({
+                translate: t, ConfigSelection, defaultValue: getVisualSettings()["fullscreen-focus-presentation"],
+              }),
+              onChange: saveVinylSetting,
+            }],
           }),
           react.createElement(OptionList, {
             items: [

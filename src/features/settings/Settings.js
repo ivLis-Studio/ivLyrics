@@ -71,6 +71,8 @@ import { createIndexedDbBackup } from "#ivlyrics/core/indexedDbBackup.mjs";
 import { createSettingsBackupActions } from "#ivlyrics/features/settings/settingsBackupActions.mjs";
 import { createSettingsBackupButton } from "#ivlyrics/features/settings/settingsBackupButton.mjs";
 import { createSettingsUpdateButton } from "#ivlyrics/features/settings/settingsUpdateButton.mjs";
+import { createSettingsAssistantSession } from "#ivlyrics/features/settings/settingsAssistantSession.mjs";
+import { createSettingsAssistantPanel } from "#ivlyrics/features/settings/settingsAssistantPanel.mjs";
 
 export function createSettingsPage({
   host: window, react, appName: APP_NAME, i18n: I18n, config: CONFIG,
@@ -113,6 +115,7 @@ export function createSettingsPage({
   });
 
   const SETTINGS_OUTLINE_ICONS = Object.freeze({
+    assistant: "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12ZM12 8l.8 2.2L15 11l-2.2.8L12 14l-.8-2.2L9 11l2.2-.8L12 8Z",
     general: "M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6",
     "lyrics-providers": "M9 18V5l10-2v13M9 8l10-2M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm10-2a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z",
     "ai-providers": "M12 3l1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3ZM5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8L5 14Zm13-1 1 3 3 1-3 1-1 3-1-3-3-1 3-1 1-3Z",
@@ -139,6 +142,7 @@ export function createSettingsPage({
     wordSupplements: "M3 6h4l2 12h2l3-12h4l3 12M4.5 13h3M14.5 13h5M4 20h16",
     culturalAnnotations: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-20c3 3 4.5 6.3 4.5 10S15 19 12 22M12 2C9 5 7.5 8.3 7.5 12S9 19 12 22M2 12h20",
     motionDirection: "M3 7h12v10H3V7Zm12 4 6-3v8l-6-3",
+    settingsAssistant: "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12ZM12 8l.8 2.2L15 11l-2.2.8L12 14l-.8-2.2L9 11l2.2-.8L12 8Z",
   });
 
   const SettingsOutlineIcon = ({ name, className = "", size = 16 }) =>
@@ -464,6 +468,8 @@ export function createSettingsPage({
     dock: "M4 5h16v14H4zM15 5v14",
     plus: "M12 5v14M5 12h14",
     minus: "M5 12h14",
+    send: "M21 3 10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5 21 3Z",
+    stop: "M7 7h10v10H7z",
     external: "M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5",
     alignLeft: "M4 6h16M4 10h10M4 14h16M4 18h10",
     alignCenter: "M4 6h16M7 10h10M4 14h16M7 18h10",
@@ -669,6 +675,16 @@ export function createSettingsPage({
     getCurrentSettingsBackgroundMode,
   );
 
+  // AI settings assistant. The conversation lives as long as this page, so it
+  // survives menu switches and reopening the settings window.
+  const settingsAssistantSession = createSettingsAssistantSession();
+  const SettingsAssistantPanel = createSettingsAssistantPanel({
+    react, session: settingsAssistantSession,
+    translate: (key) => I18n.t(key), getSettingsText,
+    SettingsUiIcon, SettingsOutlineIcon, OptionList,
+    getCurrentSettingsBackgroundMode,
+  });
+
   const applySettingsMotionClasses = () => {
     const reduceMotion = getEffectiveReducedMotionPreference();
     document
@@ -717,12 +733,18 @@ export function createSettingsPage({
     const settingsCatalog = react.useMemo(() => ({ registry: null, searchIndex: null }), [interfaceLanguage]);
     const search = useSettingsModalSearch(react, {
       host: window, document, activeTab, changedView, settingsContentRef, interfaceLanguage,
-      getPerformanceSettingsSections, getCdSettingsSections, getSettingsText,
       translate: (key) => I18n.t(key),
       getAllTranslations: (key) => I18n.getAllTranslations?.(key),
       getDeclaredSearchIndex, navigateToDestination,
+      // "Ask the AI assistant" in the search results sends the query as a chat message.
+      askAssistant: (question) => {
+        navigateToDestination("assistant", null);
+        settingsAssistantSession.send(question, readAssistantRuntime());
+      },
       SettingsUiIcon, SettingsOutlineIcon,
     });
+    // A reply that arrives after the window closed is not applied.
+    react.useEffect(() => () => settingsAssistantSession.cancel(), []);
 
     // Initialize line-spacing if not set
     if (CONFIG.visual["line-spacing"] === undefined) {
@@ -862,6 +884,11 @@ export function createSettingsPage({
         notifySuccess: message => Toast.success(message),
         notifyError: message => Toast.error(message),
       },
+      assistant: {
+        renderAssistantTab: () => react.createElement(SettingsAssistantPanel, {
+          runtime: readAssistantRuntime(), navigateToDestination,
+        }),
+      },
       controls: {
         SettingsSection, OptionList, ConfigSelection, OverlaySettings, SettingsLoadMeter, ConfigSlider,
         ConfigKaraokeFillCurveEditor, SettingsHotkeyTable, ConfigHotkey, ConfigSliderRange, LocalCacheManager,
@@ -889,6 +916,32 @@ export function createSettingsPage({
 
     function getDeclaredSearchIndex() {
       return settingsCatalog.searchIndex ??= indexSettingsSearch(sidebarTabs, readSettingsRegistry());
+    }
+
+    // What the settings assistant needs from this render of the window. Rows
+    // and values come from the registry, so the chat saves exactly like the
+    // menus (see settingsAssistantSession.mjs).
+    function readAssistantRuntime() {
+      return {
+        readRegistry: () => buildSettingsRegistry(),
+        readValue: getCurrentSettingValue,
+        isSettingChanged,
+        valuesEqual: settingValuesEqual,
+        translate: (key) => I18n.t(key),
+        readLanguage: () => {
+          const code = I18n.getCurrentLanguage?.() || "en";
+          return { code, name: I18n.getLanguageName?.(code) || code };
+        },
+        request: (prompt, signal) => {
+          const manager = readAiSettingsManager();
+          if (typeof manager?.generateSettingsAssistant !== "function") {
+            return Promise.reject(new Error(getSettingsText("settingsUi.assistant.noProviderTitle", "No AI provider is ready")));
+          }
+          return manager.generateSettingsAssistant({ prompt, signal });
+        },
+        hasProvider: () => (readAiSettingsManager()?.getEnabledProvidersFor?.("settingsAssistant") || []).length > 0,
+        onSaveError: settingsInputContext.onSaveError,
+      };
     }
 
     const changedSettings = createChangedSettingsView(react, {

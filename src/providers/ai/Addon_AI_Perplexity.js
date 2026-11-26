@@ -60,7 +60,8 @@ export default function initializePerplexityAddon(services = createBuiltinAiProv
             lyricsStudy: true,
             characterPronunciation: true,
             culturalAnnotations: true,
-            motionDirection: true
+            motionDirection: true,
+            settingsAssistant: true
         },
         models: [] // Dynamic from API
     };
@@ -739,6 +740,14 @@ export default function initializePerplexityAddon(services = createBuiltinAiProv
                 throw new Error('[Perplexity] Central motion direction prompt is unavailable.');
             }
             return await callPerplexityAPI(prompt);
+        },
+
+        async generateSettingsAssistant(params) {
+            const prompt = params?.settingsAssistantPrompt;
+            if (!prompt || typeof prompt !== 'object' || !prompt.userPrompt) {
+                throw new Error('[Perplexity] Settings assistant prompt is unavailable.');
+            }
+            return await callPerplexityAPI(prompt, undefined, params.signal);
         },
 
         async generateLyricsStudy(params) {

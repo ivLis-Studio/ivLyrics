@@ -39,7 +39,9 @@ export default function initializeNvidiaNimAddon(services = createBuiltinAiProvi
             supports: {
                 translate: true, pronunciation: true, metadata: true, tmi: true,
                 researchWebSearch: false, lyricsStudy: true,
-                characterPronunciation: true, culturalAnnotations: true
+                characterPronunciation: true, culturalAnnotations: true,
+                // generateSettingsAssistant comes from the shared OpenAI-compatible addon.
+                settingsAssistant: true
             },
             models: []
         }

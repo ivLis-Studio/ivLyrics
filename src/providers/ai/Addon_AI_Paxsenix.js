@@ -58,7 +58,8 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
             lyricsStudy: true,
             characterPronunciation: true,
             culturalAnnotations: true,
-            motionDirection: true
+            motionDirection: true,
+            settingsAssistant: true
         },
         models: []
     };
@@ -615,6 +616,14 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
                 throw new Error('[Paxsenix] Central motion direction prompt is unavailable.');
             }
             return await callPaxsenixAPI(prompt);
+        },
+
+        async generateSettingsAssistant(params) {
+            const prompt = params?.settingsAssistantPrompt;
+            if (!prompt || typeof prompt !== 'object' || !prompt.userPrompt) {
+                throw new Error('[Paxsenix] Settings assistant prompt is unavailable.');
+            }
+            return await callPaxsenixAPI(prompt, undefined, undefined, params.signal);
         },
 
         async generateLyricsStudy(params) {

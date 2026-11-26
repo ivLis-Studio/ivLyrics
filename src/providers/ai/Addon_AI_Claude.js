@@ -60,7 +60,8 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
             lyricsStudy: true,
             characterPronunciation: true,
             culturalAnnotations: true,
-            motionDirection: true
+            motionDirection: true,
+            settingsAssistant: true
         },
         models: [] // Dynamic from API
     };
@@ -783,6 +784,14 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
                 throw new Error('[Claude] Central motion direction prompt is unavailable.');
             }
             return await callClaudeAPI(prompt);
+        },
+
+        async generateSettingsAssistant(params) {
+            const prompt = params?.settingsAssistantPrompt;
+            if (!prompt || typeof prompt !== 'object' || !prompt.userPrompt) {
+                throw new Error('[Claude] Settings assistant prompt is unavailable.');
+            }
+            return await callClaudeAPI(prompt, undefined, params.signal);
         },
 
         async generateLyricsStudy(params) {

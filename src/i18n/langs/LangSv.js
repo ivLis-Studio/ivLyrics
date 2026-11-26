@@ -17,6 +17,7 @@ export default {
     "nowplaying": "Paneltexter",
     "debug": "Felsök",
     "about": "Om",
+    "assistant": "AI-assistent",
     "searchResults": "Sökresultat"
   },
   "search": {
@@ -48,7 +49,8 @@ export default {
         "behavior": "Flöde",
         "surface": "Vy",
         "providers": "Källa",
-        "system": "Ops"
+        "system": "Ops",
+        "assistant": "AI"
       },
       "generalDesc": "Standardinställningar för språk, skrivbordsöverlägg och grundläggande arbetsyta.",
       "appearanceDesc": "Bakgrunder, typografi, rörelse och skärmkomposition.",
@@ -60,7 +62,8 @@ export default {
       "aiProvidersDesc": "Konfiguration av AI-översättnings- och bearbetningsleverantör.",
       "advancedDesc": "Detektering, cache, hjälpappar och avancerade kontroller.",
       "debugDesc": "Diagnostik, återställningsverktyg och felsökningsverktyg.",
-      "aboutDesc": "Versionsinformation, uppdateringskontroller, krediter och patch-anteckningar."
+      "aboutDesc": "Versionsinformation, uppdateringskontroller, krediter och patch-anteckningar.",
+      "assistantDesc": "Beskriv med egna ord vad du vill. Den hittar rätt inställningar, förklarar dem och ändrar dem åt dig."
     },
     "background": {
       "none": "Minimal",
@@ -86,6 +89,37 @@ export default {
       "emptyDesc": "Alla inställningar har sitt standardvärde",
       "count": "{count} inställningar",
       "resetConfirm": "Återställa {count} inställningar till standardvärdena?"
+    },
+    "assistant": {
+      "intro": "Berätta vad du vill ändra. Jag hittar matchande inställningar, tillämpar dem och visar dem här så att du kan finjustera dem.",
+      "providerNote": "Använder dina AI-leverantörer som har ”Inställningsassistent” påslaget. Ditt meddelande och listan över ivLyrics-inställningar skickas till den leverantören.",
+      "placeholder": "Fråga vad som helst om inställningarna, t.ex. ”Dölj kontrollern automatiskt i helskärm”",
+      "send": "Skicka",
+      "stop": "Stoppa",
+      "newChat": "Ny chatt",
+      "thinking": "Går igenom inställningarna…",
+      "examplesTitle": "Testa att fråga",
+      "examples": {
+        "autoHide": "Dölj kontrollern automatiskt i helskärm",
+        "fontSize": "Gör låttexten större",
+        "translation": "Översätt låttexten till engelska",
+        "performance": "Låttextsidan känns seg. Gör den lättare."
+      },
+      "noProviderTitle": "Ingen AI-leverantör är redo",
+      "noProviderDesc": "Lägg till din API-nyckel hos en AI-leverantör som ChatGPT, Gemini eller Claude, aktivera den och låt ”Inställningsassistent” vara på.",
+      "openProviders": "Öppna AI-leverantörer",
+      "error": "AI-förfrågan misslyckades: {message}",
+      "invalidResponse": "Det gick inte att läsa AI:ns svar. Försök igen.",
+      "stopped": "Stoppat.",
+      "changedCount": "{count} inställningar ändrade",
+      "undo": "Ångra",
+      "undone": "Ändringarna ångrades",
+      "adjusted": "Justerat till tillåtet intervall: {settings}",
+      "skipped": "Kunde inte ändra: {settings}",
+      "openInSettings": "Öppna i inställningar",
+      "you": "Du",
+      "name": "Assistent",
+      "askAi": "Fråga AI-assistenten"
     },
     "controls": {
       "colorPickerAriaLabel": "{name} färgväljare",
@@ -536,7 +570,8 @@ export default {
         "characterPronunciation": "Teckenuttal",
         "culturalAnnotations": "Kulturell kontext",
         "wordSupplements": "Orddetaljer",
-        "motionDirection": "Rörelseregi"
+        "motionDirection": "Rörelseregi",
+        "settingsAssistant": "Inställningsassistent"
       },
       "noEnabledProviders": "Inga AI-leverantörer aktiverade. Aktivera minst en leverantör i inställningarna.",
       "noPronunciationProviders": "Ingen aktiverad AI-leverantör kan skapa uttal. Slå på Uttal för en leverantör under inställningarna för AI-leverantörer.",

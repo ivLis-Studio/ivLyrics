@@ -62,7 +62,8 @@ export default function initializeGeminiAddon(services = createBuiltinAiProvider
             lyricsStudy: true,  // 학습 모드 생성
             characterPronunciation: true,
             culturalAnnotations: true,
-            motionDirection: true
+            motionDirection: true,
+            settingsAssistant: true
         },
         // 하드코딩된 모델 목록 (fallback용)
         // models: [
@@ -459,6 +460,14 @@ export default function initializeGeminiAddon(services = createBuiltinAiProvider
                 throw new Error('[Gemini] Central motion direction prompt is unavailable.');
             }
             return await callGeminiAPI(prompt);
+        },
+
+        async generateSettingsAssistant(params) {
+            const prompt = params?.settingsAssistantPrompt;
+            if (!prompt || typeof prompt !== 'object' || !prompt.userPrompt) {
+                throw new Error('[Gemini] Settings assistant prompt is unavailable.');
+            }
+            return await callGeminiAPI(prompt, undefined, params.signal);
         },
 
         async generateLyricsStudy(params) {

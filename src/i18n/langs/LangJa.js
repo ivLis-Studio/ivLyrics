@@ -15,6 +15,7 @@ export default {
     "nowplaying": "パネル歌詞",
     "debug": "デバッグ",
     "about": "情報",
+    "assistant": "AIアシスタント",
     "lyricsProviders": "歌詞プロバイダー",
     "aiProviders": "AIプロバイダー",
     "searchResults": "検索結果"
@@ -48,7 +49,8 @@ export default {
         "behavior": "動作",
         "surface": "表示",
         "providers": "ソース",
-        "system": "管理"
+        "system": "管理",
+        "assistant": "AI"
       },
       "generalDesc": "言語、デスクトップオーバーレイ、基本動作をまとめます。",
       "appearanceDesc": "背景、タイポグラフィ、モーション、画面構成を調整します。",
@@ -60,7 +62,8 @@ export default {
       "aiProvidersDesc": "AI翻訳および処理プロバイダーを設定します。",
       "advancedDesc": "検出、キャッシュ、補助アプリ連携などの詳細機能です。",
       "debugDesc": "診断、復旧、トラブルシューティングツールを提供します。",
-      "aboutDesc": "バージョン情報、更新確認、クレジット、パッチノートを表示します。"
+      "aboutDesc": "バージョン情報、更新確認、クレジット、パッチノートを表示します。",
+      "assistantDesc": "やりたいことを言葉で伝えるだけで、ぴったりの設定を見つけて説明し、そのまま変更します。"
     },
     "background": {
       "none": "ミニマル",
@@ -86,6 +89,37 @@ export default {
       "emptyDesc": "すべての設定が初期値です",
       "count": "{count}件",
       "resetConfirm": "{count}件の設定を初期値に戻しますか?"
+    },
+    "assistant": {
+      "intro": "変更したいことを教えてください。合う設定を探して適用し、ここで細かく調整できるように表示します。",
+      "providerNote": "「設定アシスタント」がオンになっているAIプロバイダーを使用します。入力したメッセージとivLyricsの設定一覧がそのプロバイダーに送信されます。",
+      "placeholder": "設定について何でも聞いてください（例：「フルスクリーンでコントローラーを自動で隠して」）",
+      "send": "送信",
+      "stop": "停止",
+      "newChat": "新しいチャット",
+      "thinking": "設定を確認しています…",
+      "examplesTitle": "こんなふうに聞いてみましょう",
+      "examples": {
+        "autoHide": "フルスクリーンでコントローラーを自動で隠して",
+        "fontSize": "歌詞の文字を大きくして",
+        "translation": "歌詞を英語に翻訳して",
+        "performance": "歌詞画面が重いので軽くして"
+      },
+      "noProviderTitle": "使えるAIプロバイダーがありません",
+      "noProviderDesc": "ChatGPT、Gemini、ClaudeなどのAIプロバイダーにAPIキーを入力して有効にし、「設定アシスタント」をオンにしてください。",
+      "openProviders": "AIプロバイダーを開く",
+      "error": "AIリクエストに失敗しました：{message}",
+      "invalidResponse": "AIの応答を読み取れませんでした。もう一度お試しください。",
+      "stopped": "停止しました。",
+      "changedCount": "{count}件の設定を変更しました",
+      "undo": "元に戻す",
+      "undone": "変更を元に戻しました",
+      "adjusted": "許容範囲に合わせて調整しました：{settings}",
+      "skipped": "変更できなかった設定：{settings}",
+      "openInSettings": "設定で開く",
+      "you": "あなた",
+      "name": "アシスタント",
+      "askAi": "AIアシスタントに聞く"
     },
     "controls": {
       "colorPickerAriaLabel": "{name} カラーピッカー",
@@ -536,7 +570,8 @@ export default {
         "characterPronunciation": "文字発音",
         "culturalAnnotations": "文化的背景",
         "wordSupplements": "単語詳細",
-        "motionDirection": "モーション演出"
+        "motionDirection": "モーション演出",
+        "settingsAssistant": "設定アシスタント"
       },
       "noEnabledProviders": "有効なAIプロバイダーがありません。設定で少なくとも1つのプロバイダーを有効にしてください。",
       "noPronunciationProviders": "発音を生成できるAIプロバイダーが有効になっていません。AIプロバイダー設定で、プロバイダーの「発音」をオンにしてください。",

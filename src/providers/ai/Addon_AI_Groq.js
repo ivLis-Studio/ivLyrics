@@ -58,7 +58,8 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
             lyricsStudy: true,
             characterPronunciation: true,
             culturalAnnotations: true,
-            motionDirection: true
+            motionDirection: true,
+            settingsAssistant: true
         },
         models: []
     };
@@ -546,6 +547,14 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
                 throw new Error('[Groq] Central motion direction prompt is unavailable.');
             }
             return await callGroqAPI(prompt);
+        },
+
+        async generateSettingsAssistant(params) {
+            const prompt = params?.settingsAssistantPrompt;
+            if (!prompt || typeof prompt !== 'object' || !prompt.userPrompt) {
+                throw new Error('[Groq] Settings assistant prompt is unavailable.');
+            }
+            return await callGroqAPI(prompt, undefined, params.signal);
         },
 
         async generateLyricsStudy(params) {

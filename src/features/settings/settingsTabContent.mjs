@@ -24,6 +24,8 @@ export function createSettingsTabContent({
   },
   advanced: { thresholdSizeLimit, backupActions },
   about: { getCurrentVersion, openUpdaterProtocol, readClientId, copyText, openLink, notifySuccess, notifyError },
+  // The AI assistant menu is a chat, not a list of rows; Settings.js renders it.
+  assistant: { renderAssistantTab } = {},
   controls,
 }) {
   const { SettingsSection, OptionList, ConfigSliderRange, SettingsBackupButton, ConfigCloudSync,
@@ -112,6 +114,7 @@ export function createSettingsTabContent({
 
   return function renderTabContent(tabId) {
     switch (tabId) {
+      case "assistant": return renderAssistantTab ? renderAssistantTab() : null;
       case "lyrics-providers": return getProviderTabs().renderLyricsProvidersTab();
       case "ai-providers": return getProviderTabs().renderAiProvidersTab();
       case "appearance": return renderAppearanceTab();

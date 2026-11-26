@@ -15,6 +15,7 @@ export default {
     "nowplaying": "Letras en panel",
     "debug": "Depuración",
     "about": "Acerca de",
+    "assistant": "Asistente de IA",
     "lyricsProviders": "Proveedores de letras",
     "aiProviders": "Proveedores de IA",
     "searchResults": "Resultados de búsqueda"
@@ -48,7 +49,8 @@ export default {
         "behavior": "Flujo",
         "surface": "Vista",
         "providers": "Fuente",
-        "system": "Sistema"
+        "system": "Sistema",
+        "assistant": "IA"
       },
       "generalDesc": "Idioma, superposición de escritorio y ajustes principales.",
       "appearanceDesc": "Fondos, tipografía, animaciones y composición de pantalla.",
@@ -60,7 +62,8 @@ export default {
       "aiProvidersDesc": "Configuración de proveedores de IA para traducción y procesamiento.",
       "advancedDesc": "Detección, caché, aplicaciones auxiliares y controles avanzados.",
       "debugDesc": "Diagnóstico, utilidades de recuperación y solución de problemas.",
-      "aboutDesc": "Versión, comprobación de actualizaciones, créditos y notas de la versión."
+      "aboutDesc": "Versión, comprobación de actualizaciones, créditos y notas de la versión.",
+      "assistantDesc": "Pídelo con tus propias palabras: encuentra los ajustes adecuados, te los explica y los cambia por ti."
     },
     "background": {
       "none": "Minimalista",
@@ -86,6 +89,37 @@ export default {
       "emptyDesc": "Todos los ajustes tienen su valor predeterminado",
       "count": "{count} ajustes",
       "resetConfirm": "¿Restablecer {count} ajustes a sus valores predeterminados?"
+    },
+    "assistant": {
+      "intro": "Cuéntame qué quieres cambiar. Buscaré los ajustes adecuados, los aplicaré y te los mostraré aquí para que puedas afinarlos.",
+      "providerNote": "Usa tus proveedores de IA que tengan activado «Asistente de ajustes». Tu mensaje y la lista de ajustes de ivLyrics se envían a ese proveedor.",
+      "placeholder": "Pregunta lo que quieras sobre los ajustes, p. ej. «Oculta el controlador automáticamente en pantalla completa»",
+      "send": "Enviar",
+      "stop": "Detener",
+      "newChat": "Nuevo chat",
+      "thinking": "Revisando los ajustes…",
+      "examplesTitle": "Prueba a preguntar",
+      "examples": {
+        "autoHide": "Oculta el controlador automáticamente en pantalla completa",
+        "fontSize": "Agranda las letras",
+        "translation": "Traduce las letras al inglés",
+        "performance": "La página de letras va lenta. Hazla más ligera."
+      },
+      "noProviderTitle": "Ningún proveedor de IA está listo",
+      "noProviderDesc": "Añade tu clave de API a un proveedor de IA como ChatGPT, Gemini o Claude, actívalo y deja activado «Asistente de ajustes».",
+      "openProviders": "Abrir Proveedores de IA",
+      "error": "La solicitud a la IA falló: {message}",
+      "invalidResponse": "No se pudo leer la respuesta de la IA. Inténtalo de nuevo.",
+      "stopped": "Detenido.",
+      "changedCount": "{count} ajustes cambiados",
+      "undo": "Deshacer",
+      "undone": "Cambios deshechos",
+      "adjusted": "Ajustado al rango permitido: {settings}",
+      "skipped": "No se pudo cambiar: {settings}",
+      "openInSettings": "Abrir en ajustes",
+      "you": "Tú",
+      "name": "Asistente",
+      "askAi": "Preguntar al asistente de IA"
     },
     "controls": {
       "colorPickerAriaLabel": "Selector de color {name}",
@@ -536,7 +570,8 @@ export default {
         "characterPronunciation": "Pronunciación por carácter",
         "culturalAnnotations": "Contexto cultural",
         "wordSupplements": "Detalles de palabras",
-        "motionDirection": "Dirección de movimiento"
+        "motionDirection": "Dirección de movimiento",
+        "settingsAssistant": "Asistente de ajustes"
       },
       "noEnabledProviders": "No hay proveedores de IA habilitados. Por favor, habilite al menos uno en la configuración.",
       "noPronunciationProviders": "Ningún proveedor de IA habilitado puede generar la pronunciación. Activa «Pronunciación» en un proveedor desde los ajustes de Proveedores de IA.",

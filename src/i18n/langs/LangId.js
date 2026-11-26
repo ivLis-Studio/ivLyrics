@@ -15,6 +15,7 @@ export default {
     "nowplaying": "Lirik Panel",
     "debug": "Debug",
     "about": "Tentang",
+    "assistant": "Asisten AI",
     "lyricsProviders": "Penyedia Lirik",
     "aiProviders": "Penyedia AI",
     "searchResults": "Hasil Pencarian"
@@ -48,7 +49,8 @@ export default {
         "behavior": "Alur",
         "surface": "Tampilan",
         "providers": "Sumber",
-        "system": "Sistem"
+        "system": "Sistem",
+        "assistant": "AI"
       },
       "generalDesc": "Bahasa, overlay desktop, dan pengaturan inti.",
       "appearanceDesc": "Latar belakang, tipografi, animasi, dan komposisi layar.",
@@ -60,7 +62,8 @@ export default {
       "aiProvidersDesc": "Konfigurasi penyedia AI untuk terjemahan dan pemrosesan.",
       "advancedDesc": "Deteksi, cache, aplikasi pendukung, dan kontrol lanjutan.",
       "debugDesc": "Diagnostik, utilitas pemulihan, dan pemecahan masalah.",
-      "aboutDesc": "Detail versi, pemeriksaan pembaruan, kredit, dan catatan rilis."
+      "aboutDesc": "Detail versi, pemeriksaan pembaruan, kredit, dan catatan rilis.",
+      "assistantDesc": "Sampaikan dengan kata-kata Anda sendiri. Asisten akan menemukan pengaturan yang tepat, menjelaskannya, lalu mengubahnya untuk Anda."
     },
     "background": {
       "none": "Minimal",
@@ -86,6 +89,37 @@ export default {
       "emptyDesc": "Semua pengaturan masih bawaan",
       "count": "{count} pengaturan",
       "resetConfirm": "Kembalikan {count} pengaturan ke bawaan?"
+    },
+    "assistant": {
+      "intro": "Beri tahu saya apa yang ingin Anda ubah. Saya akan mencari pengaturan yang cocok, menerapkannya, dan menampilkannya di sini agar bisa Anda sesuaikan.",
+      "providerNote": "Menggunakan penyedia AI Anda yang mengaktifkan “Asisten pengaturan”. Pesan Anda dan daftar pengaturan ivLyrics dikirim ke penyedia tersebut.",
+      "placeholder": "Tanyakan apa saja tentang pengaturan, mis. “Sembunyikan kontroler otomatis di layar penuh”",
+      "send": "Kirim",
+      "stop": "Hentikan",
+      "newChat": "Obrolan baru",
+      "thinking": "Menelusuri pengaturan…",
+      "examplesTitle": "Coba tanyakan",
+      "examples": {
+        "autoHide": "Sembunyikan kontroler otomatis di layar penuh",
+        "fontSize": "Perbesar teks lirik",
+        "translation": "Terjemahkan lirik ke bahasa Inggris",
+        "performance": "Halaman lirik terasa lambat. Buat lebih ringan."
+      },
+      "noProviderTitle": "Belum ada penyedia AI yang siap",
+      "noProviderDesc": "Tambahkan kunci API ke penyedia AI seperti ChatGPT, Gemini, atau Claude, aktifkan, lalu biarkan “Asisten pengaturan” tetap menyala.",
+      "openProviders": "Buka Penyedia AI",
+      "error": "Permintaan AI gagal: {message}",
+      "invalidResponse": "Jawaban AI tidak dapat dibaca. Silakan coba lagi.",
+      "stopped": "Dihentikan.",
+      "changedCount": "{count} pengaturan diubah",
+      "undo": "Urungkan",
+      "undone": "Perubahan dibatalkan",
+      "adjusted": "Disesuaikan ke rentang yang diizinkan: {settings}",
+      "skipped": "Tidak dapat diubah: {settings}",
+      "openInSettings": "Buka di pengaturan",
+      "you": "Anda",
+      "name": "Asisten",
+      "askAi": "Tanya asisten AI"
     },
     "controls": {
       "colorPickerAriaLabel": "Pemilih warna {name}",
@@ -536,7 +570,8 @@ export default {
         "characterPronunciation": "Pelafalan per karakter",
         "culturalAnnotations": "Konteks budaya",
         "wordSupplements": "Detail kata",
-        "motionDirection": "Arahan motion"
+        "motionDirection": "Arahan motion",
+        "settingsAssistant": "Asisten pengaturan"
       },
       "noEnabledProviders": "Tidak ada penyedia AI yang diaktifkan. Harap aktifkan setidaknya satu penyedia di pengaturan.",
       "noPronunciationProviders": "Tidak ada penyedia AI aktif yang dapat membuat pelafalan. Aktifkan “Pelafalan” untuk salah satu penyedia di pengaturan Penyedia AI.",

@@ -15,6 +15,7 @@ export default {
     "nowplaying": "Letra no Painel",
     "debug": "Depuração",
     "about": "Sobre",
+    "assistant": "Assistente de IA",
     "lyricsProviders": "Provedores de Letras",
     "aiProviders": "Provedores de IA",
     "searchResults": "Resultados da Busca"
@@ -48,7 +49,8 @@ export default {
         "behavior": "Fluxo",
         "surface": "Visão",
         "providers": "Fonte",
-        "system": "Sistema"
+        "system": "Sistema",
+        "assistant": "IA"
       },
       "generalDesc": "Idioma, sobreposição da área de trabalho e ajustes principais.",
       "appearanceDesc": "Fundos, tipografia, animações e composição da tela.",
@@ -60,7 +62,8 @@ export default {
       "aiProvidersDesc": "Configuração de provedores de IA para tradução e processamento.",
       "advancedDesc": "Detecção, cache, aplicativos auxiliares e controles avançados.",
       "debugDesc": "Diagnóstico, utilitários de recuperação e solução de problemas.",
-      "aboutDesc": "Versão, verificação de atualizações, créditos e notas da versão."
+      "aboutDesc": "Versão, verificação de atualizações, créditos e notas da versão.",
+      "assistantDesc": "Peça do seu jeito: ele encontra as configurações certas, explica e altera tudo para você."
     },
     "background": {
       "none": "Minimal",
@@ -86,6 +89,37 @@ export default {
       "emptyDesc": "Todas as configurações estão no padrão",
       "count": "{count} configurações",
       "resetConfirm": "Restaurar {count} configurações para o padrão?"
+    },
+    "assistant": {
+      "intro": "Diga o que você quer mudar. Vou encontrar as configurações certas, aplicá-las e mostrá-las aqui para você ajustar os detalhes.",
+      "providerNote": "Usa seus provedores de IA com “Assistente de configurações” ativado. Sua mensagem e a lista de configurações do ivLyrics são enviadas para esse provedor.",
+      "placeholder": "Pergunte qualquer coisa sobre as configurações, ex.: “Ocultar o controlador automaticamente na tela cheia”",
+      "send": "Enviar",
+      "stop": "Parar",
+      "newChat": "Nova conversa",
+      "thinking": "Analisando as configurações…",
+      "examplesTitle": "Experimente perguntar",
+      "examples": {
+        "autoHide": "Ocultar o controlador automaticamente na tela cheia",
+        "fontSize": "Deixe a letra maior",
+        "translation": "Traduza a letra para o inglês",
+        "performance": "A página da letra está lenta. Deixe mais leve."
+      },
+      "noProviderTitle": "Nenhum provedor de IA pronto",
+      "noProviderDesc": "Adicione sua chave de API a um provedor de IA como ChatGPT, Gemini ou Claude, ative-o e mantenha “Assistente de configurações” ligado.",
+      "openProviders": "Abrir Provedores de IA",
+      "error": "A solicitação à IA falhou: {message}",
+      "invalidResponse": "Não foi possível ler a resposta da IA. Tente novamente.",
+      "stopped": "Interrompido.",
+      "changedCount": "{count} configurações alteradas",
+      "undo": "Desfazer",
+      "undone": "Alterações desfeitas",
+      "adjusted": "Ajustado ao intervalo permitido: {settings}",
+      "skipped": "Não foi possível alterar: {settings}",
+      "openInSettings": "Abrir nas configurações",
+      "you": "Você",
+      "name": "Assistente",
+      "askAi": "Perguntar ao assistente de IA"
     },
     "controls": {
       "colorPickerAriaLabel": "Seletor de cor {name}",
@@ -536,7 +570,8 @@ export default {
         "characterPronunciation": "Pronúncia por caractere",
         "culturalAnnotations": "Contexto cultural",
         "wordSupplements": "Detalhes das palavras",
-        "motionDirection": "Direção de movimento"
+        "motionDirection": "Direção de movimento",
+        "settingsAssistant": "Assistente de configurações"
       },
       "noEnabledProviders": "Nenhum provedor de IA habilitado. Por favor, habilite pelo menos um nas configurações.",
       "noPronunciationProviders": "Nenhum provedor de IA habilitado pode gerar a pronúncia. Ative “Pronúncia” em um provedor nas configurações de Provedores de IA.",

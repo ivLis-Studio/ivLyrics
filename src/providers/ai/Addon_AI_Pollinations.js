@@ -60,7 +60,8 @@ export default function initializePollinationsAddon(services = createBuiltinAiPr
             lyricsStudy: true,
             characterPronunciation: true,
             culturalAnnotations: true,
-            motionDirection: true
+            motionDirection: true,
+            settingsAssistant: true
         },
         models: [] // API에서 동적으로 로드
     };
@@ -659,6 +660,14 @@ export default function initializePollinationsAddon(services = createBuiltinAiPr
                 throw new Error('[Pollinations.ai] Central motion direction prompt is unavailable.');
             }
             return await callPollinationsAPI(prompt);
+        },
+
+        async generateSettingsAssistant(params) {
+            const prompt = params?.settingsAssistantPrompt;
+            if (!prompt || typeof prompt !== 'object' || !prompt.userPrompt) {
+                throw new Error('[Pollinations.ai] Settings assistant prompt is unavailable.');
+            }
+            return await callPollinationsAPI(prompt, undefined, params.signal);
         },
 
         async generateLyricsStudy(params) {

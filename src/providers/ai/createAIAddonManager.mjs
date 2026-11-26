@@ -39,6 +39,7 @@ import {
     buildLyricsTranslationPrompt, buildMetadataTranslationPrompt, normalizeTranslationStyle, TRANSLATION_STYLES,
 } from "./aiTranslationPrompts.mjs";
 import { requestLyricsStudy, requestCulturalAnnotations, requestMotionDirection } from "./lyricEnrichmentRequests.mjs";
+import { requestSettingsAssistant } from "./settingsAssistantRequests.mjs";
 import { buildWordGlossPrompt, buildWordPronunciationPrompt, requestWordSupplement } from "./wordSupplementRequests.mjs";
 import * as characterPronunciationResult from './characterPronunciationResult.mjs';
 import * as characterPronunciationRequest from './characterPronunciationRequest.mjs';
@@ -70,7 +71,8 @@ export function createAIAddonManager({ getStoredValue, setStoredValue, getOwnSto
         LYRICS_STUDY: 'lyricsStudy', // 가사 기반 학습 모드 생성
         CHARACTER_PRONUNCIATION: 'characterPronunciation', // 문자별 발음
         CULTURAL_ANNOTATIONS: 'culturalAnnotations', // 번역만으로 전달되지 않는 문화적 배경 설명
-        MOTION_DIRECTION: 'motionDirection' // 모션 가사 연출
+        MOTION_DIRECTION: 'motionDirection', // 모션 가사 연출
+        SETTINGS_ASSISTANT: 'settingsAssistant' // 설정 도우미 채팅 (JSON 응답)
     };
 
     function buildMotionDirectionPrompt(params = {}) {
@@ -253,6 +255,15 @@ export function createAIAddonManager({ getStoredValue, setStoredValue, getOwnSto
             return requestMotionDirection(this, params, { debug });
         }
 
+        /**
+         * Settings assistant chat (활성화된 Provider 순서대로 시도). The prompt
+         * is built by the Settings window; returns the provider's JSON object.
+         * @param {{prompt: {systemPrompt: string, userPrompt: string}, signal?: AbortSignal}} params
+         */
+        async generateSettingsAssistant(params = {}) {
+            return requestSettingsAssistant(this, params, { debug });
+        }
+
         buildCulturalAnnotationsPrompt(params = {}) {
             return buildCulturalAnnotationsPrompt(params);
         }
@@ -267,7 +278,7 @@ export function createAIAddonManager({ getStoredValue, setStoredValue, getOwnSto
          * - author: string (제작자)
          * - description: string | { en: string, ko: string, ... } (설명)
          * - version: string (버전)
-         * - supports: { translate: boolean, pronunciation: boolean, metadata: boolean, research|tmi: boolean, lyricsStudy: boolean, characterPronunciation: boolean, culturalAnnotations: boolean, wordSupplements: boolean } (지원 기능)
+         * - supports: { translate: boolean, pronunciation: boolean, metadata: boolean, research|tmi: boolean, lyricsStudy: boolean, characterPronunciation: boolean, culturalAnnotations: boolean, wordSupplements: boolean, motionDirection: boolean, settingsAssistant: boolean } (지원 기능)
          *
          * 필수 메서드:
          * - getSettingsUI(): React.Component (설정 UI)
@@ -279,6 +290,8 @@ export function createAIAddonManager({ getStoredValue, setStoredValue, getOwnSto
          * - generateLyricsStudy(params): Promise<Object> (supports.lyricsStudy = true인 경우)
          * - generateCharacterPronunciation(params): Promise<Object> (supports.characterPronunciation = true인 경우)
          * - generateCulturalAnnotations(params): Promise<Object> (supports.culturalAnnotations = true인 경우)
+         * - generateMotionDirection(params): Promise<Object> (supports.motionDirection = true인 경우)
+         * - generateSettingsAssistant(params): Promise<Object> (supports.settingsAssistant = true인 경우)
          */
         register(addon) {
             if (!addon || !addon.id) {
@@ -304,13 +317,17 @@ export function createAIAddonManager({ getStoredValue, setStoredValue, getOwnSto
                     lyricsStudy: typeof addon.generateLyricsStudy === 'function',
                     characterPronunciation: typeof addon.generateCharacterPronunciation === 'function',
                     culturalAnnotations: typeof addon.generateCulturalAnnotations === 'function',
-                    motionDirection: typeof addon.generateMotionDirection === 'function'
+                    motionDirection: typeof addon.generateMotionDirection === 'function',
+                    settingsAssistant: typeof addon.generateSettingsAssistant === 'function'
                 };
             }
-            // Addons written before motion direction keep their supports map;
-            // the method alone is enough to opt in.
+            // Addons written before motion direction or the settings assistant
+            // keep their supports map; the method alone is enough to opt in.
             if (addon.supports.motionDirection === undefined) {
                 addon.supports.motionDirection = typeof addon.generateMotionDirection === 'function';
+            }
+            if (addon.supports.settingsAssistant === undefined) {
+                addon.supports.settingsAssistant = typeof addon.generateSettingsAssistant === 'function';
             }
             // Line pronunciation used to share the translate capability. Addons
             // written before it became its own capability keep generating it
@@ -368,7 +385,7 @@ export function createAIAddonManager({ getStoredValue, setStoredValue, getOwnSto
             }
 
             // 기능 메서드 중 최소 하나는 있어야 함
-            const featureMethods = ['translateLyrics', 'translateMetadata', 'generateResearch', 'generateTMI', 'generateLyricsStudy', 'generateCharacterPronunciation', 'generateCulturalAnnotations', 'generateMotionDirection'];
+            const featureMethods = ['translateLyrics', 'translateMetadata', 'generateResearch', 'generateTMI', 'generateLyricsStudy', 'generateCharacterPronunciation', 'generateCulturalAnnotations', 'generateMotionDirection', 'generateSettingsAssistant'];
             const hasAnyFeature = featureMethods.some(m => typeof addon[m] === 'function');
             if (!hasAnyFeature) {
                 errors.push(`Must implement at least one of: ${featureMethods.join(', ')}`);
@@ -432,7 +449,7 @@ export function createAIAddonManager({ getStoredValue, setStoredValue, getOwnSto
 
         /**
          * 특정 기능을 지원하는 활성화된 Provider 목록 (순서대로)
-         * @param {'translate'|'pronunciation'|'metadata'|'research'|'tmi'|'lyricsStudy'|'characterPronunciation'|'culturalAnnotations'|'wordSupplements'} capability - 기능 유형
+         * @param {'translate'|'pronunciation'|'metadata'|'research'|'tmi'|'lyricsStudy'|'characterPronunciation'|'culturalAnnotations'|'wordSupplements'|'motionDirection'|'settingsAssistant'} capability - 기능 유형
          * @returns {Object[]}
          */
         getEnabledProvidersFor(capability) {

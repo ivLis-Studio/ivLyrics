@@ -58,7 +58,8 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
             lyricsStudy: true,
             characterPronunciation: true,
             culturalAnnotations: true,
-            motionDirection: true
+            motionDirection: true,
+            settingsAssistant: true
         },
         models: []
     };
@@ -535,6 +536,14 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
                 throw new Error('[OpenRouter] Central motion direction prompt is unavailable.');
             }
             return await callOpenRouterAPI(prompt);
+        },
+
+        async generateSettingsAssistant(params) {
+            const prompt = params?.settingsAssistantPrompt;
+            if (!prompt || typeof prompt !== 'object' || !prompt.userPrompt) {
+                throw new Error('[OpenRouter] Settings assistant prompt is unavailable.');
+            }
+            return await callOpenRouterAPI(prompt, undefined, params.signal);
         },
 
         async generateLyricsStudy(params) {

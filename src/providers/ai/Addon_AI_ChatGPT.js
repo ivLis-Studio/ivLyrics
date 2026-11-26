@@ -62,7 +62,8 @@ export function createOpenAICompatibleAddon(config = {}, services = createBuilti
             lyricsStudy: true,  // 학습 모드 생성
             characterPronunciation: true,
             culturalAnnotations: true,
-            motionDirection: true
+            motionDirection: true,
+            settingsAssistant: true
         },
         // Capabilities are toggled per endpoint inside this addon's settings UI;
         // the provider-level toggle in the Settings row stays clickable and acts
@@ -334,6 +335,14 @@ export function createOpenAICompatibleAddon(config = {}, services = createBuilti
                 throw new Error('[OpenAI ChatGPT] Central motion direction prompt is unavailable.');
             }
             return await callChatGPTAPI(prompt, undefined, undefined, 'motionDirection', params.signal);
+        },
+
+        async generateSettingsAssistant(params) {
+            const prompt = params?.settingsAssistantPrompt;
+            if (!prompt || typeof prompt !== 'object' || !prompt.userPrompt) {
+                throw new Error('[OpenAI ChatGPT] Settings assistant prompt is unavailable.');
+            }
+            return await callChatGPTAPI(prompt, undefined, undefined, 'settingsAssistant', params.signal);
         },
 
         async generateLyricsStudy(params) {
