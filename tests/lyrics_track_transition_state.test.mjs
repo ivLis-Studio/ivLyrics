@@ -13,6 +13,7 @@ import { getPlaybackPositionService } from "../src/core/playbackPositionService.
 import { getTrackOverrideStores } from "../src/core/trackOverrideRuntime.mjs";
 import { createPageLyricsDataLoader } from "../src/lyrics/pageLyricsDataLoader.mjs";
 import { createPageLyricsLoad } from "../src/lyrics/createPageLyricsLoad.mjs";
+import { createTrackLyricsProviderReader } from "../src/lyrics/trackLyricsProviderReader.mjs";
 import { createPageTrackPreferences } from "../src/lyrics/pageTrackPreferences.mjs";
 import { createToolbarTranslationPreferences } from "../src/app/toolbar/toolbarTranslationPreferences.mjs";
 import { buildLyricsLoadingState, emptyLyricsState as emptyState, hasLyricsLayout } from "../src/lyrics/pageLyricsLoadState.mjs";
@@ -102,9 +103,8 @@ const createHarness = () => {
   context.fetchLyricsForTrack = createPageLyricsLoad({
     extractTrackId: context.Utils.extractTrackId,
     getLyricsService: () => getAppService("LyricsService", context.window),
-    getLyricsAddonManager: () => getAppService("LyricsAddonManager", context.window),
     readStoredTrackLanguage: trackOverrides.readLanguage,
-    readStoredTrackProvider: trackOverrides.readProvider,
+    readTrackProviderOverride: createTrackLyricsProviderReader(context.window, context.Utils.extractTrackId),
     readStoredTrackBackground: trackOverrides.readBackground,
     getVisualSettings: () => config.visual,
     getModeKey: context.getLyricsModeTypeKey,
@@ -550,6 +550,82 @@ for (const [storedProvider, expected] of [["removed-provider", null], ["open-lyr
     assert.equal(h.container.state.lyricsStatus, "ready");
   });
 }
+
+for (const hasWarmFallback of [false, true]) {
+  test(`startup uses the stored Marketplace provider with ${hasWarmFallback ? "a warm fallback" : "an empty cache"}`, async () => {
+    const h = createHarness(), song = track("startup-marketplace-choice");
+    const ready = deferred();
+    const provider = "saved-marketplace-provider";
+    let registered = false;
+    h.context.window.TrackLyricsProviderDB.getProvider = async () => provider;
+    h.context.window.MarketplaceManager = { readyPromise: ready.promise };
+    h.context.window.LyricsAddonManager = { getAddon: id => registered && id === provider ? { id } : null };
+    if (hasWarmFallback) {
+      h.snapshots.set(song.uri, {
+        trackUri: song.uri,
+        rawResult: { uri: song.uri, provider: "default-provider", synced: lines("Automatic fallback lyric") },
+        trackLyricsProviderOverride: null,
+      });
+    }
+    h.play(song);
+    const pending = h.container.fetchLyrics(song);
+    await new Promise(setImmediate);
+    assert.equal(h.requests.length, 0);
+    assert.deepEqual(h.publications, []);
+    assert.equal(h.container.state.isLoading, true);
+
+    registered = true;
+    ready.resolve();
+    await new Promise(setImmediate);
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.requests[0].override, provider);
+    h.requests[0].resolve({ uri: song.uri, provider, synced: lines("Saved provider lyric") });
+    await pending;
+    assert.equal(h.container.state.currentLyrics[0].text, "Saved provider lyric");
+    assert.equal(h.publications[0].trackLyricsProviderOverride, provider);
+  });
+}
+
+test("a warm registered provider does not wait for unrelated Marketplace startup", async () => {
+  const h = createHarness(), song = track("registered-provider");
+  const ready = deferred();
+  h.context.window.MarketplaceManager = { readyPromise: ready.promise };
+  h.context.window.TrackLyricsProviderDB.getProvider = () => "registered";
+  h.context.window.LyricsAddonManager = { getAddon: id => id === "registered" ? { id } : null };
+  h.snapshots.set(song.uri, {
+    trackUri: song.uri,
+    rawResult: { uri: song.uri, provider: "registered", synced: lines("Cached selected provider") },
+    trackLyricsProviderOverride: "registered",
+  });
+  h.play(song);
+  const pending = h.container.fetchLyrics(song);
+  await new Promise(setImmediate);
+  assert.equal(h.container.state.currentLyrics[0].text, "Cached selected provider");
+  assert.equal(h.container.state.isLoading, false);
+  assert.deepEqual(h.requests, []);
+  ready.resolve();
+  await pending;
+});
+
+test("an override still absent after Marketplace startup uses the automatic provider", async () => {
+  const h = createHarness(), song = track("unavailable-provider");
+  const ready = deferred();
+  h.context.window.MarketplaceManager = { readyPromise: ready.promise };
+  h.context.window.TrackLyricsProviderDB.getProvider = () => "unavailable";
+  h.context.window.LyricsAddonManager = { getAddon: () => null };
+  h.play(song);
+  const pending = h.container.fetchLyrics(song);
+  await new Promise(setImmediate);
+  assert.deepEqual(h.requests, []);
+  ready.resolve();
+  await new Promise(setImmediate);
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.requests[0].override, null);
+  h.requests[0].resolve({ uri: song.uri, provider: "automatic", synced: lines("Fallback lyric") });
+  await pending;
+  assert.equal(h.container.state.currentLyrics[0].text, "Fallback lyric");
+  assert.equal(h.container.state.trackLyricsProviderOverride, null);
+});
 
 test("a failed background lookup preserves the current track's saved language and provider", async () => {
   const h = createHarness(), next = track("independent-preferences");

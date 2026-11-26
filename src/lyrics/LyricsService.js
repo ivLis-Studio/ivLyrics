@@ -44,6 +44,7 @@ import { getTrackOverrideStores } from "../core/trackOverrideRuntime.mjs";
 import { getTrackSyncOffsetStore } from "../core/trackSyncOffsetRuntime.mjs";
 import { createPseudoKaraokeService } from "./pseudo-karaoke/createPseudoKaraokeService.mjs";
 import { createLocalLyricsStore } from "./localLyricsStore.mjs";
+import { createTrackLyricsProviderReader } from "./trackLyricsProviderReader.mjs";
 
 export { KaraokeWordTiming, SyncDataSourceCompatibility };
 
@@ -367,12 +368,7 @@ export default function LyricsServiceExtension() {
         refreshLyricsProviderSelection,
 
         getTrackLanguageOverride: trackOverrides.readLanguage,
-        async getTrackLyricsProviderOverride(uri) {
-            if (!TrackIdentity.extractTrackId(uri)) return null;
-            const provider = await trackOverrides.readProvider(uri);
-            const manager = getRuntimeService("LyricsAddonManager", window);
-            return provider && manager?.getAddon && !manager.getAddon(provider) ? null : provider;
-        },
+        getTrackLyricsProviderOverride: createTrackLyricsProviderReader(window, TrackIdentity.extractTrackId),
 
         async getTrackSyncOffset(trackUri) {
             return Number(await getTrackSyncOffsetStore(window).getOffset(trackUri)) || 0;

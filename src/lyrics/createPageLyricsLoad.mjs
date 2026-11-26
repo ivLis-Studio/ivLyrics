@@ -25,8 +25,8 @@ function readProvisionalDisplay(snapshot, settings) {
 }
 
 export function createPageLyricsLoad({
-  extractTrackId, getLyricsService, getLyricsAddonManager,
-  readStoredTrackLanguage, readStoredTrackProvider, readStoredTrackBackground,
+  extractTrackId, getLyricsService,
+  readStoredTrackLanguage, readTrackProviderOverride, readStoredTrackBackground,
   syncedMode, ...presentationSettings
 }) {
   const preparePresentation = createPageLyricsLoadPresentation(presentationSettings);
@@ -77,14 +77,15 @@ export function createPageLyricsLoad({
       const backgroundRevision = page._trackBackgroundPreferenceRevision;
       const readProviderRevision = () => getLyricsService()?.getLyricsRequestRevision?.(uri);
       let providerRevision = readProviderRevision();
-      let trackLanguageOverride, storedProvider, backgroundOverride;
+      const readProviderOverride = () => readTrackProviderOverride(uri, { signal: dataRequest.signal });
+      let trackLanguageOverride, trackLyricsProviderOverride, backgroundOverride;
       try {
-        [trackLanguageOverride, storedProvider, backgroundOverride] = await Promise.all([
-          readStoredTrackLanguage(uri), readStoredTrackProvider(uri), readStoredTrackBackground(uri),
+        [trackLanguageOverride, trackLyricsProviderOverride, backgroundOverride] = await Promise.all([
+          readStoredTrackLanguage(uri), readProviderOverride(), readStoredTrackBackground(uri),
         ]);
       } catch (error) {
         console.warn("[ivLyrics] Failed to load track overrides:", error);
-        trackLanguageOverride = storedProvider = backgroundOverride = null;
+        trackLanguageOverride = trackLyricsProviderOverride = backgroundOverride = null;
       }
       if (!isCurrent()) return;
 
@@ -127,14 +128,11 @@ export function createPageLyricsLoad({
         if (revision !== providerRevision) {
           providerRevision = revision;
           sourceSnapshot = null;
-          storedProvider = hasSpotifyTrackId ? await readStoredTrackProvider(uri) : null;
+          trackLyricsProviderOverride = await readProviderOverride();
           if (!isCurrent()) return;
           if (!isSourceCurrent()) continue;
         }
 
-        const manager = getLyricsAddonManager();
-        const trackLyricsProviderOverride = hasSpotifyTrackId && storedProvider
-          && (!manager?.getAddon || manager.getAddon(storedProvider)) ? storedProvider : null;
         page.trackLyricsProviderOverride = trackLyricsProviderOverride;
         updateCurrent({ trackLyricsProviderOverride }, isSourceCurrent);
 

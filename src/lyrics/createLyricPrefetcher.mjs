@@ -41,7 +41,7 @@ export function createLyricPrefetcher({
 
       if (!isCurrent()) return null;
       const service = getService("LyricsService");
-      const override = (await service.getTrackLyricsProviderOverride?.(uri)) || null;
+      const override = (await service.getTrackLyricsProviderOverride?.(uri, { signal })) || null;
       if (!isCurrent()) return null;
       const readMatchingSource = () => {
         const cached = readPageLyricsSource(sourceCache, uri, revision);

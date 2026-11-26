@@ -6,6 +6,7 @@ import { createPanelTrackEffects } from "../src/lyrics/panelTrackEffects.mjs";
 import { readInitialPanelLyrics } from "../src/lyrics/panelLyricPresentation.mjs";
 import { INTERFACE_LANGUAGE_CHANGED } from "../src/i18n/interfaceLanguage.mjs";
 import { LYRICS_PROVIDER_SELECTION_CHANGED } from "../src/lyrics/lyricsProviderRequests.mjs";
+import { createTrackLyricsProviderReader } from "../src/lyrics/trackLyricsProviderReader.mjs";
 
 const noop = () => {};
 const first = { uri: "spotify:track:first", metadata: { title: "First" } };
@@ -136,6 +137,58 @@ test("panel teardown aborts only the mounted view's pending provider lookup", as
     assert.equal(signal.aborted, true);
     pending.resolve(result(first));
     await flush();
+    assert.deepEqual(h.publish, []);
+});
+
+test("the panel waits for the stored Marketplace provider while loading the track offset", async t => {
+    const ready = Promise.withResolvers();
+    const provider = "marketplace-fixture";
+    const host = {
+        TrackLyricsProviderDB: { getProvider: () => provider },
+        MarketplaceManager: { readyPromise: ready.promise },
+        LyricsAddonManager: { getAddon: () => null },
+    };
+    const overrides = [];
+    const h = fixture(t, {
+        currentLoaded: false, getProviderOverride: createTrackLyricsProviderReader(host, () => "first"),
+        getLyrics: (info, override) => {
+            overrides.push([info.uri, override]);
+            return { ...result(first), provider: override };
+        },
+    });
+    await flush();
+    assert.deepEqual(overrides, []);
+    assert.equal(h.state.trackOffset, 30);
+    host.LyricsAddonManager = { getAddon: id => id === provider ? { id } : null };
+    ready.resolve();
+    await new Promise(setImmediate);
+    assert.deepEqual(overrides, [[first.uri, provider]]);
+    assert.equal(h.state.lyrics[0].text, "First lyric");
+    assert.equal(h.publish[0].trackLyricsProviderOverride, provider);
+});
+
+test("closing the panel cancels its readiness wait without retiring another consumer", async t => {
+    const ready = Promise.withResolvers();
+    const provider = "marketplace-fixture";
+    const host = {
+        TrackLyricsProviderDB: { getProvider: () => provider },
+        MarketplaceManager: { readyPromise: ready.promise },
+        LyricsAddonManager: { getAddon: () => null },
+    };
+    const readProvider = createTrackLyricsProviderReader(host, () => "first");
+    const otherView = readProvider(first.uri);
+    let panelWait;
+    const h = fixture(t, {
+        currentLoaded: false, getProviderOverride: (...args) => panelWait = readProvider(...args),
+    });
+    await flush();
+    assert.ok(panelWait);
+    h.close();
+    assert.equal(await panelWait, null);
+    assert.deepEqual(h.loads, []);
+    host.LyricsAddonManager = { getAddon: id => id === provider ? { id } : null };
+    ready.resolve();
+    assert.equal(await otherView, provider);
     assert.deepEqual(h.publish, []);
 });
 

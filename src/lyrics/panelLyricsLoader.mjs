@@ -14,7 +14,7 @@ async function readPanelSource({ service, track, isLocalTrack, getSavedPanelLoca
         const isSourceCurrent = () => revision === readRevision();
         try {
             const [providerOverride, languageOverride] = await Promise.all([
-                isLocalTrack ? null : service.getTrackLyricsProviderOverride?.(track.uri),
+                isLocalTrack ? null : service.getTrackLyricsProviderOverride?.(track.uri, { signal }),
                 service.getTrackLanguageOverride?.(track.uri),
             ]);
             if (!ownsRequest()) return null;

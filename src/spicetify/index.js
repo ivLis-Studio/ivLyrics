@@ -53,6 +53,7 @@ import { FLOATING_TOOLBAR_MODE_KEYS, isLyricsShortcutInputFocused } from "#ivlyr
 import { createPageLyricsDataLoader } from "#ivlyrics/lyrics/pageLyricsDataLoader.mjs";
 import { cancelPendingPageMetadataTranslation, createPageMetadataTranslation } from "#ivlyrics/lyrics/createPageMetadataTranslation.mjs";
 import { createPageLyricsLoad } from "#ivlyrics/lyrics/createPageLyricsLoad.mjs";
+import { createTrackLyricsProviderReader } from "#ivlyrics/lyrics/trackLyricsProviderReader.mjs";
 import { buildLyricsLoadingState, hasLyricsLayout } from "#ivlyrics/lyrics/pageLyricsLoadState.mjs";
 import { cancelPendingLyricsTimingUpgrade, createPageLyricsTimingUpgrade } from "#ivlyrics/lyrics/pageLyricsTimingUpgrade.mjs";
 import { getRuntimeService as getAppService, publishRuntimeService as publishAppService } from "#ivlyrics/spicetify/runtimeServices.mjs";
@@ -264,9 +265,8 @@ const { computeBaseLyricsStyleVariables, computeLyricsBackgroundStyle } = create
 const fetchLyricsForTrack = createPageLyricsLoad({
   extractTrackId: (uri) => Utils.extractTrackId(uri),
   getLyricsService: () => getAppService("LyricsService", window),
-  getLyricsAddonManager: () => getAppService("LyricsAddonManager", window),
   readStoredTrackLanguage: trackOverrides.readLanguage,
-  readStoredTrackProvider: trackOverrides.readProvider,
+  readTrackProviderOverride: createTrackLyricsProviderReader(window, (uri) => Utils.extractTrackId(uri)),
   readStoredTrackBackground: trackOverrides.readBackground,
   getVisualSettings: () => CONFIG.visual,
   getModeKey: getLyricsModeTypeKey,
