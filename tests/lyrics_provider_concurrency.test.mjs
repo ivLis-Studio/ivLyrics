@@ -22,7 +22,7 @@ const flush = async () => { for (let i = 0; i < 3; i++) await new Promise(setImm
 
 function setup(t, {
     count = 6, preferTypes = true, ids = Array.from({ length: count }, (_, i) => `provider-${i}`),
-    getResult, prepareLyricsLookup,
+    getResult, prepareLyricsLookup, getCachedLyrics, syncDataService,
 } = {}) {
     const gates = ids.map(deferred), calls = [], attempts = [], selected = [], cacheWrites = [], generations = [];
     let active = 0, maximum = 0;
@@ -30,7 +30,8 @@ function setup(t, {
         ['ivLyrics:visual:prefer-lyrics-type-over-provider-order', String(preferTypes)],
         ['ivLyrics:lyrics:provider-order', JSON.stringify(ids)],
     ]);
-    const window = { LyricsService: {
+    const window = { SyncDataService: syncDataService, LyricsService: {
+        getCachedLyrics,
         extractTrackId: () => 'AAAAAAAAAAAAAAAAAAAAAA',
         cacheLyrics: async (trackId, provider, value) => { cacheWrites.push({ trackId, provider, value }); },
     } };
@@ -100,6 +101,101 @@ test('reentrant progress joins the request and an old refresh cannot alter the c
     assert.equal(h.selected.length, 1);
     assert.equal(snapshots.length, 1);
     assert.equal(h.manager.getActiveLyricsSearchProgress(info.uri, 'provider-0'), null);
+});
+
+test('a pre-aborted lookup leaves an existing provider search visible', async t => {
+    const h = setup(t, { count: 1 });
+    const pending = h.manager.getLyrics(info);
+    await flush();
+    const progress = h.manager.getActiveLyricsSearchProgress(info.uri);
+    assert.equal(progress.providerId, 'provider-0');
+
+    const cancelled = new AbortController();
+    cancelled.abort();
+    const retired = await h.manager.getLyrics(info, null, { signal: cancelled.signal });
+    assert.equal(retired.stale, true);
+    assert.deepEqual(h.manager.getActiveLyricsSearchProgress(info.uri), progress);
+
+    h.resolve(0, result());
+    assert.equal((await pending).provider, 'provider-0');
+});
+
+test('cancelling on provider progress retires the attempt before it is emitted or started', async t => {
+    const h = setup(t);
+    const cancelled = new AbortController();
+    h.manager.on('lyrics:search:progress', event => {
+        if (event.stage === 'provider') cancelled.abort();
+    });
+
+    const retired = await h.manager.getLyrics(info, null, { signal: cancelled.signal });
+    assert.equal(retired.stale, true);
+    assert.deepEqual(h.attempts, []);
+    assert.deepEqual(h.calls, []);
+    assert.equal(h.manager.getActiveLyricsSearchProgress(info.uri), null);
+});
+
+test('a direct lookup can be cancelled while track identity is still resolving', async t => {
+    const identity = deferred();
+    const h = setup(t, { count: 1, syncDataService: { resolveTrackIsrc: () => identity.promise } });
+    t.after(() => identity.resolve('JPAAA2600001'));
+    const cancelled = new AbortController();
+    let output;
+    const pending = h.manager.getLyrics(info, null, { signal: cancelled.signal }).then(value => { output = value; });
+    await flush();
+
+    cancelled.abort();
+    await flush();
+    assert.equal(output?.stale, true);
+    assert.equal(h.manager.getActiveLyricsSearchProgress(info.uri), null);
+
+    identity.resolve('JPAAA2600001');
+    await pending;
+    await flush();
+    assert.deepEqual(h.calls, []);
+    assert.deepEqual(h.selected, []);
+});
+
+test('sync data can enrich frozen provider cache entries without mutating them', async t => {
+    const cached = Object.freeze({ ...result(), provider: 'provider-0', uri: info.uri });
+    const karaoke = result('character').karaoke;
+    const h = setup(t, { count: 1, getCachedLyrics: async () => cached, syncDataService: {
+        getSyncData: async () => ({ syncData: { version: 6 }, syncType: 'character', syncPoints: 26 }),
+        applySyncDataToLyrics: () => karaoke,
+    } });
+
+    const selected = await h.manager.getLyrics(info);
+    assert.equal(selected.karaokeGranularity, 'character');
+    assert.equal(selected.syncPoints, 26);
+    assert.equal(selected.karaoke[0].text, line.text);
+    assert.equal(cached.karaoke, undefined);
+    assert.equal(cached.syncDataApplied, undefined);
+    assert.deepEqual(h.calls, []);
+    assert.equal(h.cacheWrites.length, 1);
+    assert.equal(h.cacheWrites[0].value.syncDataApplied, true);
+});
+
+test('sync data from a retired lookup cannot apply timings or modify the shared provider result', async t => {
+    const sync = deferred();
+    const cached = { ...result(), provider: 'provider-0', uri: info.uri };
+    const requests = [];
+    let timingApplications = 0;
+    const h = setup(t, { count: 1, getCachedLyrics: async () => cached, syncDataService: {
+        getSyncData: (...args) => { requests.push(args); return sync.promise; },
+        applySyncDataToLyrics: () => { timingApplications++; return result('character').karaoke; },
+    } });
+    t.after(() => sync.resolve());
+    const cancelled = new AbortController();
+    const pending = h.manager.getLyrics(info, null, { signal: cancelled.signal });
+    await flush();
+    assert.equal(requests.length, 1);
+
+    cancelled.abort();
+    sync.resolve({ syncData: { version: 6 } });
+    assert.equal((await pending).stale, true);
+    await flush();
+    assert.equal(timingApplications, 0);
+    assert.equal(cached.karaoke, undefined);
+    assert.deepEqual(h.cacheWrites, []);
 });
 
 test('starts three providers in order and fills each free slot without waiting for an earlier provider', async t => {

@@ -14,6 +14,7 @@ import {
 } from "./lyricsProviderSelection.mjs";
 import { requestLyrics } from "./lyricsProviderRequest.mjs";
 import { createLyricsSearchProgress } from "./lyricsSearchProgress.mjs";
+import { supersededLyricsRequest } from "../../lyrics/lyricsProviderRequests.mjs";
 
 export function createLyricsAddonManager({
     getStoredValue, setStoredValue, readTrackItem, readTrackIdentity, readVisualSettings, readAppStorage,
@@ -374,17 +375,32 @@ export function createLyricsAddonManager({
          * 글자 → 단어 → 줄 → 일반 단계 안에서 사용자 지정 제공자 순서를 유지한다.
          * 같은 단계의 조회는 최대 3개씩 병렬 실행하고 결과 선택은 기존 순서를 따른다.
          */
-        getLyrics(info, forcedProviderId = null, { isCurrent = () => true, signal } = {}) {
+        async getLyrics(info, forcedProviderId = null, { isCurrent = () => true, signal } = {}) {
             const isOwned = () => !signal?.aborted && isCurrent();
+            const retired = () => supersededLyricsRequest(info?.uri);
+            if (!isOwned()) return retired();
+
             const progress = this._lyricsSearchProgress.begin(info?.uri, forcedProviderId, isOwned);
-            const closeProgress = () => {
-                signal?.removeEventListener("abort", closeProgress);
-                progress.close();
-            };
-            signal?.addEventListener("abort", closeProgress, { once: true });
-            return requestLyrics(this, info, forcedProviderId, requestServices, {
+            const lookup = () => requestLyrics(this, info, forcedProviderId, requestServices, {
                 isCurrent: isOwned, signal, publishProgress: progress.publish,
-            }).finally(closeProgress);
+            });
+            let onAbort;
+            try {
+                if (!signal) return await lookup();
+                const cancelled = new Promise(resolve => {
+                    onAbort = () => {
+                        progress.close();
+                        resolve(retired());
+                    };
+                    signal.addEventListener("abort", onAbort, { once: true });
+                });
+                // Metadata and legacy add-ons may still be awaiting work that
+                // cannot be aborted. Their caller and progress can retire now.
+                return await Promise.race([cancelled, lookup()]);
+            } finally {
+                if (onAbort) signal.removeEventListener("abort", onAbort);
+                progress.close();
+            }
         }
 
         /**

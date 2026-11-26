@@ -89,9 +89,9 @@ export async function requestLyrics(manager, info, forcedProviderId, {
         readAddonDebug().time('lyrics', 'getLyrics:total');
     }
 
-    if (isCurrent()) {
-        manager.emit('lyrics:fetch:start', { uri: info.uri, title: info.title, artist: info.artist, selectionPolicy });
-    }
+    if (!isCurrent()) return supersededLyricsRequest(info.uri);
+    manager.emit('lyrics:fetch:start', { uri: info.uri, title: info.title, artist: info.artist, selectionPolicy });
+    if (!isCurrent()) return supersededLyricsRequest(info.uri);
 
     if (enabledProviders.length === 0) {
         const error = {
@@ -131,7 +131,7 @@ export async function requestLyrics(manager, info, forcedProviderId, {
                 lyricsType
             };
             publishProgress(detail);
-            manager.emit('lyrics:provider:attempt', detail);
+            if (isCurrent()) manager.emit('lyrics:provider:attempt', detail);
         },
         onError: (provider, error) => {
             console.warn(`[LyricsAddonManager] Provider ${provider.id} failed:`, error);

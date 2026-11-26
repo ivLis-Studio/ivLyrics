@@ -3,11 +3,15 @@ import {
     inferKaraokeGranularity, applyKaraokeGranularity, filterProviderCandidateResult,
 } from "./lyricsProviderTypes.mjs";
 import { canApplyLrcRedWordTiming, normalizeLrcRedIsrc } from "./lrcRedWordTiming.mjs";
+import { createLyricsProviderTimingEnrichment } from "./enrichLyricsProviderTiming.mjs";
 
 export function createLyricsProviderCandidateLoader({
     readLyricsService, readSyncDataService, readPseudoKaraoke,
     normalizeProviderInstrumentalBreaks, readAddonDebug, debug,
 }) {
+    const { refreshContributorIdentity, applyRegisteredTiming, applyPseudoTiming } =
+        createLyricsProviderTimingEnrichment({ readLyricsService, readSyncDataService, readPseudoKaraoke });
+
     // Fetches a provider result, preferring a still-valid cache entry over a
     // fresh provider.getLyrics() call. Mirrors the original try/finally: the
     // AddonDebug timing span always closes, cache-lookup failures are swallowed
@@ -76,7 +80,6 @@ export function createLyricsProviderCandidateLoader({
         debug(`[LyricsAddonManager] Trying provider: ${provider.id}`);
         debug(`[LyricsAddonManager] User settings for ${provider.id}: character=${allowCharacter}, word=${allowWord}, synced=${allowSynced}, unsynced=${allowUnsynced}`);
 
-        let syncDataAppliedThisCall = false;
         const addonDebug = readAddonDebug();
         const debugTiming = addonDebug?.isEnabled();
         if (debugTiming) addonDebug.time('lyrics', `provider:${provider.id}`);
@@ -92,41 +95,17 @@ export function createLyricsProviderCandidateLoader({
         }
 
         const normalizedInstrumentalBreaks = normalizeProviderInstrumentalBreaks(result, info);
-        result = normalizedInstrumentalBreaks.result;
+        // Timing services can mutate the result object. The cache and add-on
+        // retain ownership of the value they handed us.
+        result = { ...normalizedInstrumentalBreaks.result };
+        const timingContext = { trackId, trackIsrc, isCurrent };
 
-        // Cached timing data intentionally contains anonymous contributor
-        // placeholders. Rehydrate only the current identity metadata from
-        // the server; an offline failure safely keeps those placeholders.
-        const hasRedactedContributorIdentity = cacheHit
-            && result.syncDataApplied
+        const hasRedactedContributors = cacheHit && result.syncDataApplied
             && Array.isArray(result.contributors)
-            && result.contributors.some((contributor) => (
-                contributor
-                && typeof contributor === 'object'
-                && contributor.identityRedacted === true
-            ));
-        if (hasRedactedContributorIdentity && isCurrent() && (trackId || trackIsrc) && readSyncDataService()?.getSyncData) {
-            try {
-                const syncProvider = result.syncDataProvider || result.provider || provider.id;
-                const refreshedSyncData = await readSyncDataService().getSyncData(trackId, syncProvider, {
-                    ...info,
-                    isrc: trackIsrc,
-                    forceContributorRefresh: true
-                });
-                if (refreshedSyncData) {
-                    result = {
-                        ...result,
-                        ...(Array.isArray(refreshedSyncData.contributors)
-                            ? { contributors: refreshedSyncData.contributors }
-                            : {}),
-                        syncType: refreshedSyncData.syncType || result.syncType || 'unknown',
-                        syncPoints: Number(refreshedSyncData.syncPoints ?? result.syncPoints ?? 2),
-                        syncTypeBreakdown: refreshedSyncData.syncTypeBreakdown || result.syncTypeBreakdown || null
-                    };
-                }
-            } catch (error) {
-                console.warn('[LyricsAddonManager] Failed to refresh contributor privacy metadata:', error);
-            }
+            && result.contributors.some(item => item?.identityRedacted === true);
+        if (hasRedactedContributors) {
+            await refreshContributorIdentity(result, provider.id, info, timingContext);
+            if (!isCurrent()) return null;
         }
 
         result = applyKaraokeGranularity(result);
@@ -167,93 +146,11 @@ export function createLyricsProviderCandidateLoader({
             hasSyncDataService: !!readSyncDataService()?.getSyncData
         });
 
-        const applyRegisteredSyncData = async () => {
-            if (!shouldApplyRegisteredSyncData || !isCurrent()) return;
-            if ((trackId || trackIsrc) && readSyncDataService()?.getSyncData) {
-                try {
-                    const syncProvider = result.provider || provider.id;
-                    const syncData = await readSyncDataService().getSyncData(trackId, syncProvider, {
-                        ...info,
-                        isrc: trackIsrc
-                    });
-
-                    if (syncData?.syncData) {
-                        const baseLyrics = resultHasSynced ? result.synced : result.unsynced;
-                        const karaoke = readSyncDataService().applySyncDataToLyrics(baseLyrics, syncData, {
-                            durationMs: info.durationMs || info.duration_ms || info.duration,
-                            trackInfo: info,
-                            result
-                        });
-
-                        if (hasLyricsContent(karaoke)) {
-                            result.karaoke = karaoke;
-                            result.karaokeSource = 'sync-data';
-                            result.karaokeGranularity = LYRICS_TYPES.CHARACTER;
-                            delete result.pseudoKaraokeCacheVersion;
-                            result.syncDataApplied = true;
-                            result.syncDataProvider = syncProvider;
-                            result.syncDataRendererVersion = SYNC_DATA_RENDERER_VERSION;
-                            result.syncType = syncData.syncType || 'unknown';
-                            result.syncPoints = Number(syncData.syncPoints ?? 2);
-                            result.syncTypeBreakdown = syncData.syncTypeBreakdown || null;
-                            syncDataAppliedThisCall = true;
-
-                            if (syncData.contributors || syncData.syncData?.contributors) {
-                                result.contributors = syncData.contributors || syncData.syncData.contributors;
-                            }
-                            if (readSyncDataService().convertKaraokeToSynced) {
-                                const syncedFromKaraoke = readSyncDataService().convertKaraokeToSynced(karaoke);
-                                if (hasLyricsContent(syncedFromKaraoke)) {
-                                    result.synced = syncedFromKaraoke;
-                                }
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.warn('[LyricsAddonManager] Failed to get sync-data:', error);
-                }
-            } else if (readLyricsService()?.applyIvLyricsSyncData) {
-                try {
-                    const karaokeBeforeSyncData = result.karaoke;
-                    const syncedBeforeSyncData = result.synced;
-                    const syncDataAppliedBefore = result.syncDataApplied;
-                    const syncResult = await readLyricsService().applyIvLyricsSyncData(result);
-                    if (syncResult) {
-                        Object.assign(result, syncResult);
-                        syncDataAppliedThisCall = !!result.syncDataApplied && (
-                            result.karaoke !== karaokeBeforeSyncData
-                            || result.synced !== syncedBeforeSyncData
-                            || result.syncDataApplied !== syncDataAppliedBefore
-                        );
-                    }
-                } catch (error) {
-                    console.warn('[LyricsAddonManager] Failed to apply legacy sync data:', error);
-                }
-            }
-        };
-        await applyRegisteredSyncData();
+        const syncDataAppliedThisCall = shouldApplyRegisteredSyncData
+            && await applyRegisteredTiming(result, provider.id, info, timingContext, resultHasSynced);
         if (!isCurrent()) return null;
 
-        const applyPseudoKaraoke = async () => {
-            if (allowKaraoke && isCurrent() && readPseudoKaraoke()?.applyToResult) {
-                try {
-                    const karaokeBeforePseudo = result.karaoke;
-                    const karaokeSourceBeforePseudo = result.karaokeSource;
-                    const pseudoCacheVersionBeforePseudo = result.pseudoKaraokeCacheVersion;
-                    const pseudoResult = await readPseudoKaraoke().applyToResult(result, info);
-                    if (pseudoResult) {
-                        Object.assign(result, pseudoResult);
-                    }
-                    return result.karaoke !== karaokeBeforePseudo
-                        || result.karaokeSource !== karaokeSourceBeforePseudo
-                        || result.pseudoKaraokeCacheVersion !== pseudoCacheVersionBeforePseudo;
-                } catch (error) {
-                    console.warn('[LyricsAddonManager] Failed to apply pseudo karaoke:', error);
-                }
-            }
-            return false;
-        };
-        const pseudoKaraokeChanged = await applyPseudoKaraoke();
+        const pseudoKaraokeChanged = allowKaraoke && await applyPseudoTiming(result, info, isCurrent);
         if (!isCurrent()) return null;
 
         // Sync-data and pseudo-karaoke can rebuild line objects after the
