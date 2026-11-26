@@ -29,9 +29,10 @@ const result = () => ({ uri: track.uri, provider: 'fixture', synced: [{ text: 'O
 // Execute both production request methods. Only providers, translation transport,
 // settings and the snapshot store are deterministic in-memory collaborators.
 function load(readSavedLocalLyrics) {
-    const snapshots = new Map(), published = [], sent = [], loaded = [];
+    const snapshots = new Map(), published = [], sent = [], loaded = [], errors = [];
     const values = new Map([['ivLyrics:visual:translation-mode-2:english', 'gemini_ko']]);
     let provider = async () => result(), translator = async () => ({ translation: 'Translated' });
+    let send = async () => {};
     let target = 'ko', notation = 'translation', currentUri = track.uri, djNarration = false;
     const context = vm.createContext({
         getRuntimeService,
@@ -48,7 +49,8 @@ function load(readSavedLocalLyrics) {
         getTranslationTargetLanguage: () => target,
         getServicePronunciationNotation: () => notation,
         serviceDebug() {}, console: { warn() {}, error() {} },
-        sendLyricsToConsumers: async payload => { sent.push(payload); },
+        sendLyricsToConsumers: async payload => { sent.push(payload); await send(payload); },
+        reportError: (_message, error) => errors.push(error),
     });
     context.providerRequests = createLyricsProviderRequests(() => context.window.LyricsAddonManager);
     vm.runInContext(`globalThis.service = {
@@ -65,7 +67,8 @@ function load(readSavedLocalLyrics) {
         return next;
     };
     service.emit = (event, payload) => loaded.push({ event, payload });
-    return { service, snapshots, published, sent, loaded, values,
+    return { service, snapshots, published, sent, loaded, values, errors,
+        setSend: fn => { send = fn; },
         setProvider: fn => { provider = fn; }, setTranslator: fn => { translator = fn; },
         setTarget: value => { target = value; }, setNotation: value => { notation = value; },
         setCurrentUri: value => { currentUri = value; }, bumpGeneration: uri => context.providerRequests.invalidate(uri),
@@ -332,4 +335,45 @@ test('original-only fallback remains available when no newer owner publishes', a
     assert.equal(h.sent[0].lyrics[0].text, 'Original');
     assert.equal(h.sent[0].presentationContext.presentationComplete, false);
     assert.equal(h.published.at(-1).source, 'lyrics-service-original-fallback');
+});
+
+test('empty fallback returns stale if playback changes while the display is clearing', async () => {
+    for (const providerResult of [{ error: 'No lyrics found' }, { provider: 'fixture', synced: [], unsynced: [] }]) {
+        const h = load(), packet = deferred();
+        h.setProvider(async () => providerResult);
+        h.setSend(() => packet.promise);
+        const work = h.service.getFullLyrics(track);
+        await flush();
+        assert.equal(h.sent.length, 1);
+        assert.equal(h.sent[0].lyrics.length, 0);
+
+        h.setCurrentUri('spotify:track:other');
+        packet.resolve();
+        assert.equal((await work).stale, true);
+        assert.equal(h.loaded.length, 0);
+    }
+});
+
+test('errors from a superseded fallback are silent and current failures still surface', async () => {
+    for (const changeTrack of [true, false]) {
+        const language = deferred();
+        const h = load();
+        const failure = new Error('Language lookup failed');
+        h.service.getTrackLanguageOverride = async () => { await language.promise; throw failure; };
+        const work = h.service.getFullLyrics(track);
+        await flush();
+        assert.equal(h.published.length, 1);
+
+        if (changeTrack) h.setCurrentUri('spotify:track:other');
+        language.resolve();
+        const output = await work;
+        if (changeTrack) {
+            assert.equal(output.stale, true);
+            assert.deepEqual(h.errors, []);
+        } else {
+            assert.equal(output.error, failure.message);
+            assert.deepEqual(h.errors, [failure]);
+        }
+        assert.deepEqual(h.sent, []);
+    }
 });

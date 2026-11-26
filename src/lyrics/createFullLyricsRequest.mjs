@@ -57,8 +57,14 @@ export function createFullLyricsRequest({
         };
 
         try {
-            if (!isPlaybackCurrent(info?.uri)) return staleResult();
+            if (!isCurrentRequest()) return staleResult();
+            const trackInfo = { uri: info.uri, title: info.title, artist: info.artist };
+            const sendEmptyLyrics = async (provider, error) => {
+                await sendLyricsToConsumers({ trackInfo, lyrics: [], sendToOverlay, forceResend: true });
+                return isCurrentRequest() ? { lyrics: [], provider, error } : staleResult();
+            };
             const localLyrics = readSavedLocalLyrics ? await readSavedLocalLyrics(info) : null;
+            if (!isCurrentRequest()) return staleResult();
             const providerOverride = !localLyrics && service.getTrackLyricsProviderOverride
                 ? await service.getTrackLyricsProviderOverride(info.uri) : null;
             if (!isCurrentRequest()) return staleResult();
@@ -76,15 +82,7 @@ export function createFullLyricsRequest({
             if (!isCurrentRequest()) return staleResult();
 
             if (!rawResult || rawResult.error || (rawResult.uri && rawResult.uri !== info.uri)) {
-                // 가사 없음 - 오버레이에 트랙 정보만 전송
-                await sendLyricsToConsumers({
-                    trackInfo: { uri: info.uri, title: info.title, artist: info.artist },
-                    lyrics: [],
-                    sendToOverlay,
-                    forceResend: true
-                });
-
-                return { lyrics: [], provider: null, error: rawResult?.error || 'No lyrics found' };
+                return await sendEmptyLyrics(null, rawResult?.error || 'No lyrics found');
             }
 
             const trackLanguageOverride = info.languageOverride || await service.getTrackLanguageOverride?.(info.uri);
@@ -99,13 +97,7 @@ export function createFullLyricsRequest({
             let lyrics = selected;
 
             if (lyrics.length === 0) {
-                await sendLyricsToConsumers({
-                    trackInfo: { uri: info.uri, title: info.title, artist: info.artist },
-                    lyrics: [],
-                    sendToOverlay,
-                    forceResend: true
-                });
-                return { lyrics: [], provider, error: "No lyrics" };
+                return await sendEmptyLyrics(provider, 'No lyrics');
             }
 
             // 3. endTime 계산 (없으면 다음 라인의 startTime 사용)
@@ -154,7 +146,6 @@ export function createFullLyricsRequest({
                 presentationComplete: false
             };
 
-            const trackInfo = { uri: info.uri, title: info.title, artist: info.artist };
             const publishPresentation = (lines, context) => {
                 acceptedSnapshot = service.publishLyricsSnapshot({
                     trackUri: info.uri,
@@ -244,6 +235,7 @@ export function createFullLyricsRequest({
 
             return { lyrics, provider, contributors: lyricsResult.contributors || [], error: null };
         } catch (e) {
+            if (!isCurrentRequest()) return staleResult();
             reportError('[LyricsService] getFullLyrics 실패:', e);
             return { lyrics: [], provider: null, error: e.message };
         }

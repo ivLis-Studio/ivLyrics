@@ -4,7 +4,7 @@ import { isPlaybackLyricsTargetCurrent } from "../../src/core/playbackPositionSe
 
 export function fixtureFullLyricsRequest({
     window, Utils, Spicetify, providerRequests, getTranslationTargetLanguage,
-    getServicePronunciationNotation, sendLyricsToConsumers, readSavedLocalLyrics,
+    getServicePronunciationNotation, sendLyricsToConsumers, readSavedLocalLyrics, reportError = () => {},
 }) {
     const getTranslator = () => window.Translator;
     const translationModes = createLyricTranslationModes({
@@ -31,7 +31,7 @@ export function fixtureFullLyricsRequest({
         sendLyricsToConsumers,
         debug() {},
         reportWarning() {},
-        reportError() {},
+        reportError,
     });
     return function getFullLyrics(info, options) {
         return request(this, info, options);
