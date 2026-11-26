@@ -58,7 +58,7 @@ function installerFixture(context, {
     differentMirrorArchive = false, uninstallFailure = '', compactGithubMetadata = false,
     archive = null, releaseVersion = latest,
     manifest = { name: 'ivLyrics', subfiles_extension: ['startup.js'] }, failProtocolRegistration = false,
-    macosDefaultHandler = null, macosHandlerDelay = 0,
+    macosDefaultHandler = null, macosHandlerDelay = 0, macosStaleHandlerReappears = false,
 } = {}) {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'ivlyrics-unix-installer-')));
     context.after(() => rmSync(root, { recursive: true, force: true }));
@@ -69,6 +69,7 @@ function installerFixture(context, {
     const app = join(apps, 'ivLyrics');
     const legacyBundle = join(home, 'Library/Application Support/ivLyrics/Updater/ivLyrics Updater.app');
     const backupBundle = join(root, 'archived profile/ivLyrics Updater.app');
+    const secondBackupBundle = join(root, 'older archived profile/ivLyrics Updater.app');
     const activeConfig = join(profile, 'config-xpui.ini');
     const log = join(root, 'events');
     mkdirSync(bin);
@@ -84,6 +85,10 @@ function installerFixture(context, {
         mkdirSync(backupBundle, { recursive: true });
         writeFileSync(join(backupBundle, 'marker'), 'existing bundle');
         writeFileSync(join(root, 'default-handler'), `${macosDefaultHandler}\n${backupBundle}\n`);
+    }
+    if (macosStaleHandlerReappears) {
+        mkdirSync(secondBackupBundle, { recursive: true });
+        writeFileSync(join(root, 'stale-handler-lookups'), [backupBundle, secondBackupBundle, backupBundle, ''].join('\n'));
     }
     const metadata = {
         url: 'https://api.github.com/repos/ivLis-Studio/ivLyrics/releases/123',
@@ -225,6 +230,13 @@ if [ "$delay" -gt 0 ]; then
     printf '%s\n' "$((delay - 1))" > "$IVL_TEST_ROOT/handler-delay"
     exit 0
 fi
+if [ -s "$IVL_TEST_ROOT/stale-handler-lookups" ]; then
+    printf 'kr.ivlis.ivlyrics.updater\n'
+    head -1 "$IVL_TEST_ROOT/stale-handler-lookups"
+    sed -n '2,$p' "$IVL_TEST_ROOT/stale-handler-lookups" > "$IVL_TEST_ROOT/remaining-lookups"
+    mv "$IVL_TEST_ROOT/remaining-lookups" "$IVL_TEST_ROOT/stale-handler-lookups"
+    exit 0
+fi
 if [ -f "$IVL_TEST_ROOT/default-handler" ]; then
     cat "$IVL_TEST_ROOT/default-handler"
 elif [ -f "$IVL_TEST_ROOT/registered-handler" ]; then
@@ -284,7 +296,7 @@ fi
         XDG_DATA_HOME: join(root, 'desktop data'),
     };
     return {
-        app, apps, legacyBundle, backupBundle,
+        app, apps, legacyBundle, backupBundle, secondBackupBundle,
         desktopFile: join(env.XDG_DATA_HOME, 'applications', 'ivlyrics-updater.desktop'),
         run: (args, overrides) => spawnSync('bash', [installer, ...(args || [])], {
             encoding: 'utf8', timeout: 15000, env: { ...env, ...overrides },
@@ -477,6 +489,21 @@ if (builtVersion) {
             '-u', fx.legacyBundle, '-f', join(fx.app, 'updater/macos/ivLyrics Updater.app'), '-u', fx.backupBundle,
         ]);
         assert.equal(readFileSync(join(fx.backupBundle, 'marker'), 'utf8'), 'existing bundle');
+    });
+
+    test('the macOS installer waits when Launch Services reports an earlier stale handler again', {
+        skip: !canRun || process.platform !== 'darwin',
+    }, context => {
+        const archive = readFileSync(new URL('../dist/ivLyrics.zip', import.meta.url));
+        const fx = installerFixture(context, {
+            archive, releaseVersion: builtVersion, macosStaleHandlerReappears: true,
+        });
+        const result = fx.run();
+        assert.equal(result.status, 0, result.stdout + result.stderr);
+        assert.deepEqual(fx.readLaunchServices(), [
+            '-u', fx.legacyBundle, '-f', join(fx.app, 'updater/macos/ivLyrics Updater.app'),
+            '-u', fx.backupBundle, '-u', fx.secondBackupBundle,
+        ]);
     });
 
     test('the macOS installer reports a URL assigned to another application without unregistering it', {
