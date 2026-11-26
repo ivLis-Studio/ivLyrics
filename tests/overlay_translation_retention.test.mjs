@@ -711,6 +711,28 @@ test('reconnection waits for refreshed preferences before resending cached lyric
 	h.window.ivLyricsOverlayService.destroy();
 });
 
+test('metadata and offset sends cannot deliver the old translation after the language changes', async () => {
+	const h = load({ globalFallback: true });
+	h.window.dispatchEvent({ type: 'ivLyrics:presentation-owner-released', detail: { source: 'ivlyrics-page' } });
+	await h.runScheduled();
+	const initialCount = h.packets.length;
+	const offset = Promise.withResolvers();
+	const readOffset = h.overlay.getSyncOffset;
+	h.overlay.getSyncOffset = () => offset.promise;
+	const metadata = h.overlay.sendTranslatedMetadata({ translated: { title: 'Translated title' } }, uri);
+	const resend = h.helper.resendWithNewOffset('reconnect');
+	h.setVisual('translate:target-language', 'fr');
+	offset.resolve(0);
+	await Promise.all([metadata, resend]);
+	await h.overlay.sendTranslatedMetadata({ translated: { title: 'Updated title' } }, uri);
+	assert.equal(h.packets.length, initialCount, 'the obsolete translation must not be sent again');
+	h.overlay.getSyncOffset = readOffset;
+
+	await h.runScheduled();
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), ['herro', 'warudo'], ['Bonjour', 'Monde']);
+	h.window.ivLyricsOverlayService.destroy();
+});
+
 test('a new target language replaces a pending ownerless request on the same track', async () => {
 	let finishPrevious;
 	const holdTranslation = new Promise(resolve => { finishPrevious = resolve; });

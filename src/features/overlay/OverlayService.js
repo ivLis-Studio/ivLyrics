@@ -105,8 +105,10 @@ function mountOverlayService({
         const preferences = readLyricsService()?.getLyricsPresentationPreferences?.(context.detectedLanguage);
         if (!preferences) return true;
         const matches = key => context[key] == null || context[key] === preferences[key];
+        // Older lyrics-ready publishers can omit the detected source language
+        // while supplying modes. There is no language group to compare then.
         return matches("translationTargetLanguage") && matches("pronunciationNotation")
-            && (context.detectedLanguage === undefined || (matches("displayMode1") && matches("displayMode2")))
+            && (context.detectedLanguage == null || (matches("displayMode1") && matches("displayMode2")))
             && matchesLyricPlaybackPreferences(context.playbackPreferences, preferences);
     };
 

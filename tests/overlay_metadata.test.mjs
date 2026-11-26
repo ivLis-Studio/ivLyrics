@@ -426,6 +426,52 @@ test('a fresh lyric payload supersedes a retry without waiting for the old backo
 	h.dispose();
 });
 
+test('backoff cannot retry lyrics from a retired translation preference', async () => {
+	const h = load();
+	let target = 'ko';
+	h.window.ivLyricsOverlayService = {
+		isPresentationCurrent: context => !context?.translationTargetLanguage || context.translationTargetLanguage === target,
+	};
+	h.setTransport(request => request.endpoint === '/lyrics' && h.packets().length === 1
+		? { ok: false, status: 503, text: async () => 'try again' }
+		: { ok: true });
+	const old = h.overlay.sendLyrics(track(), lyrics(), false, 'normal', { ...presentation, translationTargetLanguage: 'ko' });
+	await flush();
+	assert.equal(h.packets().length, 1);
+	target = 'fr';
+	h.runTimer(250);
+	await old;
+	assert.equal(h.packets().length, 1, 'the old translation must not leave the retry queue');
+
+	await h.overlay.sendLyrics(track(), [], true, 'clear-lyrics');
+	assert.deepEqual(h.packets().at(-1).payload.lyrics, []);
+	await h.overlay.sendLyrics(track(), lyrics(), false, 'normal', { ...presentation, translationTargetLanguage: 'fr' });
+	assert.equal(h.packets().length, 3);
+	assert.equal(h.overlay.lastDeliveredUri, uri);
+	h.dispose();
+});
+
+test('an obsolete HTTP response cannot acknowledge the current presentation', async () => {
+	const h = load(), response = deferred();
+	let target = 'ko';
+	h.window.ivLyricsOverlayService = {
+		isPresentationCurrent: context => context.translationTargetLanguage === target,
+	};
+	h.setTransport(request => request.endpoint === '/lyrics' && h.packets().length === 1 ? response.promise : { ok: true });
+	const sending = h.overlay.sendLyrics(track(), lyrics(), false, 'normal', { ...presentation, translationTargetLanguage: 'ko' });
+	await flush();
+	assert.equal(h.packets().length, 1);
+	target = 'fr';
+	response.resolve({ ok: true });
+	await sending;
+	assert.equal(h.overlay.lastDeliveredUri, null);
+
+	await h.overlay.sendLyrics(track(), lyrics(), false, 'normal', { ...presentation, translationTargetLanguage: 'fr' });
+	assert.equal(h.packets().length, 2);
+	assert.equal(h.overlay.lastDeliveredUri, uri);
+	h.dispose();
+});
+
 test('progress retries track metadata after rejection and waits for the new title to be ready', async () => {
 	const h = load();
 	let rejected = false;

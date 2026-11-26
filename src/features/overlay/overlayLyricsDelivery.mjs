@@ -25,6 +25,13 @@ export function createOverlayLyricsDelivery({
 }) {
     const { getPresentationKey, preserveAuxiliaryLyrics } = lyricPresentation;
 
+    function canSendPresentation(lyrics, context) {
+        // Empty packets still clear the receiver when playback has no lyrics.
+        if (!lyrics?.length || isPresentationCurrent?.(context) !== false) return true;
+        scheduleSenderBootstrap(0);
+        return false;
+    }
+
     function buildTrackMetadata(sender, trackInfo, isDjNarration) {
         const player = getSpicetify().Player;
         const item = player.data?.item;
@@ -109,6 +116,7 @@ export function createOverlayLyricsDelivery({
                 deliveryKey: deliveryContext.key,
                 generation: deliveryContext.generation,
                 isReconnectCycle: !!deliveryContext.isReconnectCycle,
+                presentationContext: deliveryContext.presentationContext,
                 dedupeSnapshot: {
                     uri: this.lastSentUri,
                     lyrics: this.lastSentLyrics,
@@ -118,6 +126,9 @@ export function createOverlayLyricsDelivery({
             };
             this._finishLyricsRetryWait?.();
             if (this._activeLyricsSend) return;
+            const ownsDelivery = (queued) => this.enabled
+                && queued.generation === this._deliveryGeneration
+                && !this.isStaleTrackSend(queued);
             const clearDedupeIfCurrent = (queued) => {
                 const snapshot = queued.dedupeSnapshot;
                 if (queued.generation !== this._deliveryGeneration
@@ -154,26 +165,23 @@ export function createOverlayLyricsDelivery({
                 while (this._pendingLyricsSend) {
                     const next = this._pendingLyricsSend;
                     this._pendingLyricsSend = null;
-                    if (next.generation !== this._deliveryGeneration) continue;
-                    if (!this.enabled || this.isStaleTrackSend(next)) {
+                    if (!ownsDelivery(next) || !canSendPresentation(next.payload.lyrics, next.presentationContext)) {
                         clearDedupeIfCurrent(next);
                         continue;
                     }
                     this._activeLyricsSend = next;
                     const sent = await this.sendToEndpoint(next.endpoint, next.payload);
-                    const deliveryIsCurrent = this.enabled
-                        && next.generation === this._deliveryGeneration
-                        && !this.isStaleTrackSend(next);
-                    if (sent === true) {
-                        if (deliveryIsCurrent) {
-                            this.lastDeliveredUri = next.uri || null;
-                            this.lastDeliveredIsDjNarration = next.isDjNarration;
-                            this._terminalDeliveryFailure = null;
-                        }
+                    if (!ownsDelivery(next)) continue;
+                    if (!canSendPresentation(next.payload.lyrics, next.presentationContext)) {
+                        clearDedupeIfCurrent(next);
                         continue;
                     }
-
-                    if (!deliveryIsCurrent) continue;
+                    if (sent === true) {
+                        this.lastDeliveredUri = next.uri || null;
+                        this.lastDeliveredIsDjNarration = next.isDjNarration;
+                        this._terminalDeliveryFailure = null;
+                        continue;
+                    }
 
                     if (this.lastDeliveredUri === next.uri) {
                         this.lastDeliveredUri = null;
@@ -195,15 +203,9 @@ export function createOverlayLyricsDelivery({
 
                     await waitBeforeRetry(this, retryDelay);
                     // 대기 중 들어온 최신 페이로드가 실패한 요청의 재시도를 대체한다.
-                    if (this._pendingLyricsSend) {
-                        continue;
+                    if (!this._pendingLyricsSend) {
+                        this._pendingLyricsSend = { ...next, retryCount: next.retryCount + 1 };
                     }
-                    if (!this.enabled || next.generation !== this._deliveryGeneration
-                        || this.isStaleTrackSend(next)) {
-                        clearDedupeIfCurrent(next);
-                        continue;
-                    }
-                    this._pendingLyricsSend = { ...next, retryCount: next.retryCount + 1 };
                 }
             } finally {
                 this._activeLyricsSend = null;
@@ -224,10 +226,12 @@ export function createOverlayLyricsDelivery({
                 return;
             }
 
+            const effectivePresentationContext = resolveOverlayPresentationContext(this, trackInfo, presentationContext);
+            if (!canSendPresentation(lyrics, effectivePresentationContext)) return;
+
             const currentReqId = ++this._reqId;
             const runtimeGeneration = this._runtimeGeneration;
             const port = this.port;
-            const effectivePresentationContext = resolveOverlayPresentationContext(this, trackInfo, presentationContext);
             const presentationKey = getPresentationKey(
                 trackInfo,
                 lyrics,
@@ -278,6 +282,7 @@ export function createOverlayLyricsDelivery({
                 debug(this.LOG_TAG, '이전 곡 가사 전송 차단 (오프셋 계산 후):', trackInfo.uri);
                 return;
             }
+            if (!canSendPresentation(lyricsToSend, effectivePresentationContext)) return;
 
             const isDjNarration = trackInfo.isDjNarration === true;
             const track = buildTrackMetadata(this, trackInfo, isDjNarration);
@@ -324,6 +329,7 @@ export function createOverlayLyricsDelivery({
                 generation: deliveryGeneration,
                 isReconnectCycle,
                 isDjNarration,
+                presentationContext: effectivePresentationContext,
             });
         },
 
@@ -339,10 +345,6 @@ export function createOverlayLyricsDelivery({
             }
             if (trackUri && trackUri !== this._lastTrackInfo?.uri) return;
             if (this._lastTrackInfo && this._lastLyrics) {
-                if (isPresentationCurrent?.(this._lastPresentationContext) === false) {
-                    scheduleSenderBootstrap(0);
-                    return;
-                }
                 debug(this.LOG_TAG, '가사 재전송:', sendReason);
                 await this.sendLyrics(
                     this._lastTrackInfo,
