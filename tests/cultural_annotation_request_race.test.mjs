@@ -3,8 +3,9 @@ import test from "node:test";
 import { setImmediate } from "node:timers/promises";
 import { createPageCulturalAnnotations } from "../src/lyrics/createPageCulturalAnnotations.mjs";
 
-function harness() {
+function harness({ deferUpdates = false } = {}) {
   const calls = [], errors = [], successes = [], completions = [], cacheClears = [], loading = [], clearOrder = [];
+  const pendingUpdates = [];
   let target = "en", enabled = true;
   const page = {
     state: { uri: "spotify:track:fixture", title: "Fixture", currentLyrics: [{ text: "original" }] },
@@ -16,7 +17,10 @@ function harness() {
     startCulturalAnnotationsLoading: () => calls.length + 1,
     updateGenerationRequestLoading: (...args) => loading.push(args),
     clearCulturalAnnotationsLoading: (...args) => completions.push(args),
-    setState(patch) { Object.assign(this.state, typeof patch === "function" ? patch(this.state) : patch); },
+    setState(patch) {
+      if (deferUpdates) pendingUpdates.push(patch);
+      else Object.assign(this.state, typeof patch === "function" ? patch(this.state) : patch);
+    },
   };
   const translator = {
     clearCulturalAnnotationRequests: trackId => clearOrder.push(["pending", trackId]),
@@ -30,7 +34,7 @@ function harness() {
   const annotations = createPageCulturalAnnotations({
     page,
     getVisualSettings: () => ({ "cultural-annotations-enabled": enabled }),
-    buildTranslationLineRequests: lyrics => lyrics.map((line, lineIndex) => ({ lineIndex, text: line.text })),
+    buildTranslationLineRequests: lyrics => lyrics.map((line, lineIndex) => ({ lineIndex, text: line.originalText || line.text })),
     getTranslator: () => translator,
     playbackUri: () => page.state.uri,
     extractTrackId: uri => uri.split(":").at(-1),
@@ -50,7 +54,14 @@ function harness() {
     request: (options = {}) => annotations.request({
       lyricsState: page.state, lyrics: [{ text: "original" }], sourceLang: "ja", uri: page.state.uri, ...options,
     }),
-    resolve: (index, note) => calls[index].resolve({ annotations: [{ lineIndex: 0, expression: "original", note }] }),
+    resolve: (index, note) => calls[index].resolve({
+      annotations: [{ lineIndex: 0, expression: calls[index].params.lines[0].text, note }],
+    }),
+    flushUpdates: () => {
+      for (const patch of pendingUpdates.splice(0)) {
+        Object.assign(page.state, typeof patch === "function" ? patch(page.state) : patch);
+      }
+    },
     note: () => page.state.currentLyrics[0].culturalNote?.[0]?.note,
   };
 }
@@ -61,7 +72,8 @@ for (const order of ["old-first", "new-first"]) {
       const h = harness();
       const old = h.request();
       if (change === "language") h.setTarget("ko");
-      const next = h.request(change === "source" ? { lyrics: [{ text: "new source" }] } : { ignoreCache: true });
+      if (change === "source") h.page.state.currentLyrics = [{ text: "new source" }];
+      const next = h.request(change === "source" ? { lyrics: h.page.state.currentLyrics } : { ignoreCache: true });
       assert.equal(h.calls.length, 2);
       const finishOld = async () => { h.resolve(0, "obsolete"); await old; };
       const finishNew = async () => { h.resolve(1, "current"); await next; };
@@ -189,4 +201,60 @@ test("current manual annotation provider failure still notifies exactly once", a
   assert.deepEqual(h.successes, []);
   assert.equal(h.errors.length, 1);
   assert.match(h.errors[0], /^notifications\.culturalAnnotationsRegenerateFailed:/);
+});
+
+test("cached notes follow the original text and target through display and timing changes", async () => {
+  const h = harness();
+  const previous = h.request();
+  h.resolve(0, "cached English");
+  await previous;
+
+  const timed = [{ text: "pronunciation", originalText: "original", startTime: 100 }];
+  assert.equal(h.annotations.apply(timed)[0].culturalNote?.[0].note, "cached English");
+
+  const differentSource = [{ text: "replacement lyric", culturalNote: [{ note: "cached English" }] }];
+  assert.equal(h.annotations.apply(differentSource)[0].culturalNote, undefined);
+  h.setTarget("ko");
+  assert.equal(h.annotations.apply(timed)[0].culturalNote, undefined);
+});
+
+test("a same-track source replacement drops a response before the replacement starts a request", async () => {
+  const h = harness();
+  const previous = h.request();
+  h.page.state.currentLyrics = [{ text: "replacement lyric" }];
+  h.resolve(0, "old source note");
+  await previous;
+
+  assert.equal(h.note(), undefined);
+  const next = h.request({ lyrics: h.page.state.currentLyrics });
+  h.resolve(1, "replacement note");
+  await next;
+  assert.equal(h.note(), "replacement note");
+});
+
+test("an annotation update queued before a track switch leaves the new song alone", async () => {
+  const h = harness({ deferUpdates: true });
+  const previous = h.request();
+  h.resolve(0, "old track note");
+  await previous;
+
+  h.page.state.uri = "spotify:track:replacement";
+  h.page.state.currentLyrics = [{ text: "original", culturalNote: [{ note: "new track note" }] }];
+  h.flushUpdates();
+  assert.equal(h.note(), "new track note");
+});
+
+test("clearing the previous track leaves the current track's pending annotations intact", async () => {
+  const h = harness();
+  const previousUri = h.page.state.uri;
+  const previous = h.request();
+  h.page.state.uri = "spotify:track:replacement";
+  const current = h.request();
+  h.annotations.clearTrack(previousUri);
+
+  h.resolve(0, "previous note");
+  assert.equal(await previous, null);
+  h.resolve(1, "current note");
+  await current;
+  assert.equal(h.note(), "current note");
 });

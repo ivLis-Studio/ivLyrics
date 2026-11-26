@@ -1,6 +1,10 @@
 import { resolveModeSpecificLyrics } from "./lyricsRenderModes.mjs";
 import { applyCulturalAnnotationsToLyrics } from "./lyricCulturalAnnotations.mjs";
 import { getTranslationSourceCacheHash } from "./translationPresentation.mjs";
+import { normalizeLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
+import { createTrackRevisions } from "../core/trackRevisions.mjs";
+
+const ANNOTATION_SCHEMA_VERSION = 4;
 
 export function createPageCulturalAnnotations({
   page, getVisualSettings, buildTranslationLineRequests, getTranslator,
@@ -10,16 +14,23 @@ export function createPageCulturalAnnotations({
   const pendingRequests = new Map();
   const activeRequestsByTrack = new Map();
   const getAnnotationTrackId = uri => extractTrackId(uri) || uri;
-  let cacheEpoch = 0;
+  const sourceByLyrics = new WeakMap();
+  const { getRevision, invalidate } = createTrackRevisions();
 
   function isEnabled() {
     const value = getVisualSettings()["cultural-annotations-enabled"];
     return value === true || value === "true";
   }
 
-  function getSourceLines(lyrics) {
-    return buildTranslationLineRequests(lyrics, { splitVocalParts: false })
+  function getSource(lyrics) {
+    if (!Array.isArray(lyrics)) return null;
+    const cached = sourceByLyrics.get(lyrics);
+    if (cached) return cached;
+    const lines = buildTranslationLineRequests(lyrics, { splitVocalParts: false })
       .map(({ lineIndex, text }) => ({ lineIndex, text }));
+    const source = { lines, signature: getTranslationSourceCacheHash(JSON.stringify(lines)) };
+    sourceByLyrics.set(lyrics, source);
+    return source;
   }
 
   function getCurrentLyrics() {
@@ -33,7 +44,7 @@ export function createPageCulturalAnnotations({
   function clearTrack(uri, { updateState = false } = {}) {
     if (!uri) return;
 
-    cacheEpoch += 1;
+    invalidate(uri);
     getTranslator()?.clearCulturalAnnotationRequests?.(getAnnotationTrackId(uri));
     resultsByTrack.delete(uri);
     activeRequestsByTrack.delete(uri);
@@ -42,38 +53,39 @@ export function createPageCulturalAnnotations({
         pendingRequests.delete(requestKey);
       }
     }
-    page.clearCulturalAnnotationsLoading();
-
-    if (updateState && page._isComponentMounted && page.state.uri === uri) {
-      page.setState(state => ({
-        currentLyrics: apply(state.currentLyrics, uri),
-      }));
-    }
+    if (page.isCurrentLyricsUri(uri)) page.clearCulturalAnnotationsLoading();
+    if (updateState) refreshDisplayedNotes(uri);
   }
 
   function clearAll({ updateState = false } = {}) {
-    cacheEpoch += 1;
+    invalidate();
     resultsByTrack.clear();
     pendingRequests.clear();
     activeRequestsByTrack.clear();
     page.clearCulturalAnnotationsLoading();
 
-    if (updateState && page._isComponentMounted) {
-      page.setState(state => ({
-        currentLyrics: apply(state.currentLyrics, state.uri),
-      }));
-    }
+    if (updateState) refreshDisplayedNotes();
   }
 
   function apply(lyrics, uri = page.state.uri) {
     if (!Array.isArray(lyrics)) return [];
 
-    const result = isEnabled()
-      ? resultsByTrack.get(uri)
-      : null;
-    const notesByIndex = result?.notesByIndex || null;
+    const result = isEnabled() ? resultsByTrack.get(uri) : null;
+    const sourceLanguage = result && page.getSourceLanguagePreference?.();
+    const resultMatches = result && result.targetLang === page.getTranslationTargetLanguage()
+      && (!sourceLanguage || result.sourceLang === normalizeLyricSourceLanguage(sourceLanguage))
+      && result.sourceSignature === getSource(lyrics).signature;
+    return applyCulturalAnnotationsToLyrics(lyrics, resultMatches ? result.notesByIndex : null);
+  }
 
-    return applyCulturalAnnotationsToLyrics(lyrics, notesByIndex);
+  function refreshDisplayedNotes(uri = page.state.uri) {
+    if (!page._isComponentMounted || page.state.uri !== uri) return;
+    page.setState(state => {
+      if (!page._isComponentMounted || state.uri !== uri || !page.isCurrentLyricsUri(uri)
+        || page.isPlaybackUriCurrent?.(uri) === false) return null;
+      const currentLyrics = apply(state.currentLyrics, uri);
+      return currentLyrics === state.currentLyrics ? null : { currentLyrics };
+    });
   }
 
   function requestAnnotations({
@@ -91,13 +103,13 @@ export function createPageCulturalAnnotations({
       return Promise.resolve(null);
     }
 
-    const lines = getSourceLines(lyrics);
-    if (lines.length === 0) return Promise.resolve(null);
+    const source = getSource(lyrics);
+    if (!source?.lines.length) return Promise.resolve(null);
 
+    const { lines, signature: sourceSignature } = source;
     const targetLang = page.getTranslationTargetLanguage();
-    const sourceSignature = getTranslationSourceCacheHash(JSON.stringify(lines));
-    const schemaVersion = 4;
-    const resultKey = `v${schemaVersion}:${sourceLang || "auto"}:${targetLang}:${sourceSignature}`;
+    const sourceLanguage = normalizeLyricSourceLanguage(sourceLang);
+    const resultKey = `v${ANNOTATION_SCHEMA_VERSION}:${sourceLanguage}:${targetLang}:${sourceSignature}`;
     if (!ignoreCache && resultsByTrack.get(uri)?.key === resultKey) {
       // Returning to a cached language/source also supersedes an older fetch.
       activeRequestsByTrack.delete(uri);
@@ -111,7 +123,7 @@ export function createPageCulturalAnnotations({
       return pending;
     }
 
-    const requestEpoch = cacheEpoch;
+    const requestRevision = getRevision(uri);
     const culturalAnnotationLabel =
       translate("generationStatus.culturalAnnotations") || "문화적 설명";
     const culturalAnnotationLoadingDescription =
@@ -121,7 +133,7 @@ export function createPageCulturalAnnotations({
       label: culturalAnnotationLabel,
       description: culturalAnnotationLoadingDescription,
     });
-    const isCurrentRequest = () => requestEpoch === cacheEpoch
+    const isCurrentRequest = () => requestRevision === getRevision(uri)
       && activeRequestsByTrack.get(uri) === request
       && page.getTranslationTargetLanguage() === targetLang
       && isEnabled();
@@ -132,7 +144,7 @@ export function createPageCulturalAnnotations({
       artist: lyricsState.artist || page.state.artist,
       lines,
       sourceLang: sourceLang || "auto",
-      schemaVersion,
+      schemaVersion: ANNOTATION_SCHEMA_VERSION,
       ignoreCache,
       onProviderLoading: ({ providerId, providerName }) => {
         const providerLabel = String(providerName || providerId || "").trim();
@@ -167,16 +179,15 @@ export function createPageCulturalAnnotations({
       }
       resultsByTrack.set(uri, {
         key: resultKey,
+        sourceSignature,
+        sourceLang: sourceLanguage,
+        targetLang,
         notesByIndex,
         provider: result?.provider || null,
       });
       completed = true;
 
-      if (page._isComponentMounted && page.state.uri === uri) {
-        page.setState(state => ({
-          currentLyrics: apply(state.currentLyrics, uri),
-        }));
-      }
+      refreshDisplayedNotes(uri);
       return result;
     }).catch((error) => {
       if (!isCurrentRequest()) {
@@ -213,12 +224,12 @@ export function createPageCulturalAnnotations({
     const uri = lyricsState.uri || playbackUri();
     const lyrics = getCurrentLyrics();
     const targetLang = page.getTranslationTargetLanguage();
-    let regenerationEpoch = null;
+    let regenerationRevision = null;
     let superseded = false;
     const isCurrentRegeneration = () => !superseded &&
       page.isCurrentLyricsUri(uri) && isEnabled() &&
       page.getTranslationTargetLanguage() === targetLang &&
-      (regenerationEpoch === null || regenerationEpoch === cacheEpoch);
+      (regenerationRevision === null || regenerationRevision === getRevision(uri));
     if (!uri) {
       toast.error(translate("notifications.noTrackPlaying"));
       return;
@@ -237,7 +248,7 @@ export function createPageCulturalAnnotations({
 
     try {
       clearTrack(uri, { updateState: true });
-      regenerationEpoch = cacheEpoch;
+      regenerationRevision = getRevision(uri);
       const cacheCleared = await getLyricsCache().clearCulturalAnnotationsForTrack(getAnnotationTrackId(uri));
       if (!isCurrentRegeneration()) return;
       if (!cacheCleared) {
