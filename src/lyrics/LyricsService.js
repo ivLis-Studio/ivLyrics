@@ -33,6 +33,7 @@ import { createLyricsResearch } from "./createLyricsResearch.mjs";
 import { createLyricsCache, LYRICS_CACHE_INVALIDATED_EVENT } from "./createLyricsCache.mjs";
 import { installLyricsReadySnapshotListener } from "./installLyricsReadySnapshotListener.mjs";
 import { createLyricsPresentationStore } from "./lyricsPresentationStore.mjs";
+import { createLyricsConsumerDelivery } from "./lyricsConsumerDelivery.mjs";
 import { createLyricSupplementPresentation } from "./lyricSupplementPresentation.mjs";
 import { createCommunityLyricsSync } from "./createCommunityLyricsSync.mjs";
 import { createFullLyricsRequest } from "./createFullLyricsRequest.mjs";
@@ -270,36 +271,10 @@ export default function LyricsServiceExtension() {
         debug: serviceDebug,
     });
 
-    const sendLyricsToConsumers = ({
-        trackInfo,
-        lyrics,
-        sendToOverlay = true,
-        forceResend = false,
-        sendReason = 'normal',
-        presentationContext = null
-    }) => {
-        const sends = [];
-        const queueSend = (sender) => {
-            if (!sender?.sendLyrics) return;
-            try {
-                sends.push(sender.sendLyrics(
-                    trackInfo,
-                    lyrics,
-                    forceResend,
-                    sendReason,
-                    presentationContext
-                ));
-            } catch (error) {
-                sends.push(Promise.reject(error));
-            }
-        };
-
-        if (sendToOverlay) {
-            queueSend(getRuntimeService("OverlaySender", window));
-        }
-        queueSend(getRuntimeService("lyricsHelperSender", window));
-        return Promise.allSettled(sends);
-    };
+    const { sendLyricsToConsumers, sendLyricsSnapshotToConsumers } = createLyricsConsumerDelivery({
+        readOverlaySender: () => getRuntimeService("OverlaySender", window),
+        readHelperSender: () => getRuntimeService("lyricsHelperSender", window),
+    });
 
     const LyricsService = {
         // 버전 정보
@@ -322,39 +297,7 @@ export default function LyricsServiceExtension() {
             return lyricsPresentations.get(trackUri);
         },
 
-        async sendLyricsSnapshotToConsumers(trackInfo, snapshot, options = {}) {
-            const lyrics = snapshot?.displayLyrics;
-            if (!trackInfo?.uri || snapshot?.trackUri !== trackInfo.uri
-                || !Array.isArray(lyrics) || lyrics.length === 0) {
-                return false;
-            }
-
-            await sendLyricsToConsumers({
-                trackInfo: {
-                    ...(snapshot.trackInfo || {}),
-                    ...trackInfo,
-                    uri: trackInfo.uri
-                },
-                lyrics,
-                sendToOverlay: options.sendToOverlay !== false,
-                forceResend: options.forceResend === true,
-                sendReason: options.sendReason || 'shared-snapshot',
-                presentationContext: {
-                    provider: snapshot.provider,
-                    lyricsType: snapshot.lyricsType,
-                    playbackPreferences: snapshot.playbackPreferences,
-                    displayMode1: snapshot.displayMode1,
-                    displayMode2: snapshot.displayMode2,
-                    detectedLanguage: snapshot.detectedLanguage === null ? 'auto' : snapshot.detectedLanguage,
-                    pronunciationNotation: snapshot.pronunciationNotation,
-                    translationTargetLanguage: snapshot.translationTargetLanguage,
-                    translationStyle: snapshot.translationStyle,
-                    translationSourceText: snapshot.translationSourceText,
-                    presentationComplete: snapshot.presentationComplete
-                }
-            });
-            return true;
-        },
+        sendLyricsSnapshotToConsumers,
 
         clearLyricsPresentationSnapshot: lyricsPresentations.clear,
 

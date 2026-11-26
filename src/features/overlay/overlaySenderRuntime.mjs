@@ -1,5 +1,6 @@
 import { createRuntimeEffects } from "../../core/runtimeEffects.mjs";
 import { isLyricsReadySnapshotHandled } from "../../lyrics/lyricsReadyPublisher.mjs";
+import { readLyricPresentationContext } from "../../lyrics/lyricPresentationContext.mjs";
 
 // While nothing answers, probes back off from five seconds to a minute.
 // Focus, track changes and the settings page probe sooner.
@@ -138,19 +139,7 @@ export function createOverlaySenderRuntime({
                         title: trackInfo.title,
                         lines: lyrics?.length || 0
                     });
-                    this.sendLyrics(trackInfo, lyrics || [], false, 'lyrics-ready', {
-                        provider: detail.provider,
-                        lyricsType: detail.lyricsType,
-                        playbackPreferences: detail.playbackPreferences,
-                        displayMode1: detail.displayMode1,
-                        displayMode2: detail.displayMode2,
-                        detectedLanguage: detail.detectedLanguage,
-                        pronunciationNotation: detail.pronunciationNotation,
-                        translationTargetLanguage: detail.translationTargetLanguage,
-                        translationStyle: detail.translationStyle,
-                        translationSourceText: detail.translationSourceText,
-                        presentationComplete: detail.presentationComplete
-                    });
+                    this.sendLyrics(trackInfo, lyrics || [], false, 'lyrics-ready', readLyricPresentationContext(detail));
                 }
             };
 

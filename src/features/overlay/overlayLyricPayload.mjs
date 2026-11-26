@@ -1,5 +1,11 @@
 import { readVocalOriginalText } from "../../lyrics/lyricSupplementPresentation.mjs";
 
+function readTimestamp(value) {
+    if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
+    const timestamp = Number(value);
+    return Number.isFinite(timestamp) ? timestamp : null;
+}
+
 export function createOverlayLyricPayload({ findDistinctSupplement, readLineSupplement }) {
   const mapLyricsForSender = (lyrics, offset, visibility = { pronunciation: true, translation: true }) => {
       const safeOffset = Number(offset);
@@ -8,35 +14,24 @@ export function createOverlayLyricPayload({ findDistinctSupplement, readLineSupp
       const mapTimedSyllables = (rawSyllables, fallbackLineEnd) => {
           if (!Array.isArray(rawSyllables)) return [];
 
-          return rawSyllables
-              .map((syllable, index) => {
-                  const rawSyllableStart = Number(syllable?.startTime);
-                  if (!Number.isFinite(rawSyllableStart)) return null;
+          const timed = [];
+          let nextStart = fallbackLineEnd;
+          for (let index = rawSyllables.length - 1; index >= 0; index--) {
+              const syllable = rawSyllables[index];
+              const start = readTimestamp(syllable?.startTime);
+              if (start === null) continue;
+              const end = readTimestamp(syllable.endTime) ?? nextStart;
+              nextStart = start;
 
-                  const nextSyllableStart = Number(rawSyllables[index + 1]?.startTime);
-                  const rawSyllableEnd = Number(syllable?.endTime);
-                  const fallbackEnd = Number.isFinite(nextSyllableStart)
-                      ? nextSyllableStart
-                      : fallbackLineEnd;
-                  const resolvedEnd = Number.isFinite(rawSyllableEnd)
-                      ? rawSyllableEnd
-                      : fallbackEnd;
-                  const syllableStart = Math.round(rawSyllableStart + normalizedOffset);
-                  const syllableEnd = Number.isFinite(resolvedEnd)
-                      ? Math.max(syllableStart + 1, Math.round(resolvedEnd + normalizedOffset))
-                      : syllableStart + 1;
-                  const syllableText = typeof syllable?.text === 'string'
-                      ? syllable.text
-                      : String(syllable?.text ?? '');
-
-                  if (!syllableText) return null;
-                  return {
-                      startTime: syllableStart,
-                      endTime: syllableEnd,
-                      text: syllableText
-                  };
-              })
-              .filter(Boolean);
+              const text = String(syllable.text ?? '');
+              if (!text) continue;
+              const startTime = Math.round(start + normalizedOffset);
+              const endTime = end === null
+                  ? startTime + 1
+                  : Math.max(startTime + 1, Math.round(end + normalizedOffset));
+              timed.push({ startTime, endTime, text });
+          }
+          return timed.reverse();
       };
 
       const mapVocalPart = (part, fallbackLineEnd, fallbackRole) => {
@@ -85,10 +80,10 @@ export function createOverlayLyricPayload({ findDistinctSupplement, readLineSupp
               line?.transText
           ], originalText) : null;
 
-          const rawStartTime = Number(line?.startTime);
-          const rawEndTime = line?.endTime == null ? null : Number(line.endTime);
-          const startTime = Math.round((Number.isFinite(rawStartTime) ? rawStartTime : 0) + normalizedOffset);
-          const endTime = rawEndTime !== null && Number.isFinite(rawEndTime)
+          const rawStartTime = readTimestamp(line?.startTime);
+          const rawEndTime = readTimestamp(line?.endTime);
+          const startTime = Math.round((rawStartTime ?? 0) + normalizedOffset);
+          const endTime = rawEndTime !== null
               ? Math.round(rawEndTime + normalizedOffset)
               : null;
 

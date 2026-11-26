@@ -1,4 +1,5 @@
 import { isLyricsReadySnapshotHandled } from "./lyricsReadyPublisher.mjs";
+import { readLyricPresentationContext } from "./lyricPresentationContext.mjs";
 
 export function installLyricsReadySnapshotListener(host, publishSnapshot) {
     if (host.__ivLyricsSnapshotReadyListener) {
@@ -11,21 +12,11 @@ export function installLyricsReadySnapshotListener(host, publishSnapshot) {
         if (!trackUri || !Array.isArray(detail.lyrics)) return;
 
         publishSnapshot({
+            ...readLyricPresentationContext(detail),
             trackUri,
             trackInfo: detail.trackInfo || { uri: trackUri },
             displayLyrics: detail.lyrics,
-            provider: detail.provider,
-            karaokeSource: detail.karaokeSource,
-            lyricsType: detail.lyricsType,
-            playbackPreferences: detail.playbackPreferences,
-            displayMode1: detail.displayMode1,
-            displayMode2: detail.displayMode2,
-            pronunciationNotation: detail.pronunciationNotation,
             detectedLanguage: detail.detectedLanguage ?? undefined,
-            translationTargetLanguage: detail.translationTargetLanguage,
-            translationStyle: detail.translationStyle,
-            translationSourceText: detail.translationSourceText,
-            presentationComplete: detail.presentationComplete,
             source: 'ivlyrics-page'
         });
     };

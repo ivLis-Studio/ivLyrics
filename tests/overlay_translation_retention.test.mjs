@@ -7,23 +7,17 @@ import { getMountedLyricsPage } from "#ivlyrics/spicetify/lyricsPageEffects.mjs"
 import { getRuntimeService } from "#ivlyrics/spicetify/runtimeServices.mjs";
 import { getTrackSyncOffsetStore } from "#ivlyrics/core/trackSyncOffsetRuntime.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { createLyricsPresentationPreferences } from "#ivlyrics/lyrics/lyricsServicePreferences.mjs";
 import { createLyricsPresentationStore } from "#ivlyrics/lyrics/lyricsPresentationStore.mjs";
+import { createLyricsConsumerDelivery } from "#ivlyrics/lyrics/lyricsConsumerDelivery.mjs";
 import { createLyricSupplementPresentation } from "#ivlyrics/lyrics/lyricSupplementPresentation.mjs";
 import { installLyricsReadySnapshotListener } from "#ivlyrics/lyrics/installLyricsReadySnapshotListener.mjs";
 import { createLyricsProviderLookup, createLyricsProviderRequests } from "#ivlyrics/lyrics/lyricsProviderRequests.mjs";
 import { createLrcRedTimingDelivery } from "#ivlyrics/providers/lyrics/lrcRedTimingDelivery.mjs";
 import { createOverlayOffsetResolver } from '../src/features/overlay/overlayOffsets.mjs';
 
-const source = readFileSync(new URL('../src/lyrics/LyricsService.js', import.meta.url), 'utf8');
-const section = (from, to) => {
-	const start = source.indexOf(from), end = source.indexOf(to, start + from.length);
-	assert.ok(start >= 0 && end > start, `missing production section: ${from}`);
-	return source.slice(start, end);
-};
 const clone = value => JSON.parse(JSON.stringify(value));
 const flush = async () => { for (let i = 0; i < 3; i++) await new Promise(resolve => setImmediate(resolve)); };
 const uri = 'spotify:track:current';
@@ -149,9 +143,14 @@ const load = ({ globalFallback = false, holdTranslation = null, withKaraoke = fa
 	const history = { location: { pathname: '/ivLyrics' } };
 	document.body = { classList: { contains: () => false } };
 	const context = vm.createContext({
-        getMountedLyricsPage, getRuntimeService, getTrackSyncOffsetStore, getTranslationSourceCacheHash, installLyricsPresentationPublisher, installLyricsReadySnapshotListener,
-    createOverlayOffsetResolver,
-		window, document, CustomEvent, createLyricsPresentationStore,
+		getRuntimeService, window, document, CustomEvent,
+		getOverlaySyncOffset: createOverlayOffsetResolver({
+			readSettingSources: [key => values.get(key)],
+			getVisualSettings: () => getRuntimeService('CONFIG', window)?.visual,
+			getMountedLyricsPage: () => getMountedLyricsPage(window),
+			getPageGlobalOffset: () => getRuntimeService('Utils', window)?.getGlobalSyncOffset?.(),
+			readTrackOffset: trackUri => getTrackSyncOffsetStore(window).getOffset(trackUri),
+		}),
 		Blob, URL, Worker: class { postMessage() {} terminate() {} },
 		providerRequests: createLyricsProviderRequests(() => window.LyricsAddonManager),
 		Spicetify: { Player: player, Platform: { History: history }, LocalStorage: { get: key => values.get(key), set() {} } },
@@ -167,22 +166,35 @@ const load = ({ globalFallback = false, holdTranslation = null, withKaraoke = fa
 		clearTimeout: id => timers.delete(id), setInterval: () => 1, clearInterval() {},
 	});
 	vm.runInContext([
-		section('    const getOverlaySyncOffset =', '    const { OverlaySender, lyricsHelperSender }'),
-		'globalThis.getOverlaySyncOffset = getOverlaySyncOffset;',
 		'globalThis.scheduleSenderBootstrap = (delay = 1200, previousUri = null) => getRuntimeService("ivLyricsOverlayService", window)?.schedule(delay, previousUri);',
 		readOverlaySendersFixture(),
 	].join('\n'), context);
 	const [overlay, helper] = context.senders;
 	window.OverlaySender = overlay;
 	window.lyricsHelperSender = helper;
-	vm.runInContext([
-		section('    const lyricsPresentations =', '    const providerRequests ='),
-		section('    const sendLyricsToConsumers =', '    const LyricsService ='),
-		`const LyricsService = { ${section('        publishLyricsSnapshot:', '        clearLyricsPresentationSnapshot:')} };`,
-		'window.LyricsService = LyricsService;',
-		'installLyricsReadySnapshotListener(window, snapshot => LyricsService.publishLyricsSnapshot(snapshot));',
-		'installLyricsPresentationPublisher(window);',
-	].join('\n'), context);
+	const presentation = createLyricSupplementPresentation({
+		getDisplayComparison: () => getRuntimeService('ivLyricsTextComparison', window)?.areEquivalent,
+		hashSourceText: getTranslationSourceCacheHash,
+	});
+	const snapshots = createLyricsPresentationStore({
+		getPresentationKey: presentation.getPresentationKey,
+		preserveAuxiliaryLyrics: presentation.preserveAuxiliaryLyrics,
+		onPublish: detail => window.dispatchEvent(new CustomEvent('ivLyrics:shared-lyrics-updated', { detail })),
+	});
+	const { sendLyricsToConsumers, sendLyricsSnapshotToConsumers } = createLyricsConsumerDelivery({
+		readOverlaySender: () => window.OverlaySender,
+		readHelperSender: () => window.lyricsHelperSender,
+	});
+	const service = window.LyricsService = {
+		publishLyricsSnapshot: snapshots.publish,
+		getLyricsSnapshot(trackUri) {
+			context.providerRequests.getRevision(trackUri);
+			return snapshots.get(trackUri);
+		},
+		sendLyricsSnapshotToConsumers,
+	};
+	installLyricsReadySnapshotListener(window, snapshot => service.publishLyricsSnapshot(snapshot));
+	installLyricsPresentationPublisher(window);
 	for (const [name, sender] of [['overlay', overlay], ['helper', helper]]) {
 		Object.defineProperty(sender, 'queueLyricsSend', { value: async (endpoint, trackUri, payload) => {
 			packets.push({ name, endpoint, trackUri, payload: clone(payload) });
@@ -219,7 +231,7 @@ const load = ({ globalFallback = false, holdTranslation = null, withKaraoke = fa
 		});
 		window.LyricsService.getFullLyrics = fixtureFullLyricsRequest({
 			...context,
-			sendLyricsToConsumers: vm.runInContext('sendLyricsToConsumers', context),
+			sendLyricsToConsumers,
 		});
 		Object.assign(window.LyricsService, {
 			getLyricsFromProviders: createLyricsProviderLookup(window, context.providerRequests), emit() {},
@@ -255,6 +267,57 @@ const assertSupplements = (lines, pronunciation = ['herro', 'warudo'], translati
 	assert.deepEqual(lines.map(line => line.pronText), pronunciation);
 	assert.deepEqual(lines.map(line => line.transText), translation);
 };
+
+test('overlay and helper infer missing word end times for solo lines and backing vocals', async () => {
+	const h = load();
+	const trackInfo = { uri, title: 'Title', artist: 'Artist' };
+	const lyrics = [{
+		text: 'Hello, world', startTime: 1000, endTime: 2000,
+		syllables: [
+			{ text: 'Hello', startTime: 1000, endTime: null },
+			{ text: ',', startTime: null, endTime: null },
+			{ text: 'world', startTime: '1500', endTime: null },
+		],
+	}, {
+		text: 'Hello', startTime: 2000, endTime: 3000,
+		vocals: {
+			lead: { text: 'Hello', syllables: [{ text: 'Hello', startTime: 2000, endTime: 2600 }] },
+			background: [{ text: 'And then', syllables: [
+				{ text: 'And', startTime: 2100, endTime: null },
+				{ text: 'then', startTime: 2400, endTime: null },
+			] }],
+		},
+	}];
+	h.publisher.publishLyricsReady({ ...richContext(), trackInfo, lyrics, lyricsType: 'karaoke', karaokeSource: 'lrcred' });
+	await flush();
+	const timeRanges = words => words.map(({ startTime, endTime }) => [startTime, endTime]);
+	for (const name of ['overlay', 'helper']) {
+		const [solo, multi] = h.last(name);
+		assert.deepEqual(timeRanges(solo.syllables), [[1000, 1500], [1500, 2000]]);
+		assert.deepEqual(timeRanges(multi.vocals.lead.syllables), [[2000, 2600]]);
+		assert.deepEqual(timeRanges(multi.vocals.background[0].syllables), [[2100, 2400], [2400, 3000]]);
+	}
+});
+
+test('an update replay on a fresh receiver retains the complete presentation context', async () => {
+	const h = load();
+	const fresh = load();
+	const trackInfo = { uri, title: 'Title', artist: 'Artist' };
+	h.publisher.publishLyricsReady({
+		...richContext(), trackInfo, lyrics: richLyrics(), lyricsType: 'karaoke', karaokeSource: 'lrcred',
+	});
+	await flush();
+	const snapshot = h.service.getLyricsSnapshot(uri);
+	assert.equal(snapshot.karaokeSource, 'lrcred');
+	assert.equal(h.overlay._lastPresentationContext.karaokeSource, 'lrcred');
+	assert.equal(h.helper._lastPresentationContext.karaokeSource, 'lrcred');
+	assert.equal(await fresh.service.sendLyricsSnapshotToConsumers({ uri: 'spotify:track:other' }, snapshot), false);
+	assert.equal(fresh.packets.length, 0);
+	assert.equal(await fresh.service.sendLyricsSnapshotToConsumers(trackInfo, snapshot, { sendToOverlay: false }), true);
+	assert.equal(fresh.packets.filter(packet => packet.name === 'overlay').length, 0);
+	assert.equal(fresh.helper._lastPresentationContext.karaokeSource, 'lrcred');
+	assertSupplements(fresh.last('helper'));
+});
 
 test('page departure finishes translation and reversed pronunciation slots through the production service and both senders', async () => {
 	const h = load({ globalFallback: true });
