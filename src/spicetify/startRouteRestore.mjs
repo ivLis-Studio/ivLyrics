@@ -1,6 +1,6 @@
 import { getMountedLyricsPage } from "./lyricsPageEffects.mjs";
 import { IVLYRICS_ROUTE, isIvLyricsRoute } from "./lyricsRoute.mjs";
-import { ROUTE_RESTORE_KEY, queueAppRouteRestore } from "./routeReload.mjs";
+import { ROUTE_RESTORE_KEY, hasRequestedAppRouteReload, queueAppRouteRestore } from "./routeReload.mjs";
 import { restorePendingRoute } from "./restorePendingRoute.mjs";
 
 const NATIVE_RELOAD_ROUTE_KEY = "ivLyrics:native-reload-route";
@@ -67,5 +67,6 @@ export function startRouteRestore(host) {
         isAppReady: () => getMountedLyricsPage(host)?._isComponentMounted === true,
         schedule: (callback, delay) => host.setTimeout(callback, delay),
         reload: () => host.location.reload(),
+        isReloadSuperseded: () => hasRequestedAppRouteReload(host),
     });
 }

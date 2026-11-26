@@ -495,7 +495,91 @@ test("a lyrics route revisited during the delay settles on Home before the new d
     assert.deepEqual(steps, ["/", "/"]);
     assert.equal(storage.getItem(SETTINGS_RETURN_KEY), undefined);
     assert.equal(timers[0].delay, 150);
+    history.location.pathname = "/ivLyrics/track";
     timers.shift().callback();
-    assert.deepEqual(steps, ["/", "/", "reload"]);
+    assert.deepEqual(steps, ["/", "/", "/"]);
+    assert.equal(storage.getItem(SETTINGS_RETURN_KEY), undefined);
+    assert.equal(timers[0].delay, 150);
+    timers.shift().callback();
+    assert.deepEqual(steps, ["/", "/", "/", "reload"]);
     assert.deepEqual(JSON.parse(storage.getItem(SETTINGS_RETURN_KEY)), { initialTab: "advanced" });
+});
+
+test("a background reload preserves lyrics if the user enters the app before the timer fires", () => {
+    const storage = createStorage();
+    const timers = [], steps = [];
+    const history = {
+        location: { pathname: "/search" },
+        replace(pathname) { this.location = { pathname }; steps.push(pathname); },
+    };
+    const host = {
+        localStorage: storage,
+        Spicetify: { Platform: { History: history } },
+        setTimeout(callback) { timers.push(callback); },
+        location: { reload() { steps.push(`reload:${history.location.pathname}`); } },
+    };
+    requestAppRouteReload({ host, restoreLyrics: false });
+    assert.deepEqual(steps, []);
+    history.location = { pathname: "/ivLyrics" };
+    timers.shift()();
+    assert.deepEqual(steps, ["/"]);
+    timers.shift()();
+    assert.deepEqual(steps, ["/", "reload:/"]);
+    assert.equal(JSON.parse(storage.getItem(ROUTE_RESTORE_KEY)).path, "/ivLyrics");
+});
+
+test("a router that accepts replace without navigating cannot stall a reload forever", () => {
+    const storage = createStorage();
+    const timers = [], steps = [];
+    const history = {
+        get location() { return { pathname: "/ivLyrics", key: "same" }; },
+        replace(pathname) { steps.push(pathname); },
+    };
+    const host = {
+        localStorage: storage,
+        Spicetify: { Platform: { History: history } },
+        setTimeout(callback) { timers.push(callback); },
+        location: { reload() { steps.push("reload"); } },
+    };
+    requestAppRouteReload({ host });
+    for (let count = 0; count < 3 && timers.length; count++) timers.shift()();
+    assert.deepEqual(steps, ["/", "/", "reload"]);
+    assert.equal(timers.length, 0);
+    assert.equal(JSON.parse(storage.getItem(ROUTE_RESTORE_KEY)).path, "/ivLyrics");
+});
+
+test("startup recovery yields to a newer document reload during navigation and safe-route recovery", (context) => {
+    const now = Date.now();
+    context.mock.timers.enable({ apis: ["Date"], now });
+    for (const phase of ["before navigation", "before recovery reload"]) {
+        const storage = createStorage();
+        storage.setItem(ROUTE_RESTORE_KEY, JSON.stringify({ path: "/ivLyrics", expiresAt: Date.now() + 15000 }));
+        const h = createStartupDocument({ storage, pathname: "/", navigation: "reload" });
+        const reloads = [];
+        h.host.location.reload = () => reloads.push(h.history.location.pathname);
+        h.history.replace = pathname => { h.routes.push(pathname); h.history.location.pathname = pathname; };
+        const tick = () => {
+            const timer = h.timers.shift();
+            context.mock.timers.tick(timer.delay);
+            timer.callback();
+        };
+
+        startRouteRestore(h.host);
+        if (phase === "before recovery reload") {
+            for (let count = 0; count < 45 && !h.routes.includes("/"); count++) tick();
+            assert.deepEqual(h.routes, ["/ivLyrics", "/"]);
+            assert.equal(JSON.parse(storage.getItem(ROUTE_RESTORE_KEY)).recoveryAttempted, true);
+        } else {
+            assert.deepEqual(h.routes, []);
+        }
+        const oldRouteCount = h.routes.length;
+        requestAppRouteReload({ host: h.host, delay: 700, settingsReturn: { initialTab: "advanced", initialSettingKey: "cloud-sync" } });
+        tick();
+        assert.deepEqual(reloads, [], phase);
+        assert.equal(h.routes.length, oldRouteCount + 1, phase);
+        assert.equal(h.timers.length, 1, phase);
+        tick();
+        assert.deepEqual(reloads, ["/"], phase);
+        assert.deepEqual(JSON.parse(storage.getItem(SETTINGS_RETURN_KEY)), { initialTab: "advanced", initialSettingKey: "cloud-sync" });
+    }
 });

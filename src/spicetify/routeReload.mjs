@@ -5,7 +5,11 @@ export const SETTINGS_RETURN_KEY = "ivLyrics:return-to-settings";
 export const ROUTE_RESTORE_TTL_MS = 15000;
 const SAFE_RELOAD_DELAY_MS = 150;
 // The startup extension and route bundle each have their own module instance.
-const pendingReloadKey = Symbol.for("ivLyrics.pendingDocumentReload");
+const documentReloadKey = Symbol.for("ivLyrics.pendingDocumentReload");
+
+export function hasRequestedAppRouteReload(host) {
+    return Boolean(host[documentReloadKey]);
+}
 
 export function queueAppRouteRestore(storage) {
     storage.setItem(ROUTE_RESTORE_KEY, JSON.stringify({
@@ -15,8 +19,10 @@ export function queueAppRouteRestore(storage) {
 }
 
 export function navigateToSafeReloadRoute(history) {
-    if (history?.replace) history.replace("/");
-    else history?.push?.("/");
+    if (typeof history?.replace === "function") history.replace("/");
+    else if (typeof history?.push === "function") history.push("/");
+    else return false;
+    return true;
 }
 
 export function queueSettingsReturn(storage, { initialTab = "general", initialSettingKey } = {}) {
@@ -44,7 +50,11 @@ export function requestAppRouteReload({
     reload = () => host.location.reload(), now = Date.now, delay = SAFE_RELOAD_DELAY_MS,
     restoreLyrics = true, settingsReturn, reportError = console.error,
 }) {
-    const request = host[pendingReloadKey] ??= { deadline: Infinity, timer: null, restoreLyrics: false, settingsReturn: null };
+    let request = host[documentReloadKey];
+    if (!request || request.finished) {
+        request = { deadline: Infinity, timer: null, restoreLyrics: false, settingsReturn: null };
+        host[documentReloadKey] = request;
+    }
     const prepareRoute = restoreLyrics && !request.restoreLyrics;
     request.restoreLyrics ||= restoreLyrics;
     if (settingsReturn) request.settingsReturn = settingsReturn;
@@ -58,22 +68,19 @@ export function requestAppRouteReload({
         if (request.timer !== null) cancel(request.timer);
         request.timer = null;
     }
+    const ownsTimer = () => host[documentReloadKey] === request && !request.finished && request.deadline === deadline;
 
-    function navigateSafely(onlyFromLyrics = false) {
+    function returnToSpotify() {
         try {
-            const history = getHistory();
-            if (onlyFromLyrics && !isIvLyricsRoute(history?.location?.pathname)) return false;
-            navigateToSafeReloadRoute(history);
-            return true;
+            navigateToSafeReloadRoute(getHistory());
         } catch (error) {
             reportError("[ivLyrics] Failed to navigate to a safe reload route:", error);
-            return false;
         }
     }
 
     function finish() {
-        if (host[pendingReloadKey] !== request) return;
-        delete host[pendingReloadKey];
+        // Keep ownership visible to startup recovery until this document exits.
+        request.finished = true;
         // The return markers belong to the next document, even if the old
         // document's lyrics route mounts again during the delay.
         if (request.restoreLyrics) {
@@ -93,11 +100,34 @@ export function requestAppRouteReload({
         reload();
     }
 
-    if (prepareRoute) navigateSafely();
-    if (!scheduleEarlier || request.deadline !== deadline) return;
-    request.timer = schedule(() => {
-        if (host[pendingReloadKey] !== request || request.deadline !== deadline) return;
-        if (request.restoreLyrics && navigateSafely(true)) schedule(finish, SAFE_RELOAD_DELAY_MS);
-        else finish();
-    }, wait);
+    function leaveLyricsRoute(stalledAt) {
+        try {
+            const history = getHistory();
+            const { pathname, key } = history?.location || {};
+            if (!isIvLyricsRoute(pathname)) return null;
+            // A background reload can be requested before the user opens lyrics.
+            request.restoreLyrics = true;
+            if (stalledAt?.pathname === pathname && stalledAt.key === key) return null;
+            if (!navigateToSafeReloadRoute(history)) return null;
+            return isIvLyricsRoute(history.location?.pathname) ? { pathname, key } : {};
+        } catch (error) {
+            reportError("[ivLyrics] Failed to navigate to a safe reload route:", error);
+            return null;
+        }
+    }
+
+    function settle(stalledAt) {
+        if (!ownsTimer()) return;
+        const navigation = leaveLyricsRoute(stalledAt);
+        if (!ownsTimer()) return;
+        if (navigation) {
+            request.timer = schedule(() => settle(navigation), SAFE_RELOAD_DELAY_MS);
+        } else {
+            finish();
+        }
+    }
+
+    if (prepareRoute) returnToSpotify();
+    if (!scheduleEarlier || !ownsTimer()) return;
+    request.timer = schedule(() => settle(), wait);
 }

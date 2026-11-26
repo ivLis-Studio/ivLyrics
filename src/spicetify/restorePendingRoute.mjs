@@ -15,6 +15,7 @@ export function restorePendingRoute({
     isAppReady,
     schedule,
     reload,
+    isReloadSuperseded = () => false,
     now = Date.now,
     reportError = console.error,
 }) {
@@ -51,6 +52,7 @@ export function restorePendingRoute({
             return;
         }
         schedule(() => {
+            if (isReloadSuperseded()) return;
             try {
                 if (storage.getItem(ROUTE_RESTORE_KEY) !== next) return;
                 if (getHistory()?.location?.pathname === "/" && now() < expiresAt) reload();
@@ -102,6 +104,7 @@ export function restorePendingRoute({
     }
 
     function tryRestore() {
+        if (isReloadSuperseded()) return;
         let raw, storage, payload;
         try {
             storage = getStorage();
