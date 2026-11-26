@@ -207,7 +207,12 @@ case "$url" in
 esac`);
     command('pgrep', 'printf "probe\n" >> "$IVL_TEST_ROOT/events"\nexit 1\n');
     command('pkill', 'exit 1\n');
-    command('sleep', 'exit 0\n');
+    // Keep short installer recovery waits real while skipping network backoff.
+    command('sleep', String.raw`
+case "$1" in
+    0.*|.*) exec /bin/sleep "$@" ;;
+esac
+`);
     command('clear', 'exit 0\n');
     command('xdg-mime', String.raw`
 if [ "$*" = 'query default x-scheme-handler/ivlyrics-updater' ]; then
