@@ -985,6 +985,15 @@ export function createSyncDataCreator({
 			},
 		});
 
+		const scheduleSessionAutosave = useSyncCreatorSessionPersistence({
+			react, syncCreatorDraftStore,
+			source: { sessionTrackKey, activeSessionDraftKey, lyricsText },
+			state: { sessionHydrationComplete, sessionReadyDraftKey, isSessionAutosaveEnabled },
+			refs: sessionRefs, ui: sessionUi, isEditorOpen: lifetime.canStartOperation,
+			host: { windowEvents: window, documentEvents: document, scheduleTimer: setTimeout, cancelTimer: clearTimeout },
+			buildSyncCreatorSessionRecord, applySyncCreatorSessionRecord, syncSessionUiFromRecord, announceRecoveredSession,
+		});
+
 		const { addManualCheckpoint, restoreHistoryCheckpoint, historyCursorIndex, moveHistoryCursor } =
 			useSyncCreatorSessionCheckpoints({
 				react, syncCreatorDraftStore,
@@ -994,15 +1003,8 @@ export function createSyncDataCreator({
 				refs: sessionRefs, ui: sessionUi, cancelTimer: clearTimeout, i18n: I18n, toast: Toast,
 				buildSyncCreatorSessionRecord, applySyncCreatorSessionRecord, syncSessionUiFromRecord,
 				claimSessionForLocalEditing, announceHistoryStatus, nextSessionClientRevision, lifetime,
+				scheduleAutosave: scheduleSessionAutosave,
 			});
-		useSyncCreatorSessionPersistence({
-			react, syncCreatorDraftStore,
-			source: { sessionTrackKey, activeSessionDraftKey, lyricsText },
-			state: { sessionHydrationComplete, sessionReadyDraftKey, isSessionAutosaveEnabled },
-			refs: sessionRefs, ui: sessionUi,
-			host: { windowEvents: window, documentEvents: document, scheduleTimer: setTimeout, cancelTimer: clearTimeout },
-			buildSyncCreatorSessionRecord, applySyncCreatorSessionRecord, syncSessionUiFromRecord, announceRecoveredSession,
-		});
 
 		useSyncCreatorHistoryNavigation({
 			react, host: window, historyListRef, historyLength: sessionHistory.length, sessionHistoryCursorId, moveHistoryCursor,

@@ -1,4 +1,5 @@
 const SYNC_CREATOR_AUTOSAVE_INTERVAL_MS = 3_000;
+const alwaysOpen = () => true;
 
 export function cancelSyncCreatorAutosave(timerRef, cancelTimer) {
   const timer = timerRef.current;
@@ -54,8 +55,8 @@ export function ownsSyncCreatorDraftSave(refs, record, generation) {
 }
 
 export function useSyncCreatorDraftAutosave({
-  useEffect, useLayoutEffect, store, draftKey, readyDraftKey, hydrated, lyricsText, enabled,
-  buildRecord, setSaveState, onSave,
+  useEffect, useLayoutEffect, useCallback, store, draftKey, readyDraftKey, hydrated, lyricsText, enabled,
+  buildRecord, setSaveState, onSave, isEditorOpen = alwaysOpen, logger = console,
   refs,
   host: { windowEvents, documentEvents, scheduleTimer, cancelTimer },
 }) {
@@ -63,7 +64,39 @@ export function useSyncCreatorDraftAutosave({
     sessionAutosaveTimerRef: timer, latestSessionRecordRef: latestRecord,
     sessionAppliedDraftKeyRef: appliedDraftKey, sessionAutosaveSuppressedRef: suppressed,
     sessionWriteGenerationRef: writeGeneration, sessionPendingSnapshotRef: pendingSnapshot,
+    sessionAutosaveEnabledRef: autosaveEnabled,
   } = refs;
+
+  const scheduleAutosave = useCallback(function schedule(retryFor = null) {
+    if (!store || timer.current || !autosaveEnabled.current || suppressed.current || !isEditorOpen()) return;
+    const scheduled = { id: null };
+    timer.current = scheduled;
+    scheduled.id = scheduleTimer(async () => {
+      if (timer.current !== scheduled) return;
+      timer.current = null;
+      if (!isEditorOpen()) return;
+      const generation = writeGeneration.current;
+      let pendingRecord;
+      const ownsSave = () => isEditorOpen() && ownsSyncCreatorDraftSave(refs, pendingRecord, generation);
+      try {
+        pendingRecord = readSyncCreatorAutosaveRecord(refs);
+        if (!pendingRecord) return;
+        setSaveState("saving");
+        const saved = await saveSyncCreatorDraftSnapshot(store, refs, pendingRecord);
+        if (saved?.draftKey === pendingRecord.draftKey && ownsSave()) {
+          latestRecord.current = saved;
+          appliedDraftKey.current = saved.draftKey;
+          onSave(saved);
+        }
+      } catch (error) {
+        logger.warn("[SyncDataCreator] Autosave failed:", error);
+        if (!isEditorOpen() || (pendingRecord && !ownsSave())) return;
+        setSaveState("error");
+        if (pendingRecord && pendingRecord !== retryFor) schedule(pendingRecord);
+      }
+    }, SYNC_CREATOR_AUTOSAVE_INTERVAL_MS);
+  }, [appliedDraftKey, autosaveEnabled, isEditorOpen, latestRecord, logger, onSave,
+    refs, scheduleTimer, setSaveState, store, suppressed, timer, writeGeneration]);
 
   useLayoutEffect(() => {
     if (!store || !hydrated || !draftKey || readyDraftKey !== draftKey || !lyricsText || suppressed.current) return;
@@ -71,39 +104,13 @@ export function useSyncCreatorDraftAutosave({
     // Publish the committed editor state before another action can close it.
     // Compact and clone timing data only when a record is actually needed.
     pendingSnapshot.current = { draftKey, buildRecord };
-    if (!enabled) {
-      setSaveState("disabled");
-      return;
-    }
-    setSaveState("dirty");
-    if (timer.current != null) return;
-    const scheduled = { id: null };
-    timer.current = scheduled;
-    scheduled.id = scheduleTimer(async () => {
-      if (timer.current !== scheduled) return;
-      timer.current = null;
-      const generation = writeGeneration.current;
-      let pendingRecord;
-      try {
-        pendingRecord = readSyncCreatorAutosaveRecord(refs);
-        if (!pendingRecord) return;
-        setSaveState("saving");
-        const saved = await saveSyncCreatorDraftSnapshot(store, refs, pendingRecord);
-        if (saved?.draftKey === pendingRecord.draftKey && ownsSyncCreatorDraftSave(refs, pendingRecord, generation)) {
-          latestRecord.current = saved;
-          appliedDraftKey.current = saved.draftKey;
-          onSave(saved);
-        }
-      } catch (error) {
-        console.warn("[SyncDataCreator] Autosave failed:", error);
-        if (!pendingRecord || ownsSyncCreatorDraftSave(refs, pendingRecord, generation)) setSaveState("error");
-      }
-    }, SYNC_CREATOR_AUTOSAVE_INTERVAL_MS);
-  }, [draftKey, buildRecord, enabled, lyricsText, hydrated, readyDraftKey, store, onSave]);
+    setSaveState(enabled ? "dirty" : "disabled");
+    if (enabled) scheduleAutosave();
+  }, [draftKey, buildRecord, enabled, lyricsText, hydrated, readyDraftKey, store, pendingSnapshot, scheduleAutosave, setSaveState, suppressed]);
 
   useEffect(() => {
     const reportFlushFailure = (error) => {
-      console.warn("[SyncDataCreator] Final autosave failed:", error);
+      logger.warn("[SyncDataCreator] Final autosave failed:", error);
     };
     const flushLatestSession = () => {
       if (!store) return;
@@ -126,5 +133,7 @@ export function useSyncCreatorDraftAutosave({
       cancelSyncCreatorAutosave(timer, cancelTimer);
       flushLatestSession();
     };
-  }, [store]);
+  }, [cancelTimer, documentEvents, logger, refs, store, timer, windowEvents]);
+
+  return scheduleAutosave;
 }

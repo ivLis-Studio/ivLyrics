@@ -20,7 +20,7 @@ const slice = (startMarker, endMarker) => {
 	return source.slice(start, end);
 };
 const helpersSource = source.slice(0, source.indexOf('const SyncDataCreator ='));
-const callbackSources = slice('\tconst applySyncCreatorSessionRecord =', '\tconst { addManualCheckpoint,');
+const callbackSources = slice('\tconst applySyncCreatorSessionRecord =', '\tconst scheduleSessionAutosave =');
 const playbackSource = slice('\tconst playbackTimeline =', '\tconst { setRecordingProgressIndex, applyRecordingProgressVisual, invalidateRecordingPaint }');
 const plain = value => JSON.parse(JSON.stringify(value));
 const deferred = () => {

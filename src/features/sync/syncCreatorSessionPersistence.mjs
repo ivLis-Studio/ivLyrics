@@ -5,7 +5,7 @@ export function useSyncCreatorSessionPersistence({
 	react: { useEffect, useLayoutEffect, useCallback }, syncCreatorDraftStore,
 	source: { sessionTrackKey, activeSessionDraftKey, lyricsText },
 	state: { sessionHydrationComplete, sessionReadyDraftKey, isSessionAutosaveEnabled },
-	refs, ui, host, logger = console,
+	refs, ui, host, isEditorOpen, logger = console,
 	buildSyncCreatorSessionRecord, applySyncCreatorSessionRecord, syncSessionUiFromRecord, announceRecoveredSession,
 }) {
 	const {
@@ -180,7 +180,8 @@ export function useSyncCreatorSessionPersistence({
 		syncSessionUiFromRecord
 	]);
 
-	useSyncCreatorDraftAutosave({
+	return useSyncCreatorDraftAutosave({
+		useCallback,
 		useEffect,
 		useLayoutEffect,
 		store: syncCreatorDraftStore,
@@ -192,6 +193,8 @@ export function useSyncCreatorSessionPersistence({
 		buildRecord: buildSyncCreatorSessionRecord,
 		setSaveState: setSessionSaveState,
 		onSave: syncSessionUiFromRecord,
+		isEditorOpen,
+		logger,
 		refs,
 		host,
 	});

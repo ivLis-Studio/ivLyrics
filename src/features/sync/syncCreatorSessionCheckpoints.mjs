@@ -11,7 +11,7 @@ export function useSyncCreatorSessionCheckpoints({
 	refs, ui, cancelTimer, i18n, toast, logger = console,
 	buildSyncCreatorSessionRecord, applySyncCreatorSessionRecord, syncSessionUiFromRecord,
 	claimSessionForLocalEditing, announceHistoryStatus, nextSessionClientRevision,
-	lifetime,
+	lifetime, scheduleAutosave,
 }) {
 	const { isOpen: isEditorOpen, canStartOperation, captureOperation } = lifetime;
 	const {
@@ -72,6 +72,7 @@ export function useSyncCreatorSessionCheckpoints({
 			logger.warn('[SyncDataCreator] Failed to save checkpoint:', error);
 			if (ownsSave()) {
 				setSessionSaveState('error');
+				scheduleAutosave();
 			}
 		}
 	}, [
@@ -88,6 +89,7 @@ export function useSyncCreatorSessionCheckpoints({
 		isEditorOpen,
 		lyricsLines,
 		lyricsText,
+		scheduleAutosave,
 		syncCreatorDraftStore,
 		syncData,
 		syncSessionUiFromRecord
@@ -117,11 +119,15 @@ export function useSyncCreatorSessionCheckpoints({
 			&& restoringDraftKey === activeSessionDraftKeyRef.current;
 		const canCommitRestore = captureOperation(ownsRestore);
 		setIsRestoringCheckpoint(true);
+		let workingSavePending = false;
 		try {
 			const currentWorkingRecord = readSyncCreatorWorkingRecord(refs);
-			const saved = currentWorkingRecord?.draftKey === restoringDraftKey
-				? await saveSyncCreatorDraftSnapshot(syncCreatorDraftStore, refs, currentWorkingRecord)
-				: null;
+			let saved = null;
+			if (currentWorkingRecord?.draftKey === restoringDraftKey) {
+				workingSavePending = true;
+				saved = await saveSyncCreatorDraftSnapshot(syncCreatorDraftStore, refs, currentWorkingRecord);
+				workingSavePending = false;
+			}
 			await syncCreatorDraftStore.flush();
 			if (!canCommitRestore()) return;
 
@@ -173,6 +179,7 @@ export function useSyncCreatorSessionCheckpoints({
 			setSessionSaveState('error');
 			announceHistoryStatus(i18n.t('syncCreator.historyRestoreError') || '작업 상태를 복원하지 못했습니다.');
 			toast.error(i18n.t('syncCreator.historyRestoreError') || '작업 상태를 복원하지 못했습니다.');
+			if (workingSavePending) scheduleAutosave();
 		} finally {
 			if (restoreInFlight.current === requestId) restoreInFlight.current = null;
 			if (isEditorOpen() && requestId === sessionCheckpointRestoreRequestRef.current) {
@@ -193,6 +200,7 @@ export function useSyncCreatorSessionCheckpoints({
 		isEditorOpen,
 		mode,
 		nextSessionClientRevision,
+		scheduleAutosave,
 		sessionHistoryCursorId,
 		syncCreatorDraftStore,
 		syncSessionUiFromRecord,

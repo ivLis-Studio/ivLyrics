@@ -5,6 +5,7 @@ import {
 } from '#ivlyrics/features/sync/syncCreatorSessionLifecycle.mjs';
 import { useSyncCreatorSessionCheckpoints } from '#ivlyrics/features/sync/syncCreatorSessionCheckpoints.mjs';
 import { useSyncCreatorSessionPersistence } from '#ivlyrics/features/sync/syncCreatorSessionPersistence.mjs';
+import { useSyncCreatorDraftAutosave } from '#ivlyrics/features/sync/syncCreatorDraftAutosave.mjs';
 import { createSyncCreatorEditorLifetime } from '#ivlyrics/features/sync/syncCreatorEditorLifetime.mjs';
 import { createSyncCreatorEditorCommands } from '#ivlyrics/features/sync/syncCreatorEditorCommands.mjs';
 import { applySyncCreatorImportedSession } from '#ivlyrics/features/sync/syncCreatorSessionReplacement.mjs';
@@ -467,6 +468,7 @@ function checkpoints(h, {
 	apply = noop, build = () => sourceA, isEditorOpen = () => true,
 	history = [], cursor = 'old',
 	logger = console,
+	scheduleAutosave = noop,
 	lifetime = createSyncCreatorEditorLifetime(isEditorOpen),
 } = {}) {
 	return useSyncCreatorSessionCheckpoints({
@@ -477,7 +479,59 @@ function checkpoints(h, {
 		state: { sessionHistory: history, sessionHistoryCursorId: cursor },
 		refs: h.refs, ui: h.ui, cancelTimer: h.cancelTimer, i18n: h.i18n, toast: h.toast, logger,
 		buildSyncCreatorSessionRecord: build, applySyncCreatorSessionRecord: apply,
-		...h.actions, lifetime,
+		...h.actions, lifetime, scheduleAutosave,
+	});
+}
+
+test('a failed automatic save retries the unchanged draft at most once', async () => {
+	for (const retrySucceeds of [true, false]) {
+		const attempts = [];
+		const timers = [];
+		const h = createSession({
+			async saveDraft(record) {
+				attempts.push(record);
+				if (attempts.length === 1 || !retrySucceeds) throw new Error('IndexedDB write aborted');
+				return record;
+			},
+		});
+		h.refs.activeSessionDraftKeyRef.current = sourceA.draftKey;
+		useSyncCreatorDraftAutosave({
+			useCallback: fn => fn, useLayoutEffect: effect => effect(), useEffect: noop,
+			store: h.store, draftKey: 'A', readyDraftKey: 'A', hydrated: true, lyricsText: 'First lyric', enabled: true,
+			buildRecord: () => sourceA, setSaveState: h.ui.setSessionSaveState, onSave: h.actions.syncSessionUiFromRecord,
+			refs: h.refs, isEditorOpen: () => true, logger: { warn: noop },
+			host: { scheduleTimer: fn => timers.push(fn), cancelTimer: h.cancelTimer },
+		});
+		await timers.shift()();
+		assert.equal(h.attrs.sessionSaveState, 'error');
+		assert.equal(timers.length, 1, 'retry must not depend on another edit');
+		await timers.shift()();
+		assert.deepEqual(attempts, [sourceA, sourceA]);
+		assert.equal(h.attrs.sessionSaveState, retrySucceeds ? 'saved' : 'error');
+		assert.equal(timers.length, 0);
+	}
+});
+
+for (const operation of ['manual checkpoint', 'history restore']) {
+	test(`a failed draft write during ${operation} rearms autosave for the current draft`, async () => {
+		const rejectWrite = async () => { throw new Error('Interrupted write'); };
+		const h = createSession({
+			saveDraft: rejectWrite, appendCheckpoint: rejectWrite,
+			getCheckpointCandidate: assert.fail,
+		});
+		h.refs.activeSessionDraftKeyRef.current = sourceA.draftKey;
+		h.refs.sessionAutosaveTimerRef.current = { id: 19 };
+		h.refs.sessionPendingSnapshotRef.current = { draftKey: sourceA.draftKey, buildRecord: () => sourceA };
+		const scheduled = [];
+		const editor = checkpoints(h, {
+			logger: { error: noop, warn: noop },
+			scheduleAutosave: () => scheduled.push(h.refs.latestSessionRecordRef.current),
+		});
+		if (operation === 'manual checkpoint') await editor.addManualCheckpoint();
+		else await editor.restoreHistoryCheckpoint('earlier');
+		assert.deepEqual(scheduled, [sourceA]);
+		assert.equal(h.attrs.isRestoringCheckpoint, false);
+		assert.equal(h.attrs.sessionSaveState, 'error');
 	});
 }
 

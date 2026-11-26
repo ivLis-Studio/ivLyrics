@@ -34,7 +34,7 @@ const callbacks = [
     slice('\tconst materializeSyncCreatorParallelDrafts =', '\tuseEffect(() => {\n\t\tconst previous = latestSessionRecordRef.current;\n\t\tsetHasUnsubmittedSync('),
     slice('\tconst buildSyncCreatorSessionRecord =', '\tconst applySyncCreatorSessionRecord ='),
     slice('\tconst buildScoreSnapshot =', '\tuseSyncCreatorScoreObservation({'),
-    slice('\tconst applySyncCreatorSessionRecord =', '\tconst { addManualCheckpoint,'),
+    slice('\tconst applySyncCreatorSessionRecord =', '\tconst scheduleSessionAutosave ='),
     slice('\tconst isSourceLoading =', publicationStart),
     `const handleSubmit = () => {
         ${slice(publicationStart, '\t// 싱크 데이터 내보내기')}
