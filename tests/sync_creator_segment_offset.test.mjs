@@ -780,6 +780,28 @@ test('untimed selected vocals stay disabled rather than shifting a sibling or in
     assert.deepEqual(editor.times(), []);
 });
 
+test('an unrecorded vocal never inherits the merged row placeholder timings for publication', async () => {
+    const editor = createEditor();
+    editor.context.syncData.lines = editor.context.syncData.lines.filter(line => line.start !== 7);
+    editor.api.mergeCurrentLineWithNext(); editor.render('a');
+    editor.api.commitCurrentLineSync([11, 11.25, 11.5, 11.75]);
+    editor.render('b');
+    assert.deepEqual(editor.times(), []);
+    assert.equal(editor.materialize().lines[1].parallel.parts[1].chars, undefined);
+    const { window, Toast } = editor.context;
+    const submit = window.SyncDataService.submitSyncData;
+    const errors = [];
+    Toast.error = message => errors.push(message);
+    window.SyncDataService.submitSyncData = () => assert.fail('the placeholder timings must not be posted');
+    await editor.api.handleSubmit();
+    assert.deepEqual(errors, ['syncCreator.lineAllPartsMissingSync']);
+    window.SyncDataService.submitSyncData = submit;
+    editor.api.commitCurrentLineSync([21, 21.25, 21.5, 21.75]);
+    editor.render('b');
+    assert.deepEqual(editor.times(), [21, 21.25, 21.5, 21.75]);
+    assert.equal((await editor.submit()).lines[1].parallel.parts[1].chars[0], 21);
+});
+
 test('merging and unmerging original rows preserves previously split, offset and overlapping character timings', async () => {
     const editor = createEditor();
     editor.split(2);

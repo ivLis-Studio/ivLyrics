@@ -333,6 +333,11 @@ function createSyncCreatorParallelEditing({ getSyncCreatorSyncDataValidationErro
 		const existingParts = Array.isArray(existingLine?.parallel?.parts) ? existingLine.parallel.parts : [];
 		return (Array.isArray(templateParts) ? templateParts : []).map(part => {
 			const sourcePart = findSyncCreatorParallelSourcePart(part, existingParts);
+			// A recorded sibling can give the parent placeholder marks. An
+			// explicitly unrecorded vocal must keep its missing timing.
+			if (sourcePart && !hasReusableSyncCreatorParallelChars(sourcePart, sourcePart)) {
+				return { part, sourcePart, chars: undefined };
+			}
 			return {
 				part, sourcePart,
 				// Concurrent vocals can share lyric indexes but have distinct marks.
