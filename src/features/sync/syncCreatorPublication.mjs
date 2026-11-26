@@ -183,27 +183,26 @@ export async function clearSyncCreatorPublishedCaches(resolvedIsrc, {
 	readSyncCreatorSyncService, getLyricsService, invalidatePageCache, dispatchSyncDataUpdated, warn = console.warn,
 }) {
 	const cacheIsrc = normalizeSyncDataIsrc(resolvedIsrc) || trackIsrc;
-	try {
-		if (cacheIsrc || trackId) {
-			readSyncCreatorSyncService()?.clearCache?.(cacheIsrc || trackId, cacheIsrc ? { isrc: cacheIsrc } : {});
+	const clearCache = async (name, clear) => {
+		try {
+			await clear();
+		} catch (error) {
+			warn(`[SyncDataCreator] Failed to clear the ${name} cache after sync-data submit:`, error);
 		}
-	} catch (error) {
-		warn('[SyncDataCreator] Failed to clear the published sync cache:', error);
-	}
-	const detail = {
-		isrc: cacheIsrc || null,
-		trackId,
-		trackUri,
-		provider,
 	};
-	try {
-		const service = getLyricsService();
-		if (trackUri) service?.clearLyricsSnapshot?.(trackUri);
-		if (trackId) await service?.clearTrackCache?.(trackId);
-	} catch (error) {
-		warn('[SyncDataCreator] Failed to clear lyrics cache after sync-data submit:', error);
-	} finally {
-		if (trackUri) invalidatePageCache?.(trackUri);
-		dispatchSyncDataUpdated(detail);
+	if (cacheIsrc || trackId) {
+		await clearCache('published sync', () => readSyncCreatorSyncService()?.clearCache?.(
+			cacheIsrc || trackId, cacheIsrc ? { isrc: cacheIsrc } : {},
+		));
 	}
+	if (trackUri) {
+		await clearCache('shared lyrics', () => getLyricsService()?.clearLyricsSnapshot?.(trackUri));
+	}
+	if (trackId) {
+		await clearCache('persistent lyrics', () => getLyricsService()?.clearTrackCache?.(trackId));
+	}
+	if (trackUri) {
+		await clearCache('page lyrics', () => invalidatePageCache?.(trackUri));
+	}
+	dispatchSyncDataUpdated({ isrc: cacheIsrc || null, trackId, trackUri, provider });
 }

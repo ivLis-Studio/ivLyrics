@@ -2,6 +2,7 @@ import { notifyLyricPresentationOwnerReleased } from "../lyrics/lyricPresentatio
 import { cancelPendingLyricsTimingUpgrade } from "../lyrics/pageLyricsTimingUpgrade.mjs";
 import { cancelPendingPageMetadataTranslation } from "../lyrics/createPageMetadataTranslation.mjs";
 import { LYRICS_PROVIDER_SELECTION_CHANGED } from "../lyrics/lyricsProviderRequests.mjs";
+import { getPublishedSyncTrackUri, SYNC_DATA_UPDATED_EVENT } from "../lyrics/syncDataPublicationEvents.mjs";
 import { createLyricsFullscreenController } from "../features/fullscreen/lyricsFullscreenController.mjs";
 import { schedulePageUpdateCheck } from "../features/updates/pageUpdateCheck.mjs";
 import { activateLyricsPage, releaseLyricsPage, LYRICS_PAGE_READY_EVENT } from "./lyricsPageEffects.mjs";
@@ -114,8 +115,8 @@ export function createLyricsPageLifecycle({
       const item = getPlayer()?.data?.item;
       if (isCurrentMount() && item?.uri) page.fetchLyrics(item, -1);
     });
-    effects.listen(browser, "ivLyrics:sync-data-updated", (event) => {
-      const trackUri = event.detail?.trackUri;
+    effects.listen(browser, SYNC_DATA_UPDATED_EVENT, ({ detail }) => {
+      const trackUri = getPublishedSyncTrackUri(detail);
       if (isCurrentMount() && trackUri) {
         Promise.resolve(reloadLyrics(false, trackUri)).catch((error) => {
           console.warn("[ivLyrics] Failed to refresh the published lyrics:", error);

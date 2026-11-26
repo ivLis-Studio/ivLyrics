@@ -792,3 +792,45 @@ test("deleting the playing song's saved lyrics refreshes overlay fallback withou
   h.pendingFallbacks.get(trackUri).resolve();
   await flush();
 });
+
+test("publishing the playing song refreshes both connected senders when the page and panel are closed", async () => {
+  const trackUri = "spotify:track:fixture";
+  const h = createHarness({
+    overlayDelivered: trackUri, helperEnabled: true, helperConnected: true, helperDelivered: trackUri,
+  });
+  const invalidated = [];
+  for (const sender of [h.overlay, h.helper]) {
+    sender.invalidateLyricsPresentation = function () {
+      this.lastDeliveredUri = null;
+      invalidated.push(this.name);
+    };
+  }
+  await h.runNextTimer();
+  assert.equal(h.fallbackCalls.length, 0);
+
+  const publish = detail => h.window.dispatchEvent({ type: "ivLyrics:sync-data-updated", detail });
+  publish({ trackUri: "spotify:track:other", trackId: "fixture" });
+  publish({});
+  assert.equal(await h.runDueTimers(), 0);
+  assert.deepEqual(invalidated, []);
+
+  publish({ trackId: "fixture" });
+  await h.runDueTimers();
+  assert.deepEqual(invalidated, ["overlay", "helper"]);
+  assert.equal(h.fallbackCalls.length, 1);
+  const prior = h.fallbackCalls[0];
+  const priorFallback = h.pendingFallbacks.get(trackUri);
+  assert.equal(prior.trackInfo.uri, trackUri);
+  assert.equal(prior.options.isRequestCurrent(), true);
+
+  publish({ trackUri });
+  await h.runDueTimers();
+  assert.equal(prior.options.isRequestCurrent(), false);
+  assert.equal(h.fallbackCalls.length, 2);
+  const current = h.fallbackCalls[1];
+  assert.equal(current.options.isRequestCurrent(), true);
+
+  priorFallback.resolve();
+  h.pendingFallbacks.get(trackUri).resolve();
+  await flush();
+});

@@ -1,4 +1,5 @@
 import { useSyncCreatorRecordingLockControls, useSyncCreatorRecordingLockTiming } from '#ivlyrics/features/sync/syncCreatorRecordingLock.mjs';
+import { SYNC_DATA_UPDATED_EVENT } from '#ivlyrics/lyrics/syncDataPublicationEvents.mjs';
 import { useSyncCreatorCharacterSelection, useSyncCreatorSelectionReset } from '#ivlyrics/features/sync/syncCreatorCharacterSelection.mjs';
 import { useSyncCreatorPointerSelection } from '#ivlyrics/features/sync/syncCreatorPointerSelection.mjs';
 import { resolveSyncCreatorTrack } from '#ivlyrics/features/sync/syncCreatorTrack.mjs';
@@ -1020,7 +1021,7 @@ export function createSyncDataCreator({
 		const clearLyricsCachesAfterSyncSubmit = useCallback((resolvedIsrc, publishedProvider) => clearSyncCreatorPublishedCaches(resolvedIsrc, {
 			trackId, trackUri, trackIsrc, provider: publishedProvider, readSyncCreatorSyncService, getLyricsService,
 			invalidatePageCache: uri => { delete pageLyricsMemoryCache[uri]; },
-			dispatchSyncDataUpdated: detail => window.dispatchEvent(new CustomEvent('ivLyrics:sync-data-updated', { detail })),
+			dispatchSyncDataUpdated: detail => window.dispatchEvent(new CustomEvent(SYNC_DATA_UPDATED_EVENT, { detail })),
 		}), [trackId, trackUri, trackIsrc]);
 
 		const materializeSyncCreatorParallelDrafts = useCallback((sourceData, options = {}) => materializeSyncCreatorVocalDrafts(sourceData, options, {

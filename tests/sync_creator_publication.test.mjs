@@ -275,6 +275,28 @@ test('publication still invalidates lyrics after a sync cache error and signals 
 	]);
 });
 
+test('publication clears the persistent cache and notifies listeners after independent cache failures', async () => {
+	const observed = [];
+	const trackUri = `spotify:track:${track.id}`;
+	await clearSyncCreatorPublishedCaches(track.isrc, {
+		trackId: track.id, trackUri,
+		readSyncCreatorSyncService: () => ({
+			clearCache: async () => { throw new Error('sync'); },
+		}),
+		getLyricsService: () => ({
+			clearLyricsSnapshot: () => { throw new Error('snapshot'); },
+			clearTrackCache: async id => { observed.push(['disk', id]); },
+		}),
+		invalidatePageCache: () => { throw new Error('page'); },
+		dispatchSyncDataUpdated: detail => observed.push(['updated', detail.trackUri]),
+		warn: (_message, error) => observed.push(['warning', error.message]),
+	});
+	assert.deepEqual(observed, [
+		['warning', 'sync'], ['warning', 'snapshot'], ['disk', track.id],
+		['warning', 'page'], ['updated', trackUri],
+	]);
+});
+
 for (const phase of ['authentication', 'work snapshot']) {
 	test(`publication stops before POST if the source changes during ${phase}`, async () => {
 		const paused = deferred();

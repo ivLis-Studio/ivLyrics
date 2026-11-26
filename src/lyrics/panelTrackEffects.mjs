@@ -5,6 +5,7 @@ import { normalizeGlobalSyncOffset } from "#ivlyrics/core/globalSyncOffset.mjs";
 import { resolveStablePlayerItem } from "../core/PlaybackClock.js";
 import { createPlaybackTrackResolver } from "../spicetify/playbackTrackResolver.mjs";
 import { LOCAL_LYRICS_UPDATED_EVENT } from "./localLyricsStore.mjs";
+import { getPublishedSyncTrackUri, SYNC_DATA_UPDATED_EVENT } from "./syncDataPublicationEvents.mjs";
 import { resolveSharedPanelLyrics } from "./panelLyricPresentation.mjs";
 import { createPanelTranslationLoader } from "./panelTranslationLoader.mjs";
 import { createPanelLyricsLoader } from "./panelLyricsLoader.mjs";
@@ -279,14 +280,10 @@ export function createPanelTrackEffects({
                 panelDebug("[PanelLyrics] Global offset changed:", offset);
             };
 
-            const handleSyncDataUpdated = (event) => {
-                const currentUri = readCurrentTrackUri();
-                const currentTrackId = currentUri?.split(':')[2];
-                const detail = event.detail || {};
-                if (!currentUri || (detail.trackUri && detail.trackUri !== currentUri) || (detail.trackId && detail.trackId !== currentTrackId)) {
-                    return;
-                }
-                void loadLyricsFromExtension({ forceReload: true, requestedTrackUri: currentUri });
+            const handleSyncDataUpdated = ({ detail }) => {
+                const trackUri = getPublishedSyncTrackUri(detail);
+                if (!trackUri || trackUri !== readCurrentTrackUri()) return;
+                void loadLyricsFromExtension({ forceReload: true, requestedTrackUri: trackUri });
             };
 
             const handleLocalLyricsUpdated = (event) => {
@@ -362,7 +359,7 @@ export function createPanelTrackEffects({
                 effects.listen(host, INTERFACE_LANGUAGE_CHANGED, handleInterfaceLanguageChanged);
                 effects.listen(host, "ivLyrics:offset-changed", handleOffsetChange);
                 effects.listen(host, "ivLyrics:global-offset-changed", handleGlobalOffsetChange);
-                effects.listen(host, "ivLyrics:sync-data-updated", handleSyncDataUpdated);
+                effects.listen(host, SYNC_DATA_UPDATED_EVENT, handleSyncDataUpdated);
                 effects.listen(host, LOCAL_LYRICS_UPDATED_EVENT, handleLocalLyricsUpdated);
                 effects.listen(host, "ivLyrics:shared-lyrics-updated", handleSharedLyricsUpdate);
                 effects.listen(host, LYRIC_PRESENTATION_OWNER_RELEASED, handlePresentationOwnerReleased);

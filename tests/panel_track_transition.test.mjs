@@ -111,6 +111,7 @@ function fixture(t, {
         },
         notifyProviderSelection: () => host.dispatchEvent(new Event(LYRICS_PROVIDER_SELECTION_CHANGED)),
         notifyInterfaceLanguage: () => host.dispatchEvent(new Event(INTERFACE_LANGUAGE_CHANGED)),
+        notifySyncPublication: detail => host.dispatchEvent(new CustomEvent("ivLyrics:sync-data-updated", { detail })),
         releasePage: trackUri => host.dispatchEvent(new CustomEvent("ivLyrics:presentation-owner-released", {
             detail: { source: "ivlyrics-page", trackUri },
         })),
@@ -123,6 +124,23 @@ function fixture(t, {
         advance: async (delay) => { t.mock.timers.tick(delay); await flush(); },
     };
 }
+
+test("the panel reloads only when a published sync matches its playing track", async t => {
+    const updatedTimes = [{ text: "First lyric", startTime: 1200 }];
+    const h = fixture(t, { getLyrics: () => ({ provider: "fixture", synced: updatedTimes }) });
+    await h.advance(0);
+    assert.equal(h.state.lyrics[0].startTime, 1000);
+
+    h.notifySyncPublication({ trackUri: next.uri, trackId: "first" });
+    h.notifySyncPublication({});
+    await h.advance(0);
+    assert.deepEqual(h.loads, []);
+
+    h.notifySyncPublication({ trackId: "first" });
+    await h.advance(0);
+    assert.deepEqual(h.loads, [first.uri]);
+    assert.equal(h.state.lyrics[0].startTime, 1200);
+});
 
 test("panel teardown aborts only the mounted view's pending provider lookup", async t => {
     const pending = Promise.withResolvers();

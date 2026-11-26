@@ -631,7 +631,7 @@ test("page settings refreshes coalesce and a replacement page discards old refre
     refreshLyricsPage(browser);
     refreshLyricsPage(browser);
     requestLyricsReload(browser);
-    browser.dispatchEvent(new CustomEvent("ivLyrics:sync-data-updated", { detail: { trackUri: "spotify:track:initial" } }));
+    browser.dispatchEvent(new CustomEvent("ivLyrics:sync-data-updated", { detail: { trackId: "initial" } }));
     browser.dispatchEvent(new CustomEvent("ivLyrics", { detail: { name: "pseudo-karaoke-render-advance" } }));
     addonHandlers.get("translation:style:changed")();
     await Promise.resolve();

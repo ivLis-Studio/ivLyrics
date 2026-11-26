@@ -7,6 +7,7 @@ import { getLyricLanguageMode, hasStyleDependentLyricTranslation, matchesLyricPl
 import { LRC_RED_WORD_SYNC_SOURCE } from "../../lyrics/lyricsTimingMerge.mjs";
 import { LYRICS_PROVIDER_SELECTION_CHANGED } from "../../lyrics/lyricsProviderRequests.mjs";
 import { LOCAL_LYRICS_UPDATED_EVENT } from "../../lyrics/localLyricsStore.mjs";
+import { getPublishedSyncTrackUri, SYNC_DATA_UPDATED_EVENT } from "../../lyrics/syncDataPublicationEvents.mjs";
 import { INTERFACE_LANGUAGE_CHANGED } from "../../i18n/interfaceLanguage.mjs";
 import { hasPanelLyricPresentationOwner, LYRIC_PRESENTATION_OWNER_RELEASED } from "../../lyrics/lyricPresentationOwnership.mjs";
 
@@ -409,6 +410,7 @@ function mountOverlayService({
     };
 
     const refreshCurrentPresentation = () => {
+        presentationRevision++;
         readOverlaySender()?.invalidateLyricsPresentation?.();
         readHelperSender()?.invalidateLyricsPresentation?.();
         // Restart the current-track grace period for a fresh display owner.
@@ -437,10 +439,10 @@ function mountOverlayService({
         }
     };
 
-    const localLyricsUpdated = ({ detail }) => {
-        if (!detail?.deleted) return;
+    const refreshPlayingTrackPresentation = (trackUri) => {
+        if (!trackUri) return;
         const trackInfo = getCurrentTrack();
-        if (trackInfo && !trackInfo.isDjNarration && detail.trackUri === trackInfo.uri) refreshCurrentPresentation();
+        if (trackInfo && !trackInfo.isDjNarration && trackUri === trackInfo.uri) refreshCurrentPresentation();
     };
 
     const historyListener = () => {
@@ -487,7 +489,12 @@ function mountOverlayService({
         effects.listen(host, "ivLyrics:shared-lyrics-updated", sharedLyricsListener);
         effects.listen(host, LYRIC_PRESENTATION_OWNER_RELEASED, presentationOwnerReleasedListener);
         effects.listen(host, LYRICS_PROVIDER_SELECTION_CHANGED, refreshCurrentPresentation);
-        effects.listen(host, LOCAL_LYRICS_UPDATED_EVENT, localLyricsUpdated);
+        effects.listen(host, LOCAL_LYRICS_UPDATED_EVENT, ({ detail }) => {
+            if (detail?.deleted) refreshPlayingTrackPresentation(detail.trackUri);
+        });
+        effects.listen(host, SYNC_DATA_UPDATED_EVENT, ({ detail }) => {
+            refreshPlayingTrackPresentation(getPublishedSyncTrackUri(detail));
+        });
         effects.listen(host, "ivLyrics", presentationSettingsChanged);
         effects.listen(host, INTERFACE_LANGUAGE_CHANGED, schedulePresentationRefresh);
         const history = getHistory();
