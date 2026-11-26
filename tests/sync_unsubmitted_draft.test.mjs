@@ -174,6 +174,7 @@ test('autosave writes the latest revision and flushes it when the editor closes'
 	let queuedWrite;
 	const cancelledWrites = [];
 	useSyncCreatorDraftAutosave({
+		useCallback: callback => callback,
 		useEffect: callback => effects.push(callback),
 		useLayoutEffect: callback => effects.push(callback),
 		store: {
