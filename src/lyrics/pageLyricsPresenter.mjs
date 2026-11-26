@@ -3,11 +3,10 @@ import {
 } from "./lyricPresentationIdentity.mjs";
 import { getLyricsModeTypeKey } from "./lyricsRenderModes.mjs";
 import { getCommittedLyricsTimingUpgrade } from "./pageLyricsTimingUpgrade.mjs";
+import { createPageLyricsDisplay } from "./pageLyricsDisplay.mjs";
 import {
   prepareLyricSupplementResults, runProgressiveLyricSupplements, createStreamingLyricsBuffer,
 } from "./lyricSupplementPipeline.mjs";
-
-const DISPLAY_COMMIT = Symbol("lyrics display commit");
 
 export function createPageLyricsPresenter({
   page, getVisualSettings, getLyricsService, getLanguagePrompt,
@@ -17,11 +16,13 @@ export function createPageLyricsPresenter({
   getLyricsProcessingShapeSignature, getNonSectionLyricsText,
   translate, notifyError, debug, scheduleTimer, cancelTimer, publishReady,
 }) {
+  const display = createPageLyricsDisplay(page);
   let lastTrackUri;
 
   function publish(lyrics, context = {}, deliveryOptions) {
+    const { uri = page.state.uri } = context;
+    if (!display.ownsTrack(uri)) return null;
     const {
-      uri = page.state.uri,
       provider = page.state.provider || null,
       karaokeSource = page.state.karaokeSource || null,
       mode = page.getCurrentMode(),
@@ -36,10 +37,6 @@ export function createPageLyricsPresenter({
       translationSourceText,
       presentationComplete = true,
     } = context;
-
-    if (!page.isCurrentLyricsUri(uri) || !page.isPlaybackUriCurrent(uri)) {
-      return null;
-    }
 
     const translatedMetadata = page.state.uri === uri && getVisualSettings?.()?.["translate-metadata"]
       ? page.state.translatedMetadata
@@ -78,9 +75,7 @@ export function createPageLyricsPresenter({
     scheduleTimer,
     cancelTimer,
     onFlush(payload) {
-      const isCurrent = () => page.isCurrentLyricsUri(payload.uri)
-        && (payload.presentationSeq == null || payload.presentationSeq === page._lyricsPresentationSeq)
-        && payload.canApply?.() !== false;
+      const isCurrent = () => canShowStream(payload);
       if (!isCurrent()) return;
       applySupplements(payload, page.state.provider, isCurrent, finalLyrics =>
         publish(finalLyrics, {
@@ -95,20 +90,14 @@ export function createPageLyricsPresenter({
     },
   });
 
-  function commitDisplayLyrics(lyrics, uri, provider, isCurrent, onCommit) {
-    const commit = {};
-    page.setState(previous => {
-      if (!isCurrent() || previous.uri !== uri || previous.provider !== provider) return null;
-      return {
-        [DISPLAY_COMMIT]: commit,
-        currentLyrics: page.mergeCurrentLyricsTiming?.(lyrics, uri, provider, previous) || lyrics,
-      };
-    }, () => {
-      if (onCommit && page.state[DISPLAY_COMMIT] === commit && page.state.uri === uri
-        && page.state.provider === provider && isCurrent()) {
-        onCommit(page.state.currentLyrics);
-      }
-    });
+  function canShowStream({ uri, presentationSeq, canApply }) {
+    return display.ownsTrack(uri)
+      && (presentationSeq == null || presentationSeq === page._lyricsPresentationSeq)
+      && canApply?.() !== false;
+  }
+
+  function enqueueStreamingTranslation(payload) {
+    if (canShowStream(payload)) stream.enqueue(payload);
   }
 
   function applySupplements({
@@ -118,44 +107,36 @@ export function createPageLyricsPresenter({
       lyrics, lyricsMode1, lyricsMode2,
       lyricsMode1 ? displayMode1 : null, lyricsMode2 ? displayMode2 : null,
     );
-    commitDisplayLyrics(Array.isArray(optimized) ? optimized : [], uri, provider, isCurrent, onCommit);
+    display.commit({ lyrics: Array.isArray(optimized) ? optimized : [], uri, provider, isCurrent }, onCommit);
   }
 
   function present(lyricsState, mode) {
-    if (!lyricsState) return;
-    if (!page.isCurrentLyricsState(lyricsState)) return;
+    if (!lyricsState || !display.ownsTrack(lyricsState.uri) || !page.isCurrentLyricsState(lyricsState)) return;
+    const { uri, provider } = lyricsState;
     const presentationSeq = ++page._lyricsPresentationSeq;
     stream.clear();
     let generationSettingsCurrent = () => true;
     const isActivePresentation = () =>
       presentationSeq === page._lyricsPresentationSeq &&
       page.isCurrentLyricsState(lyricsState) &&
-      generationSettingsCurrent();
+      generationSettingsCurrent() && display.ownsTrack(uri);
 
     const lyrics = page.resolveLyricsForMode(lyricsState, mode);
     if (!lyrics) {
-      if (lyricsState.isLoading) return;
-      if (!isActivePresentation()) return;
-      page.setState({
-        currentLyrics: [],
-        lyricsStatus: "empty",
-        lyricsDisplayUri: lyricsState.uri || page.state.uri || null,
-      });
-      // 오버레이에 가사 없음 상태 전송 (트랙 정보 업데이트용)
-      publish([], {
-        uri: lyricsState.uri,
-        provider: lyricsState.provider || null,
-        karaokeSource: lyricsState.karaokeSource || null,
-        mode,
-      });
+      if (lyricsState.isLoading || !isActivePresentation()) return;
+      display.commit({
+        lyrics: [], uri, provider, isCurrent: isActivePresentation,
+        patch: { lyricsStatus: "empty", lyricsDisplayUri: uri },
+      }, displayed => publish(displayed, {
+        uri, provider: provider || null, karaokeSource: lyricsState.karaokeSource || null, mode,
+      }));
       return;
     }
 
-    const currentUri = lyricsState.uri;
-    if (lastTrackUri !== currentUri) {
+    if (lastTrackUri !== uri) {
       page._dmResults = {};
       page._inflightGemini = new Map();
-      lastTrackUri = currentUri;
+      lastTrackUri = uri;
     }
 
     // Handle translation and display modes efficiently
@@ -174,8 +155,7 @@ export function createPageLyricsPresenter({
     if (firstLanguagePrompt) {
       const originalLyrics = page.optimizeTranslations(lyrics, null, null, null, null);
       if (isActivePresentation()) {
-        commitDisplayLyrics(Array.isArray(originalLyrics) ? originalLyrics : [],
-          currentUri, lyricsState.provider, isActivePresentation);
+        display.commit({ lyrics: Array.isArray(originalLyrics) ? originalLyrics : [], uri, provider, isCurrent: isActivePresentation });
       }
       firstLanguagePrompt.finally(() => {
         if (isActivePresentation()) {
@@ -198,14 +178,14 @@ export function createPageLyricsPresenter({
     page.displayMode = displayMode1; // Keep for legacy compatibility
     page.displayMode2 = displayMode2;
 
-    const { uri } = lyricsState; // Capture the URI for this specific request
-    const commitPresentation = (lyrics, complete, isCurrent = isActivePresentation) =>
-      commitDisplayLyrics(lyrics, uri, lyricsState.provider, isCurrent, displayLyrics => publishCurrentPresentation(displayLyrics, complete));
+    const commitPresentation = (lyrics, complete) => display.commit({
+      lyrics, uri, provider, isCurrent: isActivePresentation,
+    }, displayed => publishCurrentPresentation(displayed, complete));
     const publishCurrentPresentation = (displayLyrics, presentationComplete) => {
       const timingUpgrade = getCommittedLyricsTimingUpgrade(page.state);
       return publish(displayLyrics, {
         uri,
-        provider: lyricsState.provider || null,
+        provider: provider || null,
         karaokeSource: timingUpgrade ? page.state.karaokeSource : (lyricsState.karaokeSource || null),
         mode: timingUpgrade ? page.getCurrentMode() : mode,
         displayMode1,
@@ -225,7 +205,7 @@ export function createPageLyricsPresenter({
     });
     if (!isActivePresentation()) return;
     const sharedSnapshot = getLyricsService()?.getLyricsSnapshot?.(uri);
-    const currentProvider = lyricsState.provider || "";
+    const currentProvider = provider || "";
     const rendererVersion = getSyncDataRendererCacheVersion(lyricsState);
     const pronunciationNotation = getCurrentLyricsPronunciationNotation();
     const sharedPresentationMatches = !!sharedSnapshot
@@ -326,7 +306,7 @@ export function createPageLyricsPresenter({
     }
 
     if (!isActivePresentation()) return;
-    const results = prepareLyricSupplementResults(page._dmResults[currentUri], {
+    const results = prepareLyricSupplementResults(page._dmResults[uri], {
       modes,
       generationOptions,
       provider: currentProvider,
@@ -334,26 +314,26 @@ export function createPageLyricsPresenter({
       lyricsShapeSignature: getLyricsProcessingShapeSignature(lyrics),
       pronunciationNotation,
     });
-    page._dmResults[currentUri] = results;
-    const canApply = () => isActivePresentation() && page._dmResults?.[currentUri] === results;
+    page._dmResults[uri] = results;
+    const canApply = () => isActivePresentation() && page._dmResults?.[uri] === results;
 
     runProgressiveLyricSupplements({
       modes,
       results,
       isCurrent: canApply,
       request: (mode, onProgress) => processMode(mode, lyrics, onProgress),
-      onProgress: (lyricsMode1, lyricsMode2) => stream.enqueue({
+      onProgress: (lyricsMode1, lyricsMode2) => enqueueStreamingTranslation({
         uri, presentationSeq, lyrics, lyricsMode1, lyricsMode2, displayMode1, displayMode2, canApply,
       }),
       onCombined: (lyricsMode1, lyricsMode2, complete) => {
         stream.clearForPresentation(presentationSeq);
         applySupplements({
-          uri: currentUri, lyrics, lyricsMode1, lyricsMode2, displayMode1, displayMode2,
-        }, lyricsState.provider, canApply, finalLyrics => publishCurrentPresentation(finalLyrics, complete));
+          uri, lyrics, lyricsMode1, lyricsMode2, displayMode1, displayMode2,
+        }, provider, canApply, finalLyrics => publishCurrentPresentation(finalLyrics, complete));
       },
       reportError: (slot, error) => console.error(`[Mode${slot}] Error:`, error),
     });
   }
 
-  return { present, publish, enqueueStreamingTranslation: stream.enqueue, clear: stream.clear };
+  return { present, publish, enqueueStreamingTranslation, clear: stream.clear };
 }

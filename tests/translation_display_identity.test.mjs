@@ -355,3 +355,52 @@ for (const [setting, change] of [["target language", h => h.setTarget("ko")], ["
     assert.equal(h.presentations.length, published);
   });
 }
+
+for (const boundary of ['stream flush', 'React commit']) {
+  test(`outgoing lyrics cannot receive a translation after playback changes before the ${boundary}`, async () => {
+    const h = harness();
+    const translation = Promise.withResolvers();
+    let stream;
+    h.app.getGeminiTranslation = (_state, _lines, _mode, onProgress) => {
+      stream = onProgress;
+      return translation.promise;
+    };
+    h.app.lyricsSource(h.app.state, 1);
+    const original = h.app.state.currentLyrics;
+    const published = h.presentations.length;
+    const queued = [];
+    const setState = h.app.setState.bind(h.app);
+    if (boundary === 'React commit') h.app.setState = (...args) => queued.push(args);
+
+    stream([{ text: 'Old track partial' }]);
+    const [flushPartial] = h.timers.values();
+    if (boundary === 'React commit') {
+      flushPartial();
+      assert.equal(queued.length, 1);
+    }
+    // Spotify has switched tracks ahead of the route's songchange handler.
+    // The old container and lyric request still have the same URI and sequence.
+    h.app.isPlaybackUriCurrent = () => false;
+    if (boundary === 'stream flush') flushPartial();
+    queued.splice(0).forEach(args => setState(...args));
+    h.app.setState = setState;
+    translation.resolve([{ text: 'Old track completion' }]);
+    await flush();
+
+    assert.strictEqual(h.app.state.currentLyrics, original);
+    assert.equal(h.presentations.length, published);
+    assert.equal(h.app._dmResults[h.app.state.uri].mode1, null);
+  });
+}
+
+test('a stale streaming callback cannot replace an already queued current preview', () => {
+  const h = harness();
+  const uri = h.app.state.uri;
+  const payload = { uri, lyrics: h.lines, lyricsMode1: [{ text: 'Current preview' }], displayMode1: 'gemini_ko' };
+  h.app.lyricPresenter.enqueueStreamingTranslation(payload);
+  h.app.lyricPresenter.enqueueStreamingTranslation({ ...payload, uri: 'spotify:track:before', lyricsMode1: [{ text: 'Stale preview' }] });
+  const [flushPartial] = h.timers.values();
+  flushPartial();
+  assert.equal(h.app.state.currentLyrics[0].text2, 'Current preview');
+  assert.equal(h.presentations.at(-1).detail.trackInfo.uri, uri);
+});
