@@ -213,6 +213,16 @@ test('only a missing release allows a recovery attempt to generate new notes', {
     assert.equal(existsSync(join(notesDir, 'release-notes.md')), true);
 });
 
+test('a failed release lookup leaves the tag, assets and update marker untouched', { skip: !canRun }, context => {
+    const fx = fixture(context);
+    failed(fx.run('publish', { IVL_RELEASE_VIEW_FAILED: 'true' }), /GitHub release lookup is unavailable/);
+    assert.equal(fx.git('ls-remote', '--tags', 'origin', 'refs/tags/v7.2.0'), '');
+    assert.equal(fx.releaseExists(), false);
+    assert.doesNotMatch(fx.trace(), /release (create|upload|edit)/);
+    assert.equal(fx.stable(), '7.1.17');
+    assert.equal(fx.outputs(), '');
+});
+
 test('publishing an existing draft uses the title and notes from the verified artifact', { skip: !canRun }, context => {
     const fx = fixture(context);
     failed(fx.run('publish', { IVL_CORRUPT_UPLOADED_ZIP: 'true' }), /archive does not match the tested ZIP/);

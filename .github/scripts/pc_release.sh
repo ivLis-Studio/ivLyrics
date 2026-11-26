@@ -133,7 +133,13 @@ publish_release() {
     require_non_older_public_release
   fi
 
-  draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null || true)"
+  if draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>&1)"; then
+    [[ "$draft" == true || "$draft" == false ]] || fail "Could not determine whether $RELEASE_TAG is a draft."
+  elif [[ "$draft" == "release not found" ]]; then
+    draft=missing
+  else
+    fail "Could not look up $RELEASE_TAG on GitHub: $draft"
+  fi
   if [[ "$draft" == false ]]; then
     require_tested_tag
     verify_uploaded_assets
@@ -148,7 +154,7 @@ publish_release() {
     git push origin "$RELEASE_SHA:refs/tags/$RELEASE_TAG"
   fi
   require_tested_tag
-  if [[ "$draft" != true ]]; then
+  if [[ "$draft" == missing ]]; then
     gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TITLE" --notes-file "$notes"
   fi
   gh release upload "$RELEASE_TAG" "$archive" "$checksum" --clobber
