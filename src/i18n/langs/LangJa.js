@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "有効なAIプロバイダーがありません。設定で少なくとも1つのプロバイダーを有効にしてください。",
       "noPronunciationProviders": "発音を生成できるAIプロバイダーが有効になっていません。AIプロバイダー設定で、プロバイダーの「発音」をオンにしてください。",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab はこの言語の歌詞を読み取れません。",
+          "unsupportedTarget": "Pronunciation Lab はこの言語で発音を表記できません。",
+          "loadFailed": "Pronunciation Lab のデータをダウンロードできませんでした。接続を確認してもう一度お試しください。"
+        }
+      },
       "localModel": {
         "quality": "翻訳品質",
         "tierLight": "ローカル ライト",

@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "未启用 AI 提供商。请在设置中至少启用一个提供商。",
       "noPronunciationProviders": "没有已启用的 AI 提供商可以生成发音。请在 AI 提供商设置中为某个提供商开启“发音”。",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab 无法读取该语言的歌词。",
+          "unsupportedTarget": "Pronunciation Lab 无法用该语言标注发音。",
+          "loadFailed": "无法下载 Pronunciation Lab 数据。请检查网络连接后重试。"
+        }
+      },
       "localModel": {
         "quality": "翻译质量",
         "tierLight": "本地轻量",

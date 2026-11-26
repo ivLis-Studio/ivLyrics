@@ -226,11 +226,19 @@ export function createPronunciationTiming({
 				const parts = selectValidParts(items, item => cached[item.key]);
 				if (parts.size) return finish(parts, "complete");
 			}
+			// Unit timing comes from an AI provider. Pronunciation written without one (the keyless
+			// Pronunciation Lab) keeps its proportional timing quietly instead of announcing a
+			// timing that can only fail on every karaoke song.
+			const manager = getService("AIAddonManager");
+			const timingProviders = manager?.getEnabledProvidersFor?.("characterPronunciation");
+			if (Array.isArray(timingProviders)
+				&& !timingProviders.some(addon => typeof addon?.generateCharacterPronunciation === "function")) {
+				return finish(null, "failed");
+			}
 			entry.announced = true;
 			emitStatus(trackUri, entry.requestId, "generating");
 			if (!isCurrent()) return;
 			try {
-				const manager = getService("AIAddonManager");
 				const result = await manager?.generateTimedPronunciation?.({
 					items: items.map((item, i) => ({ i, r: item.r, u: item.u })),
 					lyricsText: lines.map(line => getLineOriginal(line).trim()).filter(Boolean).join("\n"),

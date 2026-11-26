@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "لم يتم تفعيل أي موفر AI. يرجى تفعيل موفر واحد على الأقل في الإعدادات.",
       "noPronunciationProviders": "لا يوجد موفر ذكاء اصطناعي مفعّل يمكنه إنشاء النطق. فعّل «النطق» لأحد الموفرين من إعدادات موفري الذكاء الاصطناعي.",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "لا يستطيع Pronunciation Lab قراءة كلمات الأغاني بهذه اللغة.",
+          "unsupportedTarget": "لا يستطيع Pronunciation Lab كتابة النطق بهذه اللغة.",
+          "loadFailed": "تعذّر تنزيل بيانات Pronunciation Lab. تحقّق من اتصالك ثم حاول مرة أخرى."
+        }
+      },
       "localModel": {
         "quality": "جودة الترجمة",
         "tierLight": "محلي خفيف",

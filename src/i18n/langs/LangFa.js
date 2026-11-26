@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "هیچ ارائه دهنده هوش مصنوعی فعال نیست. لطفاً حداقل یک ارائه دهنده را در تنظیمات فعال کنید.",
       "noPronunciationProviders": "هیچ ارائه‌دهندهٔ هوش مصنوعی فعالی نمی‌تواند تلفظ بسازد. در تنظیمات ارائه‌دهندگان هوش مصنوعی، «تلفظ» را برای یکی از ارائه‌دهندگان روشن کنید.",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab نمی‌تواند متن ترانه‌ها را به این زبان بخواند.",
+          "unsupportedTarget": "Pronunciation Lab نمی‌تواند تلفظ را به این زبان بنویسد.",
+          "loadFailed": "داده‌های Pronunciation Lab بارگیری نشد. اتصال خود را بررسی کنید و دوباره تلاش کنید."
+        }
+      },
       "localModel": {
         "quality": "کیفیت ترجمه",
         "tierLight": "محلی سبک",

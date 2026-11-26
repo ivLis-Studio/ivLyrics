@@ -100,7 +100,7 @@ Spotify를 다시 열고 사이드바에서 **ivLyrics**를 선택하세요. 처
 3. 제공자 목록에서 원하는 제공자와 **번역·발음** 기능을 켭니다. 제공자에 따라 지원하는 기능이 다릅니다.
 4. 현재 곡의 변환 설정에서 번역·발음을 선택합니다. 설정을 바꿨는데 기존 결과가 남아 있다면 해당 결과를 다시 생성해 주세요.
 
-Google Translate·Bing Translate는 **번역 전용**입니다. 발음 생성에는 발음을 지원하는 AI 제공자가 필요합니다. 모든 기능에 Gemini 키가 필수인 것은 아닙니다.
+Google Translate·Bing Translate는 **번역 전용**이고, **Pronunciation Lab**은 AI 대신 규칙과 사전으로 **발음만** 만드는 제공자입니다. 셋 다 API 키가 필요 없고 처음부터 켜져 있어, 키가 없어도 번역과 발음을 볼 수 있습니다. 더 자연스러운 결과나 싱크 발음이 필요하면 발음을 지원하는 AI 제공자를 추가하세요. 모든 기능에 Gemini 키가 필수인 것은 아닙니다.
 
 ### 외부 번역 API 대신 Local AI를 쓰고 싶어요
 
@@ -155,7 +155,7 @@ curl -fsSL https://raw.githubusercontent.com/ivLis-Studio/ivLyrics/main/updater/
 | --- | --- |
 | 사이드바에 ivLyrics가 없어요 | Spotify를 다시 열고 `spicetify apply`를 실행해 보세요. 수동 설치라면 폴더가 이중으로 들어갔는지도 확인하세요. |
 | 가사가 안 나와요 | 다른 곡에서도 같은지 확인하고 **가사 제공자**의 활성화 상태와 순서를 확인하세요. 모든 곡에 가사가 있는 것은 아닙니다. |
-| 번역은 나오는데 발음이 안 나와요 | 발음을 지원하는 제공자의 **발음** 기능이 켜져 있는지 확인하세요. Google·Bing 번역만으로는 발음을 만들 수 없습니다. |
+| 번역은 나오는데 발음이 안 나와요 | 발음을 지원하는 제공자의 **발음** 기능이 켜져 있는지 확인하세요. Google·Bing 번역은 발음을 만들지 않습니다. 키 없이 쓰는 Pronunciation Lab은 러시아어·태국어 등 일부 언어의 가사를 읽지 못하고, 중국어·러시아어·힌디어·태국어 등으로 적는 발음도 지원하지 않으니 이런 경우 AI 제공자를 추가하세요. |
 | 원하는 언어로 나오지 않아요 | **일반 → 언어**의 발음/번역 언어를 확인한 뒤 현재 곡의 결과를 다시 생성해 보세요. |
 | API 요청이 실패해요 | API 키, 선택한 모델, 제공자의 사용량·요금 한도를 확인하고 연결 테스트를 실행하세요. |
 | 가사나 영상 싱크가 어긋나요 | 현재 곡의 설정에서 가사·영상 오프셋을 따로 조절하세요. |
@@ -287,6 +287,7 @@ Copyright (c) 2025–2026 ivLis Studio and contributors.
 - **TinySegmenter** — Copyright (c) 2008, Taku Kudo. [저작권·라이선스 고지](third_party/TinySegmenter.LICENSE.txt)
 - **wa-sqlite 1.0.0** — Copyright (c) 2023 Roy T. Hashimoto. MIT 라이선스이며, 고지 전문은 설치본의 `startup.js`에 보존되어 있습니다.
 - **spicetify-visualizer** — Copyright (c) 2026 Konsl. MIT 라이선스입니다. CD 비주얼라이저의 음량·피치 보간 로직 일부를 [원본 커밋](https://github.com/Konsl/spicetify-visualizer/tree/12cb2a9066690b4e023bccc9466ae784ebb62364)에서 수정·통합했습니다. 원형 렌더러와 생명주기 처리는 ivLyrics에서 구현했습니다.
+- **pronunciation-lab** — [GPL-3.0](https://github.com/ivLis-Studio/pronunciation-lab) (사전·데이터는 각 출처의 라이선스). ivLyrics에는 포함되어 있지 않습니다. Pronunciation Lab 제공자로 발음을 만들 때 jsDelivr에서 최신 릴리스와 필요한 언어 데이터를 실행 중에 내려받아 사용합니다.
 
 <details>
 <summary>spicetify-visualizer — MIT 라이선스 전문</summary>

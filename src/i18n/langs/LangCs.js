@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "Nejsou povoleni žádní poskytovatelé AI. Povolte v nastavení alespoň jednoho poskytovatele.",
       "noPronunciationProviders": "Žádný zapnutý poskytovatel AI neumí vytvořit výslovnost. V nastavení Poskytovatelé AI zapněte u některého poskytovatele „Výslovnost“.",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab neumí číst texty v tomto jazyce.",
+          "unsupportedTarget": "Pronunciation Lab neumí zapsat výslovnost v tomto jazyce.",
+          "loadFailed": "Data Pronunciation Lab se nepodařilo stáhnout. Zkontrolujte připojení a zkuste to znovu."
+        }
+      },
       "localModel": {
         "quality": "Kvalita překladu",
         "tierLight": "Místní lehká",

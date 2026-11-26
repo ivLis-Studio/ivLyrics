@@ -60,6 +60,7 @@ See the [PC build and release guide](docs/pc-build-and-release.md) for the runti
 - **Keep endpoints private.** Some provider addresses are deliberately obfuscated. Do not de-obfuscate them in code, comments, tests, or pull request descriptions, and never commit API keys or tokens.
 - **Generated copies.** Some files are copied into other repositories:
   - Motion lyrics: edit the PC sources, then rebuild the apps' page with `node .github/scripts/build_motion_mobile.mjs --out <file>`.
+  - Pronunciation Lab: edit `src/providers/ai/pronunciationLabEngine.mjs` or `pronunciationLabMobileBridge.mjs`, then rebuild the apps' page with `node .github/scripts/build_pronunciation_lab_mobile.mjs --out <file>`. The [pronunciation-lab](https://github.com/ivLis-Studio/pronunciation-lab) library (GPL-3.0) is imported from jsDelivr at run time; never copy it into this or another repository.
   - Sync data codec: [`src/features/sync/SyncDataCodec.mjs`](src/features/sync/SyncDataCodec.mjs) is the source of truth. Run `node .github/scripts/sync_codec.mjs --check` with `ivLyrics-backend` checked out next to this repository.
   - Local LRCLIB database: edit `.github/scripts/lrclib_local_database_worker.mjs`. The build embeds the worker and the pinned SQLite WASM automatically.
 - **Leave releases to maintainers.** Do not change `version.txt` or the release workflows in a feature pull request.

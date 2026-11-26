@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "Etkin YZ sağlayıcısı yok. Lütfen ayarlardan en az bir sağlayıcıyı etkinleştirin.",
       "noPronunciationProviders": "Etkin hiçbir YZ sağlayıcısı telaffuz oluşturamıyor. Yapay Zeka Sağlayıcıları ayarlarından bir sağlayıcı için “Telaffuz” seçeneğini açın.",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab bu dildeki şarkı sözlerini okuyamıyor.",
+          "unsupportedTarget": "Pronunciation Lab telaffuzu bu dilde yazamıyor.",
+          "loadFailed": "Pronunciation Lab verileri indirilemedi. Bağlantınızı kontrol edip yeniden deneyin."
+        }
+      },
       "localModel": {
         "quality": "Çeviri kalitesi",
         "tierLight": "Yerel Hafif",

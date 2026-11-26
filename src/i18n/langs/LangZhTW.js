@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "未啟用 AI 提供商。請在設置中至少啟用一個提供商。",
       "noPronunciationProviders": "沒有已啟用的 AI 提供者可以產生發音。請在 AI 提供者設定中為某個提供者開啟「發音」。",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab 無法讀取此語言的歌詞。",
+          "unsupportedTarget": "Pronunciation Lab 無法用此語言標示發音。",
+          "loadFailed": "無法下載 Pronunciation Lab 資料。請檢查網路連線後再試一次。"
+        }
+      },
       "localModel": {
         "quality": "翻譯品質",
         "tierLight": "本機輕量",

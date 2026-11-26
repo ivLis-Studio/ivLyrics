@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "No hay proveedores de IA habilitados. Por favor, habilite al menos uno en la configuración.",
       "noPronunciationProviders": "Ningún proveedor de IA habilitado puede generar la pronunciación. Activa «Pronunciación» en un proveedor desde los ajustes de Proveedores de IA.",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab no puede leer letras en este idioma.",
+          "unsupportedTarget": "Pronunciation Lab no puede escribir la pronunciación en este idioma.",
+          "loadFailed": "No se pudieron descargar los datos de Pronunciation Lab. Comprueba tu conexión e inténtalo de nuevo."
+        }
+      },
       "localModel": {
         "quality": "Calidad de traducción",
         "tierLight": "Local Ligera",

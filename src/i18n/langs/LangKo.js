@@ -579,6 +579,13 @@ export default {
       },
       "noEnabledProviders": "활성화된 AI 제공자가 없습니다. 설정에서 최소 하나 이상의 제공자를 활성화해주세요.",
       "noPronunciationProviders": "발음을 생성할 수 있는 AI 제공자가 켜져 있지 않습니다. AI 제공자 설정에서 제공자의 '발음' 기능을 켜 주세요.",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab은 이 언어의 가사를 읽을 수 없습니다.",
+          "unsupportedTarget": "Pronunciation Lab은 이 언어로 발음을 표기할 수 없습니다.",
+          "loadFailed": "Pronunciation Lab 데이터를 내려받지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요."
+        }
+      },
       "localModel": {
         "quality": "번역 품질",
         "tierLight": "로컬 라이트",

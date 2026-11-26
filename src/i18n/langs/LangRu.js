@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "AI-провайдеры не включены. Пожалуйста, включите хотя бы одного провайдера в настройках.",
       "noPronunciationProviders": "Ни один включённый провайдер ИИ не может создать произношение. Включите «Произношение» у провайдера в настройках «Провайдеры ИИ».",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab не может читать тексты песен на этом языке.",
+          "unsupportedTarget": "Pronunciation Lab не может записать произношение на этом языке.",
+          "loadFailed": "Не удалось загрузить данные Pronunciation Lab. Проверьте подключение и повторите попытку."
+        }
+      },
       "localModel": {
         "quality": "Качество перевода",
         "tierLight": "Локальный лёгкий",

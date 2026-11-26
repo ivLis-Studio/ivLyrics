@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "कोई AI प्रदाता सक्षम नहीं है। कृपया सेटिंग्स में कम से कम एक प्रदाता सक्षम करें।",
       "noPronunciationProviders": "कोई भी सक्षम AI प्रदाता उच्चारण नहीं बना सकता। AI प्रदाता सेटिंग्स में किसी प्रदाता के लिए “उच्चारण” चालू करें।",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab इस भाषा के गीत के बोल नहीं पढ़ सकता।",
+          "unsupportedTarget": "Pronunciation Lab इस भाषा में उच्चारण नहीं लिख सकता।",
+          "loadFailed": "Pronunciation Lab का डेटा डाउनलोड नहीं हो सका। अपना कनेक्शन जांचें और फिर से कोशिश करें।"
+        }
+      },
       "localModel": {
         "quality": "अनुवाद की गुणवत्ता",
         "tierLight": "स्थानीय हल्का",

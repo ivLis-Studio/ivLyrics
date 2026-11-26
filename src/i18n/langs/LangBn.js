@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "কোনো AI প্রদানকারী সক্রিয় নেই। দয়া করে সেটিংসে অন্তত একটি প্রদানকারী সক্রিয় করুন।",
       "noPronunciationProviders": "সক্রিয় কোনো এআই প্রদানকারী উচ্চারণ তৈরি করতে পারে না। এআই প্রদানকারী সেটিংসে কোনো প্রদানকারীর জন্য “উচ্চারণ” চালু করুন।",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab এই ভাষার গানের কথা পড়তে পারে না।",
+          "unsupportedTarget": "Pronunciation Lab এই ভাষায় উচ্চারণ লিখতে পারে না।",
+          "loadFailed": "Pronunciation Lab-এর ডেটা ডাউনলোড করা যায়নি। আপনার সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।"
+        }
+      },
       "localModel": {
         "quality": "অনুবাদের মান",
         "tierLight": "স্থানীয় হালকা",

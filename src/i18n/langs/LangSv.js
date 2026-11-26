@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "Inga AI-leverantörer aktiverade. Aktivera minst en leverantör i inställningarna.",
       "noPronunciationProviders": "Ingen aktiverad AI-leverantör kan skapa uttal. Slå på Uttal för en leverantör under inställningarna för AI-leverantörer.",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab kan inte läsa låttexter på det här språket.",
+          "unsupportedTarget": "Pronunciation Lab kan inte skriva uttal på det här språket.",
+          "loadFailed": "Det gick inte att ladda ned data för Pronunciation Lab. Kontrollera anslutningen och försök igen."
+        }
+      },
       "localModel": {
         "quality": "Översättningskvalitet",
         "tierLight": "Lokal Lätt",

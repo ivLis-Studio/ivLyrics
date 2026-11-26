@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "Không có nhà cung cấp AI nào được bật. Vui lòng bật ít nhất một nhà cung cấp trong cài đặt.",
       "noPronunciationProviders": "Không có nhà cung cấp AI nào đang bật có thể tạo phát âm. Hãy bật “Phát âm” cho một nhà cung cấp trong cài đặt Nhà cung cấp AI.",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab không đọc được lời bài hát bằng ngôn ngữ này.",
+          "unsupportedTarget": "Pronunciation Lab không thể viết phát âm bằng ngôn ngữ này.",
+          "loadFailed": "Không tải được dữ liệu Pronunciation Lab. Hãy kiểm tra kết nối rồi thử lại."
+        }
+      },
       "localModel": {
         "quality": "Chất lượng dịch",
         "tierLight": "Cục bộ Nhẹ",

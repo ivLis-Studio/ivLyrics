@@ -396,6 +396,32 @@ test("distinct page and panel layouts keep independent results", async () => {
 	assert.equal(events.filter(event => event.detail?.phase === "cancelled").length, 0);
 });
 
+test("without an AI provider for timing, pronunciation keeps proportional timing quietly", async () => {
+	let requests = 0;
+	const timingProviders = [];
+	const manager = {
+		getEnabledProvidersFor: (capability) => (capability === "characterPronunciation" ? timingProviders : []),
+		generateTimedPronunciation: async () => { requests += 1; return new Map([[0, ["A", "B"]]]); },
+	};
+	const { api, events } = load({ manager });
+	const lines = [{ originalText: "ab", phoneticText: "AB", syllables: [syllable("a", 0, 1), syllable("b", 1, 2)] }];
+	api.ensureTimed({ trackUri: "spotify:track:keyless", lines });
+	await tick();
+	await tick();
+	assert.equal(requests, 0, "no AI request is made");
+	assert.deepEqual(events.filter(event => event.type === api.STATUS_EVENT).map(event => event.detail.phase), [],
+		"neither generating nor failed is announced");
+	assert.deepEqual(plain(api.getStatuses("spotify:track:keyless")), []);
+
+	// An AI provider that can align pronunciation is asked as before.
+	timingProviders.push({ id: "ai", generateCharacterPronunciation() {} });
+	api.ensureTimed({ trackUri: "spotify:track:with-ai", lines });
+	await tick();
+	await tick();
+	assert.equal(requests, 1);
+	assert.deepEqual(events.filter(event => event.type === api.STATUS_EVENT).map(event => event.detail.phase), ["generating", "complete"]);
+});
+
 test("edited readings cancel stale alignment and preserve only the new result", async () => {
 	const requests = [];
 	const cache = new Map();

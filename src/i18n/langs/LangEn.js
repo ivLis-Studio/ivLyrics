@@ -579,6 +579,13 @@ export default {
       },
       "noEnabledProviders": "No AI providers enabled. Please enable at least one provider in settings.",
       "noPronunciationProviders": "No enabled AI provider can generate pronunciation. Turn on Pronunciation for an AI provider in AI Providers settings.",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab can't read lyrics in this language.",
+          "unsupportedTarget": "Pronunciation Lab can't write pronunciation in this language.",
+          "loadFailed": "Couldn't download Pronunciation Lab data. Check your connection and try again."
+        }
+      },
       "localModel": {
         "quality": "Translation quality",
         "tierLight": "Local Light",

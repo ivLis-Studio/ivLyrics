@@ -18,8 +18,10 @@ export const normalizeProviderRetryCount = (value) => {
     return Math.min(MAX_PROVIDER_RETRY_COUNT, Math.max(0, Math.round(parsed)));
 };
 
-// 키가 필요 없는 번역 전용 Addon은 첫 실행부터 활성화한다.
-const DEFAULT_ENABLED_ADDONS = ["bing-translate", "google-translate"];
+// 키가 필요 없는 Addon(번역 전용 Bing·Google, 발음 전용 Pronunciation Lab)은
+// 첫 실행부터 활성화한다. Pronunciation Lab은 등록 순서상 맨 뒤라, 사용자가
+// 켠 AI 제공자가 먼저 발음을 만들고 실패할 때만 이어받는다.
+const DEFAULT_ENABLED_ADDONS = ["bing-translate", "google-translate", "pronunciation-lab"];
 export function createAiAddonPreferences({ getStoredValue, setStoredValue, getOwnStorage }) {
     function writeTranslationStyle(style) {
         setStoredValue(TRANSLATION_STYLE_STORAGE_KEY, style);

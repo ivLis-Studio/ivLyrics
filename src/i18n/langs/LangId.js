@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "Tidak ada penyedia AI yang diaktifkan. Harap aktifkan setidaknya satu penyedia di pengaturan.",
       "noPronunciationProviders": "Tidak ada penyedia AI aktif yang dapat membuat pelafalan. Aktifkan “Pelafalan” untuk salah satu penyedia di pengaturan Penyedia AI.",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab tidak dapat membaca lirik dalam bahasa ini.",
+          "unsupportedTarget": "Pronunciation Lab tidak dapat menuliskan pelafalan dalam bahasa ini.",
+          "loadFailed": "Data Pronunciation Lab tidak dapat diunduh. Periksa koneksi Anda lalu coba lagi."
+        }
+      },
       "localModel": {
         "quality": "Kualitas terjemahan",
         "tierLight": "Lokal Ringan",

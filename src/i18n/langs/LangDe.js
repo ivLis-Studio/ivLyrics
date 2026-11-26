@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "Keine KI-Anbieter aktiviert. Bitte aktiviere mindestens einen Anbieter in den Einstellungen.",
       "noPronunciationProviders": "Kein aktivierter KI-Anbieter kann die Aussprache erzeugen. Aktivieren Sie „Aussprache“ für einen Anbieter in den Einstellungen unter KI-Anbieter.",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab kann Liedtexte in dieser Sprache nicht lesen.",
+          "unsupportedTarget": "Pronunciation Lab kann die Aussprache nicht in dieser Sprache schreiben.",
+          "loadFailed": "Die Daten von Pronunciation Lab konnten nicht heruntergeladen werden. Prüfe deine Verbindung und versuche es erneut."
+        }
+      },
       "localModel": {
         "quality": "Übersetzungsqualität",
         "tierLight": "Lokal Leicht",

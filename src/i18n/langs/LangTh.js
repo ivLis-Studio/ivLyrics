@@ -575,6 +575,13 @@ export default {
       },
       "noEnabledProviders": "ไม่ได้เปิดใช้งานผู้ให้บริการ AI โปรดเปิดใช้งานอย่างน้อยหนึ่งรายในการตั้งค่า",
       "noPronunciationProviders": "ไม่มีผู้ให้บริการ AI ที่เปิดใช้งานซึ่งสร้างคำอ่านได้ โปรดเปิด “คำอ่าน” ให้ผู้ให้บริการในการตั้งค่าผู้ให้บริการ AI",
+      "pronunciationLab": {
+        "errors": {
+          "unsupportedSource": "Pronunciation Lab อ่านเนื้อเพลงภาษานี้ไม่ได้",
+          "unsupportedTarget": "Pronunciation Lab เขียนคำอ่านเป็นภาษานี้ไม่ได้",
+          "loadFailed": "ดาวน์โหลดข้อมูลของ Pronunciation Lab ไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง"
+        }
+      },
       "localModel": {
         "quality": "คุณภาพการแปล",
         "tierLight": "ในเครื่อง ระดับเบา",

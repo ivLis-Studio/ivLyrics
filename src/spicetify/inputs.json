@@ -19,6 +19,7 @@
     "src/providers/ai/Addon_AI_Paxsenix.js",
     "src/providers/ai/Addon_AI_Perplexity.js",
     "src/providers/ai/Addon_AI_LocalModel.js",
+    "src/providers/ai/Addon_AI_PronunciationLab.js",
     "src/spicetify/startLocalLrclib.js",
     "src/providers/lyrics/Addon_Lyrics_Lrclib.js",
     "src/providers/lyrics/Addon_Lyrics_LrcRed.js",

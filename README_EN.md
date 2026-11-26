@@ -100,7 +100,7 @@ Translation and pronunciation are separate features. You can read just the trans
 3. Enable the provider and the **Translation / Pronunciation** capabilities you want. Supported capabilities vary by provider.
 4. Choose translation and pronunciation in the current song's conversion settings. If an existing result remains after a change, regenerate that result.
 
-Google Translate and Bing Translate are **translation-only**. Pronunciation requires a provider that supports it. A Gemini key is not required for every feature.
+Google Translate and Bing Translate are **translation-only**, and **Pronunciation Lab** writes **pronunciation only**, using rules and dictionaries instead of AI. None of them needs an API key and all three are on from the start, so translation and pronunciation work without a key. Add an AI provider that supports pronunciation for more natural results or synced pronunciation. A Gemini key is not required for every feature.
 
 ### Prefer Local AI instead of an external translation API?
 
@@ -155,7 +155,7 @@ Read the confirmation prompts before continuing. If you are also asked to remove
 | --- | --- |
 | ivLyrics is missing from the sidebar | Reopen Spotify and run `spicetify apply`. For a manual install, check for a nested app folder. |
 | No lyrics appear | Try another song, then check enabled sources and their order in **Lyrics Providers**. Not every song has lyrics available. |
-| Translation works, but pronunciation does not | Enable **Pronunciation** for a compatible provider. Google and Bing translation alone cannot generate it. |
+| Translation works, but pronunciation does not | Enable **Pronunciation** for a compatible provider. Google and Bing translation do not generate it. The keyless Pronunciation Lab cannot read lyrics in some languages such as Russian or Thai, nor write pronunciation in Chinese, Cyrillic, Devanagari or Thai script; add an AI provider for those. |
 | Results are in the wrong language | Check the pronunciation / translation language in **General → Language**, then regenerate the current result. |
 | An API request fails | Check the key, selected model, provider quota, and billing limits, then run a connection test. |
 | Lyrics or video are out of sync | Adjust the current song's lyric and video offsets separately. |
@@ -288,6 +288,7 @@ Contributors: PixelAxolotl, Ahmedxsaad, Oein, hohofught, kpnkpn1324, twoeater, k
 - **TinySegmenter** — Copyright (c) 2008, Taku Kudo. [Copyright and license notice](third_party/TinySegmenter.LICENSE.txt)
 - **wa-sqlite 1.0.0** — Copyright (c) 2023 Roy T. Hashimoto. MIT License; the full notice is preserved in the installed `startup.js`.
 - **spicetify-visualizer** — Copyright (c) 2026 Konsl. MIT License. Parts of the CD visualizer's loudness and pitch interpolation are adapted from the [original commit](https://github.com/Konsl/spicetify-visualizer/tree/12cb2a9066690b4e023bccc9466ae784ebb62364). The radial renderer and lifecycle are specific to ivLyrics.
+- **pronunciation-lab** — [GPL-3.0](https://github.com/ivLis-Studio/pronunciation-lab) (dictionaries and data under their sources' licenses). It is not included in ivLyrics: when the Pronunciation Lab provider writes pronunciation, the newest release and the language data it needs are downloaded from jsDelivr at run time.
 
 <details>
 <summary>spicetify-visualizer — full MIT license</summary>

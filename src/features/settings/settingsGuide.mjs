@@ -149,7 +149,7 @@ export const SETTINGS_GUIDE_SECTIONS = Object.freeze([
   // ai-providers
   {
     tab: "ai-providers", key: "ai-tasks", title: "settingsUi.sections.aiTasks.title", subtitle: "settings.aiProviders.description",
-    role: "Table of AI providers by task: drag to reorder (top is tried first, failures fall back to the next), enable providers and choose which tasks each one handles.",
+    role: "Table of AI providers by task: drag to reorder (top is tried first, failures fall back to the next), enable providers and choose which tasks each one handles. Three providers need no API key and are on by default: Google Translate and Bing Translate (translation only) and Pronunciation Lab (pronunciation only, rule- and dictionary-based rather than AI; it cannot write Chinese, Cyrillic, Devanagari or Thai pronunciation and has no synced pronunciation).",
   },
   {
     tab: "ai-providers", key: "ai-translation", title: "settings.aiProviders.translationStyle.title", subtitle: "settings.aiProviders.translationStyle.description",
