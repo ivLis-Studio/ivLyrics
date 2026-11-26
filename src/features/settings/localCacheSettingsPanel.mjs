@@ -1,3 +1,5 @@
+import { createSettingsCacheOperations } from "./settingsCacheOperations.mjs";
+
 function getSafeSettingsLocale(readLanguage) {
   let currentLanguage = null;
   try {
@@ -24,90 +26,22 @@ function getSafeSettingsLocale(readLanguage) {
   return "en-US";
 }
 
-export function createLocalCacheSettingsPanel({
-  react, cache, readLanguage, readTrackUri, extractTrackId, getTranslationCacheId,
-  getSettingsText, translate, confirm, reloadLyrics, notifySuccess, notifyError,
-}) {
+export function createLocalCacheSettingsPanel({ react, readLanguage, ...dependencies }) {
   const { useState, useEffect } = react;
+  const { getSettingsText, translate } = dependencies;
+  const operations = createSettingsCacheOperations(dependencies);
 
   return function LocalCacheManager() {
-    const [stats, setStats] = useState(null);
-    const [openDbInfo, setOpenDbInfo] = useState(null);
-    const [openDbUpdating, setOpenDbUpdating] = useState(false);
-    const [openDbError, setOpenDbError] = useState("");
-    const [loading, setLoading] = useState(true);
+    const [state, setState] = useState(operations.getSnapshot);
+    const { stats, loading, clearing, openDbInfo, openDbUpdating, openDbError } = state;
     const settingsLocale = getSafeSettingsLocale(readLanguage);
 
-    // 캐시 통계 로드
-    const loadStats = async () => {
-      setLoading(true);
-      try {
-        const cacheStats = await cache.getStats();
-        setStats(cacheStats);
-      } catch (e) {
-        console.error('[LocalCacheManager] Failed to load stats:', e);
-        setStats(null);
-      } finally {
-        setOpenDbInfo(cache.getOpenDbInfo());
-        setLoading(false);
-      }
-    };
-
-    // 컴포넌트 마운트 시 통계 로드
     useEffect(() => {
-      loadStats();
+      const synchronize = () => setState(operations.getSnapshot());
+      const unsubscribe = operations.subscribe(synchronize);
+      operations.loadStats();
+      return unsubscribe;
     }, []);
-
-    // 전체 캐시 삭제
-    const handleClearAll = async () => {
-      try {
-        await cache.clearAll();
-        await loadStats();
-
-        // 캐시는 이미 지웠으므로 clearCache=false로 호출
-        reloadLyrics(false);
-        notifySuccess(translate("notifications.localCacheCleared"));
-      } catch (e) {
-        console.error('[LocalCacheManager] Clear all failed:', e);
-        notifyError(translate("messages.error"));
-      }
-    };
-
-    // 현재 곡 캐시 삭제
-    const handleClearCurrent = async () => {
-      const trackUri = readTrackUri();
-      // 로컬 곡 URI(spotify:local:아티스트:앨범:제목:길이)는 세 번째 칸이 아티스트명이라
-      // 엉뚱한 키를 지웠다. 캐시는 Spotify 트랙 ID 또는 local-uri: 키로 저장된다.
-      const spotifyTrackId = extractTrackId(trackUri) || null;
-      const trackId = spotifyTrackId || getTranslationCacheId(trackUri) || null;
-      if (!trackId) {
-        notifyError(translate("notifications.noTrackPlaying"));
-        return;
-      }
-
-      // 로컬 곡은 저장된 로컬 가사가 남아 있으면 다시 불러올 때 그대로 복원되므로,
-      // 확인을 받은 경우에만 함께 지운다.
-      const removeLocalLyrics = !spotifyTrackId
-        && cache.hasSavedLocalLyrics(trackUri)
-        && confirm(getSettingsText(
-          "menu.localLyricsDeleteConfirm",
-          "Delete the local lyrics saved for this track? This can't be undone."
-        ));
-
-      try {
-        const removedLocalLyrics = await cache.clearTrack(trackUri, trackId, removeLocalLyrics);
-        await loadStats();
-
-        // 캐시는 이미 지웠으므로 clearCache=false로 호출
-        reloadLyrics(false, trackUri);
-        notifySuccess(removedLocalLyrics
-          ? getSettingsText("notifications.localLyricsDeleted", "Local lyrics deleted")
-          : translate("notifications.localCacheTrackCleared"));
-      } catch (e) {
-        console.error('[LocalCacheManager] Clear track failed:', e);
-        notifyError(translate("messages.error"));
-      }
-    };
 
     // 통계 문자열 생성
     const getStatsText = () => {
@@ -177,44 +111,6 @@ export function createLocalCacheSettingsPanel({
       }
     };
 
-    const handleRefreshOpenDb = async () => {
-      const refreshOpenDbCache = cache.getOpenDbRefresh();
-      if (typeof refreshOpenDbCache !== "function") {
-        setOpenDbError(getSettingsText(
-          "settingsAdvanced.cacheManagement.openDb.unavailable",
-          "OpenDB 캐시 서비스를 사용할 수 없습니다."
-        ));
-        return;
-      }
-
-      setOpenDbUpdating(true);
-      setOpenDbError("");
-      try {
-        const nextInfo = await refreshOpenDbCache();
-        setOpenDbInfo(nextInfo);
-        notifySuccess(getSettingsText(
-          "settingsAdvanced.cacheManagement.openDb.updateSuccess",
-          "OpenDB base와 delta를 다시 가져왔습니다."
-        ));
-      } catch (error) {
-        console.error('[LocalCacheManager] OpenDB refresh failed:', error);
-        const failedInfo = error?.cacheInfo || cache.getOpenDbInfo();
-        setOpenDbInfo(failedInfo);
-        const message = getSettingsText(
-          failedInfo?.available
-            ? "settingsAdvanced.cacheManagement.openDb.updateFailed"
-            : "settingsAdvanced.cacheManagement.openDb.updateFailedNoCache",
-          failedInfo?.available
-            ? "OpenDB를 갱신하지 못했습니다. 기존 캐시는 유지됩니다."
-            : "OpenDB를 갱신하지 못했고 사용할 기존 캐시가 없습니다."
-        );
-        setOpenDbError(message);
-        notifyError(message);
-      } finally {
-        setOpenDbUpdating(false);
-      }
-    };
-
     const hasCachedData = stats && Object.values(stats).some(count => count > 0);
 
     const openDbVersionDate = openDbInfo?.dataVersionAt || openDbInfo?.latestDeltaDate || openDbInfo?.baseDate;
@@ -277,7 +173,8 @@ export function createLocalCacheSettingsPanel({
             {
               type: "button",
               className: "btn",
-              onClick: handleClearCurrent,
+              onClick: operations.clearCurrent,
+              disabled: clearing,
             },
             translate("settingsAdvanced.cacheManagement.localCache.clearCurrent")
           ),
@@ -286,8 +183,8 @@ export function createLocalCacheSettingsPanel({
             {
               type: "button",
               className: "btn",
-              onClick: handleClearAll,
-              disabled: !hasCachedData,
+              onClick: operations.clearAll,
+              disabled: clearing || !hasCachedData,
             },
             translate("settingsAdvanced.cacheManagement.localCache.clearAll")
           )
@@ -388,7 +285,7 @@ export function createLocalCacheSettingsPanel({
               {
                 type: "button",
                 className: "btn opendb-cache-refresh-btn",
-                onClick: handleRefreshOpenDb,
+                onClick: operations.refreshOpenDb,
                 disabled: openDbUpdating,
               },
               openDbUpdating

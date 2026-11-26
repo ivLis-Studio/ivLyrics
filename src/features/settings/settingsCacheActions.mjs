@@ -29,11 +29,12 @@ export function createSettingsCacheActions({
   };
 
   const clearAll = async () => {
+    const page = getLyricsPage();
+    page?.pageLyricsDataLoader?.cancelPending();
     getLyricsService()?.clearLyricsSnapshot?.();
     const translator = getTranslator();
     translator?.clearAllMemoryCache?.();
     translator?.clearAllInflightRequests?.();
-    const page = getLyricsPage();
     page?.clearAllCulturalAnnotations?.({ updateState: true });
     pageTranslationMemoryCache.clear();
     for (const key of Object.keys(pageLyricsMemoryCache)) delete pageLyricsMemoryCache[key];
@@ -44,8 +45,8 @@ export function createSettingsCacheActions({
 
   const clearTrack = async (trackUri, trackId, removeLocalLyrics) => {
     const savedLocalLyrics = removeLocalLyrics ? localLyrics.get(trackUri) : null;
-    invalidateTrack(trackUri);
     const page = getLyricsPage();
+    invalidateTrack(trackUri, page);
     const translator = getTranslator();
     translator?.clearMemoryCache?.(trackId);
     page?.clearCulturalAnnotationsForTrack?.(trackUri, { updateState: true });

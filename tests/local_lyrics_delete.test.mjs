@@ -7,6 +7,7 @@ import { createLyricsPageToolbar } from "#ivlyrics/lyrics/lyricsPageToolbar.mjs"
 import test from "node:test";
 import { createLocalCacheSettingsPanel } from "../src/features/settings/localCacheSettingsPanel.mjs";
 import { createSettingsCacheActions } from "../src/features/settings/settingsCacheActions.mjs";
+import { createSettingsCacheOperations } from "../src/features/settings/settingsCacheOperations.mjs";
 import { pageLyricsMemoryCache, pageTranslationMemoryCache } from "../src/lyrics/pageMemoryCache.mjs";
 import { trackIdentity } from "../src/core/trackIdentity.mjs";
 import { parseLocalLyrics } from "../src/lyrics/lyricFileFormats.mjs";
@@ -395,7 +396,6 @@ test("settings clear the local-uri cache and delete saved lyrics only after a su
 	const calls = [];
 	let confirmed = false;
 	let failClear = false;
-	let stateIndex = 0;
 	let pendingTrackClear;
 	const host = {
 		LyricsCache: {
@@ -425,7 +425,7 @@ test("settings clear the local-uri cache and delete saved lyrics only after a su
 	});
 	const Panel = createLocalCacheSettingsPanel({
 		react: {
-			useState: (value) => [stateIndex++ === 0 ? { sync: 1, tmi: 1 } : value, () => {}],
+			useState: (initial) => [{ ...initial(), stats: { sync: 1, tmi: 1 } }, () => {}],
 			useEffect() {},
 			createElement: (type, props, ...children) => ({ type, props, children }),
 		},
@@ -553,4 +553,119 @@ test("settings deletion invalidates lyrics warmed during the disk clear after th
 	assert.equal(pageLyricsMemoryCache[uri], undefined);
 	assert.equal(pageTranslationMemoryCache.get(`${uri}:translation`), null);
 	assert.equal(snapshots.has(uri), false);
+});
+
+test("settings cache ignores stale counts and overlapping clears across tab remounts", async () => {
+	const firstRead = Promise.withResolvers();
+	const diskClear = Promise.withResolvers();
+	let effect;
+	let snapshot;
+	let trackUri = LOCAL_URI;
+	let countReads = 0;
+	const calls = [];
+	const Panel = createLocalCacheSettingsPanel({
+		react: {
+			useState: (initial) => [snapshot ??= typeof initial === "function" ? initial() : initial,
+				(value) => { snapshot = value; }],
+			useEffect: (setup) => { effect = setup; },
+			createElement: (type, props, ...children) => ({ type, props, children }),
+		},
+		cache: {
+			getStats: () => ++countReads === 1 ? firstRead.promise : { lyrics: 0 },
+			getOpenDbInfo: () => null,
+			hasSavedLocalLyrics: () => true,
+			clearTrack(uri, id) {
+				calls.push(["clearTrack", uri, id]);
+				return diskClear.promise;
+			},
+			clearAll: () => calls.push(["clearAll"]),
+		},
+		readLanguage: () => "en",
+		readTrackUri: () => trackUri,
+		extractTrackId: trackIdentity.extractTrackId,
+		getTranslationCacheId: trackIdentity.getTranslationCacheId,
+		getSettingsText: (key) => key,
+		translate: (key) => key.endsWith(".stats") ? "Lyrics: {lyrics}" : key,
+		confirm: () => (calls.push(["confirm"]), false),
+		reloadLyrics: (...args) => calls.push(["reload", ...args]),
+		notifySuccess: () => calls.push(["success"]),
+	});
+	const getLocalCacheRow = () => Panel().children[0].children[0];
+	const getButtons = () => getLocalCacheRow().children[1].children;
+	const [clearTrack, clearAll] = getButtons();
+	const unmount = effect();
+	const clearing = clearTrack.props.onClick();
+	trackUri = OTHER_URI;
+	const duplicateClear = clearTrack.props.onClick();
+	const conflictingClear = clearAll.props.onClick();
+	assert.deepEqual(calls, [["confirm"], ["clearTrack", LOCAL_URI, `local-uri:${LOCAL_URI}`]]);
+	unmount();
+	snapshot = undefined;
+	getLocalCacheRow();
+	const unmountSecond = effect();
+	assert.deepEqual(getButtons().map(button => button.props.disabled), [true, true]);
+	diskClear.resolve(false);
+	await Promise.all([clearing, duplicateClear, conflictingClear]);
+	firstRead.resolve({ lyrics: 99 });
+	await firstRead.promise;
+	assert.equal(getLocalCacheRow().children[0].children[2].children[0], "Lyrics: 0");
+	assert.deepEqual(calls.slice(-2), [["reload", false, LOCAL_URI], ["success"]]);
+	unmountSecond();
+});
+
+test("settings cache invalidates the mounted lyric loader before the disk clear", async () => {
+	const calls = [];
+	const page = {
+		pageLyricsDataLoader: {
+			cancelForUri: (uri) => calls.push(["cancel", uri]),
+			cancelPending: () => calls.push(["cancelAll"]),
+		},
+	};
+	const cache = createSettingsCacheActions({
+		storage: createStorage(),
+		services: {
+			getLyricsService: () => null,
+			getLyricsCache: () => ({
+				clearTrack: (id) => calls.push(["disk", id]),
+				clearAll: () => calls.push(["diskAll"]),
+			}),
+			getSyncDataService: () => null,
+			getTranslator: () => null,
+		},
+		getLyricsPage: () => page,
+	});
+	await cache.clearTrack(LOCAL_URI, `local-uri:${LOCAL_URI}`, false);
+	await cache.clearAll();
+	assert.deepEqual(calls, [["cancel", LOCAL_URI], ["disk", `local-uri:${LOCAL_URI}`], ["cancelAll"], ["diskAll"]]);
+});
+
+test("OpenDB status stays current when an older local cache count finishes", async () => {
+	const read = Promise.withResolvers();
+	const refresh = Promise.withResolvers();
+	const previousInfo = { available: true, dataVersionAt: "2026-11-24" };
+	const refreshedInfo = { available: true, dataVersionAt: "2026-11-25" };
+	const calls = [];
+	const operations = createSettingsCacheOperations({
+		cache: {
+			getStats: () => read.promise,
+			getOpenDbInfo: () => previousInfo,
+			getOpenDbRefresh: () => () => {
+				calls.push("refresh");
+				return refresh.promise;
+			},
+		},
+		getSettingsText: (key) => key,
+		notifySuccess: () => calls.push("success"),
+	});
+	const reading = operations.loadStats();
+	const updating = operations.refreshOpenDb();
+	await operations.refreshOpenDb();
+	assert.equal(operations.getSnapshot().openDbUpdating, true);
+	refresh.resolve(refreshedInfo);
+	await updating;
+	read.resolve({ lyrics: 1 });
+	await reading;
+	assert.equal(operations.getSnapshot().openDbInfo, refreshedInfo);
+	assert.deepEqual(operations.getSnapshot().stats, { lyrics: 1 });
+	assert.deepEqual(calls, ["refresh", "success"]);
 });
