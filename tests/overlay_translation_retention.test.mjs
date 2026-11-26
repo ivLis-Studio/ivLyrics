@@ -115,10 +115,10 @@ test('preserving supplements reuses an unchanged presentation and only copies th
 
 // Exercise the actual sender, preservation and mapper. Capture the complete
 // payload at the transport queue boundary; transport retry policy has its own tests.
-const load = ({ globalFallback = false, holdTranslation = null, withKaraoke = false, trackLanguageOverride = null } = {}) => {
+const load = ({ globalFallback = false, holdTranslation = null, withKaraoke = false, trackLanguageOverride = null, latinReading = 'herro\nwarudo' } = {}) => {
 	const packets = [];
 	const timers = new Map(), values = new Map();
-	let timerId = 0, translationCalls = 0;
+	let timerId = 0, translationCalls = 0, providerCalls = 0;
 	let translationStyle = 'natural';
 	const readVisual = key => values.get(`ivLyrics:visual:${key}`);
 	const readTargetLanguage = () => readVisual('translate:target-language') || 'ko';
@@ -202,10 +202,10 @@ const load = ({ globalFallback = false, holdTranslation = null, withKaraoke = fa
 		}
 		window.LyricsService.getTrackLanguageOverride = async () => trackLanguageOverride;
 		Object.assign(window, { Spicetify: context.Spicetify, Utils: context.Utils,
-			LyricsAddonManager: { getLyrics: async () => raw },
+			LyricsAddonManager: { getLyrics: async () => { providerCalls++; return raw; } },
 			Translator: { callGemini: async ({ wantSmartPhonetic, pronunciationNotation }) => {
 				translationCalls++;
-				if (wantSmartPhonetic) return { phonetic: pronunciationNotation === 'ipa' ? 'həˈləʊ\nwɜːld' : 'herro\nwarudo' };
+				if (wantSmartPhonetic) return { phonetic: pronunciationNotation === 'ipa' ? 'həˈləʊ\nwɜːld' : latinReading };
 				if (readTargetLanguage() === 'fr') return { translation: 'Bonjour\nMonde' };
 				if (translationStyle === 'natural') {
 					if (holdTranslation) await holdTranslation;
@@ -237,6 +237,7 @@ const load = ({ globalFallback = false, holdTranslation = null, withKaraoke = fa
 			{ uri: trackUri, title: 'Title', artist: 'Artist' }, lines, true, reason, presentationContext),
 		last: name => packets.filter(packet => packet.name === name).at(-1).payload.lyrics,
 		translationCalls: () => translationCalls,
+		providerCalls: () => providerCalls,
 		setVisual(name, value) {
 			values.set(`ivLyrics:visual:${name}`, value);
 			window.dispatchEvent({ type: 'ivLyrics', detail: { type: 'config', name, value } });
@@ -663,7 +664,23 @@ test('ownerless delivery follows source language and karaoke preferences without
 	assert.equal(h.service.getLyricsSnapshot(uri).detectedLanguage, 'en');
 	assert.equal(h.service.getLyricsSnapshot(uri).lyricsType, 'karaoke');
 	assert.strictEqual(h.service.getLyricsSnapshot(uri).rawResult, raw);
+	assert.equal(h.providerCalls(), 1, 'a presentation refresh reuses the selected source');
 	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name));
+	h.window.ivLyricsOverlayService.destroy();
+});
+
+test('pronunciation hyphen formatting changes delivery without replacing the selected source', async () => {
+	const h = load({ globalFallback: true, withKaraoke: true, latinReading: 'he-rro\nwa-ru-do' });
+	h.window.dispatchEvent({ type: 'ivLyrics:presentation-owner-released', detail: { source: 'ivlyrics-page' } });
+	await h.runScheduled();
+	const raw = h.service.getLyricsSnapshot(uri).rawResult;
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), ['he-rro', 'wa-ru-do']);
+
+	h.setVisual('phonetic-hyphen-replace', 'space');
+	await h.runScheduled();
+	for (const name of ['overlay', 'helper']) assertSupplements(h.last(name), ['he rro', 'wa ru do']);
+	assert.strictEqual(h.service.getLyricsSnapshot(uri).rawResult, raw);
+	assert.equal(h.providerCalls(), 1);
 	h.window.ivLyricsOverlayService.destroy();
 });
 

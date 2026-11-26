@@ -401,11 +401,7 @@ export function createSettingsPage({
   const saveSettingsTranslationTargetLanguage = (name, value) => {
     if (settingValuesEqual(CONFIG.visual[name], value)) return;
     saveVisualSetting(name, value);
-    // The existing config channel refreshes panel lyrics and shared snapshots.
     publishSettingsConfigChange(name, value);
-    // Rebuild the current presentation without deleting saved lyrics or
-    // restarting Spotify (which also closes this settings window).
-    if (Spicetify.Player.data?.item?.uri) reloadPageFromSettings(window, false);
   };
 
   const getSettingsMotionDurationMs = () =>
@@ -833,7 +829,6 @@ export function createSettingsPage({
     } = createSettingsSaveEffects({
       visualSettingsActions, persistConfig,
       persistVisualSetting: (name, value) => StorageManager.setItem(`${APP_NAME}:visual:${name}`, value),
-      reloadLyrics: () => reloadPageFromSettings(window),
       updatePreviewStyles: () => syncSettingsLyricsPreviewStyles(),
       loadFont: (value) => loadGoogleFontFamily(value),
       publishConfigChange: publishSettingsConfigChange,

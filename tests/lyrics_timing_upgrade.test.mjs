@@ -1,4 +1,7 @@
 import { resolveLyricsPageRenderMode } from "../src/lyrics/lyricsPageRenderState.mjs";
+import { attachLyricsPageSettings } from "../src/spicetify/lyricsPageSettings.mjs";
+import { createRuntimeEffects } from "../src/core/runtimeEffects.mjs";
+import { INTERFACE_LANGUAGE_CHANGED } from "../src/i18n/interfaceLanguage.mjs";
 import { commitLyricsPagePresentation } from "../src/lyrics/commitLyricsPagePresentation.mjs";
 import { cancelPendingLyricsTimingUpgrade, createPageLyricsTimingUpgrade, getCommittedLyricsTimingUpgrade } from "#ivlyrics/lyrics/pageLyricsTimingUpgrade.mjs";
 import { cancelPendingPageMetadataTranslation } from "#ivlyrics/lyrics/createPageMetadataTranslation.mjs";
@@ -310,26 +313,66 @@ test('the production completion callback also retains word timing after translat
 
 test('an automatic render-mode switch alone does not restart the existing presentation', async () => {
     const h = setup();
-    assert.equal(await h.app.applyLyricsTimingUpgrade(upgrade()), true);
-    Object.assign(h.app, {
-        lastProcessedUri: uri, lastProcessedMode: '1_gemini_ko_none_culture-off',
-        isCulturalAnnotationsEnabled: () => false,
-        lyricsSource: () => assert.fail('The timing upgrade must reuse the existing presentation'),
-    });
-    const view = resolveLyricsPageRenderMode(h.app, {
+    const resolve = () => resolveLyricsPageRenderMode(h.app, {
         visual: { 'translation-mode:english': 'gemini_ko' },
         isSyncCreatorActive: false,
         getDisplayModeGenerationOptions: () => '',
         getCurrentLyricsPronunciationNotation: () => 'translation',
         getSyncDataRendererCacheVersion: () => '',
     });
+    h.app.isCulturalAnnotationsEnabled = () => false;
+    h.app.getCurrentMode = () => h.app.state.karaoke ? 0 : 1;
+    const previous = resolve();
+    assert.equal(previous.mode, 1);
+    assert.equal(await h.app.applyLyricsTimingUpgrade(upgrade()), true);
+    Object.assign(h.app, {
+        lastProcessedUri: uri, lastProcessedMode: previous.presentation.requestKey,
+        lyricsSource: () => assert.fail('The timing upgrade must reuse the existing presentation'),
+    });
+    const view = resolve();
     assert.equal(view.mode, 0);
     const timing = getCommittedLyricsTimingUpgrade(h.app.state);
     assert.ok(timing);
     assert.notEqual(h.app._processedLyricsTimingUpgrade, timing, 'rendering must not mark the timing as processed');
     commitLyricsPagePresentation(h.app, view.presentation);
-    assert.equal(h.app.lastProcessedMode, '0_gemini_ko_none_culture-off');
+    assert.equal(h.app.lastProcessedMode, view.presentation.requestKey);
     assert.equal(h.app._processedLyricsTimingUpgrade, timing);
+});
+
+test('page settings refresh metadata and presentation while leaving the source rows in place', async () => {
+    const h = setup();
+    const host = new EventTarget();
+    const effects = createRuntimeEffects({ scheduleTimer: setTimeout, cancelTimer: clearTimeout, onCleanupError: assert.fail });
+    const metadata = [];
+    const visual = { 'translate:target-language': 'ko' };
+    let refreshes = 0;
+    let interfaceLanguage = 'en';
+    h.app.state = { ...h.app.state, title: 'Title', artist: 'Artist', translatedMetadata: { translated: { title: 'Old' } } };
+    h.app.getTranslationTargetLanguage = () => visual['translate:target-language'] === 'auto'
+        ? interfaceLanguage : visual['translate:target-language'];
+    h.app.fetchMetadataTranslation = (...args) => metadata.push(args);
+    h.app.forceUpdate = () => refreshes++;
+    h.app.reloadLyrics = () => assert.fail('Display settings must keep the current source');
+    const { synced, currentLyrics } = h.app.state;
+    attachLyricsPageSettings({ page: h.app, browser: host, effects, isCurrentMount: () => true,
+        getVisualSettings: () => visual, saveConfig() {} });
+    const choose = (name, value) => {
+        visual[name] = value;
+        host.dispatchEvent(new CustomEvent('ivLyrics', { detail: { type: 'config', name, value } }));
+    };
+    choose('translate:target-language', 'auto');
+    choose('translate:pronunciation-notation', 'latin');
+    await Promise.resolve();
+    assert.equal(refreshes, 1);
+    assert.deepEqual(metadata, [[uri, 'Title', 'Artist']]);
+    assert.equal(h.app.state.translatedMetadata, null);
+    assert.strictEqual(h.app.state.synced, synced);
+    assert.strictEqual(h.app.state.currentLyrics, currentLyrics);
+    interfaceLanguage = 'ja';
+    host.dispatchEvent(new Event(INTERFACE_LANGUAGE_CHANGED));
+    await Promise.resolve();
+    assert.equal(metadata.length, 2);
+    effects.dispose();
 });
 
 test('a lyrics presentation starts once after a current, visible render commits', () => {

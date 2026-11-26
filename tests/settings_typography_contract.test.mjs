@@ -303,7 +303,7 @@ for (const tab of ["appearance", "fullscreen"]) {
     }
   });
 
-  test(`${tab} typography retains storage, preview, font, reload, and event side effects`, () => {
+  test(`${tab} typography retains storage, preview, font, refresh, and event side effects`, () => {
     const baseline = createHarness(releasedSource);
     const candidate = createHarness(currentSource);
     const oldControls = typographyControls(baseline.render(tab));
@@ -318,9 +318,14 @@ for (const tab of ["appearance", "fullscreen"]) {
         ? ["'Noto Sans KR', Pretendard Variable, unknown", "Roboto", "Roboto", ""]
         : key === "phonetic-hyphen-replace" ? ["keep", "space", "remove"] : [0, 2, false];
       for (const value of values) {
+        const baselineStart = baseline.calls.length;
+        const candidateStart = candidate.calls.length;
         oldControl.onChange(key, value);
         newControl.onChange(key, value);
-        assert.deepEqual(normalize(candidate.calls), normalize(baseline.calls), `${key}: calls`);
+        const expected = baseline.calls.slice(baselineStart).map(call =>
+          key === "phonetic-hyphen-replace" && call[0] === "reload" ? ["lyrics"] : call,
+        );
+        assert.deepEqual(normalize(candidate.calls.slice(candidateStart)), normalize(expected), `${key}: calls`);
         assert.deepEqual(normalize(candidate.context.CONFIG), normalize(baseline.context.CONFIG), `${key}: config`);
         assert.deepEqual(normalize([...candidate.links]), normalize([...baseline.links]), `${key}: font links`);
       }

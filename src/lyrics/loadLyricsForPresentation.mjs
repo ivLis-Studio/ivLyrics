@@ -1,3 +1,15 @@
+import { hasLyricsRows } from "./selectPlaybackLyrics.mjs";
+
+export function readReusableLyricSource(snapshot, uri, providerOverride) {
+    const raw = snapshot?.rawResult;
+    if (!hasLyricsRows(raw) || raw.error || (raw.uri && raw.uri !== uri)
+        || (snapshot.trackUri && snapshot.trackUri !== uri)) return null;
+    if (providerOverride ? (raw.provider || snapshot.provider) !== providerOverride : snapshot.trackLyricsProviderOverride) {
+        return null;
+    }
+    return raw;
+}
+
 // A caller may retry with the same inputs if it still owns the current view.
 // Callers that must reread inputs restart from their presentation entry point.
 export async function loadLyricsForPresentation(service, info, mode, providerOverride, { shouldRetry = () => false, signal } = {}) {

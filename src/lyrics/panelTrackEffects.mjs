@@ -1,4 +1,5 @@
 import { readPronunciationSlots } from "#ivlyrics/lyrics/pronunciationRuntime.mjs";
+import { INTERFACE_LANGUAGE_CHANGED } from "../i18n/interfaceLanguage.mjs";
 import { createRuntimeEffects } from "../core/runtimeEffects.mjs";
 import { normalizeGlobalSyncOffset } from "#ivlyrics/core/globalSyncOffset.mjs";
 import { resolveStablePlayerItem } from "../core/PlaybackClock.js";
@@ -145,7 +146,7 @@ export function createPanelTrackEffects({
                 if (requests.trackUri && item.uri !== requests.trackUri) resetPanelTrack();
                 resolvedUri = item.uri;
                 narrationActive = false;
-                void loadLyricsFromExtension(false, item.uri, item);
+                void loadLyricsFromExtension({ requestedTrackUri: item.uri, resolvedItem: item });
             };
             const resolver = createPlaybackTrackResolver({
                 getPlaybackPosition: () => playback,
@@ -183,26 +184,34 @@ export function createPanelTrackEffects({
                 resolver.schedule(event?.data?.item || null, isNarration ? 0 : 300);
             };
             let settingsReloadTimer = null;
-            let settingsReloadUri = null;
-            const reloadCurrentTrack = () => {
+            let settingsReload = null;
+            let targetLanguage = translationPreferences.getTranslationTargetLanguage();
+            const reloadCurrentTrack = (reuseSource = true) => {
                 const uri = readCurrentTrackUri();
                 if (!uri) return;
-                settingsReloadUri = uri;
+                const previous = settingsReload?.uri === uri ? settingsReload : null;
+                settingsReload = { uri, reuseSource: reuseSource && (previous?.reuseSource ?? true) };
                 // Stop older responses immediately. Presets dispatch one event
                 // per setting, and provider policy changes notify in a microtask.
                 requests.invalidateLyrics();
                 if (settingsReloadTimer !== null) return;
                 settingsReloadTimer = setTimeout(() => {
                     settingsReloadTimer = null;
-                    const pendingUri = settingsReloadUri;
-                    settingsReloadUri = null;
-                    if (mounted && pendingUri && pendingUri === readCurrentTrackUri()) {
-                        void loadLyricsFromExtension(true, pendingUri);
+                    const pending = settingsReload;
+                    settingsReload = null;
+                    if (mounted && pending && pending.uri === readCurrentTrackUri()) {
+                        void loadLyricsFromExtension({ forceReload: true, requestedTrackUri: pending.uri, reuseSource: pending.reuseSource });
                     }
                 }, 0);
             };
 
-            // 설정 변경 리스너
+            const handleInterfaceLanguageChanged = () => {
+                const currentTarget = translationPreferences.getTranslationTargetLanguage();
+                if (currentTarget === targetLanguage) return;
+                targetLanguage = currentTarget;
+                reloadCurrentTrack();
+            };
+
             const handleSettingsChange = (event) => {
                 if (event.detail?.name === 'panel-lyrics-enabled') {
                     setIsEnabled(event.detail.value);
@@ -225,8 +234,11 @@ export function createPanelTrackEffects({
                 if (event.detail?.name === 'reduce-motion') {
                     setMotionRevision((revision) => revision + 1);
                 }
-                if ((!getPanelLyricsService()?.refreshLyricsProviderSelection && isLyricsProviderSelectionSetting(event.detail?.name)) ||
-                    isLyricPresentationSetting(event.detail?.name)) {
+                const name = event.detail?.name;
+                if (isLyricsProviderSelectionSetting(name) && !getPanelLyricsService()?.refreshLyricsProviderSelection) {
+                    reloadCurrentTrack(false);
+                } else if (isLyricPresentationSetting(name)) {
+                    targetLanguage = translationPreferences.getTranslationTargetLanguage();
                     reloadCurrentTrack();
                 }
                 if (event.detail?.name === 'instrumental-break-icon' ||
@@ -274,7 +286,7 @@ export function createPanelTrackEffects({
                 if (!currentUri || (detail.trackUri && detail.trackUri !== currentUri) || (detail.trackId && detail.trackId !== currentTrackId)) {
                     return;
                 }
-                void loadLyricsFromExtension(true, currentUri);
+                void loadLyricsFromExtension({ forceReload: true, requestedTrackUri: currentUri });
             };
 
             const handleLocalLyricsUpdated = (event) => {
@@ -283,7 +295,7 @@ export function createPanelTrackEffects({
                 if (!currentUri || (detail.trackUri && detail.trackUri !== currentUri)) {
                     return;
                 }
-                void loadLyricsFromExtension(true, currentUri);
+                void loadLyricsFromExtension({ forceReload: true, requestedTrackUri: currentUri });
             };
 
             const handlePlaybackChange = () => {
@@ -322,8 +334,8 @@ export function createPanelTrackEffects({
                         ? currentUri : null;
                 }
                 if (detail.source === "ivlyrics-page" && hasSupplementModes && detail.presentationComplete === true
-                    && settingsReloadUri === currentUri) {
-                    settingsReloadUri = null;
+                    && settingsReload?.uri === currentUri) {
+                    settingsReload = null;
                 }
                 requests.adopt(currentUri);
                 resolvedUri = currentUri;
@@ -346,14 +358,15 @@ export function createPanelTrackEffects({
                 effects.listen(player, "songchange", handleSongChange);
                 effects.listen(player, "onplaypause", handlePlaybackChange);
                 effects.listen(host, "ivLyrics", handleSettingsChange);
-                effects.listen(host, LYRICS_PROVIDER_SELECTION_CHANGED, reloadCurrentTrack);
+                effects.listen(host, LYRICS_PROVIDER_SELECTION_CHANGED, () => reloadCurrentTrack(false));
+                effects.listen(host, INTERFACE_LANGUAGE_CHANGED, handleInterfaceLanguageChanged);
                 effects.listen(host, "ivLyrics:offset-changed", handleOffsetChange);
                 effects.listen(host, "ivLyrics:global-offset-changed", handleGlobalOffsetChange);
                 effects.listen(host, "ivLyrics:sync-data-updated", handleSyncDataUpdated);
                 effects.listen(host, LOCAL_LYRICS_UPDATED_EVENT, handleLocalLyricsUpdated);
                 effects.listen(host, "ivLyrics:shared-lyrics-updated", handleSharedLyricsUpdate);
                 effects.listen(host, LYRIC_PRESENTATION_OWNER_RELEASED, handlePresentationOwnerReleased);
-                effects.subscribe(handler => getAIManager()?.on?.("translation:style:changed", handler), reloadCurrentTrack);
+                effects.subscribe(handler => getAIManager()?.on?.("translation:style:changed", handler), () => reloadCurrentTrack());
                 effects.add(registerPanelLyricPresentationOwner(host, readCurrentTrackUri));
 
                 const currentUri = readCurrentTrackUri();

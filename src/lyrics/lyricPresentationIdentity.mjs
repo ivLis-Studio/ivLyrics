@@ -44,7 +44,16 @@ export function readLyricPlaybackPreferences(readVisual, trackLanguageOverride) 
     return {
         configuredSourceLanguage: trackLanguageOverride ? null : readVisual("translate:detect-language-override") || "off",
         karaokeEnabled: isKaraokePlaybackEnabled(readVisual("karaoke-mode-enabled")),
+        phoneticHyphenMode: readVisual("phonetic-hyphen-replace") || "keep",
     };
+}
+
+export function matchesLyricPlaybackPreferences(previous, current) {
+    return !previous || (
+        (previous.configuredSourceLanguage == null || previous.configuredSourceLanguage === current.configuredSourceLanguage)
+        && (previous.karaokeEnabled == null || previous.karaokeEnabled === current.karaokeEnabled)
+        && (previous.phoneticHyphenMode == null || previous.phoneticHyphenMode === current.phoneticHyphenMode)
+    );
 }
 
 export function hasStyleDependentLyricTranslation({ displayMode1, displayMode2 }) {
@@ -66,11 +75,12 @@ export function matchesLyricSupplementSettings(snapshot, {
 }
 
 export function matchesLyricPresentation(snapshot, {
-    lyricsType, displayMode1, displayMode2, detectedLanguage,
+    lyricsType, displayMode1, displayMode2, detectedLanguage, playbackPreferences,
     getTargetLanguage, getPronunciationNotation, getTranslationStyle, getSourceText,
 }) {
     return snapshot?.presentationComplete === true
         && snapshot.lyricsType === lyricsType
+        && (!playbackPreferences || matchesLyricPlaybackPreferences(snapshot.playbackPreferences, playbackPreferences))
         && (snapshot.detectedLanguage || "") === (detectedLanguage || "")
         && matchesLyricSupplementSettings(snapshot, {
             displayMode1, displayMode2,

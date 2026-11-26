@@ -214,6 +214,22 @@ test("a display-only shared snapshot cannot inherit outgoing karaoke or suppress
   assert.equal(h.container.state.lyricsDisplayUri, next.uri);
 });
 
+test("an old display-only snapshot does not flash after changing the target language", async () => {
+  const h = createHarness(), song = track("old-presentation");
+  h.context.CONFIG.visual["translation-mode:english"] = "gemini_ko";
+  h.snapshots.set(song.uri, {
+    trackUri: song.uri, displayLyrics: lines("Old target translation"), detectedLanguage: "en",
+    displayMode1: "gemini_ko", translationTargetLanguage: "fr", presentationComplete: true,
+  });
+  h.play(song);
+  const loading = h.container.fetchLyrics(song);
+  assert.equal(h.container.state.currentLyrics.length, 0);
+  await flush();
+  h.requests[0].resolve({ uri: song.uri, provider: "fixture", synced: lines("Source lyric") });
+  await loading;
+  assert.equal(h.container.state.currentLyrics[0].text, "Source lyric");
+});
+
 test("late provider loading cannot clear a title translation that already committed", async () => {
   const h = createHarness();
   const trackInfo = track("translated");

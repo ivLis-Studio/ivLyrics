@@ -202,7 +202,7 @@ function harness({
   };
 }
 
-test('panel display preferences clear presentation while provider policy retires raw lookups', () => {
+test('panel display preferences keep the shared source while provider policy retires raw lookups', () => {
   const h = harness({ enabled: false });
   const cleared = [];
   h.window.LyricsService = {
@@ -214,7 +214,7 @@ test('panel display preferences clear presentation while provider policy retires
   h.changeSetting('karaoke-mode-enabled');
   h.changeSetting('prefer-lyrics-type-over-provider-order');
   h.changeSetting('panel-font-scale');
-  assert.deepEqual(cleared, ['display', 'display', 'raw']);
+  assert.deepEqual(cleared, ['raw']);
 });
 
 test('panel writes its CSS variables once for a preset and discards writes after disposal', async () => {

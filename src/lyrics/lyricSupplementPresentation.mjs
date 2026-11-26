@@ -28,10 +28,16 @@ export function getLyricSupplementRetention(previous, next, visibility = getLyri
     if (previousSource !== undefined && nextSource !== undefined && previousSource !== nextSource) {
         return { pronunciation: false, translation: false };
     }
-    return next && hasStyleDependentLyricTranslation(next)
-        && !matchesLyricTranslationStyle(previous || {}, next.translationStyle || "natural")
-        ? { ...visibility, translation: false }
-        : visibility;
+    const styleChanged = next && hasStyleDependentLyricTranslation(next)
+        && !matchesLyricTranslationStyle(previous || {}, next.translationStyle || "natural");
+    const previousHyphenMode = previous?.playbackPreferences?.phoneticHyphenMode;
+    const nextHyphenMode = next?.playbackPreferences?.phoneticHyphenMode;
+    const hyphenModeChanged = previousHyphenMode != null && nextHyphenMode != null && previousHyphenMode !== nextHyphenMode;
+    if (!styleChanged && !hyphenModeChanged) return visibility;
+    return {
+        pronunciation: visibility.pronunciation && !hyphenModeChanged,
+        translation: visibility.translation && !styleChanged,
+    };
 }
 
 export const readVocalOriginalText = (part, syllables = part?.syllables) => {

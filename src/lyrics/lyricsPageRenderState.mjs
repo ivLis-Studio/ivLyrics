@@ -1,5 +1,5 @@
 import { getLyricsTypographyStyleVariables } from "./lyricsTypography.mjs";
-import { getLyricDisplayModes, getLyricLanguageMode, getSharedLyricPresentationKey } from "./lyricPresentationIdentity.mjs";
+import { getLyricDisplayModes, getLyricLanguageMode, readLyricPlaybackPreferences, getSharedLyricPresentationKey } from "./lyricPresentationIdentity.mjs";
 import { isKaraokeRenderMode, SYNCED, UNSYNCED } from "./lyricsRenderModes.mjs";
 import { getPlainLyricsLines } from "./lyricDisplayText.mjs";
 
@@ -132,14 +132,16 @@ export function resolveLyricsPageRenderMode(page, {
   const displayModes = getLyricDisplayModes(visual, modeKey);
   const [displayMode1, displayMode2] = displayModes;
   const generationOptions = displayModes.map(mode => getDisplayModeGenerationOptions(mode, originalLanguage || "auto"));
-  const culturalAnnotationsMode = page.isCulturalAnnotationsEnabled()
-    ? `culture-${page.getTranslationTargetLanguage()}`
-    : "culture-off";
+  const targetLanguage = page.getTranslationTargetLanguage?.();
+  const pronunciationNotation = getCurrentLyricsPronunciationNotation();
+  const playbackPreferences = readLyricPlaybackPreferences(key => visual[key], page.trackLanguageOverride);
+  const culturalAnnotationsMode = page.isCulturalAnnotationsEnabled() ? "culture-on" : "culture-off";
   const requestKey = [
     mode,
     `${displayMode1 || "none"}${generationOptions[0]}`,
     `${displayMode2 || "none"}${generationOptions[1]}`,
     culturalAnnotationsMode,
+    JSON.stringify([targetLanguage, pronunciationNotation, playbackPreferences]),
   ].join("_");
 
   // Always render the Conversions button on synced/unsynced pages.
@@ -174,7 +176,7 @@ export function resolveLyricsPageRenderMode(page, {
     lyricsState.provider,
     displayModes,
     generationOptions,
-    getCurrentLyricsPronunciationNotation(),
+    pronunciationNotation,
     getSyncDataRendererCacheVersion(lyricsState),
   );
   const hasLoadedSharedPresentation =

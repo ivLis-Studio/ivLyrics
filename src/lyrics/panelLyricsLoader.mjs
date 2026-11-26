@@ -1,5 +1,5 @@
 import { getPanelSupplementVisibility } from "./panelLyricPresentation.mjs";
-import { loadLyricsForPresentation } from "./loadLyricsForPresentation.mjs";
+import { loadLyricsForPresentation, readReusableLyricSource } from "./loadLyricsForPresentation.mjs";
 import { selectPlaybackLyrics } from "./selectPlaybackLyrics.mjs";
 import { readLyricPlaybackPreferences } from "./lyricPresentationIdentity.mjs";
 import { retainLrcRedWordTiming } from "../providers/lyrics/lrcRedWordTiming.mjs";
@@ -7,7 +7,7 @@ import { retainLrcRedWordTiming } from "../providers/lyrics/lrcRedWordTiming.mjs
 const SERVICE_WAIT_INTERVAL_MS = 300;
 const SERVICE_WAIT_ATTEMPTS = 20;
 
-async function readPanelSource({ service, track, isLocalTrack, getSavedPanelLocalLyrics, readPseudoKaraoke, ownsRequest, signal }) {
+async function readPanelSource({ service, track, isLocalTrack, getSavedPanelLocalLyrics, readPseudoKaraoke, ownsRequest, signal, reuseSource }) {
     const readRevision = () => service.getLyricsRequestRevision?.(track.uri);
     while (ownsRequest()) {
         const revision = readRevision();
@@ -23,6 +23,9 @@ async function readPanelSource({ service, track, isLocalTrack, getSavedPanelLoca
             const trackInfo = { ...track, languageOverride: languageOverride || null };
             const override = providerOverride || null;
             let result = isLocalTrack ? getSavedPanelLocalLyrics(track.uri) : null;
+            if (!result && reuseSource && !isLocalTrack) {
+                result = readReusableLyricSource(service.getLyricsSnapshot?.(track.uri), track.uri, override);
+            }
             if (!result) {
                 const lookup = await loadLyricsForPresentation(service, trackInfo, 1, override, { signal });
                 if (!ownsRequest()) return null;
@@ -57,7 +60,7 @@ export function createPanelLyricsLoader({
     getVisualSetting, sanitizePanelLyricsSupplements, loadTrackOffset, loadTranslation, panelDebug,
     setLoading, showUnavailable, showLyrics, publishPanelLyricsSnapshot, resetTimeline,
 }) {
-    return async function loadLyrics(forceReload = false, requestedTrackUri = null, resolvedItem = null) {
+    return async function loadLyrics({ forceReload = false, requestedTrackUri, resolvedItem, reuseSource = false } = {}) {
         const item = resolvedItem || resolveItem();
         const trackUri = item?.uri;
         if (!trackUri || trackUri !== readCurrentTrackUri()) return;
@@ -92,7 +95,7 @@ export function createPanelLyricsLoader({
             let loaded;
             do {
                 loaded = await readPanelSource({
-                    service, track, isLocalTrack: !trackId, getSavedPanelLocalLyrics, readPseudoKaraoke, ownsRequest, signal,
+                    service, track, isLocalTrack: !trackId, getSavedPanelLocalLyrics, readPseudoKaraoke, ownsRequest, signal, reuseSource,
                 });
                 if (!loaded || !ownsRequest()) return;
             } while (!loaded.isSourceCurrent());

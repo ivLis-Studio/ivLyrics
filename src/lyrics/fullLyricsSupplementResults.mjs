@@ -1,3 +1,4 @@
+import { formatPhoneticHyphen } from "./phoneticHyphen.mjs";
 import { setEditedLyricSupplements } from "./lyricSupplementEdits.mjs";
 
 const SUPPLEMENT_ALIASES = {
@@ -9,11 +10,12 @@ function clearSupplementAliases(target, field) {
     for (const name of SUPPLEMENT_ALIASES[field]) delete target[name];
 }
 
-export function mergeFullLyricsSupplementResults(lyrics, translationRequests, successfulSlots) {
+export function mergeFullLyricsSupplementResults(lyrics, translationRequests, successfulSlots, phoneticHyphenMode) {
     const requestResultsByLine = new Map();
     successfulSlots.forEach(({ slot, targetField, lines, userEdited }) => {
         translationRequests.forEach((request, requestIndex) => {
-            const value = String(lines[requestIndex] ?? '').trim();
+            const text = String(lines[requestIndex] ?? '').trim();
+            const value = targetField === 'phonetic' ? formatPhoneticHyphen(text, phoneticHyphenMode) : text;
             const entry = {
                 ...request,
                 slot, targetField, userEdited, value,

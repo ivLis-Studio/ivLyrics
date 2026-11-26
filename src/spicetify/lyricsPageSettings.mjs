@@ -1,4 +1,6 @@
 import { createCoalescedCallback } from "../core/coalescedCallback.mjs";
+import { INTERFACE_LANGUAGE_CHANGED } from "../i18n/interfaceLanguage.mjs";
+import { isLyricPresentationSetting } from "../lyrics/lyricPresentationIdentity.mjs";
 import { needsDynamicTrackColors } from "../lyrics/pageTrackPresentation.mjs";
 
 const FONT_SIZE_LIMIT = { min: 16, max: 256, step: 4 };
@@ -7,11 +9,21 @@ export function attachLyricsPageSettings({
   page, browser, effects, isCurrentMount, getVisualSettings, saveConfig, getAIManager,
 }) {
   let pronunciationChanged = false;
+  let targetLanguage = page.getTranslationTargetLanguage?.();
   const refreshView = page.refreshLyricsView = () => {
     if (!isCurrentMount()) return;
     if (pronunciationChanged) {
       pronunciationChanged = false;
       page.pronunciationPresentation?.invalidateTiming();
+    }
+    const currentTarget = page.getTranslationTargetLanguage?.();
+    if (targetLanguage !== currentTarget) {
+      targetLanguage = currentTarget;
+      const { uri, title, artist } = page.state;
+      if (uri && page.isCurrentLyricsUri(uri)) {
+        page.setState(previous => previous.uri === uri ? { translatedMetadata: null } : null);
+        page.fetchMetadataTranslation(uri, title, artist);
+      }
     }
     page.reRenderLyricsPage = (page.reRenderLyricsPage || 0) + 1;
     page.forceUpdate();
@@ -59,6 +71,7 @@ export function attachLyricsPageSettings({
         }
         break;
       default:
+        if (isLyricPresentationSetting(detail?.name)) queueRefresh();
         if (detail?.type === "fullscreen-presentation" && page.state.isFullscreen) {
           page.setFullscreenPresentation(detail.value);
         }
@@ -67,6 +80,7 @@ export function attachLyricsPageSettings({
 
   effects.listen(browser, "fad-request", refreshView);
   effects.listen(browser, "ivLyrics", applyConfigChange);
+  effects.listen(browser, INTERFACE_LANGUAGE_CHANGED, queueRefresh);
   effects.listen(browser, "furigana-ready", () => {
     if (getVisualSettings()["furigana-enabled"]) queueRefresh();
   });

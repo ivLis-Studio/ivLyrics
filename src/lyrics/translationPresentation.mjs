@@ -1,3 +1,4 @@
+import { formatPhoneticHyphen } from "./phoneticHyphen.mjs";
 import { isLyricsSectionHeader, lyricsTextComparison } from "./translationTextComparison.mjs";
 import { isPronunciationMode as isPronunciationDisplayMode } from "./lyricTranslationModes.mjs";
 import { buildLyricTranslationRequests, getTranslationPartText } from "./lyricTranslationVocals.mjs";
@@ -306,7 +307,8 @@ function createTranslationPresentation({
       (displayMode2 && displayMode2 !== "none" && !mode2IsPhonetic)
     );
 
-    // Process each line to determine what to display
+    const hyphenMode = phoneticModeEnabled ? getPhoneticHyphenMode() : "keep";
+    const processPhoneticHyphen = text => formatPhoneticHyphen(text, hyphenMode);
     return originalLyrics.map((line, i) => {
       // React 31 방지: null/undefined 체크 및 안전한 텍스트 추출
       if (!line) {
@@ -373,16 +375,6 @@ function createTranslationPresentation({
 
       let finalText = null; // This will be phonetic (romaji/발음)
       let finalText2 = null; // This will be translation (번역)
-
-      // Helper function to process phonetic hyphen replacement
-      const processPhoneticHyphen = (text) => {
-        if (!text || typeof text !== "string") return text;
-        const hyphenMode = getPhoneticHyphenMode() || "keep";
-        if (hyphenMode === "keep") return text;
-        if (hyphenMode === "space") return text.replace(/-/g, " ");
-        if (hyphenMode === "remove") return text.replace(/-/g, "");
-        return text;
-      };
 
       // Assign to correct slots based on mode types
       let phoneticText = "";

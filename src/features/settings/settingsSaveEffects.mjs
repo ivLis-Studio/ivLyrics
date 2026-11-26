@@ -14,7 +14,7 @@ export function publishAppliedSettingsPreset(entries, {
 }
 
 export function createSettingsSaveEffects({
-  visualSettingsActions, persistConfig, persistVisualSetting, reloadLyrics,
+  visualSettingsActions, persistConfig, persistVisualSetting,
   updatePreviewStyles, loadFont, publishConfigChange, publishEvent, setInterfaceLanguage,
   reopenLanguageSettings, setLyricsHelperEnabled,
 }) {
@@ -26,12 +26,7 @@ export function createSettingsSaveEffects({
       saveVisualSetting(name, value, persistVisualSetting);
       if (name.endsWith("font-family")) loadFont(value);
       updatePreviewStyles();
-      if (name === "phonetic-hyphen-replace") {
-        reloadLyrics();
-        publishConfigChange(name, value);
-      } else {
-        refreshAndPublishSetting(name, value);
-      }
+      refreshAndPublishSetting(name, value);
     },
     saveVinylSetting(name, value) {
       saveVisualSetting(name, value);

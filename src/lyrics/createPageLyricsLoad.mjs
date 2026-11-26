@@ -1,7 +1,28 @@
 import { emptyLyricsState } from "./pageLyricsLoadState.mjs";
 import { emptyPageTranslationFields } from "./pageLyricsTranslationState.mjs";
 import { createPageLyricsLoadPresentation } from "./pageLyricsLoadPresentation.mjs";
-import { matchesLyricTranslationStyle } from "./lyricPresentationIdentity.mjs";
+import {
+  getLyricDisplayModes, getLyricLanguageMode, hasStyleDependentLyricTranslation,
+  matchesLyricPlaybackPreferences, matchesLyricTranslationStyle, readLyricPlaybackPreferences, resolveLyricSourceLanguage,
+} from "./lyricPresentationIdentity.mjs";
+
+function readProvisionalDisplay(snapshot, settings) {
+  if (snapshot?.rawResult || !Array.isArray(snapshot?.displayLyrics)) return null;
+  const visual = settings.getVisualSettings();
+  const trackLanguageOverride = snapshot.trackInfo?.languageOverride;
+  const playbackPreferences = readLyricPlaybackPreferences(key => visual[key], trackLanguageOverride);
+  if (!matchesLyricPlaybackPreferences(snapshot.playbackPreferences, playbackPreferences)) return null;
+  const language = resolveLyricSourceLanguage(trackLanguageOverride, playbackPreferences.configuredSourceLanguage,
+    () => snapshot.detectedLanguage);
+  const [mode1, mode2] = getLyricDisplayModes(visual, getLyricLanguageMode(language));
+  const matches = (value, configured) => value == null || value === configured;
+  if (!matches(snapshot.detectedLanguage, language)
+    || !matches(snapshot.displayMode1, mode1 || "none") || !matches(snapshot.displayMode2, mode2 || "none")
+    || !matches(snapshot.translationTargetLanguage, settings.getTargetLanguage())
+    || !matches(snapshot.pronunciationNotation, settings.getPronunciationNotation())
+    || (hasStyleDependentLyricTranslation(snapshot) && !matchesLyricTranslationStyle(snapshot, settings.getTranslationStyle?.()))) return null;
+  return snapshot.displayLyrics;
+}
 
 export function createPageLyricsLoad({
   extractTrackId, getLyricsService, getLyricsAddonManager,
@@ -48,10 +69,8 @@ export function createPageLyricsLoad({
 
       // Display-only snapshots from older integrations can bridge a cold load.
       // A snapshot with raw lyrics must also pass provider and mode validation.
-      const provisional = !sharedSnapshot?.rawResult && Array.isArray(sharedSnapshot?.displayLyrics)
-        && matchesLyricTranslationStyle(sharedSnapshot, presentationSettings.getTranslationStyle?.())
-        ? { currentLyrics: sharedSnapshot.displayLyrics } : null;
-      updateCurrent({ ...page.getLoadingLyricsState(info, requestSeq), ...provisional });
+      const provisional = readProvisionalDisplay(sharedSnapshot, presentationSettings);
+      updateCurrent({ ...page.getLoadingLyricsState(info, requestSeq), ...(provisional && { currentLyrics: provisional }) });
 
       const languageRevision = page._trackLanguagePreferenceRevision;
       const backgroundRevision = page._trackBackgroundPreferenceRevision;

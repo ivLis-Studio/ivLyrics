@@ -1,18 +1,9 @@
 import {
-    getLyricDisplayModes, getLyricLanguageMode, matchesLyricPresentation, resolveLyricSourceLanguage,
+    getLyricDisplayModes, getLyricLanguageMode, matchesLyricPresentation, readLyricPlaybackPreferences, resolveLyricSourceLanguage,
 } from "./lyricPresentationIdentity.mjs";
-import { loadLyricsForPresentation } from "./loadLyricsForPresentation.mjs";
-import { hasLyricsRows } from "./selectPlaybackLyrics.mjs";
+import { loadLyricsForPresentation, readReusableLyricSource } from "./loadLyricsForPresentation.mjs";
 import { readPageLyricsSource, writePageLyricsSource } from "./pageLyricsSourceCache.mjs";
 import { retainLrcRedWordTiming } from "../providers/lyrics/lrcRedWordTiming.mjs";
-
-function canReuseRawSnapshot(snapshot, uri, override, isCacheCurrent) {
-    const raw = snapshot?.rawResult;
-    if (!hasLyricsRows(raw) || (raw.uri && raw.uri !== uri) || (snapshot.trackUri && snapshot.trackUri !== uri)) return false;
-    const provider = raw.provider || snapshot.provider || null;
-    if (override ? provider !== override : snapshot.trackLyricsProviderOverride) return false;
-    return isCacheCurrent({ ...raw, trackLyricsProviderOverride: override || null });
-}
 
 export function getPageLyricsSnapshotDisplay({
     snapshot, displayLyrics, lyrics, modeKey, visual, trackLanguageOverride,
@@ -26,6 +17,7 @@ export function getPageLyricsSnapshotDisplay({
     const [displayMode1, displayMode2] = getLyricDisplayModes(visual, getLyricLanguageMode(language));
     return matchesLyricPresentation(snapshot, {
         lyricsType: modeKey, displayMode1, displayMode2, detectedLanguage: language,
+        playbackPreferences: readLyricPlaybackPreferences(key => visual[key], trackLanguageOverride),
         getTargetLanguage, getPronunciationNotation, getTranslationStyle,
         getSourceText: () => getSourceText(lyrics || []),
     }) ? displayLyrics : null;
@@ -81,15 +73,11 @@ export function createPageLyricsDataLoader({
                 if (!canContinue()) return null;
 
                 const cacheRevision = readRevision();
-                const reusable = !refresh && sharedSnapshot && getLyricsService()?.getLyricsSnapshot?.(uri) === sharedSnapshot
-                    && canReuseRawSnapshot(sharedSnapshot, uri, providerOverride, isCacheCurrent);
-                if (reusable) {
-                    writePageLyricsSource(cache, uri, {
-                        ...sharedSnapshot.rawResult,
-                        uri,
-                        trackLyricsProviderOverride: providerOverride || null,
-                    }, cacheRevision);
-                }
+                const sharedRaw = !refresh && sharedSnapshot && getLyricsService()?.getLyricsSnapshot?.(uri) === sharedSnapshot
+                    ? readReusableLyricSource(sharedSnapshot, uri, providerOverride) : null;
+                const sharedSource = sharedRaw && { ...sharedRaw, uri, trackLyricsProviderOverride: providerOverride || null };
+                const reusable = !!sharedSource && isCacheCurrent(sharedSource);
+                if (reusable) writePageLyricsSource(cache, uri, sharedSource, cacheRevision);
                 const candidate = readPageLyricsSource(cache, uri, cacheRevision);
                 if (candidate && !isCacheCurrent(candidate)) delete cache[uri];
 

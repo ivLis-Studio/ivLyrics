@@ -1,9 +1,10 @@
 import { mergeFullLyricsSupplementResults } from "./fullLyricsSupplementResults.mjs";
-import { getLyricLanguageMode, readLyricDisplayModes, readLyricPlaybackPreferences, resolveLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
+import { getLyricLanguageMode, matchesLyricPlaybackPreferences, readLyricDisplayModes, readLyricPlaybackPreferences, resolveLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
 import { buildLyricTranslationRequests } from "./lyricTranslationVocals.mjs";
 import { getActiveLyricSupplementSlots, loadLyricSupplementSlots } from "./loadLyricSupplementSlots.mjs";
 import { LRC_RED_WORD_SYNC_SOURCE, mergeLyricsTiming } from "./lyricsTimingMerge.mjs";
 import { retainLrcRedWordTiming } from "../providers/lyrics/lrcRedWordTiming.mjs";
+import { readReusableLyricSource } from "./loadLyricsForPresentation.mjs";
 import { selectPlaybackLyrics } from "./selectPlaybackLyrics.mjs";
 
 export function createFullLyricsRequest({
@@ -20,6 +21,7 @@ export function createFullLyricsRequest({
             displayMode2 = null,
             sendToOverlay = true,
             skipTranslation = false,
+            reuseSource = false,
             isRequestCurrent = () => true,
         } = options;
 
@@ -70,7 +72,8 @@ export function createFullLyricsRequest({
             const providerOverride = !localLyrics && service.getTrackLyricsProviderOverride
                 ? await service.getTrackLyricsProviderOverride(info.uri) : null;
             if (!isCurrentRequest()) return staleResult();
-            const rawResult = localLyrics || await service.getLyricsFromProviders(info, [], 1, providerOverride);
+            const sharedSource = reuseSource ? readReusableLyricSource(acceptedSnapshot, info.uri, providerOverride) : null;
+            const rawResult = localLyrics || sharedSource || await service.getLyricsFromProviders(info, [], 1, providerOverride);
             const providerSnapshot = service.getLyricsSnapshot(info?.uri);
             // This request may publish one raw result. A page, panel or other
             // fallback presentation published during the await must win.
@@ -121,10 +124,8 @@ export function createFullLyricsRequest({
             const [mode1, mode2] = readModes();
             presentationSettingsCurrent = () => {
                 const [nextMode1, nextMode2] = readModes();
-                const nextPlaybackPreferences = readPlaybackPreferences();
                 return mode1 === nextMode1 && mode2 === nextMode2
-                    && karaokeEnabled === nextPlaybackPreferences.karaokeEnabled
-                    && configuredSourceLanguage === nextPlaybackPreferences.configuredSourceLanguage;
+                    && matchesLyricPlaybackPreferences(playbackPreferences, readPlaybackPreferences());
             };
 
             debug('[LyricsService] 언어 감지:', { detectedLanguage, modeKey, mode1, mode2 });
@@ -189,7 +190,7 @@ export function createFullLyricsRequest({
                 });
                 if (!isCurrentRequest()) return staleResult();
                 if (successfulSlots.length) {
-                    lyrics = mergeFullLyricsSupplementResults(lyrics, translationRequests, successfulSlots);
+                    lyrics = mergeFullLyricsSupplementResults(lyrics, translationRequests, successfulSlots, playbackPreferences.phoneticHyphenMode);
                     debug('[LyricsService] 발음/번역 완료:', {
                         successful: successfulSlots.length,
                         requested: activeSlots.length,

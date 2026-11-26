@@ -1,5 +1,5 @@
 import {
-  getLyricDisplayModes, getLyricLanguageMode, matchesLyricPresentation, getSharedLyricPresentationKey, readLyricPlaybackPreferences,
+  getLyricDisplayModes, getLyricLanguageMode, matchesLyricPlaybackPreferences, matchesLyricPresentation, getSharedLyricPresentationKey, readLyricPlaybackPreferences,
 } from "./lyricPresentationIdentity.mjs";
 import { getLyricsModeTypeKey } from "./lyricsRenderModes.mjs";
 import { getCommittedLyricsTimingUpgrade } from "./pageLyricsTimingUpgrade.mjs";
@@ -146,7 +146,12 @@ export function createPageLyricsPresenter({
     const originalLanguage = page.provideLanguageCode(lyrics);
     const sourceLanguage = originalLanguage || "auto";
     const sourcePreference = page.getSourceLanguagePreference?.();
-    const isSourceCurrent = () => page.getSourceLanguagePreference?.() === sourcePreference;
+    const readPlaybackPreferences = () => readLyricPlaybackPreferences(
+      key => getVisualSettings()?.[key], page.trackLanguageOverride,
+    );
+    const playbackPreferences = readPlaybackPreferences();
+    const isSourceCurrent = () => page.getSourceLanguagePreference?.() === sourcePreference
+      && matchesLyricPlaybackPreferences(playbackPreferences, readPlaybackPreferences());
     generationSettingsCurrent = isSourceCurrent;
     const modeKey = getLyricLanguageMode(originalLanguage);
 
@@ -221,6 +226,7 @@ export function createPageLyricsPresenter({
         displayMode1,
         displayMode2,
         detectedLanguage: originalLanguage,
+        playbackPreferences,
         getTargetLanguage: () => page.getTranslationTargetLanguage(),
         getPronunciationNotation: () => pronunciationNotation,
         getTranslationStyle: () => translationStyle,

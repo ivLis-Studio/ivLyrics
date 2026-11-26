@@ -426,7 +426,7 @@ test("synced line-window preview renders every configured line, including 0 befo
   }
 });
 
-test("translation target selection saves and refreshes current lyrics without reloading the app", () => {
+test("translation target selection publishes a presentation change without a source reload", () => {
   const h = harness([
     compareCode,
     section("const saveSettingsTranslationTargetLanguage =", "const getSettingsMotionDurationMs ="),
@@ -455,7 +455,6 @@ test("translation target selection saves and refreshes current lyrics without re
     assert.deepEqual(h.calls, [
       ["saveConfig", target.key, value],
       ["event", "ivLyrics", { type: "config", name: target.key, value }],
-      ["reloadLyrics", false],
     ]);
   }
   h.calls.length = 0;

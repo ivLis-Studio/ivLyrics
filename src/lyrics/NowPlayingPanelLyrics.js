@@ -24,7 +24,6 @@ import { getSyllablesFromLine, splitRenderableSyllables } from "./panelKaraokeTe
 import { createPanelLyricLines } from "./panelLyricLines.mjs";
 import { createPanelLyricLineStyles } from "./panelLyricLineStyles.mjs";
 import { createPanelLyricPresentation } from "./panelLyricPresentation.mjs";
-import { isLyricPresentationSetting } from "./lyricPresentationIdentity.mjs";
 import { isLyricsProviderSelectionSetting } from "./lyricsProviderRequests.mjs";
 
 import { createPanelRouteObserver } from "./panelRouteObserver.mjs";
@@ -479,8 +478,6 @@ export default function NowPlayingPanelLyricsModule() {
         if (isLyricsProviderSelectionSetting(settingName)) {
             const service = getPanelLyricsService();
             if (!service?.refreshLyricsProviderSelection) service?.clearLyricsSnapshot?.();
-        } else if (isLyricPresentationSetting(settingName)) {
-            getPanelLyricsService()?.clearLyricsPresentationSnapshot?.();
         }
 
         if (event.detail?.name === 'panel-lyrics-enabled') {

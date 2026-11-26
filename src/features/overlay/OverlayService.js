@@ -3,7 +3,7 @@ import { createRuntimeEffects } from "../../core/runtimeEffects.mjs";
 import { getMountedLyricsPage } from "../../spicetify/lyricsPageEffects.mjs";
 import { isIvLyricsRoute } from "../../spicetify/lyricsRoute.mjs";
 import { getRuntimeService, publishRuntimeService, releaseRuntimeService } from "../../spicetify/runtimeServices.mjs";
-import { getLyricLanguageMode, hasStyleDependentLyricTranslation, matchesLyricTranslationStyle } from "../../lyrics/lyricPresentationIdentity.mjs";
+import { getLyricLanguageMode, hasStyleDependentLyricTranslation, matchesLyricPlaybackPreferences, matchesLyricTranslationStyle } from "../../lyrics/lyricPresentationIdentity.mjs";
 import { LRC_RED_WORD_SYNC_SOURCE } from "../../lyrics/lyricsTimingMerge.mjs";
 import { LYRICS_PROVIDER_SELECTION_CHANGED } from "../../lyrics/lyricsProviderRequests.mjs";
 import { LOCAL_LYRICS_UPDATED_EVENT } from "../../lyrics/localLyricsStore.mjs";
@@ -15,7 +15,7 @@ const overlayServiceName = "ivLyricsOverlayService";
 const INITIAL_RETRY_MS = 300;
 const GLOBAL_PRESENTATION_SETTINGS = new Set([
     "translate:target-language", "translate:pronunciation-notation",
-    "translate:detect-language-override", "karaoke-mode-enabled",
+    "translate:detect-language-override", "karaoke-mode-enabled", "phonetic-hyphen-replace",
 ]);
 
 export default function OverlayServiceExtension() {
@@ -104,11 +104,10 @@ function mountOverlayService({
 
         const preferences = readLyricsService()?.getLyricsPresentationPreferences?.(context.detectedLanguage);
         if (!preferences) return true;
-        const matches = (key, source = context) => source[key] == null || source[key] === preferences[key];
-        const playback = context.playbackPreferences ?? {};
+        const matches = key => context[key] == null || context[key] === preferences[key];
         return matches("translationTargetLanguage") && matches("pronunciationNotation")
             && (context.detectedLanguage === undefined || (matches("displayMode1") && matches("displayMode2")))
-            && matches("karaokeEnabled", playback) && matches("configuredSourceLanguage", playback);
+            && matchesLyricPlaybackPreferences(context.playbackPreferences, preferences);
     };
 
     const finishChain = (chain) => {
@@ -225,7 +224,7 @@ function mountOverlayService({
                     && connectedSenders().every(sender => matchesDelivery(sender, trackInfo))) return;
             }
             return readLyricsService().getFullLyrics(trackInfo, {
-                sendToOverlay: true, skipTranslation, isRequestCurrent
+                sendToOverlay: true, skipTranslation, reuseSource: true, isRequestCurrent
             });
         }).catch((error) => {
             console.error("[OverlayService] 현재 곡 가사 동기화 실패:", error);

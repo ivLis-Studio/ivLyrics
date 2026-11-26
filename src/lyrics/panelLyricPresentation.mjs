@@ -1,9 +1,11 @@
 import { isPronunciationDisplayMode } from "./translationPresentation.mjs";
+import { formatPhoneticHyphen } from "./phoneticHyphen.mjs";
 import { getTranslationPartText as getPartText } from "./lyricTranslationVocals.mjs";
 import { setEditedLyricSupplements } from "./lyricSupplementEdits.mjs";
 import { areLiterallyEquivalentLyrics, lyricsTextComparison } from "./translationTextComparison.mjs";
 import {
-    getLyricLanguageMode, matchesLyricSupplementSettings, readLyricDisplayModes, resolveLyricSourceLanguage,
+    getLyricLanguageMode, matchesLyricPlaybackPreferences, matchesLyricSupplementSettings, readLyricDisplayModes,
+    readLyricPlaybackPreferences, resolveLyricSourceLanguage,
 } from "./lyricPresentationIdentity.mjs";
 import { isKaraokePlaybackEnabled } from "./selectPlaybackLyrics.mjs";
 import { LRC_RED_WORD_SYNC_SOURCE, mergeLyricsTiming } from "./lyricsTimingMerge.mjs";
@@ -20,9 +22,12 @@ export const getPanelSupplementVisibility = (displayMode1, displayMode2, hasExpl
 };
 
 export function matchesPanelSupplementSettings(snapshot, readSetting, preferences) {
+    const trackLanguageOverride = snapshot.trackInfo?.languageOverride;
+    const playbackPreferences = readLyricPlaybackPreferences(readSetting, trackLanguageOverride);
+    if (!matchesLyricPlaybackPreferences(snapshot.playbackPreferences, playbackPreferences)) return false;
     const language = resolveLyricSourceLanguage(
-        snapshot.trackInfo?.languageOverride,
-        readSetting("translate:detect-language-override"),
+        trackLanguageOverride,
+        playbackPreferences.configuredSourceLanguage,
         () => snapshot.detectedLanguage
     );
     const [displayMode1, displayMode2] = readLyricDisplayModes(getLyricLanguageMode(language), readSetting);
@@ -76,8 +81,11 @@ export function resolveSharedPanelLyrics({ detail, currentUri, currentLyrics, re
         return lyrics ? { lyrics, provider: provider || currentLyrics.provider, timingUpgrade, hasSupplementModes } : null;
     }
 
-    if (hasSupplementModes && detail.source !== "external-update"
-        && !matchesPanelSupplementSettings(detail, readSetting, preferences)) return null;
+    if (detail.source !== "external-update") {
+        if (hasSupplementModes && !matchesPanelSupplementSettings(detail, readSetting, preferences)) return null;
+        if (!hasSupplementModes && !matchesLyricPlaybackPreferences(detail.playbackPreferences,
+            readLyricPlaybackPreferences(readSetting, detail.trackInfo?.languageOverride))) return null;
+    }
     const visibility = getPanelSupplementVisibility(detail.displayMode1, detail.displayMode2, hasSupplementModes);
     return { lyrics: sanitize(detail.displayLyrics, visibility), provider, timingUpgrade, hasSupplementModes };
 }
@@ -226,14 +234,9 @@ export function createPanelLyricPresentation({
             const value = String(text || '').trim();
             return !value || /^[\s♪♩♫♬·•・。、…~-]+$/.test(value);
         };
-        const processPhoneticHyphen = (text) => {
-            const mode = getPhoneticHyphenMode();
-            if (mode === 'space') return String(text || '').replace(/-/g, ' ');
-            if (mode === 'remove') return String(text || '').replace(/-/g, '');
-            return String(text || '');
-        };
+        const hyphenMode = getPhoneticHyphenMode();
         requests.forEach((request, index) => {
-            let phonetic = processPhoneticHyphen(String(phoneticLines[index] || '').trim());
+            let phonetic = formatPhoneticHyphen(String(phoneticLines[index] || '').trim(), hyphenMode);
             let translation = String(translationLines[index] || '').trim();
             if (isNoteLine(phonetic) || areTextsEquivalent(phonetic, request.text)) {
                 phonetic = '';

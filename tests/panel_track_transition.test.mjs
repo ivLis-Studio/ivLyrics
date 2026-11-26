@@ -4,6 +4,7 @@ import { resolveStablePlayerItem } from "../src/core/PlaybackClock.js";
 import { getPlayableLyricsUri } from "../src/core/playbackPositionService.mjs";
 import { createPanelTrackEffects } from "../src/lyrics/panelTrackEffects.mjs";
 import { readInitialPanelLyrics } from "../src/lyrics/panelLyricPresentation.mjs";
+import { INTERFACE_LANGUAGE_CHANGED } from "../src/i18n/interfaceLanguage.mjs";
 import { LYRICS_PROVIDER_SELECTION_CHANGED } from "../src/lyrics/lyricsProviderRequests.mjs";
 
 const noop = () => {};
@@ -108,6 +109,7 @@ function fixture(t, {
             host.dispatchEvent(new CustomEvent("ivLyrics", { detail: { name, value } }));
         },
         notifyProviderSelection: () => host.dispatchEvent(new Event(LYRICS_PROVIDER_SELECTION_CHANGED)),
+        notifyInterfaceLanguage: () => host.dispatchEvent(new Event(INTERFACE_LANGUAGE_CHANGED)),
         releasePage: trackUri => host.dispatchEvent(new CustomEvent("ivLyrics:presentation-owner-released", {
             detail: { source: "ivlyrics-page", trackUri },
         })),
@@ -328,6 +330,65 @@ test("an old page translation does not take over the panel after the target lang
     h.applyShared({ ...shared, translationTargetLanguage: "es",
         displayLyrics: [{ ...rows(first)[0], text2: "Current language from the page" }] });
     assert.equal(h.state.lyrics[0].text2, "Current language from the page");
+});
+
+test("a panel target change keeps the selected word timing without another provider lookup", async t => {
+    const visual = { "translate:target-language": "ko" };
+    const h = fixture(t, {
+        visual,
+        preferences: { getTranslationTargetLanguage: () => visual["translate:target-language"] },
+        translate: async () => ({ translation: ["Bonjour"] }),
+    });
+    const timed = [{ ...rows(first)[0], endTime: 2000, syllables: [{ text: "First", startTime: 1000, endTime: 1300 }] }];
+    const raw = { uri: first.uri, provider: "lrcred", karaokeSource: "lrcred", karaoke: timed, synced: rows(first) };
+    h.applyShared({ source: "ivlyrics-page", trackUri: first.uri, rawResult: raw, provider: "lrcred",
+        karaokeSource: "lrcred", lyricsType: "karaoke", displayLyrics: timed, presentationComplete: true });
+    h.changeSetting("translate:target-language", "fr");
+    await h.advance(0);
+    assert.deepEqual(h.loads, []);
+    assert.strictEqual(h.publish.at(-1).displayLyrics[0].syllables, timed[0].syllables);
+    assert.strictEqual(h.publish[0].rawResult, raw);
+    assert.equal(h.state.lyrics[0].text2, "Bonjour");
+});
+
+test("turning off a forced source language rejects a stale page presentation even with matching slots", async t => {
+    const visual = { "translate:detect-language-override": "ja", "translation-mode-2:japanese": "gemini_ko" };
+    const h = fixture(t, { visual, translate: async () => ({ translation: ["Detected source"] }) });
+    h.changeSetting("translate:detect-language-override", "off");
+    h.applyShared({
+        source: "ivlyrics-page", trackUri: first.uri, lyricsType: "synced", detectedLanguage: "ja",
+        displayMode1: "none", displayMode2: "gemini_ko", pronunciationNotation: "translation",
+        translationTargetLanguage: "ko", presentationComplete: true,
+        playbackPreferences: { configuredSourceLanguage: "ja", karaokeEnabled: true },
+        displayLyrics: [{ ...rows(first)[0], text2: "Forced source" }],
+    });
+    assert.equal(h.state.lyrics[0].text2, undefined);
+    await h.advance(0);
+    assert.equal(h.publish.at(-1).detectedLanguage, "en");
+    assert.equal(h.state.lyrics[0].text2, "Detected source");
+});
+
+test("the panel refreshes only when the interface language changes the automatic target", async t => {
+    let language = "ko";
+    let target = "fr";
+    const getTranslationTargetLanguage = () => target === "auto" ? language : target;
+    const h = fixture(t, {
+        preferences: { getTranslationTargetLanguage },
+        translate: async () => ({ translation: [getTranslationTargetLanguage()] }),
+    });
+    language = "es";
+    h.notifyInterfaceLanguage();
+    await h.advance(0);
+    assert.deepEqual(h.loads, []);
+
+    target = "auto";
+    h.changeSetting("translate:target-language", "auto");
+    await h.advance(0);
+    assert.equal(h.state.lyrics[0].text2, "es");
+    language = "ko";
+    h.notifyInterfaceLanguage();
+    await h.advance(0);
+    assert.equal(h.state.lyrics[0].text2, "ko");
 });
 
 test("a settings preset and its provider notification share one panel reload and offset read", async t => {

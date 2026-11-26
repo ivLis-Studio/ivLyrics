@@ -1,4 +1,4 @@
-import { getLyricLanguageMode, readLyricDisplayModes, readLyricPlaybackPreferences, resolveLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
+import { getLyricLanguageMode, matchesLyricPlaybackPreferences, readLyricDisplayModes, readLyricPlaybackPreferences, resolveLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
 import { createLyricTranslationModes } from "./lyricTranslationModes.mjs";
 import { buildLyricTranslationRequests } from "./lyricTranslationVocals.mjs";
 import { getActiveLyricSupplementSlots, loadLyricSupplementSlots } from "./loadLyricSupplementSlots.mjs";
@@ -41,10 +41,8 @@ export function createPanelTranslationLoader({
             const isCurrentRequest = () => {
                 if (!isActiveLoad(loadSeq, uri) || !isSourceCurrent() || getCacheRevision() !== cacheRevision) return false;
                 const [nextMode1, nextMode2] = readModes();
-                const nextPlaybackPreferences = readPlaybackPreferences();
                 return displayMode1 === nextMode1 && displayMode2 === nextMode2
-                    && configuredSourceLanguage === nextPlaybackPreferences.configuredSourceLanguage
-                    && karaokeEnabled === nextPlaybackPreferences.karaokeEnabled
+                    && matchesLyricPlaybackPreferences(playbackPreferences, readPlaybackPreferences())
                     && getTranslationTargetLanguage() === translationTargetLanguage
                     && getPronunciationNotation() === pronunciationNotation
                     && getTranslationStyle() === translationStyle;
