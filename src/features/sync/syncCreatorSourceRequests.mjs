@@ -22,6 +22,7 @@ export function createSyncCreatorSourceRequests({ lifetime, isCurrentRevision })
 			const previous = active;
 			active = null;
 			previous?.controller.abort();
+			return previous !== null;
 		},
 	};
 }

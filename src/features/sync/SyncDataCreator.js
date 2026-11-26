@@ -778,10 +778,11 @@ export function createSyncDataCreator({
 
 		const closeEditor = useCallback(() => lifetime.requestClose({
 			stopRecording: () => {
-				sourceRequests.cancel();
+				if (sourceRequests.cancel()) {
+					setIsLoading(false);
+					setIsLoadingLrclibId(false);
+				}
 				lrclibSearchRequests.cancel();
-				setIsLoading(false);
-				setIsLoadingLrclibId(false);
 				stopSyncCreatorKeyboardDrag(keyboardDragRef, clearInterval);
 				if (pointerRecordingRef.current) handleDragCancel();
 				else clearPointerRecording();
