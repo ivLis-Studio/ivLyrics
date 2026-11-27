@@ -8,7 +8,9 @@ export function createProviderInstrumentalBreakNormalizer(readMarkers) {
     function decodeInstrumentalBreakEntities(value) {
         const markers = readMarkers();
         if (markers?.decodeEntities) return markers.decodeEntities(value);
-        return String(value ?? '')
+        const text = String(value ?? '');
+        if (!text.includes('&')) return text;
+        return text
             .replace(/&lt;|&#0*60;|&#x0*3c;/giu, '<')
             .replace(/&gt;|&#0*62;|&#x0*3e;/giu, '>')
             .replace(/&nbsp;|&#0*160;|&#x0*a0;/giu, ' ');
@@ -41,12 +43,13 @@ export function createProviderInstrumentalBreakNormalizer(readMarkers) {
     }
 
     function getLineInstrumentalBreakMarker(line) {
-        const directTexts = [line?.originalText, line?.text]
-            .filter((value) => decodeInstrumentalBreakEntities(value).trim());
-        if (directTexts.length > 0) {
-            return directTexts.every((value) => getInstrumentalBreakMarker(value))
-                ? CANONICAL_INSTRUMENTAL_BREAK_MARKER
-                : null;
+        const { originalText, text } = line;
+        const hasOriginalText = decodeInstrumentalBreakEntities(originalText).trim();
+        const hasText = decodeInstrumentalBreakEntities(text).trim();
+        if (hasOriginalText || hasText) {
+            if ((hasOriginalText && !getInstrumentalBreakMarker(originalText))
+                || (hasText && !getInstrumentalBreakMarker(text))) return null;
+            return CANONICAL_INSTRUMENTAL_BREAK_MARKER;
         }
 
         const syllableText = getSyllableText(line?.syllables);
@@ -144,84 +147,86 @@ export function createProviderInstrumentalBreakNormalizer(readMarkers) {
         };
     }
 
-    function normalizeInstrumentalBreakLines(lines, durationMs, timed) {
-        if (!Array.isArray(lines)) return { lines, changed: false };
+    function normalizeInstrumentalBreakLine(line, index, lines, durationMs, timed) {
+        const marker = getLineInstrumentalBreakMarker(line);
+        if (!marker) return line;
 
-        let changed = false;
-        const normalizedLines = lines.map((line, index) => {
-            if (!line || typeof line !== 'object') return line;
-
-            const startTime = toFiniteLyricsTime(line.startTime);
-            const marker = getLineInstrumentalBreakMarker(line);
-            if (!marker) return line;
-
-            const nextStartTime = toFiniteLyricsTime(lines[index + 1]?.startTime);
-            const directEndTime = toFiniteLyricsTime(line.endTime);
-            const resolvedEndTime = timed && startTime !== null
-                ? (
-                    nextStartTime !== null && nextStartTime > startTime
-                        ? nextStartTime
-                        : (directEndTime !== null && directEndTime > startTime
-                            ? directEndTime
-                            : (durationMs !== null && durationMs > startTime ? durationMs : null))
-                )
-                : null;
-            const textChanged = line.text !== marker
-                || (line.originalText !== undefined && line.originalText !== marker);
-            const endTimeChanged = resolvedEndTime !== null && line.endTime !== resolvedEndTime;
-            const lineSyllableMarker = getInstrumentalBreakMarker(getSyllableText(line.syllables));
-            const normalizedSyllables = lineSyllableMarker
-                ? normalizeInstrumentalBreakSyllables(
-                    line.syllables,
-                    lineSyllableMarker,
-                    startTime,
-                    resolvedEndTime
-                )
-                : { syllables: line.syllables, changed: false };
-            const normalizedLead = normalizeInstrumentalVocalPart(
-                line.vocals?.lead,
+        const startTime = toFiniteLyricsTime(line.startTime);
+        const nextStartTime = toFiniteLyricsTime(lines[index + 1]?.startTime);
+        const directEndTime = toFiniteLyricsTime(line.endTime);
+        const resolvedEndTime = timed && startTime !== null
+            ? (
+                nextStartTime !== null && nextStartTime > startTime
+                    ? nextStartTime
+                    : (directEndTime !== null && directEndTime > startTime
+                        ? directEndTime
+                        : (durationMs !== null && durationMs > startTime ? durationMs : null))
+            )
+            : null;
+        const textChanged = line.text !== marker
+            || (line.originalText !== undefined && line.originalText !== marker);
+        const endTimeChanged = resolvedEndTime !== null && line.endTime !== resolvedEndTime;
+        const lineSyllableMarker = getInstrumentalBreakMarker(getSyllableText(line.syllables));
+        const normalizedSyllables = lineSyllableMarker
+            ? normalizeInstrumentalBreakSyllables(
+                line.syllables,
+                lineSyllableMarker,
                 startTime,
                 resolvedEndTime
-            );
-            const normalizedBackground = Array.isArray(line.vocals?.background)
-                ? line.vocals.background.map((part) => (
-                    normalizeInstrumentalVocalPart(part, startTime, resolvedEndTime)
-                ))
-                : [];
-            const backgroundChanged = normalizedBackground.some((entry) => entry.changed);
-            const vocalsChanged = normalizedLead.changed || backgroundChanged;
-            if (!textChanged && !endTimeChanged && !normalizedSyllables.changed && !vocalsChanged) {
-                return line;
-            }
+            )
+            : { syllables: line.syllables, changed: false };
+        const normalizedLead = normalizeInstrumentalVocalPart(
+            line.vocals?.lead,
+            startTime,
+            resolvedEndTime
+        );
+        const normalizedBackground = Array.isArray(line.vocals?.background)
+            ? line.vocals.background.map((part) => (
+                normalizeInstrumentalVocalPart(part, startTime, resolvedEndTime)
+            ))
+            : [];
+        const backgroundChanged = normalizedBackground.some((entry) => entry.changed);
+        const vocalsChanged = normalizedLead.changed || backgroundChanged;
+        if (!textChanged && !endTimeChanged && !normalizedSyllables.changed && !vocalsChanged) {
+            return line;
+        }
 
-            changed = true;
-            const normalizedLine = {
-                ...line,
-                text: marker,
-                ...(normalizedSyllables.changed ? { syllables: normalizedSyllables.syllables } : {})
-            };
-            if (line.originalText !== undefined) {
-                normalizedLine.originalText = marker;
-            }
-            if (resolvedEndTime !== null) {
-                normalizedLine.endTime = resolvedEndTime;
-            }
-            if (vocalsChanged) {
-                normalizedLine.vocals = {
-                    ...line.vocals,
-                    ...(normalizedLead.changed ? { lead: normalizedLead.part } : {}),
-                    ...(backgroundChanged
-                        ? { background: normalizedBackground.map((entry) => entry.part) }
-                        : {})
-                };
-            }
-            return normalizedLine;
-        });
-
-        return {
-            lines: changed ? normalizedLines : lines,
-            changed
+        const normalizedLine = {
+            ...line,
+            text: marker,
+            ...(normalizedSyllables.changed ? { syllables: normalizedSyllables.syllables } : {})
         };
+        if (line.originalText !== undefined) {
+            normalizedLine.originalText = marker;
+        }
+        if (resolvedEndTime !== null) {
+            normalizedLine.endTime = resolvedEndTime;
+        }
+        if (vocalsChanged) {
+            normalizedLine.vocals = {
+                ...line.vocals,
+                ...(normalizedLead.changed ? { lead: normalizedLead.part } : {}),
+                ...(backgroundChanged
+                    ? { background: normalizedBackground.map((entry) => entry.part) }
+                    : {})
+            };
+        }
+        return normalizedLine;
+    }
+
+    function normalizeInstrumentalBreakLines(lines, durationMs, timed) {
+        if (!Array.isArray(lines)) return lines;
+
+        let normalizedLines = lines;
+        for (let index = 0; index < lines.length; index++) {
+            const line = lines[index];
+            if (!line || typeof line !== 'object') continue;
+            const normalizedLine = normalizeInstrumentalBreakLine(line, index, lines, durationMs, timed);
+            if (normalizedLine === line) continue;
+            if (normalizedLines === lines) normalizedLines = lines.slice();
+            normalizedLines[index] = normalizedLine;
+        }
+        return normalizedLines;
     }
 
     return function normalizeProviderInstrumentalBreaks(result, info = {}) {
@@ -230,24 +235,15 @@ export function createProviderInstrumentalBreakNormalizer(readMarkers) {
         }
 
         const durationMs = getLyricsDurationMs(info);
-        const normalizedResult = { ...result };
-        let changed = false;
-
+        let normalizedResult = result;
         for (const type of [LYRICS_TYPES.KARAOKE, LYRICS_TYPES.SYNCED, LYRICS_TYPES.UNSYNCED]) {
-            const normalized = normalizeInstrumentalBreakLines(
-                result[type],
-                durationMs,
-                type !== LYRICS_TYPES.UNSYNCED
-            );
-            if (normalized.changed) {
-                normalizedResult[type] = normalized.lines;
-                changed = true;
-            }
+            const lines = result[type];
+            const normalized = normalizeInstrumentalBreakLines(lines, durationMs, type !== LYRICS_TYPES.UNSYNCED);
+            if (normalized === lines) continue;
+            if (normalizedResult === result) normalizedResult = { ...result };
+            normalizedResult[type] = normalized;
         }
 
-        return {
-            result: changed ? normalizedResult : result,
-            changed
-        };
+        return { result: normalizedResult, changed: normalizedResult !== result };
     };
 }
