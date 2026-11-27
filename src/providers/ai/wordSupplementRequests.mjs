@@ -4,7 +4,7 @@ import { isSupersededAbort, throwIfAiRequestSuperseded } from "./aiRequestCancel
 
 const normalizeWords = words => Array.isArray(words) ? words.map(word => String(word ?? '')) : [];
 
-export function buildWordGlossPrompt({ words = [], lineText = '', targetLang = 'en', sourceLang = 'auto' } = {}) {
+export function buildWordGlossPrompt({ words = [], lineText = '', targetLang = 'en' } = {}) {
     const safeWords = normalizeWords(words);
     const wordCount = safeWords.length;
     const langInfo = getTranslationLanguageInfo(targetLang);

@@ -8,26 +8,19 @@ export function normalizePromptRequest(prompt) {
     return { systemPrompt: '', userPrompt: String(prompt ?? '') };
 }
 
-export function readProviderApiKeys(getSetting) {
+const normalizeKeys = keys => keys.map(key => typeof key === 'string' ? key.trim() : '').filter(Boolean);
+
+export function readProviderApiKeys(getSetting, { splitDelimiters = false } = {}) {
     const raw = getSetting('api-keys', '') || getSetting('api-key', '');
-    if (!raw) return [];
+    if (Array.isArray(raw)) return normalizeKeys(raw);
+    if (!raw || typeof raw !== 'string') return [];
 
-    if (Array.isArray(raw)) {
-        return raw
-            .map(k => typeof k === 'string' ? k.trim() : '')
-            .filter(k => k);
-    }
-
-    if (typeof raw !== 'string') return [];
-
-    try {
-        if (raw.startsWith('[')) {
-            return JSON.parse(raw)
-                .map(k => typeof k === 'string' ? k.trim() : '')
-                .filter(k => k);
+    if ((splitDelimiters ? raw.trimStart() : raw).startsWith('[')) {
+        try {
+            return normalizeKeys(JSON.parse(raw));
+        } catch {
+            // Treat invalid JSON as the provider's ordinary text input.
         }
-        return [raw.trim()].filter(k => k);
-    } catch {
-        return [raw.trim()].filter(k => k);
     }
+    return normalizeKeys(splitDelimiters ? raw.split(/[\n,]/) : [raw]);
 }

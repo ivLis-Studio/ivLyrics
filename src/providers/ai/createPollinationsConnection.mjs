@@ -1,3 +1,5 @@
+import { readProviderApiKeys } from "./aiProviderInputs.mjs";
+
 const AUTH_BASE_URL = 'https://enter.pollinations.ai';
 
 // Publishable Pollinations App Key (pk_...) for BYOP.
@@ -8,34 +10,7 @@ const DEFAULT_AUTH_BUDGET = 999;
 const DEFAULT_AUTH_EXPIRY_DAYS = 365;
 
 export function createPollinationsConnection({ baseUrl, getSetting, setSetting, getAiRequest }) {
-    function getApiKeys() {
-        // Pollinations.ai는 API 키가 선택적 (무료 사용 가능)
-        // 새 키 먼저 확인, 없으면 기존 키 fallback
-        let raw = getSetting('api-keys', '');
-        if (!raw) {
-            raw = getSetting('api-key', '');
-        }
-        if (!raw) return [];
-
-        if (Array.isArray(raw)) {
-            return raw
-                .map(k => typeof k === 'string' ? k.trim() : '')
-                .filter(k => k);
-        }
-
-        if (typeof raw !== 'string') return [];
-
-        try {
-            if (raw.trim().startsWith('[')) {
-                return JSON.parse(raw)
-                    .map(k => typeof k === 'string' ? k.trim() : '')
-                    .filter(k => k);
-            }
-            return raw.split(/[\n,]/).map(key => key.trim()).filter(Boolean);
-        } catch {
-            return raw.split(/[\n,]/).map(key => key.trim()).filter(Boolean);
-        }
-    }
+    const getApiKeys = () => readProviderApiKeys(getSetting, { splitDelimiters: true });
 
     function getPrimaryApiKey() {
         return getApiKeys()[0] || '';

@@ -29,20 +29,22 @@ export function createAIRequest({ host: window, getSpicetify }) {
     }
 
     function combineSignals(first, second) {
-        const signals = [first, second].filter(Boolean);
-        if (signals.length <= 1) return signals[0];
+        if (!first || !second) return first || second;
+        const signals = [first, second];
         if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.any === 'function') {
             return AbortSignal.any(signals);
         }
         const controller = new AbortController();
-        const abort = event => controller.abort(event?.target?.reason);
-        for (const signal of signals) {
-            if (signal.aborted) {
-                controller.abort(signal.reason);
-                break;
-            }
-            signal.addEventListener('abort', abort, { once: true });
+        const aborted = signals.find(signal => signal.aborted);
+        if (aborted) {
+            controller.abort(aborted.reason);
+            return controller.signal;
         }
+        const abort = event => {
+            for (const signal of signals) signal.removeEventListener('abort', abort);
+            controller.abort(event?.target?.reason);
+        };
+        for (const signal of signals) signal.addEventListener('abort', abort, { once: true });
         return controller.signal;
     }
 

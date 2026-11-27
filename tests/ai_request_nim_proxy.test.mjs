@@ -161,3 +161,26 @@ test('Cosmos fallback diagnostics avoid logging credentials from the request URL
     assert.match(logs[0], /provider\.example\.test/);
     assert.doesNotMatch(logs[0], /fixture-secret/);
 });
+
+test('signal composition without AbortSignal.any releases the surviving listener', async t => {
+    const caller = new AbortController();
+    const deadline = new AbortController();
+    t.mock.method(AbortSignal, 'timeout', () => deadline.signal);
+    const any = Object.getOwnPropertyDescriptor(AbortSignal, 'any');
+    Object.defineProperty(AbortSignal, 'any', { ...any, value: undefined });
+    t.after(() => Object.defineProperty(AbortSignal, 'any', any));
+
+    const callerRemove = t.mock.method(caller.signal, 'removeEventListener');
+    const deadlineRemove = t.mock.method(deadline.signal, 'removeEventListener');
+    const h = setup(() => new Response('stream'));
+
+    await h.fetch(`${BASE}/chat/completions`, { signal: caller.signal });
+    const { signal } = h.requests[0].options;
+    assert.equal(signal.aborted, false);
+
+    const timeout = new DOMException('Timed out', 'TimeoutError');
+    deadline.abort(timeout);
+    assert.equal(signal.reason, timeout);
+    assert.equal(callerRemove.mock.callCount(), 1);
+    assert.equal(deadlineRemove.mock.callCount(), 1);
+});

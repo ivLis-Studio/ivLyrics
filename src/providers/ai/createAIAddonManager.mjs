@@ -469,15 +469,7 @@ export function createAIAddonManager({ getStoredValue, setStoredValue, getOwnSto
                 // 제공자 수준 검사를 함께 통과해야 한다. 엔드포인트별 선택은 그
                 // 아래에서 addon 내부가 추가로 거른다.
                 // 메서드가 존재하지 않는 경우(구버전 캐시 등) 안전하게 true 처리
-                if (typeof this.isCapabilityEnabled !== 'function') {
-                    return true;
-                }
-
-                const isEnabled = this.isCapabilityEnabled(addon.id, storedCapability);
-                if (!isEnabled) {
-                    return false;
-                }
-                return true;
+                return typeof this.isCapabilityEnabled !== 'function' || !!this.isCapabilityEnabled(addon.id, storedCapability);
             });
         }
 
