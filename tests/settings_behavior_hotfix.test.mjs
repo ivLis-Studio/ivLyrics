@@ -126,7 +126,7 @@ const numericCode = [
     react, host: window, getDocument: () => document, getLanguage: () => undefined,
     getSettingsText, SettingsUiIcon, hasSettingDefault, settingValuesEqual,
   });`,
-  section("  const {\n    saveLyricsTypographySetting,", "  const renderTabContent ="),
+  section("const {\n  saveLyricsTypographySetting,", "const ConfigModal ="),
   "globalThis.saveTypography = saveLyricsTypographySetting;",
 ].join("\n");
 const pointer = (type, extra = {}) => ({
@@ -250,6 +250,17 @@ for (const component of ["SettingsScrubField", "ConfigSliderRange"]) {
     assert.equal(h.context.CONFIG.visual["original-font-size"], attempted);
     assert.equal(Number(h.shown(h.render())), attempted);
     assert.deepEqual(h.commits, [attempted, attempted]);
+    h.unmount();
+  });
+
+  test(`${component}: only an active drag listens for window blur`, () => {
+    const h = numericHarness(component);
+    h.render();
+    assert.equal(h.listeners.get("blur")?.size ?? 0, 0);
+    h.start();
+    assert.equal(h.listeners.get("blur").size, 1);
+    h.control(h.render()).props.onPointerUp(pointer("pointerup"));
+    assert.equal(h.listeners.get("blur").size, 0);
     h.unmount();
   });
 

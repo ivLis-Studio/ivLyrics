@@ -1,3 +1,4 @@
+import { renderSettingsControlRow } from "./settingsSectionShell.mjs";
 import { captureKeyboardShortcut, formatKeyboardShortcut } from "../../core/keyboardShortcut.mjs";
 
 export function getRecordingHotkeyControl(event) {
@@ -63,91 +64,79 @@ export function createSettingsHotkeyControls({ react, host, getSettingsText, isS
       recorderRef.current?.focus();
     };
 
-    return react.createElement(
-      "div",
-      {
+    return renderSettingsControlRow(react, {
+      rowProps: {
         className: `setting-row${isSettingChanged(settingKey) ? " is-changed" : ""}`,
         "data-setting-key": settingKey,
       },
+      name,
+    },
       react.createElement(
         "div",
-        { className: "setting-row-content" },
+        { className: "config-hotkey-control" },
         react.createElement(
-          "div",
-          { className: "setting-row-left" },
-          react.createElement("div", { className: "setting-name" }, name)
+          "button",
+          {
+            ref: recorderRef,
+            type: "button",
+            className: `config-hotkey-recorder${isRecording ? " recording" : ""}`,
+            onClick: startRecording,
+            onBlur: () => setIsRecording(false),
+            "aria-label": isRecording
+              ? `${name}: ${getSettingsText("settings.hotkey.recording", "Press a key combination")}`
+              : `${name}: ${value || getSettingsText("settings.hotkey.unassigned", "Not assigned")}`,
+            "aria-pressed": isRecording,
+            title: getSettingsText("settings.hotkey.hint", "Click, then press the desired key combination"),
+          },
+          isRecording
+            ? react.createElement(
+              "span",
+              { className: "config-hotkey-recording-state" },
+              react.createElement("span", { className: "config-hotkey-recording-dot", "aria-hidden": "true" }),
+              getSettingsText("settings.hotkey.recording", "Press a key combination")
+            )
+            : keycaps.length > 0
+              ? react.createElement(
+                "span",
+                { className: "config-hotkey-keycaps", "aria-hidden": "true" },
+                ...keycaps.map((label, index) =>
+                  react.createElement(
+                    "kbd",
+                    { className: "config-hotkey-keycap", key: `${label}-${index}` },
+                    label
+                  )
+                )
+              )
+              : react.createElement(
+                "span",
+                { className: "config-hotkey-empty" },
+                getSettingsText("settings.hotkey.unassigned", "Not assigned")
+              ),
+          react.createElement(
+            "span",
+            { className: "config-hotkey-edit-label", "aria-hidden": "true" },
+            isRecording ? "Esc" : getSettingsText("settings.hotkey.change", "Change")
+          )
+        ),
+        value && !isRecording && react.createElement(
+          "button",
+          {
+            type: "button",
+            className: "config-hotkey-clear",
+            onClick: () => commitHotkey(""),
+            "aria-label": `${name} ${getSettingsText("settings.hotkey.clear", "Clear shortcut")}`,
+            title: getSettingsText("settings.hotkey.clear", "Clear shortcut"),
+          },
+          "×"
         ),
         react.createElement(
-          "div",
-          { className: "setting-row-right" },
-          react.createElement(
-            "div",
-            { className: "config-hotkey-control" },
-            react.createElement(
-              "button",
-              {
-                ref: recorderRef,
-                type: "button",
-                className: `config-hotkey-recorder${isRecording ? " recording" : ""}`,
-                onClick: startRecording,
-                onBlur: () => setIsRecording(false),
-                "aria-label": isRecording
-                  ? `${name}: ${getSettingsText("settings.hotkey.recording", "Press a key combination")}`
-                  : `${name}: ${value || getSettingsText("settings.hotkey.unassigned", "Not assigned")}`,
-                "aria-pressed": isRecording,
-                title: getSettingsText("settings.hotkey.hint", "Click, then press the desired key combination"),
-              },
-              isRecording
-                ? react.createElement(
-                  "span",
-                  { className: "config-hotkey-recording-state" },
-                  react.createElement("span", { className: "config-hotkey-recording-dot", "aria-hidden": "true" }),
-                  getSettingsText("settings.hotkey.recording", "Press a key combination")
-                )
-                : keycaps.length > 0
-                  ? react.createElement(
-                    "span",
-                    { className: "config-hotkey-keycaps", "aria-hidden": "true" },
-                    ...keycaps.map((label, index) =>
-                      react.createElement(
-                        "kbd",
-                        { className: "config-hotkey-keycap", key: `${label}-${index}` },
-                        label
-                      )
-                    )
-                  )
-                  : react.createElement(
-                    "span",
-                    { className: "config-hotkey-empty" },
-                    getSettingsText("settings.hotkey.unassigned", "Not assigned")
-                  ),
-              react.createElement(
-                "span",
-                { className: "config-hotkey-edit-label", "aria-hidden": "true" },
-                isRecording ? "Esc" : getSettingsText("settings.hotkey.change", "Change")
-              )
-            ),
-            value && !isRecording && react.createElement(
-              "button",
-              {
-                type: "button",
-                className: "config-hotkey-clear",
-                onClick: () => commitHotkey(""),
-                "aria-label": `${name} ${getSettingsText("settings.hotkey.clear", "Clear shortcut")}`,
-                title: getSettingsText("settings.hotkey.clear", "Clear shortcut"),
-              },
-              "×"
-            ),
-            react.createElement(
-              "span",
-              { className: "settings-visually-hidden", "aria-live": "polite" },
-              isRecording
-                ? getSettingsText("settings.hotkey.recording", "Press a key combination")
-                : value
-                  ? `${getSettingsText("settings.hotkey.saved", "Saved")}: ${value}`
-                  : getSettingsText("settings.hotkey.unassigned", "Not assigned")
-            )
-          )
+          "span",
+          { className: "settings-visually-hidden", "aria-live": "polite" },
+          isRecording
+            ? getSettingsText("settings.hotkey.recording", "Press a key combination")
+            : value
+              ? `${getSettingsText("settings.hotkey.saved", "Saved")}: ${value}`
+              : getSettingsText("settings.hotkey.unassigned", "Not assigned")
         )
       )
     );

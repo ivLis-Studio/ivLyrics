@@ -43,6 +43,20 @@ export const resolveSettingsSelectionPresentation = (entries, presentation) => {
 export function createSettingsChoiceControls({ react, SettingsUiIcon, SettingsStepper, onSaveError }) {
   const { useCallback, useEffect, useState } = react;
 
+  const radioButtonProps = (option, optionIndex, index, options, active, onChange, disabled) => ({
+    key: String(option.value),
+    type: "button",
+    role: "radio",
+    "aria-checked": active,
+    tabIndex: active || (index < 0 && optionIndex === 0) ? 0 : -1,
+    disabled,
+    "data-setting-key": option.anchor || undefined,
+    onClick: () => {
+      if (!active) onChange(option.value);
+    },
+    onKeyDown: (event) => handleSettingsRadioKeys(event, options, index, onChange),
+  });
+
   // Slide toggle for two to four short choices.
   const SettingsSegmented = ({ options, value, onChange = () => { }, label, disabled, compact = false, className = "" }) => {
     const index = options.findIndex((option) => String(option.value) === String(value));
@@ -64,19 +78,9 @@ export function createSettingsChoiceControls({ react, SettingsUiIcon, SettingsSt
         return react.createElement(
           "button",
           {
-            key: String(option.value),
-            type: "button",
-            role: "radio",
-            "aria-checked": active,
-            tabIndex: active || (index < 0 && optionIndex === 0) ? 0 : -1,
+            ...radioButtonProps(option, optionIndex, index, options, active, onChange, disabled),
             className: `settings-seg-option${active ? " is-on" : ""}`,
-            disabled,
             title: option.label,
-            "data-setting-key": option.anchor || undefined,
-            onClick: () => {
-              if (!active) onChange(option.value);
-            },
-            onKeyDown: (event) => handleSettingsRadioKeys(event, options, index, onChange),
           },
           option.color ? react.createElement("i", { className: "settings-seg-swatch", style: { "--swatch": option.color } }) : null,
           option.icon ? react.createElement(SettingsUiIcon, { name: option.icon, size: 15 }) : null,
@@ -97,18 +101,8 @@ export function createSettingsChoiceControls({ react, SettingsUiIcon, SettingsSt
         return react.createElement(
           "button",
           {
-            key: String(option.value),
-            type: "button",
-            role: "radio",
-            "aria-checked": active,
-            tabIndex: active || (index < 0 && optionIndex === 0) ? 0 : -1,
+            ...radioButtonProps(option, optionIndex, index, options, active, onChange, disabled),
             className: `settings-card-opt${active ? " is-on" : ""}${option.description ? "" : " is-plain"}`,
-            disabled,
-            "data-setting-key": option.anchor || undefined,
-            onClick: () => {
-              if (!active) onChange(option.value);
-            },
-            onKeyDown: (event) => handleSettingsRadioKeys(event, options, index, onChange),
           },
           option.visual || null,
           react.createElement(

@@ -1,3 +1,4 @@
+import { renderSettingsControlRow } from "./settingsSectionShell.mjs";
 import { commitSettingsControlValue } from "./settingsControlCommit.mjs";
 
 export function createSettingsTextControls({ react, translate, SettingsUiIcon, getCheckIcon, isSettingChanged, onSaveError }) {
@@ -30,41 +31,25 @@ export function createSettingsTextControls({ react, translate, SettingsUiIcon, g
   );
 
   const ConfigButton = ({ name, settingKey, info, text, rowClassName, disabled = false, searchable = true, onChange = () => { } }) => {
-    return react.createElement(
-      "div",
-      {
+    return renderSettingsControlRow(react, {
+      rowProps: {
         className: rowClassName ? `setting-row ${rowClassName}` : "setting-row",
         "data-setting-key": settingKey,
         "data-search-exclude": searchable === false ? "true" : undefined,
       },
+      name,
+      description: [info && react.createElement("div", {
+        className: "setting-description", dangerouslySetInnerHTML: { __html: info },
+      })],
+    },
       react.createElement(
-        "div",
-        { className: "setting-row-content" },
-        react.createElement(
-          "div",
-          { className: "setting-row-left" },
-          react.createElement("div", { className: "setting-name" }, name),
-          info &&
-          react.createElement("div", {
-            className: "setting-description",
-            dangerouslySetInnerHTML: {
-              __html: info,
-            },
-          })
-        ),
-        react.createElement(
-          "div",
-          { className: "setting-row-right" },
-          react.createElement(
-            "button",
-            {
-              className: "btn",
-              disabled,
-              onClick: (event) => onChange(settingKey || name, event),
-            },
-            text
-          )
-        )
+        "button",
+        {
+          className: "btn",
+          disabled,
+          onClick: (event) => onChange(settingKey || name, event),
+        },
+        text
       )
     );
   };
@@ -168,33 +153,21 @@ export function createSettingsTextControls({ react, translate, SettingsUiIcon, g
       [name, settingKey, onChange, disabled]
     );
 
-    return react.createElement(
-      "div",
-      {
+    return renderSettingsControlRow(react, {
+      rowProps: {
         className: `setting-row${isSettingChanged(settingKey) ? " is-changed" : ""}`,
         "data-setting-key": settingKey,
       },
-      react.createElement(
-        "div",
-        { className: "setting-row-content" },
-        react.createElement(
-          "div",
-          { className: "setting-row-left" },
-          react.createElement("div", { className: "setting-name" }, name)
-        ),
-        react.createElement(
-          "div",
-          { className: "setting-row-right" },
-          react.createElement("input", {
-            className: "config-text-input",
-            type: inputType,
-            disabled,
-            value: value ?? "",
-            onChange: setValueCallback,
-            "aria-label": name,
-          })
-        )
-      )
+      name,
+    },
+      react.createElement("input", {
+        className: "config-text-input",
+        type: inputType,
+        disabled,
+        value: value ?? "",
+        onChange: setValueCallback,
+        "aria-label": name,
+      })
     );
   };
 

@@ -19,9 +19,16 @@ function harness(changed = false) {
       effects.push(() => { hooks[i].cleanup?.(); hooks[i].cleanup = effect(); });
     }
   };
+  const useMemo = (factory, deps) => {
+    const i = cursor++, previous = hooks[i];
+    if (previous && deps.every((dep, j) => Object.is(dep, previous.deps[j]))) return previous.value;
+    const value = factory();
+    hooks[i] = { deps, value };
+    return value;
+  };
   const renderEditor = createSettingsKaraokeFillCurveEditor({
     react: {
-      useRef, useState, useEffect,
+      useRef, useState, useEffect, useMemo,
       createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
     },
     host: { addEventListener: (type, cb) => listeners.set(type, cb), removeEventListener: type => listeners.delete(type) },

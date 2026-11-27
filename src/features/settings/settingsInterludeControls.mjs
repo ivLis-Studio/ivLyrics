@@ -1,3 +1,4 @@
+import { renderSettingsControlRow } from "./settingsSectionShell.mjs";
 import {
   createBreakIconChildren as createSettingsBreakIcon, createInterludeIndicator as createSettingsInterludeIndicator,
   getInstrumentalBreakMotionStyle,
@@ -70,65 +71,53 @@ export function createSettingsInterludeControls({ react, readVisualSettings, tra
 
     const selectedLabel = options[value] || value;
 
-    return react.createElement(
-      "div",
-      {
+    return renderSettingsControlRow(react, {
+      rowProps: {
         className: `setting-row instrumental-break-picker-row${isSettingChanged(settingKey) ? " is-changed" : ""}`,
         "data-setting-key": settingKey,
         style: disabled ? { opacity: 0.5, pointerEvents: "none" } : {},
       },
+      name,
+      description: [info && react.createElement("div", {
+        className: "setting-description", dangerouslySetInnerHTML: { __html: info },
+      })],
+      controlClassName: "setting-row-right instrumental-break-picker-control",
+    },
       react.createElement(
         "div",
-        { className: "setting-row-content" },
+        { className: "instrumental-break-selected-preview" },
         react.createElement(
-          "div",
-          { className: "setting-row-left" },
-          react.createElement("div", { className: "setting-name" }, name),
-          info && react.createElement("div", {
-            className: "setting-description",
-            dangerouslySetInnerHTML: { __html: info },
-          })
+          "span",
+          { className: "instrumental-break-selected-stage" },
+          react.createElement(InstrumentalBreakIconPreview, { icon: value })
         ),
-        react.createElement(
-          "div",
-          { className: "setting-row-right instrumental-break-picker-control" },
-          react.createElement(
-            "div",
-            { className: "instrumental-break-selected-preview" },
+        react.createElement("span", { className: "instrumental-break-selected-label" }, selectedLabel)
+      ),
+      react.createElement(
+        "div",
+        { className: "instrumental-break-preview-grid" },
+        ...optionKeys.map((key) => {
+          const isSelected = key === value;
+
+          return react.createElement(
+            "button",
+            {
+              key,
+              type: "button",
+              className: `instrumental-break-preview-option${isSelected ? " active" : ""}`,
+              onClick: () => handleSelect(key),
+              "aria-pressed": isSelected,
+              "aria-label": options[key] || key,
+              title: options[key] || key,
+            },
             react.createElement(
               "span",
-              { className: "instrumental-break-selected-stage" },
-              react.createElement(InstrumentalBreakIconPreview, { icon: value })
+              { className: "instrumental-break-option-stage" },
+              react.createElement(InstrumentalBreakIconPreview, { icon: key })
             ),
-            react.createElement("span", { className: "instrumental-break-selected-label" }, selectedLabel)
-          ),
-          react.createElement(
-            "div",
-            { className: "instrumental-break-preview-grid" },
-            ...optionKeys.map((key) => {
-              const isSelected = key === value;
-
-              return react.createElement(
-                "button",
-                {
-                  key,
-                  type: "button",
-                  className: `instrumental-break-preview-option${isSelected ? " active" : ""}`,
-                  onClick: () => handleSelect(key),
-                  "aria-pressed": isSelected,
-                  "aria-label": options[key] || key,
-                  title: options[key] || key,
-                },
-                react.createElement(
-                  "span",
-                  { className: "instrumental-break-option-stage" },
-                  react.createElement(InstrumentalBreakIconPreview, { icon: key })
-                ),
-                react.createElement("span", { className: "instrumental-break-option-label" }, options[key] || key)
-              );
-            })
-          )
-        )
+            react.createElement("span", { className: "instrumental-break-option-label" }, options[key] || key)
+          );
+        })
       )
     );
   };

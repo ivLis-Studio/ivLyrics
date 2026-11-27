@@ -94,6 +94,21 @@ export function createOverlaySettingsPanel({
 
     const statusTone = isConnected ? "is-ok" : "is-error";
 
+    const renderToggleLabel = (labelKey, descriptionKey, ...status) =>
+      react.createElement(
+        "div",
+        {
+          className: "setting-row-left",
+          onPointerDown: onToggleRowPointerDown,
+          onClick: onToggleRowClick,
+        },
+        react.createElement("div", { className: "setting-name-row" },
+          react.createElement("div", { className: "setting-name" }, translate(labelKey)),
+          ...status
+        ),
+        react.createElement("div", { className: "setting-description" }, translate(descriptionKey))
+      );
+
     const renderOverlayEnableRow = () =>
       // Enable/Disable Row
       react.createElement(
@@ -102,23 +117,10 @@ export function createOverlaySettingsPanel({
         react.createElement(
           "div",
           { className: "setting-row-content" },
-          react.createElement(
-            "div",
-            {
-              className: "setting-row-left",
-              onPointerDown: onToggleRowPointerDown,
-              onClick: onToggleRowClick,
-            },
-            react.createElement("div", { className: "setting-name-row" },
-              react.createElement("div", { className: "setting-name" }, translate("overlay.enabled.label")),
-              // Status Tag (Connected / Disconnected / Checking) only when enabled
-              enabled && react.createElement("span", {
-                className: `settings-pill settings-status-pill ${statusTone}`,
-              }, getStatusText())
-            ),
-            react.createElement("div", { className: "setting-description" },
-              translate("overlay.enabled.desc")
-            )
+          renderToggleLabel("overlay.enabled.label", "overlay.enabled.desc",
+            enabled && react.createElement("span", {
+              className: `settings-pill settings-status-pill ${statusTone}`,
+            }, getStatusText())
           ),
           react.createElement(
             "div",
@@ -167,17 +169,7 @@ export function createOverlaySettingsPanel({
         react.createElement(
           "div",
           { className: "setting-row-content" },
-          react.createElement(
-            "div",
-            {
-              className: "setting-row-left",
-              onPointerDown: onToggleRowPointerDown,
-              onClick: onToggleRowClick,
-            },
-            react.createElement("div", { className: "setting-name-row" },
-              react.createElement("div", { className: "setting-name" }, translate("overlay.trimMetadata.label"))),
-            react.createElement("div", { className: "setting-description" }, translate("overlay.trimMetadata.desc"))
-          ),
+          renderToggleLabel("overlay.trimMetadata.label", "overlay.trimMetadata.desc"),
           react.createElement(
             "div",
             { className: "setting-row-right" },

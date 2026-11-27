@@ -161,44 +161,41 @@ export function createAccountSettingsPanel({
       }
     };
 
-    const renderAccountLinkedCard = ({ accountInfo, nickname, actions, requestId }) =>
-  react.createElement(
+    const renderAccountCardHeader = (...children) => react.createElement(
+      "div",
+      { style: { display: "flex", alignItems: "center", gap: "16px", marginBottom: "16px" } },
+      ...children
+    );
+    const renderAccountAvatar = (style, child) => react.createElement(
+      "div",
+      { style: {
+        width: "52px",
+        height: "52px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        color: "#fff",
+        ...style,
+      } },
+      child
+    );
+
+    const renderAccountLinkedCard = ({ accountInfo, nickname, actions, requestId }) => react.createElement(
       "div",
       {
         className: "info-card settings-account-card",
       },
-      react.createElement(
-        "div",
-        {
-          style: {
-            display: "flex",
-            alignItems: "center",
-            gap: "16px",
-            marginBottom: "16px",
-          },
-        },
-        react.createElement(
-          "div",
-          {
-            style: {
-              width: "52px",
-              height: "52px",
-              borderRadius: "50%",
-              background: accountInfo.profileImage
-                ? `url(${accountInfo.profileImage}) center/cover no-repeat`
-                : "#5865f2",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              border: "1px solid var(--settings-line)",
-              color: "#fff",
-              fontSize: "18px",
-              fontWeight: "700",
-            },
-          },
-          !accountInfo.profileImage && (accountInfo.displayName || "D").slice(0, 1).toUpperCase()
-        ),
+      renderAccountCardHeader(
+        renderAccountAvatar({
+          borderRadius: "50%",
+          background: accountInfo.profileImage
+            ? `url(${accountInfo.profileImage}) center/cover no-repeat`
+            : "#5865f2",
+          border: "1px solid var(--settings-line)",
+          fontSize: "18px",
+          fontWeight: "700",
+        }, !accountInfo.profileImage && (accountInfo.displayName || "D").slice(0, 1).toUpperCase()),
         react.createElement(
           "div",
           { style: { flex: 1, minWidth: 0 } },
@@ -363,37 +360,13 @@ export function createAccountSettingsPanel({
       react.createElement(NicknameSection, { key: `nickname-${requestId}`, actions, initialNickname: nickname }),
       react.createElement(CreatorPrivacySection, { key: `privacy-${requestId}`, actions })
     );
-    const renderAccountUnlinkedCard = () =>
-  react.createElement(
+    const renderAccountUnlinkedCard = () => react.createElement(
         "div",
         {
           className: "info-card settings-account-card",
         },
-        react.createElement(
-          "div",
-          {
-            style: {
-              display: "flex",
-              alignItems: "center",
-              gap: "16px",
-              marginBottom: "16px",
-            },
-          },
-          react.createElement(
-            "div",
-            {
-              style: {
-                width: "52px",
-                height: "52px",
-                borderRadius: "10px",
-                background: "#5865f2",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#fff",
-                flexShrink: 0,
-              },
-            },
+        renderAccountCardHeader(
+          renderAccountAvatar({ borderRadius: "10px", background: "#5865f2" },
             react.createElement(
               "svg",
               {

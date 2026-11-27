@@ -1,3 +1,4 @@
+import { renderSettingsControlRow } from "./settingsSectionShell.mjs";
 import { GOOGLE_FONTS } from "../../core/lyricsFontCatalog.mjs";
 import { commitSettingsControlValue } from "./settingsControlCommit.mjs";
 import { SETTINGS_TEXT_DRAFT_ATTRIBUTE, useSettingsTextDraft } from "./settingsTextDraft.mjs";
@@ -218,34 +219,18 @@ export function createSettingsFontControls({ react, translate, getSettingsText, 
 
     // name이 있으면 전체 setting-row로 래핑, 없으면 컨트롤만 반환
     if (name) {
-      return react.createElement(
-        "div",
-        {
+      return renderSettingsControlRow(react, {
+        rowProps: {
           className: `setting-row config-font-setting-row${isSettingChanged(settingKey) ? " is-changed" : ""}`,
           "data-setting-key": settingKey,
           style: disabled ? { opacity: 0.5, pointerEvents: "none" } : {},
         },
-        react.createElement(
-          "div",
-          { className: "setting-row-content" },
-          react.createElement(
-            "div",
-            { className: "setting-row-left" },
-            react.createElement("div", { className: "setting-name" }, name),
-            info &&
-            react.createElement("div", {
-              className: "setting-description",
-              dangerouslySetInnerHTML: {
-                __html: info,
-              },
-            })
-          ),
-          react.createElement(
-            "div",
-            { className: "setting-row-right" },
-            fontSelector
-          )
-        )
+        name,
+        description: [info && react.createElement("div", {
+          className: "setting-description", dangerouslySetInnerHTML: { __html: info },
+        })],
+      },
+        fontSelector
       );
     }
 

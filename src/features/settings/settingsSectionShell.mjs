@@ -33,3 +33,24 @@ export const renderSettingsSectionShell = (react, {
       ...(Array.isArray(children) ? children : [children])
     )
   );
+
+// Self-rendering controls share the same row and label structure as the option list.
+export function renderSettingsControlRow(react, {
+  rowProps, name, description = [], controlClassName = "setting-row-right",
+}, ...controls) {
+  return react.createElement(
+    "div",
+    rowProps,
+    react.createElement(
+      "div",
+      { className: "setting-row-content" },
+      react.createElement(
+        "div",
+        { className: "setting-row-left" },
+        react.createElement("div", { className: "setting-name" }, name),
+        ...description
+      ),
+      react.createElement("div", { className: controlClassName }, ...controls)
+    )
+  );
+}

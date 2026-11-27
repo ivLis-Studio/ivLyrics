@@ -22,18 +22,26 @@ export function createSettingsNumericControls({
     return accepted;
   };
 
-  function useDragCleanup(dragRef, finishDrag, disabled) {
+  function useDragLifecycle(dragRef, finishDrag, disabled) {
+    const cancelRef = useRef(null);
+    const clearDrag = () => {
+      dragRef.current = null;
+      if (cancelRef.current) {
+        host.removeEventListener("blur", cancelRef.current);
+        cancelRef.current = null;
+      }
+    };
+    const startDrag = (drag) => {
+      dragRef.current = drag;
+      const cancel = () => finishDrag();
+      cancelRef.current = cancel;
+      host.addEventListener("blur", cancel);
+    };
     useEffect(() => {
       if (disabled) finishDrag();
     }, [disabled]);
-    useEffect(() => {
-      const cancel = () => finishDrag();
-      host.addEventListener("blur", cancel);
-      return () => {
-        host.removeEventListener("blur", cancel);
-        dragRef.current = null;
-      };
-    }, []);
+    useEffect(() => clearDrag, []);
+    return { startDrag, clearDrag };
   }
 
   const getSettingsStepDecimals = (step) => {
@@ -173,15 +181,6 @@ export function createSettingsNumericControls({
     const dragRef = useRef(null);
     const inputRef = useRef(null);
 
-    useEffect(() => {
-      dragRef.current = null;
-      const next = toNumber(value);
-      committedRef.current = next;
-      currentRef.current = next;
-      setCurrent(next);
-      setDragging(false);
-    }, [value]);
-
     const showValue = (next) => {
       if (next === currentRef.current) return;
       currentRef.current = next;
@@ -195,7 +194,7 @@ export function createSettingsNumericControls({
     const finishDrag = (event) => {
       const drag = dragRef.current;
       if (!drag || (event?.pointerId !== undefined && event.pointerId !== drag.pointerId)) return;
-      dragRef.current = null;
+      clearDrag();
       setDragging(false);
       if (event?.type !== "pointerup" || disabled || !Object.is(drag.configured, readConfiguredValue?.())) {
         showValue(committedRef.current);
@@ -206,7 +205,15 @@ export function createSettingsNumericControls({
         inputRef.current?.select?.();
       }
     };
-    useDragCleanup(dragRef, finishDrag, disabled);
+    const { startDrag, clearDrag } = useDragLifecycle(dragRef, finishDrag, disabled);
+    useEffect(() => {
+      clearDrag();
+      const next = toNumber(value);
+      committedRef.current = next;
+      currentRef.current = next;
+      setCurrent(next);
+      setDragging(false);
+    }, [value]);
     const commitDraft = (text) => {
       const parsed = parseDraftNumber(text);
       if (parsed === null) return;
@@ -224,10 +231,10 @@ export function createSettingsNumericControls({
           if (disabled || event.button !== 0 || dragRef.current || getDocument().activeElement === inputRef.current) return;
           event.preventDefault();
           event.currentTarget.setPointerCapture?.(event.pointerId);
-          dragRef.current = {
+          startDrag({
             x: event.clientX, last: event.clientX, value: currentRef.current,
             moved: false, pointerId: event.pointerId, configured: readConfiguredValue?.(),
-          };
+          });
           setDragging(true);
         },
         onPointerMove: (event) => {
@@ -306,13 +313,6 @@ export function createSettingsNumericControls({
     const currentRef = useRef(value);
     const committedRef = useRef(value);
     const dragRef = useRef(null);
-    useEffect(() => {
-      dragRef.current = null;
-      const next = toNumber(defaultValue);
-      currentRef.current = next;
-      committedRef.current = next;
-      setValue(next);
-    }, [defaultValue]);
 
     const showValue = (next) => {
       currentRef.current = next;
@@ -337,11 +337,18 @@ export function createSettingsNumericControls({
     const finishDrag = (event) => {
       const drag = dragRef.current;
       if (!drag || (event?.pointerId !== undefined && event.pointerId !== drag.pointerId)) return;
-      dragRef.current = null;
+      clearDrag();
       if (event?.type === "pointerup" && !disabled && Object.is(drag.configured, readConfiguredValue?.())) updateValue(currentRef.current);
       else showValue(committedRef.current);
     };
-    useDragCleanup(dragRef, finishDrag, disabled);
+    const { startDrag, clearDrag } = useDragLifecycle(dragRef, finishDrag, disabled);
+    useEffect(() => {
+      clearDrag();
+      const next = toNumber(defaultValue);
+      currentRef.current = next;
+      committedRef.current = next;
+      setValue(next);
+    }, [defaultValue]);
 
     const span = max - min || 1;
     const progress = Math.min(100, Math.max(0, ((value - min) / span) * 100));
@@ -389,7 +396,7 @@ export function createSettingsNumericControls({
           onChange: handleInput,
           onPointerDown: (event) => {
             if (disabled || event.button !== 0 || dragRef.current) return;
-            dragRef.current = { pointerId: event.pointerId, configured: readConfiguredValue?.() };
+            startDrag({ pointerId: event.pointerId, configured: readConfiguredValue?.() });
             event.currentTarget.setPointerCapture?.(event.pointerId);
           },
           onPointerUp: finishDrag,
