@@ -338,9 +338,7 @@ test("all locales provide the quick-sync video strings", () => {
 });
 
 test("quick-sync stack styles exist without restyling the pill", () => {
-  for (const token of [".lyrics-quick-sync-stack", ".lyrics-quick-sync-row", ".lyrics-quick-sync-label"]) {
-    assert.ok(styleSource.includes(token), `style.css missing: ${token}`);
-  }
+  assert.ok(styleSource.includes(".lyrics-quick-sync-stack"), "style.css missing: .lyrics-quick-sync-stack");
 });
 
 test("unified mode and share buttons reuse visible keyboard-focus styles", () => {

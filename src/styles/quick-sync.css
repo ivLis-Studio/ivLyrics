@@ -63,22 +63,6 @@
   pointer-events: auto;
 }
 
-.lyrics-quick-sync-row {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.lyrics-quick-sync-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: rgba(var(--spice-rgb-text), 0.55);
-  padding-left: 10px;
-  user-select: none;
-}
-
 /* In the standard fullscreen split, anchor the pill to the lyrics half. */
 .lyrics-lyricsContainer-LyricsContainer.fullscreen-active:not(.layout-reversed):not(.fullscreen-single-column):not(.fullscreen-no-lyrics):not(.portrait-mode):not(.tv-mode-active) .lyrics-track-sync-pill {
   left: calc(50% + var(--iv-track-sync-pill-edge));

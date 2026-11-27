@@ -94,7 +94,7 @@ test("active, highlighted, furigana and Vinyl lyrics do not bypass the configure
 		active,
 		`${active} > p:first-child`,
 		`${active} ruby rt`,
-		...["SyncedLyrics", "SyncedScrollView", "UnsyncedLyricsPage"].map(mode =>
+		...["SyncedLyrics", "UnsyncedLyricsPage"].map(mode =>
 			`.lyrics-lyricsContainer-LyricsContainer.highlight-mode-enabled .lyrics-lyricsContainer-${mode} .lyrics-lyricsContainer-LyricsLine${active}`),
 		`${vinyl} .lyrics-lyricsContainer-LyricsLine`,
 		`${vinyl} .lyrics-lyricsContainer-LyricsLine > p:first-child`,

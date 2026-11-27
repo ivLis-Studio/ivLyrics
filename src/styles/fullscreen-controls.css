@@ -345,7 +345,6 @@
 }
 
 /* Progress bar container */
-.fullscreen-progress-container,
 .fullscreen-progress-standalone {
   display: flex;
   align-items: center;
@@ -809,7 +808,6 @@
   padding-inline: clamp(4px, 4%, 20px);
 }
 
-.fullscreen-left-controls > .fullscreen-progress-container,
 .fullscreen-left-controls > .fullscreen-progress-standalone {
   flex-shrink: 0;
 }

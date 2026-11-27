@@ -481,9 +481,7 @@ test("wrapped controls reserve their full height before paint even above the old
   assert.equal(h.mutations[0].targets[0][0], h.container);
   assert.deepEqual({ ...h.mutations[0].targets[0][1] }, { childList: true },
     "nested playlist/lyric mutations must not drive the height observer");
-  for (const selector of [`${left} > .fullscreen-progress-container`, `${left} > .fullscreen-progress-standalone`]) {
-    assert.equal(declarations(selector)["flex-shrink"], "0");
-  }
+  assert.equal(declarations(`${left} > .fullscreen-progress-standalone`)["flex-shrink"], "0");
   h.stop();
 });
 
