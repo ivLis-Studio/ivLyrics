@@ -44,9 +44,10 @@ export function createOverlayLyricsDelivery({
             const imageUrl = metadata?.image_xlarge_url || metadata?.image_url || metadata?.image_large_url;
             albumArt = resolveSpotifyImageUrl(imageUrl);
         } catch {}
+        const trimMetadata = sender.USES_DISPLAY_METADATA && sender.trimMetadata;
         return {
-            title: sender.formatMetadataText(translated?.title || originalTitle),
-            artist: sender.formatMetadataText(translated?.artist || originalArtist),
+            title: sender.formatMetadataText(translated?.title || originalTitle, trimMetadata),
+            artist: sender.formatMetadataText(translated?.artist || originalArtist, trimMetadata),
             album: metadata?.album_title || '',
             albumArt,
             duration: (isDjNarration ? trackInfo.duration : player.getDuration()) || 0,

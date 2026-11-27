@@ -193,6 +193,30 @@ test('formatter produces exactly the existing fullscreen result including empty-
 	h.dispose();
 });
 
+test('progress reads the trim setting once per packet and observes direct storage edits', () => {
+	const h = load({ persisted: true, initialValues: [[trimKey, 'true']] });
+	const persistence = h.window.ivLyricsStoragePersistence;
+	const getItem = persistence.getItem;
+	let reads = 0;
+	persistence.getItem = key => {
+		if (key === trimKey) reads++;
+		return getItem(key);
+	};
+	const trimmed = h.overlay.buildProgressPayload().payload;
+	assert.equal(reads, 1);
+	assert.deepEqual([trimmed.currentTrack.title, trimmed.currentTrack.artist, trimmed.nextTrack.title, trimmed.nextTrack.artist],
+		['Song', 'Artist', 'Next', 'Next Artist']);
+	h.values.set(trimKey, 'false');
+	const original = h.overlay.buildProgressPayload().payload;
+	assert.equal(reads, 2);
+	assert.deepEqual([original.currentTrack.title, original.currentTrack.artist, original.nextTrack.title, original.nextTrack.artist],
+		[track().title, track().artist, h.queueMetadata.title, h.queueMetadata.artist_name]);
+	const helper = h.helper.buildProgressPayload().payload;
+	assert.equal(reads, 2);
+	assert.equal(helper.nextTrack.title, h.queueMetadata.title);
+	h.dispose();
+});
+
 test('toggle immediately resends current lyrics and toggling off restores frozen source metadata', async () => {
 	const h = load(), originalTrack = freeze(track()), originalLyrics = freeze(lyrics());
 	const before = clone({ originalTrack, originalLyrics });

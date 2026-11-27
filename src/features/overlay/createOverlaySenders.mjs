@@ -10,6 +10,15 @@ export function createOverlaySenders({
     resolveSpotifyImageUrl, scheduleSenderBootstrap, isPresentationCurrent, debug, lyricPresentation, mapLyricsForSender,
 }) {
     const readPersistence = () => readSettingsPersistence(host);
+    const readSetting = key => {
+        const persistence = readPersistence();
+        return persistence ? persistence.getItem(key) : getSpicetify().LocalStorage.get(key);
+    };
+    const writeSetting = (key, value) => {
+        const persistence = readPersistence();
+        if (persistence) persistence.setItem(key, value);
+        else getSpicetify().LocalStorage.set(key, value);
+    };
 
     // The overlay can receive lyrics from several programs at once. Naming this
     // sender lets it keep another program's lyrics while Spotify is paused.
@@ -115,20 +124,14 @@ export function createOverlaySenders({
 
         // 포트 설정 (localStorage에 저장)
         get port() {
-            const savedPort = readPersistence()
-                ? readPersistence().getItem('ivLyrics:overlay-port')
-                : getSpicetify().LocalStorage.get('ivLyrics:overlay-port');
+            const savedPort = readSetting('ivLyrics:overlay-port');
             return savedPort ? parseInt(savedPort, 10) : this.DEFAULT_PORT;
         },
         set port(value) {
             const portNum = parseInt(value, 10);
             if (portNum >= 1024 && portNum <= 65535) {
                 const previousPort = this.port;
-                if (readPersistence()) {
-                    readPersistence().setItem('ivLyrics:overlay-port', portNum.toString());
-                } else {
-                    getSpicetify().LocalStorage.set('ivLyrics:overlay-port', portNum.toString());
-                }
+                writeSetting('ivLyrics:overlay-port', portNum.toString());
                 if (portNum === previousPort) return;
                 ++this._runtimeGeneration;
                 ++this._deliveryGeneration;
@@ -143,39 +146,25 @@ export function createOverlaySenders({
 
         // 설정 (localStorage에 저장)
         get enabled() {
-            const stored = readPersistence()
-                ? readPersistence().getItem('ivLyrics:overlay-enabled')
-                : getSpicetify().LocalStorage.get('ivLyrics:overlay-enabled');
-            return stored !== 'false';
+            return readSetting('ivLyrics:overlay-enabled') !== 'false';
         },
         set enabled(value) {
-            if (readPersistence()) {
-                readPersistence().setItem('ivLyrics:overlay-enabled', value ? 'true' : 'false');
-            } else {
-                getSpicetify().LocalStorage.set('ivLyrics:overlay-enabled', value ? 'true' : 'false');
-            }
+            writeSetting('ivLyrics:overlay-enabled', value ? 'true' : 'false');
             this.syncRuntimeState();
         },
 
         get trimMetadata() {
-            const stored = readPersistence()
-                ? readPersistence().getItem('ivLyrics:overlay-trim-metadata')
-                : getSpicetify().LocalStorage.get('ivLyrics:overlay-trim-metadata');
-            return stored === 'true';
+            return readSetting('ivLyrics:overlay-trim-metadata') === 'true';
         },
         set trimMetadata(value) {
             const nextValue = !!value;
             if (nextValue === this.trimMetadata) return;
-            if (readPersistence()) {
-                readPersistence().setItem('ivLyrics:overlay-trim-metadata', String(nextValue));
-            } else {
-                getSpicetify().LocalStorage.set('ivLyrics:overlay-trim-metadata', String(nextValue));
-            }
+            writeSetting('ivLyrics:overlay-trim-metadata', String(nextValue));
             this.refreshMetadata();
         },
 
-        formatMetadataText(text) {
-            return this.USES_DISPLAY_METADATA && this.trimMetadata ? trimTrackMetadataLabel(text) : text;
+        formatMetadataText(text, trim = this.USES_DISPLAY_METADATA && this.trimMetadata) {
+            return trim ? trimTrackMetadataLabel(text) : text;
         },
 
         async refreshMetadata() {
@@ -308,17 +297,10 @@ export function createOverlaySenders({
         },
         enabled: {
             get() {
-                const stored = readPersistence()
-                    ? readPersistence().getItem('ivLyrics:visual:lyrics-helper-enabled')
-                    : getSpicetify().LocalStorage.get('ivLyrics:visual:lyrics-helper-enabled');
-                return stored !== 'false';
+                return readSetting('ivLyrics:visual:lyrics-helper-enabled') !== 'false';
             },
             set(value) {
-                if (readPersistence()) {
-                    readPersistence().setItem('ivLyrics:visual:lyrics-helper-enabled', value ? 'true' : 'false');
-                } else {
-                    getSpicetify().LocalStorage.set('ivLyrics:visual:lyrics-helper-enabled', value ? 'true' : 'false');
-                }
+                writeSetting('ivLyrics:visual:lyrics-helper-enabled', value ? 'true' : 'false');
                 this.syncRuntimeState();
             }
         },

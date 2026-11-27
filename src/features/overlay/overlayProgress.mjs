@@ -163,6 +163,10 @@ export function createOverlayProgress({ host, playback, getSpicetify, getOverlay
             );
 
             // Keep offering track details until the receiver accepts them.
+            // Read the trim preference once for the whole synchronous payload.
+            let trimMetadata;
+            const formatMetadata = text => this.formatMetadataText(text,
+                trimMetadata ??= this.USES_DISPLAY_METADATA && this.trimMetadata);
             let currentTrack = null;
             const title = currentItem?.metadata?.title || currentItem?.name;
             if (currentUri && currentItem?.uri === currentUri && title && this._lastProgressUri !== currentUri) {
@@ -171,8 +175,8 @@ export function createOverlayProgress({ host, playback, getSpicetify, getOverlay
                         || currentItem?.metadata?.image_url
                         || currentItem?.metadata?.image_large_url;
                     currentTrack = {
-                        title: this.formatMetadataText(title),
-                        artist: this.formatMetadataText(currentItem?.metadata?.artist_name || ''),
+                        title: formatMetadata(title),
+                        artist: formatMetadata(currentItem?.metadata?.artist_name || ''),
                         album: currentItem?.metadata?.album_title || '',
                         albumArt: resolveSpotifyImageUrl(imageUrl)
                     };
@@ -185,8 +189,8 @@ export function createOverlayProgress({ host, playback, getSpicetify, getOverlay
                 const metadata = next?.contextTrack?.metadata;
                 if (metadata) {
                     nextTrack = {
-                        title: this.formatMetadataText(metadata.title || ''),
-                        artist: this.formatMetadataText(metadata.artist_name || ''),
+                        title: formatMetadata(metadata.title || ''),
+                        artist: formatMetadata(metadata.artist_name || ''),
                         albumArt: resolveSpotifyImageUrl(metadata.image_url || metadata.image_xlarge_url)
                     };
                 }
