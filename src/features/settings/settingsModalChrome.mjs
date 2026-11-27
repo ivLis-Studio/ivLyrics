@@ -1,18 +1,71 @@
+import { useSettingsSearchState } from "./useSettingsModalSearch.mjs";
+
+// The search box in the header. It subscribes to the search state itself, so
+// a key press or a pointer move over the results re-renders only this box.
+// Create it once per settings page: a new component type would remount it.
+export function createSettingsSearchField(react) {
+  return function SettingsSearchField({ search, translate, SettingsUiIcon }) {
+    const { searchBoxRef, searchInputRef, searchState,
+      handleSearchChange, setSearchPanelOpen, handleSearchKeyDown, handleClearSearch, renderSearchPanel } = search;
+    const { query: searchQuery, panelOpen: searchPanelOpen } = useSettingsSearchState(react, searchState);
+    const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || "");
+    const searchLabel = translate("search.placeholder");
+    const searchExpanded = Boolean(searchQuery.trim() && searchPanelOpen);
+
+    return react.createElement(
+      "div",
+      {
+        className: `settings-search settings-search-wrapper${searchQuery ? " has-query" : ""}`,
+        role: "search",
+        ref: searchBoxRef,
+      },
+      react.createElement(SettingsUiIcon, { name: "search", size: 16, className: "settings-search-icon" }),
+      react.createElement("input", {
+        ref: searchInputRef,
+        type: "search",
+        className: "settings-search-input",
+        placeholder: searchLabel,
+        "aria-label": searchLabel,
+        "aria-expanded": searchExpanded,
+        autoComplete: "off",
+        spellCheck: false,
+        value: searchQuery,
+        onChange: handleSearchChange,
+        onFocus: () => setSearchPanelOpen(true),
+        onKeyDown: handleSearchKeyDown,
+      }),
+      searchQuery && react.createElement(
+        "button",
+        {
+          className: "settings-search-clear",
+          type: "button",
+          onClick: () => {
+            handleClearSearch();
+            searchInputRef.current?.focus();
+          },
+          title: translate("search.clear"),
+          "aria-label": translate("search.clear"),
+        },
+        react.createElement(SettingsUiIcon, { name: "close", size: 14 })
+      ),
+      react.createElement("kbd", { className: "settings-kbd", "aria-hidden": "true" }, isMac ? "⌘K" : "Ctrl K"),
+      renderSearchPanel()
+    );
+  };
+}
+
 export function createSettingsModalChrome(react, {
   appName, translate, getSettingsText, readVersions, components, menus, navigation,
   search, uiTheme, setUiTheme, changedCounts, changedViewTitle, settingsRegistry, onRequestClose,
 }) {
   const { SettingsWordmark, SettingsCrumbs, SettingsUiIcon, SettingsOutlineIcon,
-    SettingsSegmented, SettingsToc, handleSettingsRadioKeys } = components;
+    SettingsSegmented, SettingsToc, SettingsSearchField, handleSettingsRadioKeys } = components;
   const { activeTabMeta, sidebarTabs, sidebarGroups, fullscreenViews } = menus;
   const { activeTab, changedView, fullscreenView, settingsContentRef, pageHeadRef,
     activeSections, activeSectionSignal, pageWheelRef,
     toggleChangedView, openMenu, selectFullscreenView, selectSection } = navigation;
-  const { searchQuery, searchPanelOpen, searchBoxRef, searchInputRef,
-    handleSearchChange, setSearchPanelOpen, handleSearchKeyDown, handleClearSearch, renderSearchPanel } = search;
 
   const renderHeaderSection = () => {
-    const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || "");
     const themeOptions = [
       {
         id: "light",
@@ -28,8 +81,6 @@ export function createSettingsModalChrome(react, {
       },
     ];
     const themeIndex = Math.max(0, themeOptions.findIndex((option) => option.id === uiTheme));
-    const searchLabel = translate("search.placeholder");
-    const searchExpanded = Boolean(searchQuery.trim() && searchPanelOpen);
 
     return react.createElement(
       "header",
@@ -44,45 +95,7 @@ export function createSettingsModalChrome(react, {
           signal: activeSectionSignal,
         })
       ),
-      react.createElement(
-        "div",
-        {
-          className: `settings-search settings-search-wrapper${searchQuery ? " has-query" : ""}`,
-          role: "search",
-          ref: searchBoxRef,
-        },
-        react.createElement(SettingsUiIcon, { name: "search", size: 16, className: "settings-search-icon" }),
-        react.createElement("input", {
-          ref: searchInputRef,
-          type: "search",
-          className: "settings-search-input",
-          placeholder: searchLabel,
-          "aria-label": searchLabel,
-          "aria-expanded": searchExpanded,
-          autoComplete: "off",
-          spellCheck: false,
-          value: searchQuery,
-          onChange: handleSearchChange,
-          onFocus: () => setSearchPanelOpen(true),
-          onKeyDown: handleSearchKeyDown,
-        }),
-        searchQuery && react.createElement(
-          "button",
-          {
-            className: "settings-search-clear",
-            type: "button",
-            onClick: () => {
-              handleClearSearch();
-              searchInputRef.current?.focus();
-            },
-            title: translate("search.clear"),
-            "aria-label": translate("search.clear"),
-          },
-          react.createElement(SettingsUiIcon, { name: "close", size: 14 })
-        ),
-        react.createElement("kbd", { className: "settings-kbd", "aria-hidden": "true" }, isMac ? "⌘K" : "Ctrl K"),
-        renderSearchPanel()
-      ),
+      react.createElement(SettingsSearchField, { search, translate, SettingsUiIcon }),
       react.createElement(
         "div",
         { className: "settings-topbar-tools" },

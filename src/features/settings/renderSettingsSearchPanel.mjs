@@ -1,8 +1,10 @@
 import { SETTINGS_SEARCH_RESULT_LIMIT } from "./settingsSearchRanking.mjs";
 
-// 텍스트 하이라이트 헬퍼 함수
-function highlightText(react, text, query) {
-  if (!query.trim() || !text) return text;
+// 텍스트 하이라이트 헬퍼 함수. The query's pattern is built once per panel
+// render and shared by every result name and description.
+function createSearchHighlighter(react, query) {
+  const unchanged = (text) => text;
+  if (!query.trim()) return unchanged;
 
   const tokens = [...new Set(
     query
@@ -11,7 +13,7 @@ function highlightText(react, text, query) {
       .split(/\s+/)
       .filter(Boolean)
   )].sort((a, b) => b.length - a.length);
-  if (tokens.length === 0) return text;
+  if (tokens.length === 0) return unchanged;
 
   const escapedTokens = tokens.map((token) =>
     token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -19,7 +21,7 @@ function highlightText(react, text, query) {
   const tokenPattern = new RegExp(`(${escapedTokens.join("|")})`, "giu");
   const normalizedTokens = new Set(tokens.map((token) => token.toLocaleLowerCase()));
 
-  return react.createElement(
+  return (text) => text ? react.createElement(
     react.Fragment,
     null,
     ...String(text).split(tokenPattern).map((part, index) =>
@@ -27,7 +29,7 @@ function highlightText(react, text, query) {
         ? react.createElement("mark", { key: index, className: "search-highlight" }, part)
         : part
     )
-  );
+  ) : text;
 }
 
 export function renderSettingsSearchPanel(react, {
@@ -106,6 +108,7 @@ export function renderSettingsSearchPanel(react, {
     }
     groupByKey.get(groupKey).items.push({ result, index });
   });
+  const highlight = createSearchHighlighter(react, searchQuery);
 
   return react.createElement(
     "div",
@@ -147,9 +150,9 @@ export function renderSettingsSearchPanel(react, {
               react.createElement(
                 "span",
                 { className: "settings-search-result-main" },
-                react.createElement("b", null, highlightText(react, result.name, searchQuery)),
+                react.createElement("b", null, highlight(result.name)),
                 context
-                  ? react.createElement("small", null, highlightText(react, context, searchQuery))
+                  ? react.createElement("small", null, highlight(context))
                   : null
               )
             );

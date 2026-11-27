@@ -46,7 +46,7 @@ import { createSettingsEventChannel, createVisualSettingsActions } from '#ivlyri
 import { collectSettingsRegistry, indexSettingsSearch } from '#ivlyrics/features/settings/settingsRegistry.mjs';
 import { useSettingsTabNavigation } from "#ivlyrics/features/settings/useSettingsTabNavigation.mjs";
 import { createSettingsMenuMetadata } from "#ivlyrics/features/settings/settingsMenuMetadata.mjs";
-import { createSettingsModalChrome } from "#ivlyrics/features/settings/settingsModalChrome.mjs";
+import { createSettingsModalChrome, createSettingsSearchField } from "#ivlyrics/features/settings/settingsModalChrome.mjs";
 import { createChangedSettingsView, useChangedSettingsCounts } from "#ivlyrics/features/settings/settingsChangedView.mjs";
 import { createSettingsFullscreenPreview } from "#ivlyrics/features/settings/createSettingsFullscreenPreview.mjs";
 import { readSettingFlag, readSettingNumber } from "#ivlyrics/features/settings/settingsPreviewValues.mjs";
@@ -573,6 +573,7 @@ export function createSettingsPage({
     getComputedStyle: (element) => getComputedStyle(element),
     observeResize: (callback) => typeof ResizeObserver === "function" ? new ResizeObserver(callback) : null,
   });
+  const SettingsSearchField = createSettingsSearchField(react);
 
   const getSettingsPreviewNumber = (key, fallback) => readSettingNumber(CONFIG.visual, key, fallback);
   const getSettingsPreviewFlag = (key, fallback) => readSettingFlag(CONFIG.visual, key, fallback);
@@ -816,7 +817,7 @@ export function createSettingsPage({
         appVersion: Utils.currentVersion,
       }),
       components: { SettingsWordmark, SettingsCrumbs, SettingsUiIcon, SettingsOutlineIcon,
-        SettingsSegmented, SettingsToc, handleSettingsRadioKeys },
+        SettingsSegmented, SettingsToc, SettingsSearchField, handleSettingsRadioKeys },
       menus, navigation,
       search,
       uiTheme, setUiTheme, changedCounts, changedViewTitle, settingsRegistry, onRequestClose,

@@ -31,7 +31,7 @@ import { createSettingsUpdateButton } from "../../src/features/settings/settings
 import { createChangedSettingsView, useChangedSettingsCounts } from "../../src/features/settings/settingsChangedView.mjs";
 import { useSettingsTabNavigation } from "../../src/features/settings/useSettingsTabNavigation.mjs";
 import { createSettingsMenuMetadata } from "../../src/features/settings/settingsMenuMetadata.mjs";
-import { createSettingsModalChrome } from "../../src/features/settings/settingsModalChrome.mjs";
+import { createSettingsModalChrome, createSettingsSearchField } from "../../src/features/settings/settingsModalChrome.mjs";
 import { createSettingsTabContent } from "../../src/features/settings/settingsTabContent.mjs";
 import { buildSettingsSearchCatalog } from "../../src/features/settings/settingsSearchCatalog.mjs";
 import { useSettingsSearchIndex } from "../../src/features/settings/settingsSearchIndex.mjs";
@@ -101,6 +101,7 @@ export const settingsTabModules = {
   useSettingsTabNavigation,
   createSettingsMenuMetadata,
   createSettingsModalChrome,
+  createSettingsSearchField,
   createSettingsTabContent,
   createChangedSettingsView,
   useChangedSettingsCounts,

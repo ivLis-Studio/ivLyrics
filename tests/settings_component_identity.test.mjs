@@ -88,6 +88,7 @@ const createHarness = () => {
   vm.runInContext(`${section("const getEffectiveReducedMotionPreference =", "function openConfig(")}
     globalThis.components = { ConfigModal, AddonSettingsCard, LyricsProviderCard };`, context);
   return {
+    slots,
     render(name, props = {}) {
       cursor = 0;
       return context.components[name](props);
@@ -120,14 +121,31 @@ test("settings navigation updates retain header, sidebar, and section component 
   assertStableTypes(first, harness.render("ConfigModal"));
 });
 
+// The header's search box is its own component. Render it after the modal,
+// as React would, continuing the same hook order.
+const renderSearchField = (tree) => {
+  const field = elements(tree).find((element) => element.props.search && element.props.translate);
+  assert.ok(field, "the header renders the search field component");
+  return field.type(field.props);
+};
+
 test("search renders retain their element types between parent updates", () => {
   const harness = createHarness();
   const initial = harness.render("ConfigModal");
-  elements(initial).find((element) => element.props.className === "settings-search-input")
+  const field = renderSearchField(initial);
+  const modalState = harness.slots.slice();
+  elements(field).find((element) => element.props.className === "settings-search-input")
     .props.onChange({ target: { value: "unmatched query" } });
+  // Typing changes only the search field's own state; the window around it,
+  // its menu and the changed view are not scheduled to render again.
+  assert.equal(harness.slots.length, modalState.length);
+  harness.slots.forEach((slot, index) => assert.ok(Object.is(slot, modalState[index]), `hook ${index} changed`));
   const first = harness.render("ConfigModal");
-  assert.ok(elements(first).some((element) => element.props.className === "search-no-results"));
-  assertStableTypes(first, harness.render("ConfigModal"));
+  const firstField = renderSearchField(first);
+  assert.ok(elements(firstField).some((element) => element.props.className === "search-no-results"));
+  const second = harness.render("ConfigModal");
+  assertStableTypes(first, second);
+  assertStableTypes(firstField, renderSearchField(second));
 });
 
 for (const [component, prop] of [["AddonSettingsCard", "addon"], ["LyricsProviderCard", "provider"]]) {
