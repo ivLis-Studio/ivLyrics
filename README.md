@@ -10,7 +10,7 @@ Spotify PC에서 가사를 읽고, 발음을 따라 부르고, 뜻까지 함께 
 
 [설치하기](#시작하기) · [최신 버전](https://github.com/ivLis-Studio/ivLyrics/releases/latest) · [도움받기](https://discord.gg/2fu36fUzdE)
 
-![ivLyrics 가사 화면](https://github.com/user-attachments/assets/0596a769-76aa-49c5-970c-85897fe8d260)
+https://github.com/user-attachments/assets/f9df4882-6b9f-400c-99b6-976d59e2e4ed
 
 ## 이런 때 사용해 보세요
 
@@ -178,34 +178,14 @@ NVIDIA NIM은 기본 URL `https://integrate.api.nvidia.com/v1`과 채팅용 모�
 
 ## 함께 만드는 ivLyrics
 
-[후원하기](https://buymeacoffee.com/ivlis) · [원본 Lyrics-Plus 프로젝트](https://github.com/spicetify/cli/tree/main/CustomApps/lyrics-plus) · [라이선스](LICENSE)
+ivLyrics는 비영리 개인이 개발하고 유지보수하는 오픈소스 프로젝트입니다. 보내주신 후원은 개발과 서버 운영에 사용됩니다.
 
-[<img width="400" height="200" alt="ivLis Studio 후원" src="https://github.com/user-attachments/assets/130c5bf8-f8c3-493b-bbdb-b748e77babcd" />](https://buymeacoffee.com/ivlis)
+<a href="https://buymeacoffee.com/ivlis"><img height="68" alt="Buy Me a Coffee로 ivLyrics 후원하기" src="https://github.com/user-attachments/assets/4ec2389a-7801-4a10-94a6-00d9fe1498f3" /></a>
+<a href="https://fairy.hada.io/@ivlyrics"><img height="68" alt="Fairy로 ivLyrics 후원하기" src="https://github.com/user-attachments/assets/c5f45939-9ad4-4874-aef4-1d24bad12343" /></a>
 
-<details>
-<summary>비공식 프로젝트·저작권·이용 안내</summary>
+Fairy는 국내 사용자만 이용할 수 있는 후원 플랫폼입니다. 해외에서는 Buy Me a Coffee를 이용해 주세요.
 
-> [!IMPORTANT]
-> ⚠️ 면책 조항 (Disclaimer)
->
-> **비공식 프로젝트 안내**
->
-> 본 프로젝트와 기여자는 Spotify, 또는 그 계열사 및 자회사와 어떠한 제휴, 권한 부여, 승인 또는 공식적인 연결 관계도 없음을 밝힙니다. **본 프로젝트는 데스크톱 경험 제공을 목적으로 자원봉사 팀이 개발한 독립적이고 비영리적인 비공식 확장 프로그램입니다.**
->
-> **상표권 안내**
->
-> "Spotify"라는 명칭을 포함하여 관련 명칭, 마크, 엠블럼 및 이미지는 해당 소유자의 등록 상표입니다. 이러한 상표의 사용은 식별 및 참조 목적으로만 사용되며, 상표권자와의 어떠한 연관성도 시사하지 않습니다. 본 프로젝트는 해당 상표권을 침해하거나 상표권자에게 피해를 줄 의도가 없음을 명시합니다.
->
-> **책임의 한계**
->
-> 본 애플리케이션(확장 프로그램)은 "있는 그대로(AS IS)" 제공되며, 사용 시 발생하는 위험은 전적으로 사용자의 책임입니다. 개발자 또는 기여자는 본 소프트웨어의 사용 또는 기타 거래와 관련하여 발생하는 청구, 손해 또는 법적 결과를 포함한 어떠한 책임도 지지 않습니다. 본 소프트웨어 사용으로 인한 모든 결과에 대한 책임은 전적으로 사용자에게 있습니다.
->
-> **저작권 및 약관 준수**
->
-> 본 프로젝트는 가사, 번역문, 영상 또는 기타 제3자 콘텐츠의 소유권을 주장하지 않으며, 해당 콘텐츠에 대한 라이선스를 부여하지도 않습니다. 사용자는 관련 저작권법, 플랫폼 정책, API 이용약관 및 현지 법령을 직접 확인하고 준수할 책임이 있으며, 본 프로젝트를 이용한 저장, 복제, 배포, 송신 또는 상업적 이용에 대한 책임은 전적으로 사용자에게 있습니다.
->
-
-</details>
+[원본 Lyrics-Plus 프로젝트](https://github.com/spicetify/cli/tree/main/CustomApps/lyrics-plus) · [라이선스](LICENSE)
 
 ## ivLyrics의 데이터 저장과 처리
 
@@ -319,3 +299,25 @@ SOFTWARE.
 </details>
 
 </details>
+
+## 비공식 프로젝트·저작권·이용 안내
+
+> [!IMPORTANT]
+> ⚠️ 면책 조항 (Disclaimer)
+>
+> **비공식 프로젝트 안내**
+>
+> 본 프로젝트와 기여자는 Spotify, 또는 그 계열사 및 자회사와 어떠한 제휴, 권한 부여, 승인 또는 공식적인 연결 관계도 없음을 밝힙니다. **본 프로젝트는 데스크톱 경험 제공을 목적으로 자원봉사 팀이 개발한 독립적이고 비영리적인 비공식 확장 프로그램입니다.**
+>
+> **상표권 안내**
+>
+> "Spotify"라는 명칭을 포함하여 관련 명칭, 마크, 엠블럼 및 이미지는 해당 소유자의 등록 상표입니다. 이러한 상표의 사용은 식별 및 참조 목적으로만 사용되며, 상표권자와의 어떠한 연관성도 시사하지 않습니다. 본 프로젝트는 해당 상표권을 침해하거나 상표권자에게 피해를 줄 의도가 없음을 명시합니다.
+>
+> **책임의 한계**
+>
+> 본 애플리케이션(확장 프로그램)은 "있는 그대로(AS IS)" 제공되며, 사용 시 발생하는 위험은 전적으로 사용자의 책임입니다. 개발자 또는 기여자는 본 소프트웨어의 사용 또는 기타 거래와 관련하여 발생하는 청구, 손해 또는 법적 결과를 포함한 어떠한 책임도 지지 않습니다. 본 소프트웨어 사용으로 인한 모든 결과에 대한 책임은 전적으로 사용자에게 있습니다.
+>
+> **저작권 및 약관 준수**
+>
+> 본 프로젝트는 가사, 번역문, 영상 또는 기타 제3자 콘텐츠의 소유권을 주장하지 않으며, 해당 콘텐츠에 대한 라이선스를 부여하지도 않습니다. 사용자는 관련 저작권법, 플랫폼 정책, API 이용약관 및 현지 법령을 직접 확인하고 준수할 책임이 있으며, 본 프로젝트를 이용한 저장, 복제, 배포, 송신 또는 상업적 이용에 대한 책임은 전적으로 사용자에게 있습니다.
+>
