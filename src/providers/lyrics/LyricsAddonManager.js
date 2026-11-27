@@ -1,6 +1,7 @@
 import { createRuntimeDebugLogger } from "#ivlyrics/spicetify/runtimeDebug.mjs";
 import { readTrackIdentityService } from "../../core/trackIdentity.mjs";
-import { readSettingsPersistence, readSettingsStorage } from "../../core/settingsRuntime.mjs";
+import { readSettingsStorage } from "../../core/settingsRuntime.mjs";
+import { createAddonSettingsStorage } from "../addonSettingsStorage.mjs";
 import { getRuntimeService, publishRuntimeService } from "../../spicetify/runtimeServices.mjs";
 import { getMountedLyricsPage } from "../../spicetify/lyricsPageEffects.mjs";
 import { createLyricsAddonManager } from "./createLyricsAddonManager.mjs";
@@ -10,15 +11,10 @@ import { installLyricsAddonManager } from "./lyricsAddonRegistration.mjs";
 export default function initializeLyricsAddonManager() {
     const readService = (name) => getRuntimeService(name, window);
     const debug = createRuntimeDebugLogger(window);
+    const { getStoredValue, setStoredValue } = createAddonSettingsStorage(window);
     const manager = createLyricsAddonManager({
-        getStoredValue: (key) => {
-            const persistence = readSettingsPersistence(window);
-            return persistence ? persistence.getItem(key) : Spicetify.LocalStorage.get(key);
-        },
-        setStoredValue: (key, value) => {
-            const persistence = readSettingsPersistence(window);
-            return persistence ? persistence.setItem(key, value) : Spicetify.LocalStorage.set(key, value);
-        },
+        getStoredValue,
+        setStoredValue,
         readTrackItem: () => Spicetify.Player.data?.item,
         readTrackIdentity: () => readTrackIdentityService(window),
         readVisualSettings: () => readService("CONFIG")?.visual,

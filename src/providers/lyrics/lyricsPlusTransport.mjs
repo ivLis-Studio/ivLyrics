@@ -8,6 +8,8 @@ const API_PATH = '/v2/lyrics/get';
 const REQUEST_TIMEOUT_MS = 10000;
 const MIRROR_FALLBACK_DELAY_MS = 750;
 
+const abortedLookup = () => Object.assign(new Error('LyricsPlus lookup cancelled'), { name: 'AbortError' });
+
 export function decodeBase64Twice(value) {
     return globalThis.atob(globalThis.atob(String(value || '')));
 }
@@ -117,13 +119,15 @@ export function createLyricsPlusTransport({ readSyncDataService, readTrackId, de
         return body;
     }
 
-    async function fetchLyricsData(info) {
+    async function fetchLyricsData(info, signal) {
         const isrc = await resolveTrackIsrc(info);
         const title = normalizeMetadataText(info?.title || info?.name);
         const artist = normalizeMetadataText(info?.artist || info?.artists);
         if (!isrc && (!title || !artist)) {
             throw new Error('Missing ISRC or track metadata');
         }
+        // A retired lookup starts no mirror request.
+        if (signal?.aborted) throw abortedLookup();
 
         const apiAttempts = reserveApiAttemptOrder();
         return new Promise((resolve, reject) => {
@@ -138,6 +142,7 @@ export function createLyricsPlusTransport({ readSyncDataService, readTrackId, de
                 settled = true;
                 clearTimeout(deadlineTimer);
                 clearTimeout(fallbackTimer);
+                signal?.removeEventListener?.('abort', cancel);
                 for (const [mirrorIndex, controller] of activeRequests) {
                     if (mirrorIndex !== winnerIndex) controller?.abort();
                 }
@@ -145,6 +150,9 @@ export function createLyricsPlusTransport({ readSyncDataService, readTrackId, de
                 if (error) reject(error);
                 else resolve(value);
             };
+            // The manager retires the lookup on a track change: abort both
+            // mirrors instead of waiting out the shared budget.
+            const cancel = () => finish(null, abortedLookup());
 
             // One budget covers both mirrors, including response bodies. Settle
             // explicitly even if a fetch implementation does not honor abort.
@@ -153,6 +161,7 @@ export function createLyricsPlusTransport({ readSyncDataService, readTrackId, de
                 error.name = 'TimeoutError';
                 finish(null, error);
             }, REQUEST_TIMEOUT_MS);
+            signal?.addEventListener?.('abort', cancel, { once: true });
 
             const startNext = () => {
                 if (settled || nextAttempt >= apiAttempts.length) return;

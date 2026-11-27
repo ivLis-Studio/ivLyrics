@@ -18,6 +18,7 @@ import { readTrackIdentityService } from "../../core/trackIdentity.mjs";
  */
 
 import { getRuntimeService } from "../../spicetify/runtimeServices.mjs";
+import { createProviderText } from "../providerText.mjs";
 import { registerLyricsAddon } from "./lyricsAddonRegistration.mjs";
 
 import { normalizeDurationMs } from "./lyricsPlusInput.mjs";
@@ -38,12 +39,7 @@ export default function initializeLyricsPlusLyricsAddon() {
     const CACHE_VERSION = '2026-09-06-lyricsplus-11';
     const ATTRIBUTION = 'Lyrics from LyricsPlus.';
 
-    function lyricsText(key, fallback, params) {
-        const path = `settings.lyricsProviders.${key}`;
-        const value = getRuntimeService("I18n", window)?.t?.(path, params);
-        if (value && value !== path) return value;
-        return params ? String(fallback).replace(/\{(\w+)\}/g, (match, name) => params[name] ?? match) : fallback;
-    }
+    const lyricsText = createProviderText(() => getRuntimeService("I18n", window), 'settings.lyricsProviders.');
 
     const ADDON_INFO = {
         id: 'lyricsplus',
@@ -82,6 +78,9 @@ export default function initializeLyricsPlusLyricsAddon() {
             unsynced: true
         },
         supportsLocalTracks: true,
+        // getLyrics(info, { signal }) aborts both mirrors once the manager
+        // retires the lookup (track change, provider settings change).
+        supportsAbortSignal: true,
         icon: 'M9 3v10.55A4 4 0 1 0 11 17V7h6V3H9v10a4 4 0 1 0 2 3.45V7h4v6a4 4 0 1 0 2 3.45V3H9z'
     };
 
@@ -111,7 +110,7 @@ export default function initializeLyricsPlusLyricsAddon() {
             };
         },
 
-        async getLyrics(info) {
+        async getLyrics(info, { signal } = {}) {
             const result = {
                 uri: info?.uri || '',
                 provider: ADDON_INFO.id,
@@ -125,7 +124,7 @@ export default function initializeLyricsPlusLyricsAddon() {
             };
 
             try {
-                const fetched = await fetchLyricsData(info);
+                const fetched = await fetchLyricsData(info, signal);
                 if (!fetched) {
                     result.error = 'No lyrics';
                     return result;
@@ -172,7 +171,8 @@ export default function initializeLyricsPlusLyricsAddon() {
                 result.error = error?.name === 'AbortError' || error?.name === 'TimeoutError'
                     ? 'Request timed out'
                     : (error?.message || 'Request error');
-                console.warn('[LyricsPlus Lyrics Addon] Failed to load lyrics:', error);
+                // A retired lookup is expected and its result is discarded.
+                if (!signal?.aborted) console.warn('[LyricsPlus Lyrics Addon] Failed to load lyrics:', error);
                 return result;
             }
         }

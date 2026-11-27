@@ -31,6 +31,7 @@ import { readTrackIdentityService } from "../../core/trackIdentity.mjs";
  */
 
 import { getRuntimeService } from "../../spicetify/runtimeServices.mjs";
+import { createProviderText } from "../providerText.mjs";
 import { readLyricsAddonManager, registerLyricsAddon } from "./lyricsAddonRegistration.mjs";
 import { readLyricsTextParser } from "./lyricsParserRuntime.mjs";
 import { getMountedLyricsPage } from "../../spicetify/lyricsPageEffects.mjs";
@@ -53,12 +54,7 @@ export default function initializeLrcRedLyricsAddon() {
     const SYNC_TIMEOUT_MS = 75000;
     const CLIENT_ID = 'ivLyrics (+https://github.com/ivLis-Studio/ivLyrics; mailto:me@ivl.is)';
 
-    function lyricsText(key, fallback, params) {
-        const path = `settings.lyricsProviders.${key}`;
-        const value = getRuntimeService("I18n", window)?.t?.(path, params);
-        if (value && value !== path) return value;
-        return params ? String(fallback).replace(/\{(\w+)\}/g, (match, name) => params[name] ?? match) : fallback;
-    }
+    const lyricsText = createProviderText(() => getRuntimeService("I18n", window), 'settings.lyricsProviders.');
 
     const ADDON_INFO = {
         id: 'lrcred',
@@ -98,6 +94,9 @@ export default function initializeLrcRedLyricsAddon() {
             unsynced: true
         },
         supportsLocalTracks: true,
+        // getLyrics(info, { signal }) stops its lookup chain once the manager
+        // retires the request (track change, provider settings change).
+        supportsAbortSignal: true,
         defaultEnabled: true,
         icon: 'M2 11a9 9 0 1 0 9-9 9 9 0 0 0-9 9m-1 0h18V7H1zm12-4a1 1 0 1 1 2 0v5h1.586l-2.293-2.293a1 1 0 0 1 1.414-1.414l4 4a1 1 0 0 1 0 1.414l-4 4a1 1 0 0 1-1.414-1.414L11.586 13H11v-5z'
     };
@@ -106,9 +105,14 @@ export default function initializeLrcRedLyricsAddon() {
     // Helpers
     // ================================================================================
 
-    const fetchWithTimeout = async (url, init = {}, timeoutMs = REQUEST_TIMEOUT_MS, read = response => response) => {
+    const fetchWithTimeout = async (url, { signal, ...init } = {}, timeoutMs = REQUEST_TIMEOUT_MS, read = response => response) => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        // A retired lookup aborts the request in flight, and every later
+        // request of the same lookup fails before it reaches the network.
+        const abort = () => controller.abort();
+        if (signal?.aborted) abort();
+        else signal?.addEventListener?.('abort', abort, { once: true });
         try {
             const response = await fetch(url, {
                 ...init,
@@ -124,6 +128,7 @@ export default function initializeLrcRedLyricsAddon() {
             return await read(response);
         } finally {
             clearTimeout(timeoutId);
+            signal?.removeEventListener?.('abort', abort);
         }
     };
 
@@ -256,31 +261,31 @@ export default function initializeLrcRedLyricsAddon() {
     // lrc.red API
     // ================================================================================
 
-    const searchTracks = async (query) => {
+    const searchTracks = async (query, signal) => {
         const url = `https://lrc.red/search.json?q=${encodeURIComponent(query)}`;
-        const response = await fetchWithTimeout(url);
+        const response = await fetchWithTimeout(url, { signal });
         if (!response.ok) throw new Error(`Search failed (${response.status})`);
         return response.json();
     };
 
-    const getTrackByIsrc = async (isrc) => {
+    const getTrackByIsrc = async (isrc, signal) => {
         const url = `https://lrc.red/s/${encodeURIComponent(isrc)}.json`;
-        const response = await fetchWithTimeout(url);
+        const response = await fetchWithTimeout(url, { signal });
         if (!response.ok) throw new Error(`Track lookup failed (${response.status})`);
         return response.json();
     };
 
-    const getTtmlLyrics = async (isrc, fresh = false) => {
+    const getTtmlLyrics = async (isrc, fresh = false, signal) => {
         const url = `https://lrc.red/s/${encodeURIComponent(isrc)}.ttml${fresh ? `?t=${Date.now()}` : ''}`;
-        return fetchWithTimeout(url, fresh ? { cache: 'no-store' } : {}, REQUEST_TIMEOUT_MS, async response => {
+        return fetchWithTimeout(url, fresh ? { cache: 'no-store', signal } : { signal }, REQUEST_TIMEOUT_MS, async response => {
             if (!response.ok) throw new Error(`TTML fetch failed (${response.status})`);
             return response.text();
         });
     };
 
-    const getLrcLyrics = async (isrc) => {
+    const getLrcLyrics = async (isrc, signal) => {
         const url = `https://lrc.red/s/${encodeURIComponent(isrc)}.lrc`;
-        const response = await fetchWithTimeout(url);
+        const response = await fetchWithTimeout(url, { signal });
         if (!response.ok) throw new Error(`LRC fetch failed (${response.status})`);
         return response.text();
     };
@@ -435,7 +440,7 @@ export default function initializeLrcRedLyricsAddon() {
             };
         },
 
-        async getLyrics(info) {
+        async getLyrics(info, { signal } = {}) {
             const result = {
                 uri: info?.uri || '',
                 provider: ADDON_INFO.id,
@@ -466,7 +471,7 @@ export default function initializeLrcRedLyricsAddon() {
                 const resolvedIsrc = await resolveTrackIsrc(info);
                 if (resolvedIsrc) {
                     try {
-                        const trackData = await getTrackByIsrc(resolvedIsrc);
+                        const trackData = await getTrackByIsrc(resolvedIsrc, signal);
                         if (trackData && (trackData.title || trackData.isrc)) {
                             bestHit = {
                                 isrc: trackData.isrc || resolvedIsrc,
@@ -487,7 +492,8 @@ export default function initializeLrcRedLyricsAddon() {
 
                 if (!bestHit) {
                     for (const query of buildSearchQueries(title, artist)) {
-                        const data = await searchTracks(query).catch(() => null);
+                        if (signal?.aborted) break;
+                        const data = await searchTracks(query, signal).catch(() => null);
                         for (const hit of Array.isArray(data?.hits) ? data.hits : []) {
                             const score = scoreSearchHit(hit, info, durationSeconds);
                             if (score !== null && score > bestScore) {
@@ -523,12 +529,12 @@ export default function initializeLrcRedLyricsAddon() {
 
                 let parsed;
                 try {
-                    parsed = normalizeParsedLyrics(parseTtmlLyrics(await getTtmlLyrics(isrc), durationSeconds * 1000));
+                    parsed = normalizeParsedLyrics(parseTtmlLyrics(await getTtmlLyrics(isrc, false, signal), durationSeconds * 1000));
                     if (!parsed.karaoke.length && !parsed.synced.length && !parsed.unsynced.length) throw new Error('Empty TTML');
                 } catch (ttmlError) {
                     writeRuntimeDebug(window, '[lrc.red Lyrics Addon] TTML failed, trying LRC', { isrc, error: ttmlError.message });
                     try {
-                        const lrc = await getLrcLyrics(isrc);
+                        const lrc = await getLrcLyrics(isrc, signal);
                         parsed = normalizeParsedLyrics(
                             parseLrcLyrics(stripEnhancedLrcTags(lrc), durationSeconds * 1000)
                         );

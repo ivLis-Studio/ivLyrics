@@ -16,6 +16,7 @@
 import { writeRuntimeDebug } from "#ivlyrics/spicetify/runtimeDebug.mjs";
 import { registerLyricsAddon } from "./lyricsAddonRegistration.mjs";
 import { getRuntimeService, publishRuntimeService } from "../../spicetify/runtimeServices.mjs";
+import { createProviderText } from "../providerText.mjs";
 import {
     parseTimeMs,
     parseTtmlLyrics,
@@ -31,12 +32,7 @@ export default function initializeUnisonLyricsAddon() {
     const CACHE_VERSION = '2026-09-06-unison-5';
     const ATTRIBUTION = 'Lyrics from Unison (https://unison.boidu.dev).';
 
-    function lyricsText(key, fallback, params) {
-        const path = `settings.lyricsProviders.${key}`;
-        const value = getRuntimeService("I18n", window)?.t?.(path, params);
-        if (value && value !== path) return value;
-        return params ? String(fallback).replace(/\{(\w+)\}/g, (match, name) => params[name] ?? match) : fallback;
-    }
+    const lyricsText = createProviderText(() => getRuntimeService("I18n", window), 'settings.lyricsProviders.');
 
     const REQUEST_TIMEOUT_MS = 10000;
 
@@ -78,6 +74,9 @@ export default function initializeUnisonLyricsAddon() {
             unsynced: true
         },
         supportsLocalTracks: true,
+        // getLyrics(info, { signal }) stops its request ladder once the
+        // manager retires the lookup (track change, provider settings change).
+        supportsAbortSignal: true,
         defaultEnabled: false,
         icon: 'M9 3v10.55A4 4 0 1 0 11 17V7h6V3H9zm-2 16a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8-6a2 2 0 1 1 0 4 2 2 0 0 1 0-4z'
     };
@@ -129,9 +128,12 @@ export default function initializeUnisonLyricsAddon() {
         return url;
     }
 
-    async function fetchJson(url) {
+    async function fetchJson(url, signal) {
         const controller = typeof AbortController === 'function' ? new AbortController() : null;
         const timer = controller ? setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS) : null;
+        const abort = () => controller?.abort();
+        if (signal?.aborted) abort();
+        else signal?.addEventListener?.('abort', abort, { once: true });
         try {
             const response = await fetch(url.toString(), {
                 headers: { Accept: 'application/json' },
@@ -141,10 +143,11 @@ export default function initializeUnisonLyricsAddon() {
             return { response, body };
         } finally {
             if (timer) clearTimeout(timer);
+            signal?.removeEventListener?.('abort', abort);
         }
     }
 
-    async function fetchLyricsData(info) {
+    async function fetchLyricsData(info, signal) {
         const album = String(info?.album || '').trim();
         const artistCandidates = getArtistCandidates(info?.artist);
         const includeAlbumOptions = album && album !== 'undefined' ? [true, false] : [false];
@@ -170,7 +173,7 @@ export default function initializeUnisonLyricsAddon() {
         ).values());
 
         for (const request of uniqueRequests) {
-            const { response, body } = await fetchJson(request.url);
+            const { response, body } = await fetchJson(request.url, signal);
             if (response.ok && body?.success !== false && body?.data?.lyrics) {
                 if (!request.exactMetadataRequired || isExactMetadataMatch(body.data, info)) {
                     return body.data;
@@ -218,7 +221,7 @@ export default function initializeUnisonLyricsAddon() {
             };
         },
 
-        async getLyrics(info) {
+        async getLyrics(info, { signal } = {}) {
             const result = {
                 uri: info?.uri || '',
                 provider: ADDON_INFO.id,
@@ -240,7 +243,7 @@ export default function initializeUnisonLyricsAddon() {
             }
 
             try {
-                const data = await fetchLyricsData(info);
+                const data = await fetchLyricsData(info, signal);
                 if (!data) {
                     result.error = 'No lyrics';
                     return result;
@@ -281,7 +284,8 @@ export default function initializeUnisonLyricsAddon() {
             } catch (error) {
                 const timedOut = error?.name === 'AbortError';
                 result.error = timedOut ? 'Request timed out' : (error?.message || 'Request error');
-                console.warn('[Unison Lyrics Addon] Failed to load lyrics:', error);
+                // A retired lookup is expected and its result is discarded.
+                if (!signal?.aborted) console.warn('[Unison Lyrics Addon] Failed to load lyrics:', error);
                 return result;
             }
         }

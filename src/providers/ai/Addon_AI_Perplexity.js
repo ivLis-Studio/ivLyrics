@@ -9,6 +9,7 @@
 import { isSupersededAbort, throwIfAiRequestAborted, waitForAiRetry } from "./aiRequestCancellation.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
+import { createAiAdvancedParamsSection, renderAiConnectionTestRow } from "./aiProviderSettings.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { createStreamingOutput } from "./aiStreamingOutput.mjs";
 import { consumeJsonSse, hasBufferedJsonBody } from "./aiEventStream.mjs";
@@ -473,6 +474,7 @@ export default function initializePerplexityAddon(services = createBuiltinAiProv
         getSettingsUI() {
             const React = getSpicetify().React;
             const { useState, useCallback } = React;
+            const AdvancedParamsSection = createAiAdvancedParamsSection({ React, getSetting, setSetting, aiText });
 
             return function PerplexitySettings() {
                 const initialApiKeys = getSetting('api-keys', '') || getSetting('api-key', '');
@@ -591,12 +593,7 @@ export default function initializePerplexityAddon(services = createBuiltinAiProv
                         ),
                         React.createElement('small', null, aiText('perplexityAgentModels', 'Models load automatically from the Perplexity Agent API with your key. Music research also searches the web.'))
                     );
-                const renderTestRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('button', { type: 'button', onClick: handleTest, className: 'ai-addon-btn ai-addon-btn-primary' }, aiText('testConnection', 'Test Connection')),
-                        testStatus && React.createElement('span', {
-                            className: `ai-addon-test-status ${testStatus.startsWith('✓') ? 'success' : testStatus.startsWith('✗') ? 'error' : ''}`
-                        }, testStatus)
-                    );
+                const renderTestRow = () => renderAiConnectionTestRow(React, { onTest: handleTest, testStatus, aiText });
 
                 return React.createElement('div', { className: 'ai-addon-settings perplexity-settings' },
                     renderApiKeyRow(),
@@ -605,49 +602,6 @@ export default function initializePerplexityAddon(services = createBuiltinAiProv
                     renderTestRow()
                 );
             };
-
-            function AdvancedParamsSection() {
-                const [expanded, setExpanded] = useState(getSetting('adv-expanded', false));
-                const [maxTokensEnabled, setMaxTokensEnabled] = useState(getSetting('adv-maxTokens-enabled', true));
-                const [maxTokensValue, setMaxTokensValue] = useState(getSetting('adv-maxTokens-value', 16000));
-                const [temperatureEnabled, setTemperatureEnabled] = useState(getSetting('adv-temperature-enabled', true));
-                const [temperatureValue, setTemperatureValue] = useState(getSetting('adv-temperature-value', 0.3));
-
-                const toggleExpanded = useCallback(() => {
-                    const next = !expanded;
-                    setExpanded(next);
-                    setSetting('adv-expanded', next);
-                }, [expanded]);
-
-                return React.createElement('div', { className: 'ai-addon-setting ai-addon-advanced-params' },
-                    React.createElement('button', {
-                        type: 'button',
-                        className: 'ai-addon-advanced-toggle',
-                        'aria-expanded': expanded,
-                        onClick: toggleExpanded
-                    },
-                        React.createElement('span', { className: 'ai-addon-advanced-chevron', 'aria-hidden': 'true' }, '▶'),
-                        aiText('advancedParams', 'Advanced API Parameters')
-                    ),
-                    expanded && React.createElement('div', { className: 'ai-addon-advanced-body' },
-                        React.createElement('div', { className: 'ai-addon-advanced-row' },
-                            React.createElement('label', { className: 'ai-addon-advanced-check' },
-                                React.createElement('input', { type: 'checkbox', checked: maxTokensEnabled, onChange: (e) => { setMaxTokensEnabled(e.target.checked); setSetting('adv-maxTokens-enabled', e.target.checked); } }),
-                                React.createElement('span', null, aiText('maxTokens', 'Max Tokens'))
-                            ),
-                            React.createElement('input', { type: 'number', value: maxTokensValue, disabled: !maxTokensEnabled, 'aria-label': aiText('maxTokens', 'Max Tokens'), onChange: (e) => { const v = parseInt(e.target.value) || 16000; setMaxTokensValue(v); setSetting('adv-maxTokens-value', v); } })
-                        ),
-                        React.createElement('div', { className: 'ai-addon-advanced-row' },
-                            React.createElement('label', { className: 'ai-addon-advanced-check' },
-                                React.createElement('input', { type: 'checkbox', checked: temperatureEnabled, onChange: (e) => { setTemperatureEnabled(e.target.checked); setSetting('adv-temperature-enabled', e.target.checked); } }),
-                                React.createElement('span', null, aiText('temperature', 'Temperature'))
-                            ),
-                            React.createElement('input', { type: 'number', value: temperatureValue, disabled: !temperatureEnabled, 'aria-label': aiText('temperature', 'Temperature'), step: '0.1', min: '0', max: '2', onChange: (e) => { const v = parseFloat(e.target.value) || 0.3; setTemperatureValue(v); setSetting('adv-temperature-value', v); } })
-                        ),
-                        React.createElement('small', null, aiText('advancedParamsDesc', 'Uncheck to exclude parameter from API request.'))
-                    )
-                );
-            }
         },
 
         async translateLyrics({ text, lang, wantSmartPhonetic, translationPrompt, phoneticPrompt, onLine, onStreamReset, signal }) {

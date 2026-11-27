@@ -9,6 +9,7 @@
 import { isSupersededAbort, throwIfAiRequestAborted, waitForAiRetry } from "./aiRequestCancellation.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
+import { renderAiConnectionTestRow } from "./aiProviderSettings.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { createStreamingOutput } from "./aiStreamingOutput.mjs";
 import { consumeSseFrames, hasBufferedJsonBody } from "./aiEventStream.mjs";
@@ -645,12 +646,7 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
                             }, modelsLoading ? '...' : '↻')
                         )
                     );
-                const renderTestRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('button', { type: 'button', onClick: handleTest, className: 'ai-addon-btn ai-addon-btn-primary' }, aiText('testConnection', 'Test Connection')),
-                        testStatus && React.createElement('span', {
-                            className: `ai-addon-test-status ${testStatus.startsWith('✓') ? 'success' : testStatus.startsWith('✗') ? 'error' : ''}`
-                        }, testStatus)
-                    );
+                const renderTestRow = () => renderAiConnectionTestRow(React, { onTest: handleTest, testStatus, aiText });
 
                 return React.createElement('div', { className: 'ai-addon-settings claude-settings' },
                     renderApiKeyRow(),

@@ -1,4 +1,5 @@
 import { readStoredProviderOrder } from "../storedProviderOrder.mjs";
+import { readStoredAddonSetting } from "../addonSettingsStorage.mjs";
 import { normalizeTranslationStyle } from "./aiTranslationPrompts.mjs";
 
 const STORAGE_PREFIX = 'ivLyrics:ai:';
@@ -89,19 +90,7 @@ export function createAiAddonPreferences({ getStoredValue, setStoredValue, getOw
      * @returns {*}
      */
     function getAddonSetting(addonId, key, defaultValue = null) {
-        const storageKey = `${STORAGE_PREFIX}addon:${addonId}:${key}`;
-        const value = getStoredValue(storageKey);
-
-        if (value === null || value === undefined) {
-            return defaultValue;
-        }
-
-        // JSON 파싱 시도
-        try {
-            return JSON.parse(value);
-        } catch {
-            return value;
-        }
+        return readStoredAddonSetting(getStoredValue, `${STORAGE_PREFIX}addon:${addonId}:${key}`, defaultValue);
     }
 
     /**

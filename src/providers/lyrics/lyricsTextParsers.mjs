@@ -279,9 +279,11 @@ function createVocalPart(id, role, parsedPart, speakerPresentation) {
 }
 
 export function groupParallelVocalLines(lines) {
-    // Each TTML paragraph is an authored lyric line. Only its explicit x-bg
-    // parts belong together; overlapping independent paragraphs stay separate
-    // so a late, longer vocal cannot replace an earlier line as the lead.
+    // Each source line (a TTML paragraph, a LyricsPlus row) is an authored
+    // lyric line. Only its explicit background parts belong together;
+    // overlapping independent lines stay separate so a late, longer vocal
+    // cannot replace an earlier line as the lead, and the renderer advances
+    // each line using its own ending timestamp.
     return [...(lines || [])].sort((left, right) => (
         left.startTime - right.startTime
         || (left.sourceIndex ?? 0) - (right.sourceIndex ?? 0)

@@ -4,6 +4,9 @@ import {
 } from "./lyricsPlusInput.mjs";
 import { getSpeakerPresentation } from "./lyricsPlusSpeakers.mjs";
 import { splitLongSoloVocalLines } from "./lyricsPlusSoloLineLayout.mjs";
+import { groupParallelVocalLines } from "./lyricsTextParsers.mjs";
+
+export { groupParallelVocalLines };
 
 const SYLLABLE_TIMING_TOLERANCE_MS = 1500;
 
@@ -60,16 +63,6 @@ function createVocalPart(id, role, syllables, presentation, textOverride = '') {
         startTime: Math.min(...starts),
         endTime: Math.max(...ends)
     };
-}
-
-export function groupParallelVocalLines(lines) {
-    // Timing overlap does not make separate source lines background vocals.
-    // Preserve the provider's line boundaries and explicit background parts;
-    // the renderer advances each line using its own ending timestamp.
-    return [...(lines || [])].sort((left, right) => (
-        left.startTime - right.startTime
-        || (left.sourceIndex ?? 0) - (right.sourceIndex ?? 0)
-    ));
 }
 
 export function parseLyricsPayload(payload, durationMs = 0) {

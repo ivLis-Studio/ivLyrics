@@ -13,6 +13,7 @@
 
 import { writeRuntimeDebug } from "#ivlyrics/spicetify/runtimeDebug.mjs";
 import { getRuntimeService } from "../../spicetify/runtimeServices.mjs";
+import { createProviderText } from "../providerText.mjs";
 import { registerLyricsAddon } from "./lyricsAddonRegistration.mjs";
 import { readLyricsTextParser } from "./lyricsParserRuntime.mjs";
 import { normalizeDurationMilliseconds, normalizeComparable, normalizeTitleCore, scoreCandidate, selectBestCandidate } from "./openLyricsTrackMatch.mjs";
@@ -47,12 +48,7 @@ export default function initializeOpenLyricsLyricsAddon() {
     const STRUCTURED_PROVIDER_ID = atob('a3Vnb3U=');
     const ATTRIBUTION = 'Lyrics via Open Lyrics.';
 
-    function lyricsText(key, fallback, params) {
-        const path = `settings.lyricsProviders.${key}`;
-        const value = getRuntimeService("I18n", window)?.t?.(path, params);
-        if (value && value !== path) return value;
-        return params ? String(fallback).replace(/\{(\w+)\}/g, (match, name) => params[name] ?? match) : fallback;
-    }
+    const lyricsText = createProviderText(() => getRuntimeService("I18n", window), 'settings.lyricsProviders.');
 
     const CACHE_VERSION = 'open-lyrics-v2';
     const REQUEST_TIMEOUT_MS = 25000;

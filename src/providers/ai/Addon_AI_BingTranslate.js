@@ -12,7 +12,7 @@
 
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
 import { createWebTranslationAddon, normalizeWebTranslationLanguage } from "./webTranslationAddon.mjs";
-import { createWebTranslationTransport } from "./webTranslationTransport.mjs";
+import { createWebTranslationTransport, unpackRuntimeString } from "./webTranslationTransport.mjs";
 
 export default function initializeBingTranslateAddon(services = createBuiltinAiProviderServices(window)) {
     const { host, debug, registerAiAddon } = services;
@@ -51,17 +51,6 @@ export default function initializeBingTranslateAddon(services = createBuiltinAiP
     // Keep service and proxy routes out of plain-text bundles. This is a small
     // salt-rotated, 16-bit packed representation instead of Base64. The routes
     // remain observable in DevTools while requests are running.
-    function unpackRuntimeString(seed, length, words) {
-        let value = '';
-        for (let index = 0; index < length; index++) {
-            const packed = words[index >> 1];
-            const masked = (packed >>> (index % 2 === 0 ? 8 : 0)) & 0xff;
-            const lane = (seed ^ Math.imul(index + 1, 0x5d) ^ (index << 1)) & 0xff;
-            value += String.fromCharCode(masked ^ lane);
-        }
-        return value;
-    }
-
     const BING_ORIGIN = unpackRuntimeString(0x6d, 20, [
         0x58a1, 0x0a6f, 0xc773, 0xc5a4, 0x4faa,
         0xf109, 0xae08, 0x6cc4, 0x4ea6, 0xc162

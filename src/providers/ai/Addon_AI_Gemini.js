@@ -8,6 +8,8 @@
 
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
+import { renderAiConnectionTestRow } from "./aiProviderSettings.mjs";
+import { createProviderText } from "../providerText.mjs";
 import { readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { extractJSON, parseTextLines } from "./aiResponseParsing.mjs";
 import {
@@ -80,12 +82,7 @@ export default function initializeGeminiAddon(services = createBuiltinAiProvider
     // Helper Functions
     // ============================================
 
-    function aiText(key, fallback, params) {
-        const path = `settings.aiProviders.${key}`;
-        const value = getI18n()?.t?.(path, params);
-        if (value && value !== path) return value;
-        return params ? String(fallback).replace(/\{(\w+)\}/g, (match, name) => params[name] ?? match) : fallback;
-    }
+    const aiText = createProviderText(getI18n, 'settings.aiProviders.');
 
     function getSetting(key, defaultValue = null) {
         return getManager()?.getAddonSetting(ADDON_INFO.id, key, defaultValue) ?? defaultValue;
@@ -276,12 +273,7 @@ export default function initializeGeminiAddon(services = createBuiltinAiProvider
                         ),
                         availableModels.length > 0 && React.createElement('small', null, aiText('modelsAvailable', '{count} models available', { count: availableModels.length }))
                     );
-                const renderTestRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('button', { type: 'button', onClick: handleTest, className: 'ai-addon-btn ai-addon-btn-primary' }, aiText('testConnection', 'Test Connection')),
-                        testStatus && React.createElement('span', {
-                            className: `ai-addon-test-status ${testStatus.startsWith('✓') ? 'success' : testStatus.startsWith('✗') ? 'error' : ''}`
-                        }, testStatus)
-                    );
+                const renderTestRow = () => renderAiConnectionTestRow(React, { onTest: handleTest, testStatus, aiText });
 
                 return React.createElement('div', { className: 'ai-addon-settings gemini-settings' },
                     renderApiKeyRow(),

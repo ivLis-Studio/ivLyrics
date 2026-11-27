@@ -9,7 +9,7 @@
 
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
 import { createWebTranslationAddon, normalizeWebTranslationLanguage } from "./webTranslationAddon.mjs";
-import { createWebTranslationTransport } from "./webTranslationTransport.mjs";
+import { createWebTranslationTransport, unpackRuntimeString } from "./webTranslationTransport.mjs";
 
 export default function initializeGoogleTranslateAddon(services = createBuiltinAiProviderServices(window)) {
     const { host, debug, registerAiAddon } = services;
@@ -48,17 +48,6 @@ export default function initializeGoogleTranslateAddon(services = createBuiltinA
     // Keep service routes out of plain-text bundles. This is intentionally a
     // tiny runtime unpacker rather than Base64; network destinations are still
     // observable in DevTools once a request is made.
-    function unpackRuntimeString(seed, length, words) {
-        let value = '';
-        for (let index = 0; index < length; index++) {
-            const packed = words[index >> 1];
-            const masked = (packed >>> (index % 2 === 0 ? 8 : 0)) & 0xff;
-            const lane = (seed ^ Math.imul(index + 1, 0x5d) ^ (index << 1)) & 0xff;
-            value += String.fromCharCode(masked ^ lane);
-        }
-        return value;
-    }
-
     const ENDPOINT = unpackRuntimeString(0x47, 51, [
         0x728b, 0x2045, 0xed59, 0xef8e, 0x6685, 0xcd63, 0x9527,
         0x49fd, 0x2fc1, 0xe34a, 0xa1f4, 0x5cb4, 0x0377, 0xd52e,

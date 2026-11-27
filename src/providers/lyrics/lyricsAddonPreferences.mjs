@@ -1,4 +1,5 @@
 import { readStoredProviderOrder } from "../storedProviderOrder.mjs";
+import { readStoredAddonSetting } from "../addonSettingsStorage.mjs";
 
 const STORAGE_PREFIX = 'ivLyrics:lyrics:';
 const PREFER_SYNC_DATA_PROVIDER_SETTING = 'prefer-sync-data-provider';
@@ -54,19 +55,7 @@ export function createLyricsAddonPreferences({ getStoredValue, setStoredValue, r
     }
 
     function getAddonSetting(addonId, key, defaultValue = null) {
-        const storageKey = `${STORAGE_PREFIX}addon:${addonId}:${key}`;
-        const value = getStoredValue(storageKey);
-
-        if (value === null || value === undefined) {
-            return defaultValue;
-        }
-
-        // JSON 파싱 시도
-        try {
-            return JSON.parse(value);
-        } catch {
-            return value;
-        }
+        return readStoredAddonSetting(getStoredValue, `${STORAGE_PREFIX}addon:${addonId}:${key}`, defaultValue);
     }
 
     return {

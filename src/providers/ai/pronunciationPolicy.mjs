@@ -1,5 +1,7 @@
 import { getProviderPromptLanguageInfo, PROVIDERS_WITHOUT_PHONETIC_DESCRIPTION } from './promptLanguages.mjs';
 import { isSupersededAbort, supersededAiRequest, waitForAiRetry } from './aiRequestCancellation.mjs';
+// The toolbar and the page store the notation with the same normalization.
+import { normalizeIvLyricsPronunciationNotation as normalizeLyricsPronunciationNotation } from '../../lyrics/translationPreferences.mjs';
 
     const NON_LATIN_PHONETIC_SCRIPT_RULES = Object.freeze({
         ko: {
@@ -96,13 +98,6 @@ import { isSupersededAbort, supersededAiRequest, waitForAiRetry } from './aiRequ
         return nonLatinRule
             ? { id: normalizedLang, ...nonLatinRule }
             : LATIN_PHONETIC_SCRIPT_RULE;
-    };
-
-    const normalizeLyricsPronunciationNotation = (value) => {
-        const normalized = String(value || '').trim().toLowerCase();
-        return normalized === 'latin' || normalized === 'ipa'
-            ? normalized
-            : 'translation';
     };
 
     const getLyricsPronunciationScriptRule = (lang, notation) => {

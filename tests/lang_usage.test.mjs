@@ -36,6 +36,7 @@ const PREFIXED_HELPERS = [
     ['providers/ai/localModelEngine.mjs', /\bt\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.localModel.'],
     ['providers/ai/localModelSettings.mjs', /\bt\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.localModel.'],
     ['providers/ai/openAiSettings.mjs', /\baiText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.'],
+    ['providers/ai/aiProviderSettings.mjs', /\baiText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.'],
     ['Addon_AI_Pollinations.js', /\baiText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.'],
     ['Addon_AI_Claude.js', /\baiText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.'],
     ['Addon_AI_Gemini.js', /\baiText\(\s*(['"`])([A-Za-z0-9_.]+)\1/g, 'settings.aiProviders.'],

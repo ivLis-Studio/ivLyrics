@@ -8,6 +8,8 @@
 
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
+import { renderAiConnectionTestRow } from "./aiProviderSettings.mjs";
+import { createProviderText } from "../providerText.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { createChatCompletionsClient } from "./chatCompletionsClient.mjs";
 import { extractJSON, parseTextLines } from "./aiResponseParsing.mjs";
@@ -140,12 +142,7 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
     // Helper Functions
     // ============================================
 
-    function aiText(key, fallback, params) {
-        const path = `settings.aiProviders.${key}`;
-        const value = getI18n()?.t?.(path, params);
-        if (value && value !== path) return value;
-        return params ? String(fallback).replace(/\{(\w+)\}/g, (match, name) => params[name] ?? match) : fallback;
-    }
+    const aiText = createProviderText(getI18n, 'settings.aiProviders.');
 
     function getSetting(key, defaultValue = null) {
         return getManager()?.getAddonSetting(ADDON_INFO.id, key, defaultValue) ?? defaultValue;
@@ -460,12 +457,7 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
                         React.createElement('label', null, aiText('modelId', 'Custom Model ID')),
                         React.createElement('input', { type: 'text', value: customModel, onChange: handleCustomModelChange, placeholder: aiText('modelId', 'Enter a model ID'), 'aria-label': aiText('modelId', 'Custom Model ID') })
                     );
-                const renderTestRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('button', { type: 'button', onClick: handleTest, className: 'ai-addon-btn ai-addon-btn-primary' }, aiText('testConnection', 'Test Connection')),
-                        testStatus && React.createElement('span', {
-                            className: `ai-addon-test-status ${testStatus.startsWith('✓') ? 'success' : testStatus.startsWith('✗') ? 'error' : ''}`
-                        }, testStatus)
-                    );
+                const renderTestRow = () => renderAiConnectionTestRow(React, { onTest: handleTest, testStatus, aiText });
 
                 return React.createElement('div', { className: 'ai-addon-settings paxsenix-settings' },
                     renderApiKeyRow(),
