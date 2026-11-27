@@ -19,6 +19,8 @@ export function createTrackSyncOffsetTools({ react, host, readUtils, readTrackOf
       let receivedLiveOffset = false;
       const apply = value => {
         const offset = clampSyncOffset(value);
+        // A successful write can acknowledge the same offset shown optimistically.
+        if (owner.loaded && Object.is(trackOffsetRef.current, offset)) return;
         owner.loaded = true;
         trackOffsetRef.current = offset;
         setSnapshot({ trackUri, offset });

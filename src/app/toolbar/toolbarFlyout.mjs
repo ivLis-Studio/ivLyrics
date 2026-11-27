@@ -28,8 +28,15 @@ export function createToolbarFlyout({ react, host, getOptionsText, translate, us
       const flyout = ref.current;
       if (!flyout || !toolbar || !anchor?.isConnected) return false;
       const bounds = getToolbarFlyoutBounds(toolbar);
-      flyout.style.setProperty("--ivl-tb-fly-max-w", Math.max(240, bounds.right - bounds.left - 24) + "px");
-      flyout.style.setProperty("--ivl-tb-fly-max-h", Math.max(200, bounds.bottom - bounds.top - 24) + "px");
+      const maxWidth = Math.max(240, bounds.right - bounds.left - 24) + "px";
+      const maxHeight = Math.max(200, bounds.bottom - bounds.top - 24) + "px";
+      // Only new constraints need to feed back into layout before measurement.
+      if (flyout.style.getPropertyValue("--ivl-tb-fly-max-w") !== maxWidth) {
+        flyout.style.setProperty("--ivl-tb-fly-max-w", maxWidth);
+      }
+      if (flyout.style.getPropertyValue("--ivl-tb-fly-max-h") !== maxHeight) {
+        flyout.style.setProperty("--ivl-tb-fly-max-h", maxHeight);
+      }
       const toolbarRect = toolbar.getBoundingClientRect();
       const position = computeSyncAdjustPanelPosition(
         anchor.getBoundingClientRect(),
