@@ -8,7 +8,7 @@ ivLyrics brings original lyrics, pronunciation, and translation together inside 
 
 [Full guide](https://github.com/ivLis-Studio/ivLyrics#readme) · [한국어 안내](https://github.com/ivLis-Studio/ivLyrics/blob/main/README.md) · [English guide](https://github.com/ivLis-Studio/ivLyrics/blob/main/README_EN.md) · [Get help](https://discord.gg/2fu36fUzdE)
 
-![ivLyrics preview](https://github.com/user-attachments/assets/c8643d11-44aa-49e2-ab59-b056884e798a)
+https://github.com/user-attachments/assets/8375c5af-ae42-4f32-b138-47a8c15fa1e7
 
 ## What you can do
 
@@ -73,10 +73,38 @@ The [full guide](https://github.com/ivLis-Studio/ivLyrics/blob/main/README_EN.md
 
 Report issues on [Discord](https://discord.gg/2fu36fUzdE) or [GitHub](https://github.com/ivLis-Studio/ivLyrics/issues) with your versions, song link, and reproduction steps. Remove API keys and account tokens from screenshots and logs.
 
-Support development on [Buy Me a Coffee](https://buymeacoffee.com/ivlis) or [Fairy](https://fairy.hada.io/@ivlyrics) (Korea only) · [Credits and license](https://github.com/ivLis-Studio/ivLyrics/blob/main/README_EN.md#support-and-credits)
+## Support and credits
 
-ivLyrics is an unofficial project and is not affiliated with Spotify. Lyrics, translations, and videos belong to their respective rights holders. See the [full usage notice](https://github.com/ivLis-Studio/ivLyrics/blob/main/README_EN.md#unofficial-project-copyright-and-terms) before using or sharing content.
+ivLyrics is a non-profit open-source project developed and maintained by an individual. Your support goes toward development and server costs.
+
+<a href="https://buymeacoffee.com/ivlis"><img height="68" alt="Support ivLyrics on Buy Me a Coffee" src="https://github.com/user-attachments/assets/3e021039-c587-47e8-b18c-f129828ebbb3" /></a>
+<a href="https://fairy.hada.io/@ivlyrics"><img height="68" alt="Support ivLyrics on Fairy (Korea only)" src="https://github.com/user-attachments/assets/7eba4031-d6b5-49de-b546-0e8413d92df0" /></a>
+
+Fairy is a support platform available only in Korea. If you are outside Korea, please use Buy Me a Coffee.
+
+[Original Lyrics-Plus project](https://github.com/spicetify/cli/tree/main/CustomApps/lyrics-plus) · [License](https://github.com/ivLis-Studio/ivLyrics/blob/main/LICENSE)
 
 ## License and open-source notices
 
 The ivLyrics source code is licensed under the [GNU LGPL v2.1](https://github.com/ivLis-Studio/ivLyrics/blob/main/LICENSE). See the README for [third-party notices and the ivLyrics server access policy](https://github.com/ivLis-Studio/ivLyrics/blob/main/README_EN.md#license-and-open-source-notices).
+
+## Unofficial project, copyright, and terms
+
+> [!IMPORTANT]
+> ⚠️ Disclaimer
+>
+> **Unofficial Project Notice**
+>
+> This project and its contributors are not affiliated with, authorized by, endorsed by, or officially connected to Spotify or any of its affiliates or subsidiaries. **This project is an independent, unofficial, non-profit extension created by a volunteer team to provide a desktop user experience.**
+>
+> **Trademark Notice**
+>
+> The name "Spotify," along with related names, marks, emblems, and images, are registered trademarks of their respective owners. These trademarks are used strictly for identification and reference purposes and do not imply any association with the trademark holders. This project does not intend to infringe upon those trademarks or cause harm to their owners.
+>
+> **Limitation of Liability**
+>
+> This application (extension) is provided "AS IS," and all risks arising from its use are the sole responsibility of the user. The developers and contributors shall not be held liable for any claims, damages, or legal consequences arising from the use of this software or any related transactions. All consequences resulting from the use of this software are entirely the user's responsibility.
+>
+> **Copyright and Terms Compliance**
+>
+> This project does not claim ownership of any lyrics, translations, videos, or other third-party content, nor does it grant licenses to such content. Users are solely responsible for reviewing and complying with all applicable copyright laws, platform policies, API terms of service, and local regulations. Any responsibility for storing, reproducing, distributing, transmitting, or commercially using content through this project rests entirely with the user.
