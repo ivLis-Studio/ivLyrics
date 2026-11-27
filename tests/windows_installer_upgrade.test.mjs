@@ -50,6 +50,7 @@ test('Windows installation and removal validate or restore the active profile', 
     ], { encoding: 'utf8', timeout: 90_000, env: shellEnv });
     assert.ifError(result.error);
     assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /PASS administrator-only Windows sessions run Spicetify with --bypass-admin/);
     assert.match(result.stdout, /PASS a silent config write failure aborts installation/);
     assert.match(result.stdout, /PASS first-install rollback/);
     assert.match(result.stdout, /PASS offline recovery of an interrupted first install/);

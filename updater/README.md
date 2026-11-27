@@ -23,6 +23,10 @@ If the installer was interrupted during an update, start it again. It restores t
 
 If GitHub cannot be reached, the helper can try a GitHub proxy. The installer can also use its configured download mirror. Do not replace these URLs with a source you do not trust.
 
+### Windows accounts that always run as administrator
+
+Spicetify refuses to run with administrator rights unless `--bypass-admin` is added. On the built-in Administrator account, or with UAC turned off, Windows gives every program the administrator token, so there is no normal window to run it from. The Windows installer and uninstaller detect this case and add the flag themselves, only for the account signed in to the desktop and never for service accounts. If you opened PowerShell with **Run as administrator** on a normal account, open a regular PowerShell window instead.
+
 An update log can help explain a failed download or installation:
 
 | System | Log location |

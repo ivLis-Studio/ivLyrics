@@ -16,7 +16,7 @@ $PROXY_URL = "https://ivlis.kr/ivLyrics/proxy.php"
 $MAX_RETRIES = 3
 $METADATA_TIMEOUT = 20
 $ARCHIVE_TIMEOUT = 180
-$SCRIPT_VERSION = "2.1.3"
+$SCRIPT_VERSION = "2.1.4"
 $RELEASE_VERSION_PATTERN = '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
 
 # --- Colors ---
@@ -344,8 +344,150 @@ function ConvertFrom-IvLyricsInstallerTerminalText {
     return $text.Trim()
 }
 
+# --- Spicetify in administrator-only Windows sessions ---
+# Spicetify refuses to run elevated unless --bypass-admin is passed, because
+# files written by an elevated process can break a Spotify that runs as a
+# normal user. Some Windows setups have no normal session at all: on the
+# built-in Administrator account, or with UAC turned off, every program
+# (Spotify included) gets the full administrator token. Only there is the
+# flag needed and harmless, so it is added when all of these hold:
+#   - the process is elevated (an administrator token),
+#   - the token is not split by UAC (TokenElevationTypeDefault = 1), so the
+#     user cannot simply open a normal PowerShell window instead,
+#   - it runs as the user of this desktop session, so Spicetify changes that
+#     user's Spotify and not another account's,
+#   - it is not a service account (SYSTEM, LocalService, NetworkService).
+# Keep this block identical in install.ps1 and uninstall.ps1;
+# tests/windows_installer_admin.test.mjs compares the two copies.
+$script:IvLyricsSpicetifyAdminSession = $null
+
+function Get-IvLyricsTokenElevationType {
+    param([IntPtr]$TokenHandle)
+    if ($null -eq ("IvLyrics.TokenElevationNativeMethods" -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace IvLyrics {
+    public static class TokenElevationNativeMethods {
+        [DllImport("advapi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetTokenInformation(
+            IntPtr tokenHandle, int tokenInformationClass,
+            out int tokenInformation, int tokenInformationLength, out int returnLength);
+    }
+}
+'@
+    }
+    $elevationType = 0
+    $returnLength = 0
+    # 18 = TOKEN_INFORMATION_CLASS.TokenElevationType
+    # (1 default/unsplit, 2 elevated by UAC, 3 limited by UAC)
+    if (-not [IvLyrics.TokenElevationNativeMethods]::GetTokenInformation(
+            $TokenHandle, 18, [ref]$elevationType, 4, [ref]$returnLength)) {
+        return 0
+    }
+    return $elevationType
+}
+
+function Get-IvLyricsInteractiveUserSid {
+    # The desktop of this Windows session belongs to the owner of its explorer.exe.
+    try {
+        $sessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId
+        $filter = "Name = 'explorer.exe' AND SessionId = $sessionId"
+        foreach ($shell in @(Get-CimInstance -ClassName Win32_Process -Filter $filter -ErrorAction Stop)) {
+            $owner = Invoke-CimMethod -InputObject $shell -MethodName GetOwnerSid -ErrorAction Stop
+            if ($owner.ReturnValue -eq 0 -and -not [string]::IsNullOrWhiteSpace([string]$owner.Sid)) {
+                return [string]$owner.Sid
+            }
+        }
+    }
+    catch {
+        # Fall back to the console user below.
+    }
+    try {
+        $consoleUser = [string](Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).UserName
+        if (-not [string]::IsNullOrWhiteSpace($consoleUser)) {
+            $account = [Security.Principal.NTAccount]::new($consoleUser)
+            return $account.Translate([Security.Principal.SecurityIdentifier]).Value
+        }
+    }
+    catch {
+        # No interactive user could be identified.
+    }
+    return $null
+}
+
+function Get-IvLyricsWindowsAdminSession {
+    $session = [PSCustomObject]@{
+        IsAdministrator = $false
+        TokenElevationType = 0
+        IsSameInteractiveUser = $false
+        IsServiceAccount = $false
+    }
+    try {
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $session.IsServiceAccount = $identity.IsSystem -or
+            (@("S-1-5-18", "S-1-5-19", "S-1-5-20") -contains $identity.User.Value)
+        $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+        $session.IsAdministrator = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if ($session.IsAdministrator) {
+            $session.TokenElevationType = Get-IvLyricsTokenElevationType -TokenHandle $identity.Token
+            # Only an unsplit token can use the flag, so only then is the desktop user needed.
+            if ($session.TokenElevationType -eq 1) {
+                $session.IsSameInteractiveUser = (Get-IvLyricsInteractiveUserSid) -eq $identity.User.Value
+            }
+        }
+    }
+    catch {
+        # Not Windows, or the token could not be read: Spicetify's own check decides.
+    }
+    return $session
+}
+
+function Test-IvLyricsSpicetifyBypassAdmin {
+    param([Parameter(Mandatory = $true)]$Session)
+    $useBypassAdmin = (
+        $Session.IsAdministrator -and
+        $Session.TokenElevationType -eq 1 -and
+        $Session.IsSameInteractiveUser -and
+        -not $Session.IsServiceAccount
+    )
+    return [bool]$useBypassAdmin
+}
+
+function Get-IvLyricsSpicetifyAdminSession {
+    if ($null -eq $script:IvLyricsSpicetifyAdminSession) {
+        $script:IvLyricsSpicetifyAdminSession = Get-IvLyricsWindowsAdminSession
+    }
+    return $script:IvLyricsSpicetifyAdminSession
+}
+
+function Get-IvLyricsSpicetifyArguments {
+    param([string[]]$Arguments = @())
+    if (Test-IvLyricsSpicetifyBypassAdmin -Session (Get-IvLyricsSpicetifyAdminSession)) {
+        return @($Arguments) + "--bypass-admin"
+    }
+    return @($Arguments)
+}
+
+function Write-IvLyricsSpicetifyAdminNotice {
+    $session = Get-IvLyricsSpicetifyAdminSession
+    if (Test-IvLyricsSpicetifyBypassAdmin -Session $session) {
+        Write-SubStep "Administrator-only Windows session: running Spicetify with --bypass-admin" "warning"
+    }
+    elseif ($session.IsAdministrator) {
+        Write-SubStep "PowerShell is running as administrator, which Spicetify refuses." "warning"
+        Write-SubStep "If Spicetify fails, run this command again in a normal PowerShell window." "warning"
+    }
+}
+# --- End of Spicetify administrator handling ---
+
 function Invoke-IvLyricsSpicetifyCommand {
     param([string[]]$Arguments = @())
+
+    # --bypass-admin is added only in administrator-only Windows sessions.
+    $spicetifyArguments = @(Get-IvLyricsSpicetifyArguments -Arguments $Arguments)
 
     # Spicetify emits UTF-8 output, while Windows PowerShell 5.1 can decode
     # redirected native output with the active console code page. Temporarily
@@ -365,7 +507,7 @@ function Invoke-IvLyricsSpicetifyCommand {
         # Windows PowerShell 5.1 wraps successful native stderr as an error
         # record. Preserve it as command output and rely on the native exit code.
         $ErrorActionPreference = "Continue"
-        $commandOutput = @(& spicetify @Arguments 2>&1)
+        $commandOutput = @(& spicetify @spicetifyArguments 2>&1)
         $exitCode = $LASTEXITCODE
     }
     finally {
@@ -910,6 +1052,7 @@ if (-not (Test-SpicetifyInstalled)) {
 else {
     Write-SubStep "Spicetify found" "success"
 }
+Write-IvLyricsSpicetifyAdminNotice
 
 # Step 3: Resolve the active Spicetify profile
 Write-Step 3 7 "Finding the active Spicetify app directory..." "running"

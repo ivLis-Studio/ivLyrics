@@ -86,7 +86,10 @@ function Invoke-RestMethod {
 }
 
 function spicetify {
-    $command = $args -join ' '
+    # The scripts add --bypass-admin only in administrator-only Windows
+    # sessions, which a CI runner can be; the expected calls leave it out.
+    $global:ivlFixtureSpicetifyArgs = @($args)
+    $command = @($args | Where-Object { $_ -cne '--bypass-admin' }) -join ' '
     $global:ivlFixtureTrace.Add($command)
     $global:LASTEXITCODE = 0
     switch ($command) {
@@ -199,6 +202,59 @@ function Get-TestScriptFunction {
     return [scriptblock]::Create($definition.Extent.Text)
 }
 
+function Test-SpicetifyAdminBypass {
+    $sessionFor = {
+        param([bool]$Admin, [int]$ElevationType, [bool]$SameUser, [bool]$Service)
+        [PSCustomObject]@{
+            IsAdministrator = $Admin
+            TokenElevationType = $ElevationType
+            IsSameInteractiveUser = $SameUser
+            IsServiceAccount = $Service
+        }
+    }
+    $cases = @(
+        @{ Label = 'an administrator-only session'; Session = (& $sessionFor $true 1 $true $false); Bypass = $true },
+        @{ Label = 'a UAC-elevated session'; Session = (& $sessionFor $true 2 $true $false); Bypass = $false },
+        @{ Label = 'a UAC-limited session'; Session = (& $sessionFor $false 3 $true $false); Bypass = $false },
+        @{ Label = 'another account'; Session = (& $sessionFor $true 1 $false $false); Bypass = $false },
+        @{ Label = 'a service account'; Session = (& $sessionFor $true 1 $true $true); Bypass = $false },
+        @{ Label = 'a standard user'; Session = (& $sessionFor $false 1 $true $false); Bypass = $false }
+    )
+    $functions = @(
+        'Get-IvLyricsTokenElevationType', 'Get-IvLyricsInteractiveUserSid', 'Get-IvLyricsWindowsAdminSession',
+        'Test-IvLyricsSpicetifyBypassAdmin', 'Get-IvLyricsSpicetifyAdminSession', 'Get-IvLyricsSpicetifyArguments',
+        'Invoke-IvLyricsSpicetifyCommand'
+    )
+    try {
+        foreach ($scriptPath in @($Installer, $Uninstaller)) {
+            foreach ($name in $functions) { . (Get-TestScriptFunction -Path $scriptPath -Name $name) }
+            $scriptName = Split-Path -Leaf $scriptPath
+            foreach ($case in $cases) {
+                Assert-Equal (Test-IvLyricsSpicetifyBypassAdmin -Session $case.Session) $case.Bypass "$scriptName bypass for $($case.Label)"
+                $script:IvLyricsSpicetifyAdminSession = $case.Session
+                $null = Invoke-IvLyricsSpicetifyCommand -Arguments @('-c')
+                $expected = if ($case.Bypass) { '-c --bypass-admin' } else { '-c' }
+                Assert-Equal ($global:ivlFixtureSpicetifyArgs -join ' ') $expected "$scriptName Spicetify arguments for $($case.Label)"
+            }
+
+            # The real detection never throws; off Windows it reports a normal session.
+            $script:IvLyricsSpicetifyAdminSession = $null
+            $detected = Get-IvLyricsSpicetifyAdminSession
+            foreach ($property in @('IsAdministrator', 'TokenElevationType', 'IsSameInteractiveUser', 'IsServiceAccount')) {
+                if ($null -eq $detected.PSObject.Properties[$property]) { throw "$scriptName session has no $property" }
+            }
+            if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
+                Assert-Equal $detected.IsAdministrator $false "$scriptName administrator state off Windows"
+            }
+            Write-Output ("INFO $scriptName detected session: " + ($detected | ConvertTo-Json -Compress))
+        }
+    }
+    finally {
+        $script:IvLyricsSpicetifyAdminSession = $null
+        $global:ivlFixtureTrace.Clear()
+    }
+}
+
 function Test-RegisteredUpdaterProfile {
     . (Get-TestScriptFunction -Path (Join-Path $app 'updater/windows/ivlyrics-updater.ps1') -Name 'Start-IvLyricsUpdate')
     . (Get-TestScriptFunction -Path (Join-Path $app 'updater/windows/register-updater-protocol.ps1') -Name 'Save-IvLyricsUpdaterProfileState')
@@ -264,6 +320,9 @@ try {
     New-Item -ItemType File -Path $config | Out-Null
     $env:TEMP = $root
     $env:TMP = $root
+
+    Test-SpicetifyAdminBypass
+    Write-Output 'PASS administrator-only Windows sessions run Spicetify with --bypass-admin'
 
     $global:ivlFixtureSkipRegistrationWrite = $true
     Invoke-Installer 1 '-c|config custom_apps|probe|config custom_apps ivLyrics|config custom_apps|config custom_apps ivLyrics-|config custom_apps'
