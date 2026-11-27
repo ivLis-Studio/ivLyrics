@@ -1,23 +1,11 @@
 import {
-	splitSyncDataHiddenDelimitedParallelParts, trimSyncDataPartParentheticals,
+	normalizeSyncDataHiddenRanges, splitSyncDataHiddenDelimitedParallelParts, trimSyncDataPartParentheticals,
 } from '../../lyrics/syncRenderVocalRanges.mjs';
 
-// Hidden ranges as the editor keeps them: valid, sorted and merged, so
-// adjacent hidden characters read as one range.
-export const normalizeSyncCreatorHiddenRanges = (ranges) => {
-	if (!Array.isArray(ranges)) return [];
-	const normalizedRanges = ranges
-		.map((range) => {
-			const start = Number(range?.start);
-			const end = Number(range?.end);
-			return Number.isInteger(start) && Number.isInteger(end) && end >= start
-				? { start, end }
-				: null;
-		})
-		.filter(Boolean)
-		.sort((a, b) => a.start - b.start || a.end - b.end);
-
-	return normalizedRanges.reduce((merged, range) => {
+// Hidden ranges as the editor keeps them: the renderer's valid, sorted ranges,
+// merged so adjacent hidden characters read as one range.
+export const normalizeSyncCreatorHiddenRanges = (ranges) => (
+	normalizeSyncDataHiddenRanges(ranges).reduce((merged, range) => {
 		const previous = merged[merged.length - 1];
 		if (previous && range.start <= previous.end + 1) {
 			previous.end = Math.max(previous.end, range.end);
@@ -25,8 +13,8 @@ export const normalizeSyncCreatorHiddenRanges = (ranges) => {
 			merged.push(range);
 		}
 		return merged;
-	}, []);
-};
+	}, [])
+);
 
 // Splits background parts whose ranges are separated only by hidden
 // characters, as the renderer does. The editor's parts may not be timed yet,
