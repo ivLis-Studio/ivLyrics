@@ -25,60 +25,36 @@ function hasMeaningfulLyricsText(text) {
     return LRCLIB_MEANINGFUL_TEXT_REGEX.test(text);
 }
 
-function getMeaningfulLyricsLines(text) {
-    if (!text || typeof text !== 'string') return [];
-
-    return text
-        .split('\n')
-        .map(line => stripLeadingLrcTimestamp(line))
-        .filter(line => hasMeaningfulLyricsText(line));
-}
-
 export function analyzeLyricsLanguageMix(text) {
-    const lines = getMeaningfulLyricsLines(text);
-    if (lines.length === 0) {
-        return {
-            meaningfulLineCount: 0,
-            originalScriptLineCount: 0,
-            nonOriginalLineCount: 0,
-            alternatingScriptPairs: 0,
-            comparablePairs: 0,
-            hasInterleavedTranslations: false
-        };
-    }
-
     let originalScriptLineCount = 0;
     let nonOriginalLineCount = 0;
     let alternatingScriptPairs = 0;
-    let comparablePairs = 0;
+    let previousWasOriginal;
+    if (typeof text === 'string' && text) {
+        for (const rawLine of text.split('\n')) {
+            const line = stripLeadingLrcTimestamp(rawLine);
+            if (!hasMeaningfulLyricsText(line)) continue;
 
-    const lineKinds = lines.map(line => {
-        if (hasOriginalLyricsScript(line)) {
-            originalScriptLineCount += 1;
-            return 'original';
-        }
-
-        nonOriginalLineCount += 1;
-        return 'other';
-    });
-
-    for (let index = 1; index < lineKinds.length; index += 1) {
-        comparablePairs += 1;
-        if (lineKinds[index] !== lineKinds[index - 1]) {
-            alternatingScriptPairs += 1;
+            const isOriginal = hasOriginalLyricsScript(line);
+            if (isOriginal) originalScriptLineCount++;
+            else nonOriginalLineCount++;
+            if (previousWasOriginal !== undefined && previousWasOriginal !== isOriginal) alternatingScriptPairs++;
+            previousWasOriginal = isOriginal;
         }
     }
 
-    const hasInterleavedTranslations = lines.length >= 6
+    const meaningfulLineCount = originalScriptLineCount + nonOriginalLineCount;
+    const comparablePairs = Math.max(0, meaningfulLineCount - 1);
+    const hasInterleavedTranslations = meaningfulLineCount >= 6
         && originalScriptLineCount >= 2
         && nonOriginalLineCount >= 2
-        && (originalScriptLineCount / lines.length) >= 0.25
-        && (nonOriginalLineCount / lines.length) >= 0.25
+        && (originalScriptLineCount / meaningfulLineCount) >= 0.25
+        && (nonOriginalLineCount / meaningfulLineCount) >= 0.25
         && comparablePairs > 0
         && (alternatingScriptPairs / comparablePairs) >= 0.6;
 
     return {
-        meaningfulLineCount: lines.length,
+        meaningfulLineCount,
         originalScriptLineCount,
         nonOriginalLineCount,
         alternatingScriptPairs,
@@ -99,35 +75,40 @@ export function getCandidateLyricsText(candidate, preferredSource = null) {
     return '';
 }
 
+function getComparableLyricsLine(rawLine, stripTimestamps) {
+    const line = stripTimestamps ? stripLeadingLrcTimestamp(rawLine) : rawLine.trim();
+    return line && !LRCLIB_METADATA_LINE_REGEX.test(line) ? line.normalize('NFC') : '';
+}
+
 export function getComparableLyricsLines(text, { stripTimestamps = false } = {}) {
     if (!text || typeof text !== 'string') return [];
 
-    return text
-        .split('\n')
-        .map(line => stripTimestamps ? stripLeadingLrcTimestamp(line) : line.trim())
-        .filter(line => !LRCLIB_METADATA_LINE_REGEX.test(line))
-        .filter(line => line.length > 0)
-        .map(line => line.normalize('NFC'));
+    const lines = [];
+    for (const rawLine of text.split('\n')) {
+        const line = getComparableLyricsLine(rawLine, stripTimestamps);
+        if (line) lines.push(line);
+    }
+    return lines;
+}
+
+function getLineCharCount(line) {
+    if (typeof line !== 'string') return Array.from(line).length;
+
+    let count = line.length;
+    for (let index = 1; index < line.length; index += 1) {
+        const codeUnit = line.charCodeAt(index);
+        if (codeUnit < 0xDC00 || codeUnit > 0xDFFF) continue;
+
+        const previousCodeUnit = line.charCodeAt(index - 1);
+        if (previousCodeUnit >= 0xD800 && previousCodeUnit <= 0xDBFF) {
+            count -= 1;
+        }
+    }
+    return count;
 }
 
 export function getLineCharCounts(lines) {
-    return lines.map(line => {
-        if (typeof line !== 'string') {
-            return Array.from(line).length;
-        }
-
-        let count = line.length;
-        for (let index = 1; index < line.length; index += 1) {
-            const codeUnit = line.charCodeAt(index);
-            if (codeUnit < 0xDC00 || codeUnit > 0xDFFF) continue;
-
-            const previousCodeUnit = line.charCodeAt(index - 1);
-            if (previousCodeUnit >= 0xD800 && previousCodeUnit <= 0xDBFF) {
-                count -= 1;
-            }
-        }
-        return count;
-    });
+    return lines.map(getLineCharCount);
 }
 
 export function getSyncDataLineCharCounts(syncData) {
@@ -157,6 +138,21 @@ export function hasExactLineCharCountMatch(expectedCounts, actualCounts) {
     return expectedCounts.every((count, index) => count === actualCounts[index]);
 }
 
+function matchesLyricsLineCharCounts(text, expectedCounts, stripTimestamps) {
+    if (typeof text !== 'string' || !text || !expectedCounts?.length) return false;
+    let index = 0;
+    for (const rawLine of text.split('\n')) {
+        const line = getComparableLyricsLine(rawLine, stripTimestamps);
+        if (!line) continue;
+        if (index >= expectedCounts.length
+            || (index in expectedCounts && expectedCounts[index] !== getLineCharCount(line))) {
+            return false;
+        }
+        index++;
+    }
+    return index === expectedCounts.length;
+}
+
 export function getCandidateSyncLineMatch(candidate, expectedCounts) {
     if (!Array.isArray(expectedCounts) || expectedCounts.length === 0) {
         return {
@@ -167,14 +163,8 @@ export function getCandidateSyncLineMatch(candidate, expectedCounts) {
         };
     }
 
-    const syncedLineCounts = candidate?.syncedLyrics
-        ? getLineCharCounts(getComparableLyricsLines(candidate.syncedLyrics, { stripTimestamps: true }))
-        : null;
-    const plainLineCounts = candidate?.plainLyrics
-        ? getLineCharCounts(getComparableLyricsLines(candidate.plainLyrics))
-        : null;
-    const exactSyncedLineMatch = hasExactLineCharCountMatch(expectedCounts, syncedLineCounts);
-    const exactPlainLineMatch = hasExactLineCharCountMatch(expectedCounts, plainLineCounts);
+    const exactSyncedLineMatch = matchesLyricsLineCharCounts(candidate?.syncedLyrics, expectedCounts, true);
+    const exactPlainLineMatch = matchesLyricsLineCharCounts(candidate?.plainLyrics, expectedCounts, false);
     const preferredLyricsSource = exactSyncedLineMatch
         ? 'synced'
         : (exactPlainLineMatch
@@ -259,13 +249,13 @@ export function getCandidateSourceMatch(candidate, source) {
     const candidateId = candidate?.id === undefined || candidate?.id === null ? '' : String(candidate.id);
     const sourceId = source.lrclibId === undefined || source.lrclibId === null ? '' : String(source.lrclibId);
     const preferredSource = candidate?.preferredLyricsSource || source.preferredLyricsSource || null;
-    const candidateText = getComparableCandidateText(candidate, preferredSource);
-    const candidateFingerprint = getLyricsTextFingerprint(candidateText);
-    const candidateLineCounts = getLineCharCounts(getComparableLyricsLines(candidateText));
     const sourceLineCounts = Array.isArray(source.lineCharCounts) ? source.lineCharCounts : null;
+    const candidateText = source.lyricsFingerprint || sourceLineCounts?.length
+        ? getComparableCandidateText(candidate, preferredSource)
+        : '';
     const sourceIdMatch = !!sourceId && !!candidateId && sourceId === candidateId;
-    const sourceTextMatch = !!source.lyricsFingerprint && source.lyricsFingerprint === candidateFingerprint;
-    const sourceLineCountMatch = hasExactLineCharCountMatch(sourceLineCounts, candidateLineCounts);
+    const sourceTextMatch = !!source.lyricsFingerprint && source.lyricsFingerprint === getLyricsTextFingerprint(candidateText);
+    const sourceLineCountMatch = matchesLyricsLineCharCounts(candidateText, sourceLineCounts, false);
     const score = sourceIdMatch
         ? 100
         : (sourceTextMatch
