@@ -34,7 +34,7 @@ export function createLrclibPlayback({
         if (!(state?.available ?? (state?.phase === 'ready'))) return null;
         try {
             const candidate = await local.lookup({ uri: info.uri, title: info.title, artist: info.artist,
-                album: info.album, duration: info.duration });
+                album: info.album, duration: info.duration }, signal && { signal });
             if (signal?.aborted) return null;
             return buildPlaybackOnlyResult(candidate, info, cacheVersion, 'local');
         } catch {

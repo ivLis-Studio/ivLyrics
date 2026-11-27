@@ -245,8 +245,8 @@ export function installLocalLrclibDatabase(root, workerSource) {
             return getState();
         });
     }
-    function lookup(info) {
-        if (!active) return Promise.resolve(null);
+    function lookup(info, { signal } = {}) {
+        if (!active || signal?.aborted) return Promise.resolve(null);
         const expected = active;
         const started = Date.now();
         const controller = new root.AbortController();
@@ -256,12 +256,18 @@ export function installLocalLrclibDatabase(root, workerSource) {
                 if (finished) return;
                 finished = true;
                 root.clearTimeout(timer);
+                signal?.removeEventListener('abort', abortQueued);
                 resolve(result);
             };
+            const abortQueued = () => finish(null);
             // Includes queueing and reopening time, not just worker execution.
             const timer = root.setTimeout(() => { controller.abort(); finish(null); }, QUERY_TIMEOUT);
+            signal?.addEventListener('abort', abortQueued, { once: true });
             expected.enqueue(async () => {
-                if (finished || active !== expected) return null;
+                // Aborting an active worker request would close the shared
+                // SQLite session. Retire queued work before it reaches SQLite.
+                signal?.removeEventListener('abort', abortQueued);
+                if (finished || active !== expected || signal?.aborted) return null;
                 try {
                     const remaining = () => Math.max(1, QUERY_TIMEOUT - (Date.now() - started));
                     if (expected.session?.closed) {
@@ -269,6 +275,7 @@ export function installLocalLrclibDatabase(root, workerSource) {
                         await request(expected.session, 'open', { file: expected.file }, { signal: controller.signal, timeout: remaining() });
                     }
                     checkAbort(controller.signal);
+                    if (signal?.aborted) return null;
                     return await request(expected.session, 'lookup', { info }, { signal: controller.signal, timeout: remaining() });
                 } catch (reason) {
                     if (!controls && active === expected) {

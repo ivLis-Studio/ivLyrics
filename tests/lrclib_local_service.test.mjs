@@ -560,6 +560,36 @@ test('quota preflight and streaming checks reject noSpace without replacing the 
     }
 });
 
+test('a retired queued lookup skips SQLite while the active query and session finish normally', async () => {
+    const querying = latch();
+    let heldRequest;
+    const h = setup({
+        onPost(message, worker) {
+            if (message.action !== 'lookup' || message.info.uri !== 'active') return false;
+            heldRequest = () => worker.reply(message.id, candidate);
+            querying.resolve();
+            return true;
+        }
+    });
+    await h.api.importFile(file());
+    const active = h.api.lookup({ uri: 'active' });
+    await querying.promise;
+    const controller = new AbortController();
+    const queued = h.api.lookup({ uri: 'retired' }, { signal: controller.signal });
+    const next = h.api.lookup({ uri: 'next' });
+    controller.abort();
+    assert.equal(await queued, null);
+    heldRequest();
+    assert.equal(await active, candidate);
+    assert.equal(await next, candidate);
+    assert.deepEqual(h.workers[0].messages.filter(message => message.action === 'lookup')
+        .map(message => message.info.uri), ['active', 'next']);
+    assert.equal(h.workers.length, 1);
+    assert.equal(h.workers[0].terminated, false);
+    assert.equal(h.api.getState().phase, 'ready');
+    assert.equal(h.timers.size, 0);
+});
+
 test('lookup timeout includes queue time, terminates the worker, and can reopen through connect', async () => {
     let hang = true;
     const h = setup({ manualTimers: true, onPost: message => message.action === 'lookup' && hang });
