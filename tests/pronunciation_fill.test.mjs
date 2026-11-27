@@ -6,6 +6,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { createKaraokeLivePainter } from "../src/lyrics/karaokeLivePainter.mjs";
+import { createKaraokeFill, getKaraokeFillSoftEdge } from "../src/lyrics/karaokeFill.mjs";
 import { getSettingDefaultValue } from "../src/features/settings/settingsDefaults.mjs";
 
 // Pronunciation fill: with pronunciation-first off, karaoke lines carry the
@@ -175,6 +177,8 @@ const extract = (name) => {
 const renderHarness = () => {
 	const effects = [];
 	const attached = [];
+	const { getKaraokeLiveFill } = createKaraokeFill(() => ({}));
+	const { paintKaraokeLiveEntry } = createKaraokeLivePainter({ getKaraokeLiveFill, motion: {} });
 	const block = pages.slice(pages.indexOf("const PHONETIC_FILL_ATTRIBUTE"), pages.indexOf("const useLyricsTrackReveal = "));
 	const context = vm.createContext({
 		getPageRuntimeService,
@@ -188,12 +192,12 @@ const renderHarness = () => {
 		performance: { now: () => 0 },
 		CONFIG: { visual: { "inactive-color": "gray" } },
 		window: {},
-		applyKaraokeFillCorrectionCurve: (value) => value,
+		getKaraokeLiveFill,
+		getKaraokeFillSoftEdge,
+		paintKaraokeLiveEntry,
 		attached,
 	});
 	vm.runInContext([
-		extract("getKaraokeFillSoftEdge"), extract("getKaraokeLiveFill"), extract("setKaraokeLiveValue"),
-		extract("paintKaraokeLiveUnit"), extract("paintKaraokeLiveEntry"),
 		extract("PAGES_IV_LYRICS_SPEAKER_CLASS_CONTRACT"), extract("getKaraokeSpeakerPresentation"),
 		extract("normalizeKaraokeSpeakerClass"),
 		extract("getKaraokeInlineSpeakerClass"),
