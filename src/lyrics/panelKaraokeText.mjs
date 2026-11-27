@@ -1,38 +1,11 @@
-const KARAOKE_RTL_STRONG_CHAR_REGEX = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFC]/u;
-const KARAOKE_LTR_STRONG_CHAR_REGEX = /[A-Za-z\u00C0-\u02AF\u0370-\u052F\u1E00-\u1EFF]/u;
-export const KARAOKE_JOINING_SCRIPT_REGEX = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFC]/u;
+export {
+    KARAOKE_JOINING_SCRIPT_REGEX, getKaraokeTextDirection, shouldWrapKaraokeByWord,
+    needsKaraokeJoiningScript as shouldUseKaraokeTextRun,
+} from "./karaokeTextDirection.mjs";
+
 // Shaped-run fills are painted per display frame without rounding; a 4%
 // grid held each step for several frames on a 120 Hz display.
 export const formatKaraokePercent = (value) => `${Number.isInteger(value) ? value : value.toFixed(2)}%`;
-
-export const getKaraokeTextDirection = (text) => {
-    const normalizedText = typeof text === "string" ? text : "";
-    let rtlCount = 0;
-    let ltrCount = 0;
-
-    for (const char of Array.from(normalizedText)) {
-        if (KARAOKE_RTL_STRONG_CHAR_REGEX.test(char)) {
-            rtlCount++;
-            continue;
-        }
-        if (KARAOKE_LTR_STRONG_CHAR_REGEX.test(char)) {
-            ltrCount++;
-        }
-    }
-
-    return rtlCount > ltrCount ? "rtl" : "ltr";
-};
-
-export const shouldUseKaraokeTextRun = (text) => {
-    const normalizedText = typeof text === "string" ? text : "";
-    return KARAOKE_RTL_STRONG_CHAR_REGEX.test(normalizedText) ||
-        KARAOKE_JOINING_SCRIPT_REGEX.test(normalizedText);
-};
-
-export const shouldWrapKaraokeByWord = (text) => {
-    const normalizedText = typeof text === "string" ? text : "";
-    return /\S\s+\S/u.test(normalizedText);
-};
 
 export const getKaraokeSyllablesText = (syllables) => (
     Array.isArray(syllables)

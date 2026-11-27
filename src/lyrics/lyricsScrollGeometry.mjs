@@ -42,19 +42,17 @@ export const getKaraokeVocalAnchorCenterWithinLine = (activeLine) => {
 		return null;
 	}
 
-	const rows = Array.from(stack.querySelectorAll("[data-karaoke-vocal-row-index]"));
-	if (rows.length === 0) {
-		return null;
-	}
-
-	const rowByIndex = new Map(rows.map((row) => [
-		Number(row.getAttribute("data-karaoke-vocal-row-index")),
-		row,
-	]));
 	const lowerIndex = Math.max(0, Math.min(rowCount - 1, Math.floor(anchorPosition)));
 	const upperIndex = Math.max(0, Math.min(rowCount - 1, Math.ceil(anchorPosition)));
-	const lowerRow = rowByIndex.get(lowerIndex);
-	const upperRow = rowByIndex.get(upperIndex) || lowerRow;
+	let lowerRow;
+	let upperRow;
+	// Keep the last match, as before, even if a transient render has repeated indices.
+	for (const row of stack.querySelectorAll("[data-karaoke-vocal-row-index]")) {
+		const index = Number(row.getAttribute("data-karaoke-vocal-row-index"));
+		if (index === lowerIndex) lowerRow = row;
+		if (index === upperIndex) upperRow = row;
+	}
+	upperRow ||= lowerRow;
 	if (!lowerRow || !upperRow) {
 		return null;
 	}
@@ -65,7 +63,7 @@ export const getKaraokeVocalAnchorCenterWithinLine = (activeLine) => {
 		return rect.top - lineRect.top + rect.height / 2;
 	};
 	const lowerCenter = rowCenter(lowerRow);
-	const upperCenter = rowCenter(upperRow);
+	const upperCenter = upperRow === lowerRow ? lowerCenter : rowCenter(upperRow);
 	const progress = Math.max(0, Math.min(1, anchorPosition - lowerIndex));
 	return lowerCenter + (upperCenter - lowerCenter) * progress;
 };

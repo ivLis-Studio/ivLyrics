@@ -129,19 +129,18 @@ const getKaraokeVocalAnchorWindowMs = (vocalRowRenderData, anchorPosition) => {
 	return nextWindow;
 };
 
-const getStableKaraokeVocalAnchorPosition = (stateRef, line, position, nextAnchorPosition) => {
+const getStableVocalAnchorPosition = (stateRef, key, position, nextAnchorPosition) => {
 	if (!stateRef?.current) {
 		return nextAnchorPosition;
 	}
 
-	const lineKey = getKaraokeVocalAnchorLineKey(line);
 	const state = stateRef.current;
 	const positionWentBack = Number.isFinite(state.lastPlaybackPosition)
 		&& Number.isFinite(position)
 		&& position < state.lastPlaybackPosition - 250;
 
-	if (state.lineKey !== lineKey || positionWentBack) {
-		state.lineKey = lineKey;
+	if (state.key !== key || positionWentBack) {
+		state.key = key;
 		state.anchorPosition = nextAnchorPosition;
 		state.lastPlaybackPosition = position;
 		return nextAnchorPosition;
@@ -184,5 +183,5 @@ export function createKaraokeVocalRowRenderDataBuilder(buildKaraokeTimedChars) {
 
 export {
 	getKaraokeVocalRowRenderPosition, prepareKaraokeVocalAnchorWindows, getKaraokeVocalAnchorLineKey,
-	getKaraokeVocalAnchorPosition, getKaraokeVocalAnchorWindowMs, getStableKaraokeVocalAnchorPosition,
+	getKaraokeVocalAnchorPosition, getKaraokeVocalAnchorWindowMs, getStableVocalAnchorPosition,
 };

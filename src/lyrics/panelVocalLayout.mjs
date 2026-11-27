@@ -1,3 +1,4 @@
+import { getStableVocalAnchorPosition } from "./karaokeVocalTiming.mjs";
 import { toFiniteTime } from "./lyricInterludeTiming.mjs";
 
 export const VOCAL_STACK_CENTER_THRESHOLD = 4;
@@ -57,35 +58,6 @@ const getVocalAnchorPosition = (timeline, currentTime) => {
     return firstActiveRowIndex >= 0 && lastActiveRowIndex >= 0
         ? Math.ceil((firstActiveRowIndex + lastActiveRowIndex) / 2)
         : -1;
-};
-
-const getStableVocalAnchorPosition = (stateRef, key, currentTime, nextAnchorPosition) => {
-    if (!stateRef?.current) {
-        return nextAnchorPosition;
-    }
-
-    const state = stateRef.current;
-    const positionWentBack = Number.isFinite(state.lastPlaybackPosition)
-        && Number.isFinite(currentTime)
-        && currentTime < state.lastPlaybackPosition - 250;
-
-    if (state.key !== key || positionWentBack) {
-        state.key = key;
-        state.anchorPosition = nextAnchorPosition;
-        state.lastPlaybackPosition = currentTime;
-        return nextAnchorPosition;
-    }
-
-    state.lastPlaybackPosition = currentTime;
-    if (!Number.isFinite(nextAnchorPosition) || nextAnchorPosition < 0) {
-        return Number.isFinite(state.anchorPosition) ? state.anchorPosition : -1;
-    }
-
-    state.anchorPosition = Math.max(
-        Number.isFinite(state.anchorPosition) ? state.anchorPosition : nextAnchorPosition,
-        nextAnchorPosition
-    );
-    return state.anchorPosition;
 };
 
 export function observePanelVocalAnchor({

@@ -1,3 +1,4 @@
+import { KARAOKE_JOINING_SCRIPT_REGEX } from "./karaokeTextDirection.mjs";
 import { getCopyableText } from "./lyricDisplayText.mjs";
 import { splitLineByVocalRowShape } from "./vocalRowText.mjs";
 import { getKaraokeCulturalMarkers } from "./lyricCulturalAnnotations.mjs";
@@ -16,7 +17,7 @@ import {
 } from "./karaokeLineTiming.mjs";
 import {
 	getKaraokeVocalRowRenderPosition, prepareKaraokeVocalAnchorWindows, getKaraokeVocalAnchorLineKey,
-	getKaraokeVocalAnchorPosition, getKaraokeVocalAnchorWindowMs, getStableKaraokeVocalAnchorPosition,
+	getKaraokeVocalAnchorPosition, getKaraokeVocalAnchorWindowMs, getStableVocalAnchorPosition,
 } from "./karaokeVocalTiming.mjs";
 
 const KARAOKE_CHAR_STATE_CLASS_NAMES = {
@@ -40,7 +41,6 @@ const KARAOKE_CHAR_STATE_CLASS_NAMES = {
 	],
 };
 
-export const KARAOKE_JOINING_SCRIPT_REGEX = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFC]/u;
 
 export function createKaraokeLine({
 	react, PhoneticFillText, motion, getKaraokeCharFill, useKaraokeLivePainting, useKaraokeWordStackSupplements,
@@ -113,20 +113,22 @@ export function createKaraokeLine({
 			? vocalRowRenderData.map((rowData) => (value) => getKaraokeVocalRowRenderPosition(rowData,
 				livePositionMap ? livePositionMap(value) : value))
 			: null, [livePaint, vocalRowRenderData, livePositionMap]);
-	  const vocalAnchorStateRef = useRef({ lineKey: null, anchorPosition: -1, lastPlaybackPosition: NaN });
+	  const vocalAnchorKey = useMemo(() => shouldUseVocalRowAnchor
+	          ? getKaraokeVocalAnchorLineKey(line) : null, [shouldUseVocalRowAnchor, line]);
+	  const vocalAnchorStateRef = useRef({ key: null, anchorPosition: -1, lastPlaybackPosition: NaN });
 	  let nextVocalAnchorPosition = shouldUseVocalRowAnchor
 	          ? getKaraokeVocalAnchorPosition(vocalRowRenderData, position, vocalActiveCharIndexes)
 	          : -1;
 	  if (shouldUseVocalRowAnchor && isEffectFocused && nextVocalAnchorPosition < 0
 	          && (vocalAnchorStateRef.current.anchorPosition < 0
-	                  || vocalAnchorStateRef.current.lineKey !== getKaraokeVocalAnchorLineKey(line)
+	                  || vocalAnchorStateRef.current.key !== vocalAnchorKey
 	                  || position < vocalAnchorStateRef.current.lastPlaybackPosition - 250)) {
 	          // A seek can land in the silence without a previously visited row.
 	          // Use the last started voice so seeking and continuous playback agree.
 	          nextVocalAnchorPosition = vocalRowRenderData.findLastIndex(row => position >= row.renderStartTime);
 	  }
 	  const activeVocalAnchorPosition = shouldUseVocalRowAnchor
-	          ? getStableKaraokeVocalAnchorPosition(vocalAnchorStateRef, line, position, nextVocalAnchorPosition)
+	          ? getStableVocalAnchorPosition(vocalAnchorStateRef, vocalAnchorKey, position, nextVocalAnchorPosition)
 	          : -1;
 	  const activeVocalRowIndex = Number.isFinite(activeVocalAnchorPosition) && activeVocalAnchorPosition >= 0
 	          ? Math.round(activeVocalAnchorPosition)

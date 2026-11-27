@@ -1,4 +1,6 @@
-import { KARAOKE_JOINING_SCRIPT_REGEX } from "./createKaraokeLine.mjs";
+import {
+	getKaraokeTextDirection, needsKaraokeJoiningScript, shouldWrapKaraokeByWord,
+} from "./karaokeTextDirection.mjs";
 import { getKaraokeFillSteps, getKaraokeFillSoftEdge } from "./karaokeFill.mjs";
 import {
 	getKaraokeExpressiveUnitRanges, getKaraokeExpressiveWordWindow, getKaraokeMotionProfile,
@@ -9,44 +11,16 @@ export function createKaraokeTextRenderer({
 	splitKaraokeGraphemes, buildSharedWordSegments, applyKaraokeFillCorrectionCurve, motion,
 }) {
 	const { getKaraokeBounceValues, getKaraokeWordBounceValues, getKaraokeExpressiveMotion, getKaraokeExpressivePhase } = motion;
-	const KARAOKE_RTL_STRONG_CHAR_REGEX = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFC]/u;
-	const KARAOKE_LTR_STRONG_CHAR_REGEX = /[A-Za-z\u00C0-\u02AF\u0370-\u052F\u1E00-\u1EFF]/u;
 	const KARAOKE_COMPLEX_GRAPHEME_REGEX = /[\p{M}\u200C\u200D]/u;
-
-	const getKaraokeTextDirection = (text) => {
-		const normalizedText = typeof text === "string" ? text : "";
-		let rtlCount = 0;
-		let ltrCount = 0;
-
-		for (const char of Array.from(normalizedText)) {
-			if (KARAOKE_RTL_STRONG_CHAR_REGEX.test(char)) {
-				rtlCount++;
-				continue;
-			}
-			if (KARAOKE_LTR_STRONG_CHAR_REGEX.test(char)) {
-				ltrCount++;
-			}
-		}
-
-		return rtlCount > ltrCount ? "rtl" : "ltr";
-	};
 
 	const shouldUseKaraokeTextRun = (text) => {
 		const normalizedText = typeof text === "string" ? text : "";
-		return KARAOKE_RTL_STRONG_CHAR_REGEX.test(normalizedText) ||
-			KARAOKE_JOINING_SCRIPT_REGEX.test(normalizedText) ||
-			KARAOKE_COMPLEX_GRAPHEME_REGEX.test(normalizedText);
-	};
-
-	const shouldWrapKaraokeByWord = (text, motionStyle = null) => {
-		const normalizedText = typeof text === "string" ? text : "";
-		return /\S\s+\S/u.test(normalizedText)
-			|| (motionStyle === "expressive" && /[^\s.\-\u2010\u2011][.\-\u2010\u2011]+[^\s.\-\u2010\u2011]/u.test(normalizedText));
+		return needsKaraokeJoiningScript(normalizedText) || KARAOKE_COMPLEX_GRAPHEME_REGEX.test(normalizedText);
 	};
 
 	const shouldPreferKaraokeWhitespaceWrap = (text) => (
 		/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(text)
-		&& /\S\s+\S/u.test(text)
+		&& shouldWrapKaraokeByWord(text)
 	);
 
 	// Source timing units control fill/motion, not line breaks. Keep the units

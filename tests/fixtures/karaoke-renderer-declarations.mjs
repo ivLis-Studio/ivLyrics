@@ -51,6 +51,7 @@ export function readKaraokeRendererDeclarations() {
     const component = current("createKaraokeLine.mjs");
     const phonetic = current("karaokePhoneticFill.mjs");
     const textRenderer = current("karaokeTextRenderer.mjs");
+    const textDirection = current("karaokeTextDirection.mjs");
 
     let source = readLyricsRendererDeclarations();
     source = source.replace(/^import \{[^}]+\} from "#ivlyrics\/lyrics\/(?:createKaraokeLine|karaokePhoneticFill)\.mjs";\n/gm, "");
@@ -62,7 +63,7 @@ export function readKaraokeRendererDeclarations() {
     const wordIndexerStart = "const assignKaraokeWordIndexes =";
     const followingSection = "const getPseudoKaraokeRenderAdvance =";
     const wordIndexer = section(source, wordIndexerStart, followingSection);
-    const textDeclarations = unindent(section(textRenderer, "\tconst KARAOKE_RTL_STRONG_CHAR_REGEX", "\n\treturn {\n\t\tgetKaraokeTextDirection"))
+    const textDeclarations = unindent(section(textRenderer, "\tconst KARAOKE_COMPLEX_GRAPHEME_REGEX", "\n\treturn {\n\t\tgetKaraokeTextDirection"))
         .replace("const getKaraokeInlineStylePresentation", wordIndexer + "const getKaraokeInlineStylePresentation")
         .replace("buildSharedWordSegments(timedChars, {",
             'getPageRuntimeService("LyricsService", window)?.buildKaraokeWordSegments?.(timedChars, {');
@@ -124,8 +125,8 @@ import { splitLineByVocalRowShape } from "#ivlyrics/lyrics/vocalRowText.mjs";
 
     return source.replace(adapters, declarations.join("\n") + "\n")
         .replace(componentBindings, lineComponent + "\n\n" + phoneticFill + "\n")
-        .replace("const KARAOKE_TEXT_RUN_STATE_CLASS_NAMES", section(component, "const KARAOKE_CHAR_STATE_CLASS_NAMES", "export const KARAOKE_JOINING_SCRIPT_REGEX") + "const KARAOKE_TEXT_RUN_STATE_CLASS_NAMES")
-        .replace("const KARAOKE_COMPLEX_GRAPHEME_REGEX", section(component, "const KARAOKE_JOINING_SCRIPT_REGEX", "export function createKaraokeLine") + "const KARAOKE_COMPLEX_GRAPHEME_REGEX")
+        .replace("const KARAOKE_TEXT_RUN_STATE_CLASS_NAMES", section(component, "const KARAOKE_CHAR_STATE_CLASS_NAMES", "export function createKaraokeLine") + "const KARAOKE_TEXT_RUN_STATE_CLASS_NAMES")
+        .replace("const KARAOKE_COMPLEX_GRAPHEME_REGEX", section(textDirection, "const KARAOKE_RTL_STRONG_CHAR_REGEX", "export {") + "const KARAOKE_COMPLEX_GRAPHEME_REGEX")
         .replace("const PSEUDO_KARAOKE_SOURCES", section(timing, "const KARAOKE_PRE_SPACE_MIN_DURATION_MS", "const getTimedSyllablesFromLine") + "const PSEUDO_KARAOKE_SOURCES")
         .replace("const getKaraokeVisualSettings =", timedDeclarations.join("\n") + "\nconst getKaraokeVisualSettings =");
 }

@@ -127,7 +127,10 @@ const loadVocalAnchorHelpers = (source) => {
 			" getActiveKaraokeTimedCharIndex," +
 			" getKaraokeVocalAnchorPosition," +
 			" getKaraokeVocalAnchorWindowMs," +
-			" getStableKaraokeVocalAnchorPosition" +
+			(source === currentSource
+				? " getStableKaraokeVocalAnchorPosition: (state, line, position, next) => " +
+					"getStableVocalAnchorPosition(state, getKaraokeVocalAnchorLineKey(line), position, next)"
+				: " getStableKaraokeVocalAnchorPosition") +
 			" };",
 		context
 	);
