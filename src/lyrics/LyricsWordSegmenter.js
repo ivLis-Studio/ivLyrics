@@ -36,24 +36,34 @@ const normalizeLocale = (locale, text = "") => {
 };
 const getSegmenters = (locale) => {
 	const normalized = normalizeLocale(locale);
-	if (!segmenterCache.has(normalized)) {
-		let supportedLocale = normalized;
-		try {
-			new Intl.Segmenter(supportedLocale);
-		} catch (error) {
-			supportedLocale = baseLanguage(normalized) || "en";
-		}
-		segmenterCache.set(normalized, {
-			word: new Intl.Segmenter(supportedLocale, { granularity: "word" }),
-			grapheme: new Intl.Segmenter(supportedLocale, { granularity: "grapheme" }),
-		});
+	let segmenters = segmenterCache.get(normalized);
+	if (segmenters) return segmenters;
+
+	let supportedLocale = normalized;
+	let grapheme;
+	try {
+		grapheme = new Intl.Segmenter(supportedLocale, { granularity: "grapheme" });
+	} catch {
+		supportedLocale = baseLanguage(normalized) || "en";
+		grapheme = new Intl.Segmenter(supportedLocale, { granularity: "grapheme" });
 	}
-	return segmenterCache.get(normalized);
+	segmenters = { word: new Intl.Segmenter(supportedLocale, { granularity: "word" }), grapheme };
+	segmenterCache.set(normalized, segmenters);
+	return segmenters;
 };
-const graphemes = (text, locale) => [...getSegmenters(locale).grapheme.segment(text)].map((item) => item.segment);
-const intlWords = (text, locale) => text
-	? [...getSegmenters(locale).word.segment(text)].filter((item) => item.isWordLike).map((item) => item.segment)
-	: [];
+const graphemes = (text, locale) => {
+	const output = [];
+	for (const { segment } of getSegmenters(locale).grapheme.segment(text)) output.push(segment);
+	return output;
+};
+const intlWords = (text, locale) => {
+	const output = [];
+	if (!text) return output;
+	for (const { segment, isWordLike } of getSegmenters(locale).word.segment(text)) {
+		if (isWordLike) output.push(segment);
+	}
+	return output;
+};
 const isHiraganaString = (value) => /^\p{Script=Hiragana}+$/u.test(value);
 const isKatakanaGrapheme = (value) => /^[\p{Script=Katakana}ーヽヾ]+$/u.test(value);
 const isLatinNumGrapheme = (value) => /^[\p{Script=Latin}\p{N}]+$/u.test(value);

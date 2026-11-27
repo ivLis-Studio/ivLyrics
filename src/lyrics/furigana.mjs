@@ -5,14 +5,11 @@ export function createFuriganaConverter(browser) {
   let initPromise = null;
   const conversionCache = new Map();
 
-  // Debug mode - set to false to reduce console logs
-  const DEBUG_MODE = false;
   const MAX_CONVERSION_CACHE_SIZE = 1000;
   const KUROMOJI_DICT_PATHS = [
     "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict",
     "https://unpkg.com/kuromoji@0.1.2/dict",
   ];
-  let hasLoggedKuromojiWarning = false;
 
   const normalizeKuromojiDictUrl = (url) => {
     if (typeof url !== "string" || !url.includes(".dat.gz")) {
@@ -105,50 +102,24 @@ export function createFuriganaConverter(browser) {
     return initPromise;
   };
 
-  const containsKanji = (text) => {
-    // 々 (U+3005), 〻 (U+303B) and the kana iteration marks repeat the
-    // previous character's reading, so they ride along with the kanji
-    // sequence. Without this, 日々 splits into 日 + 々 and the whole
-    // ひび reading lands on 日 while 々 gets no furigana.
-    const kanjiRegex = /[\u4E00-\u9FAF\u3400-\u4DBF\u3005\u303B\u309D\u309E\u30FD\u30FE]/;
-    return kanjiRegex.test(text);
-  };
+  // Iteration marks ride along with the preceding kanji so a reading such as
+  // ひび is attached to 日々 instead of only to 日.
+  const kanjiRegex = /[\u4E00-\u9FAF\u3400-\u4DBF\u3005\u303B\u309D\u309E\u30FD\u30FE]/;
+  const containsKanji = (text) => kanjiRegex.test(text);
 
-  const katakanaToHiragana = (katakana) => {
-    if (!katakana) return "";
-
-    return katakana
-      .split("")
-      .map((char) => {
-        const code = char.charCodeAt(0);
-        if (code >= 0x30a1 && code <= 0x30f6) {
-          return String.fromCharCode(code - 0x60);
-        }
-        return char;
-      })
-      .join("");
-  };
+  const katakanaToHiragana = (katakana) => (katakana || "").replace(
+    /[\u30a1-\u30f6]/g,
+    (char) => String.fromCharCode(char.charCodeAt(0) - 0x60),
+  );
 
   const convertToFurigana = (text) => {
     if (!text || typeof text !== "string") {
       return text;
     }
 
-    if (!containsKanji(text)) {
-      return text;
-    }
-
-    if (conversionCache.has(text)) {
-      return conversionCache.get(text);
-    }
-
-    if (!kuromojiInstance) {
-      if (DEBUG_MODE && !hasLoggedKuromojiWarning) {
-        console.warn("[ivLyrics] Kuromoji is not initialized yet.");
-        hasLoggedKuromojiWarning = true;
-      }
-      return text;
-    }
+    const cached = conversionCache.get(text);
+    if (cached !== undefined) return cached;
+    if (!kuromojiInstance || !containsKanji(text)) return text;
 
     try {
       const tokens = kuromojiInstance.tokenize(text);
@@ -238,10 +209,7 @@ export function createFuriganaConverter(browser) {
       conversionCache.set(text, result);
 
       return result;
-    } catch (error) {
-      if (DEBUG_MODE) {
-        console.error("[ivLyrics] Furigana conversion failed:", error);
-      }
+    } catch {
       return text;
     }
   };

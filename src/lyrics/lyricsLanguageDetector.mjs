@@ -1,6 +1,13 @@
 import { getTranslationSourceCacheHash } from "./translationPresentation.mjs";
 import { LanguageRefiner } from "./lyricsLanguageRules.mjs";
 
+const extractLineText = (line) => {
+    if (!line) return "";
+    if (typeof line === "string") return line;
+    if (typeof line === "object") return line.$$typeof ? "" : String(line.originalText || line.text || "");
+    return String(line);
+};
+
 export function createLyricsLanguageDetector({ languageModel, readSetting }) {
     return {
         _langDetectCache: new Map(),
@@ -18,16 +25,15 @@ export function createLyricsLanguageDetector({ languageModel, readSetting }) {
             if (!lyrics || !Array.isArray(lyrics) || lyrics.length === 0) {
                 return null;
             }
-            const lines = lyrics
-                .map((line) => {
-                    if (!line) return "";
-                    if (typeof line === "string") return line;
-                    if (typeof line === "object" && !line.$$typeof) return String(line.originalText || line.text || "");
-                    return typeof line === "object" ? "" : String(line);
-                })
-                .flatMap((line) => line.split(/\r\n?|\n/u))
-                .map((line) => line.trim().normalize("NFC"))
-                .filter((line) => line && !LanguageRefiner.isCreditLine(line));
+            const lines = [];
+            for (const entry of lyrics) {
+                const text = extractLineText(entry);
+                if (!text) continue;
+                for (const part of text.split(/\r\n?|\n/u)) {
+                    const line = part.trim().normalize("NFC");
+                    if (line && !LanguageRefiner.isCreditLine(line)) lines.push(line);
+                }
+            }
             if (lines.length === 0) {
                 return null;
             }
@@ -56,21 +62,6 @@ export function createLyricsLanguageDetector({ languageModel, readSetting }) {
             if (!lyrics || !Array.isArray(lyrics) || lyrics.length === 0) {
                 return null;
             }
-
-            // Safe text extraction
-            const extractTextSafely = (line) => {
-                if (!line) return "";
-                if (typeof line === "string") return line;
-                if (typeof line === "object") {
-                    if (line.$$typeof) return ""; // React element
-                    return line.originalText || line.text || "";
-                }
-                return String(line || "");
-            };
-
-            // extractTextSafely can hand back a non-string when a line carries
-            // an unexpected shape, so coerce before anything iterates it.
-            const extractLineText = (line) => String(extractTextSafely(line) ?? "");
 
             const textLines = lyrics.map(extractLineText);
             const rawLyrics = textLines.join(" ");

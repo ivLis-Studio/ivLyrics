@@ -1548,7 +1548,7 @@ export function createPanelLyricsStyles({
         const css = renderPanelLyricsStyles(typography, { activeBodyClass, transitionDurationMs, transitionEasing });
         const existingStyle = document.getElementById(PANEL_STYLE_ID);
         if (existingStyle) {
-            existingStyle.textContent = css;
+            if (existingStyle.textContent !== css) existingStyle.textContent = css;
             if (reportUpdate) debug("[NowPlayingPanelLyrics] Styles updated");
             return;
         }

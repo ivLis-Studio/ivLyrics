@@ -114,7 +114,8 @@ export function createKaraokeLine({
 				livePositionMap ? livePositionMap(value) : value))
 			: null, [livePaint, vocalRowRenderData, livePositionMap]);
 	  const vocalAnchorKey = useMemo(() => shouldUseVocalRowAnchor
-	          ? getKaraokeVocalAnchorLineKey(line) : null, [shouldUseVocalRowAnchor, line]);
+	          ? getKaraokeVocalAnchorLineKey(line) : null,
+	          [shouldUseVocalRowAnchor, line.startTime, line.endTime, line.originalText, line.text]);
 	  const vocalAnchorStateRef = useRef({ key: null, anchorPosition: -1, lastPlaybackPosition: NaN });
 	  let nextVocalAnchorPosition = shouldUseVocalRowAnchor
 	          ? getKaraokeVocalAnchorPosition(vocalRowRenderData, position, vocalActiveCharIndexes)
@@ -143,10 +144,17 @@ export function createKaraokeLine({
 			if (!vocalRows) return null;
 			const rowPhonetics = splitLineByVocalRowShape(phonetic, vocalRows);
 			const rowTranslations = splitLineByVocalRowShape(translation, vocalRows);
-			const hasRowPhoneticSubline = vocalRows.some((row, rowIndex) => row.phonetic || rowPhonetics[rowIndex]);
-			const hasRowTranslationSubline = vocalRows.some((row, rowIndex) => row.translation || rowTranslations[rowIndex]);
-			const stackPhonetic = !hasRowPhoneticSubline && typeof phonetic === "string" ? phonetic.trim() : "";
-			const stackTranslation = !hasRowTranslationSubline && typeof translation === "string" ? translation.trim() : "";
+			const rowSupplements = vocalRows.map((row, index) => {
+				const phonetic = row.phonetic || rowPhonetics[index] || "";
+				return {
+					phonetic,
+					translation: row.translation || rowTranslations[index] || "",
+					phoneticUnits: row.phoneticUnits ? getPhoneticFillUnits(row.phoneticUnits, phonetic) : null,
+				};
+			});
+			const stackPhonetic = typeof phonetic === "string" && !rowSupplements.some(row => row.phonetic) ? phonetic.trim() : "";
+			const stackTranslation = typeof translation === "string" && !rowSupplements.some(row => row.translation)
+				? translation.trim() : "";
 			const culturalAnnotationsByRow = vocalRows.map(() => []);
 			for (const annotation of culturalAnnotations || []) {
 				const matchingRowIndex = vocalRowRenderData.findIndex(({ line: rowLine }) =>
@@ -156,11 +164,11 @@ export function createKaraokeLine({
 				const rowIndex = matchingRowIndex >= 0 ? matchingRowIndex : vocalRows.length - 1;
 				culturalAnnotationsByRow[rowIndex].push(annotation);
 			}
-			return { rowPhonetics, rowTranslations, stackPhonetic, stackTranslation, culturalAnnotationsByRow };
+			return { rowSupplements, stackPhonetic, stackTranslation, culturalAnnotationsByRow };
 		}, [vocalRows, vocalRowRenderData, phonetic, translation, culturalAnnotations, settingsRevision]);
 
 	  if (vocalRows) {
-			const { rowPhonetics, rowTranslations, stackPhonetic, stackTranslation, culturalAnnotationsByRow } = vocalAuxiliaryData;
+			const { rowSupplements, stackPhonetic, stackTranslation, culturalAnnotationsByRow } = vocalAuxiliaryData;
 			  const stackChildren = vocalRows.map((row, rowIndex) => {
 	                  const rowRenderData = vocalRowRenderData[rowIndex];
 				const rowLine = rowRenderData.line;
@@ -172,9 +180,7 @@ export function createKaraokeLine({
 	                          shouldUseVocalRowAnchor && rowIndex === activeVocalRowIndex ? "active-vocal-row" : "",
 	                          row.speakerClass ? `speaker-${row.speakerClass}` : "",
 	                  ].filter(Boolean);
-				const rowPhonetic = row.phonetic || rowPhonetics[rowIndex] || "";
-				const rowTranslation = row.translation || rowTranslations[rowIndex] || "";
-				const rowPhoneticUnits = row.phoneticUnits ? getPhoneticFillUnits(row.phoneticUnits, rowPhonetic) : null;
+				const { phonetic: rowPhonetic, translation: rowTranslation, phoneticUnits } = rowSupplements[rowIndex];
 				const rowPosition = getKaraokeVocalRowRenderPosition(rowRenderData, position);
 
 				return react.createElement(
@@ -199,8 +205,8 @@ export function createKaraokeLine({
 					rowPhonetic && react.createElement(
 						"span",
 						{ className: "lyrics-lyricsContainer-LyricsLine-phonetic lyrics-karaoke-part-subline" },
-						rowPhoneticUnits ? react.createElement(PhoneticFillText, {
-							units: rowPhoneticUnits,
+						phoneticUnits ? react.createElement(PhoneticFillText, {
+							units: phoneticUnits,
 							position: rowPosition,
 							active: isActive,
 							...(vocalRowLivePositionMaps ? { liveClock, livePositionMap: vocalRowLivePositionMaps[rowIndex] } : {}),

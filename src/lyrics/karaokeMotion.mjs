@@ -337,7 +337,7 @@ const classifyKaraokeExpressiveUnits = (timedChars, allowWordMotion = true) => {
 };
 
 export function createKaraokeMotion({ getVisualSettings, prefersReducedLyricsMotion }) {
-	const getKaraokeBounceValues = (position, isActive, startTime, endTime, attenuation = 1, motionProfile = null) => {
+	const getKaraokeBounceValues = (position, _isActive, startTime, endTime, _attenuation = 1, motionProfile = null) => {
 		if (!getVisualSettings()["karaoke-bounce"] || !Number.isFinite(position)) return KARAOKE_BOUNCE_IDLE;
 		const profile = motionProfile || createKaraokeMotionProfile(startTime, endTime, endTime - startTime);
 		if (!Number.isFinite(profile.startTime) || !Number.isFinite(profile.endTime)
@@ -352,9 +352,7 @@ export function createKaraokeMotion({ getVisualSettings, prefersReducedLyricsMot
 		return { offsetY, scale, glow, active: true };
 	};
 
-	const getKaraokeWordBounceValues = (position, isActive, startTime, endTime, attenuation = 1, motionProfile = null) => (
-		getKaraokeBounceValues(position, isActive, startTime, endTime, attenuation, motionProfile)
-	);
+	const getKaraokeWordBounceValues = getKaraokeBounceValues;
 
 	const getKaraokeLiveBounce = (position, profile) => {
 		if (!profile || !getVisualSettings()["karaoke-bounce"] || !Number.isFinite(position)
