@@ -1,12 +1,7 @@
 import { measureLyricsDisplayWidth } from "./lyricsDisplayWidth.mjs";
+import { getTimedLineSplitPlan, LINE_SPLIT_TRIGGER_WIDTH, LINE_SPLIT_HARD_WIDTH } from "./lyricsLineSplitPlan.mjs";
 
 export { measureLyricsDisplayWidth };
-
-const JAPANESE_LINE_SPLIT_TRIGGER_WIDTH = 22;
-const JAPANESE_LINE_SPLIT_HARD_WIDTH = 26;
-const JAPANESE_LINE_SPLIT_MIN_WIDTH = 6;
-const JAPANESE_LINE_SPLIT_MIN_DURATION_MS = 500;
-const JAPANESE_LINE_SPLIT_MAX_SEGMENTS = 4;
 
 export function isJapaneseLyricsPayload(payload) {
     const languageValues = [
@@ -22,100 +17,23 @@ function normalizeSplitComparisonText(value) {
     return String(value || '').replace(/[\s\u3000]+/gu, ' ').trim();
 }
 
+function getJapaneseBoundary(left, right) {
+    const hasWhitespace = /[\s　]$/u.test(String(left?.text || ''))
+        || /^[\s　]/u.test(String(right?.text || ''));
+    const leftEndTime = Number(left?.endTime);
+    const rightStartTime = Number(right?.startTime);
+    if (!hasWhitespace
+        || !Number.isFinite(leftEndTime)
+        || !Number.isFinite(rightStartTime)
+        || leftEndTime > rightStartTime) {
+        return null;
+    }
+    const gapMs = rightStartTime - leftEndTime;
+    return Number.isFinite(gapMs) ? { penalty: 0, gapMs } : null;
+}
+
 export function getJapaneseLineSplitPlan(syllables, totalWidth) {
-    const candidateBoundaries = new Map();
-    for (let index = 1; index < syllables.length; index++) {
-        const left = syllables[index - 1];
-        const right = syllables[index];
-        const hasWhitespace = /[\s\u3000]$/u.test(String(left?.text || ''))
-            || /^[\s\u3000]/u.test(String(right?.text || ''));
-        const leftEndTime = Number(left?.endTime);
-        const rightStartTime = Number(right?.startTime);
-        if (!hasWhitespace
-            || !Number.isFinite(leftEndTime)
-            || !Number.isFinite(rightStartTime)
-            || leftEndTime > rightStartTime) {
-            continue;
-        }
-        candidateBoundaries.set(index, Math.max(0, rightStartTime - leftEndTime));
-    }
-    if (candidateBoundaries.size === 0) return null;
-
-    const rawTexts = syllables.map(syllable => String(syllable?.text || ''));
-    const maximumSegmentCount = Math.min(
-        JAPANESE_LINE_SPLIT_MAX_SEGMENTS,
-        candidateBoundaries.size + 1,
-        syllables.length
-    );
-    const minimumSegmentCount = Math.max(
-        2,
-        Math.ceil(totalWidth / JAPANESE_LINE_SPLIT_HARD_WIDTH)
-    );
-
-    const findPlanForCount = segmentCount => {
-        const targetWidth = totalWidth / segmentCount;
-        const memo = new Map();
-
-        const search = (startIndex, remainingSegments) => {
-            const memoKey = `${startIndex}:${remainingSegments}`;
-            if (memo.has(memoKey)) return memo.get(memoKey);
-
-            if (remainingSegments === 1) {
-                const width = measureLyricsDisplayWidth(rawTexts.slice(startIndex).join(''));
-                const first = syllables[startIndex];
-                const last = syllables.at(-1);
-                const duration = Number(last?.endTime) - Number(first?.startTime);
-                const result = width >= JAPANESE_LINE_SPLIT_MIN_WIDTH
-                    && width <= JAPANESE_LINE_SPLIT_HARD_WIDTH
-                    && duration >= JAPANESE_LINE_SPLIT_MIN_DURATION_MS
-                    ? { cost: Math.pow(width - targetWidth, 2), boundaries: [] }
-                    : null;
-                memo.set(memoKey, result);
-                return result;
-            }
-
-            let best = null;
-            const maximumEndIndex = syllables.length - (remainingSegments - 1);
-            for (let endIndex = startIndex + 1; endIndex <= maximumEndIndex; endIndex++) {
-                const gapMs = candidateBoundaries.get(endIndex);
-                if (!Number.isFinite(gapMs)) continue;
-
-                const width = measureLyricsDisplayWidth(rawTexts.slice(startIndex, endIndex).join(''));
-                const first = syllables[startIndex];
-                const last = syllables[endIndex - 1];
-                const duration = Number(last?.endTime) - Number(first?.startTime);
-                if (width < JAPANESE_LINE_SPLIT_MIN_WIDTH
-                    || width > JAPANESE_LINE_SPLIT_HARD_WIDTH
-                    || duration < JAPANESE_LINE_SPLIT_MIN_DURATION_MS) {
-                    continue;
-                }
-
-                const remaining = search(endIndex, remainingSegments - 1);
-                if (!remaining) continue;
-                const timingGapBonus = Math.min(gapMs / 200, 1);
-                const cost = Math.pow(width - targetWidth, 2) - timingGapBonus + remaining.cost;
-                if (!best || cost < best.cost) {
-                    best = {
-                        cost,
-                        boundaries: [endIndex, ...remaining.boundaries]
-                    };
-                }
-            }
-
-            memo.set(memoKey, best);
-            return best;
-        };
-
-        return search(0, segmentCount);
-    };
-
-    for (let segmentCount = minimumSegmentCount;
-        segmentCount <= maximumSegmentCount;
-        segmentCount++) {
-        const plan = findPlanForCount(segmentCount);
-        if (plan) return [0, ...plan.boundaries, syllables.length];
-    }
-    return null;
+    return getTimedLineSplitPlan(syllables, totalWidth, getJapaneseBoundary);
 }
 
 export function splitLongJapaneseLine(line, previousLine = null, nextLine = null) {
@@ -149,9 +67,9 @@ export function splitLongJapaneseLine(line, previousLine = null, nextLine = null
     const totalWidth = measureLyricsDisplayWidth(lineText);
     if (!lineText
         || lineText !== syllableText
-        || totalWidth <= JAPANESE_LINE_SPLIT_TRIGGER_WIDTH
+        || totalWidth <= LINE_SPLIT_TRIGGER_WIDTH
         || syllables.some(syllable => (
-            measureLyricsDisplayWidth(syllable.text) > JAPANESE_LINE_SPLIT_HARD_WIDTH
+            measureLyricsDisplayWidth(syllable.text) > LINE_SPLIT_HARD_WIDTH
         ))) {
         return [line];
     }

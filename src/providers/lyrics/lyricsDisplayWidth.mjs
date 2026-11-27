@@ -10,25 +10,21 @@ const DISPLAY_LOWERCASE_PATTERN = /[a-z]/u;
 const DISPLAY_NUMBER_PATTERN = /\p{Number}/u;
 const DISPLAY_PUNCTUATION_PATTERN = /[.,'’!?;:()-]/u;
 
+export function getLyricsDisplayCharacterWidth(character) {
+    if (DISPLAY_MARK_PATTERN.test(character)) return 0;
+    if (DISPLAY_WHITESPACE_PATTERN.test(character)) return 0.33;
+    if (DISPLAY_FULL_WIDTH_PATTERN.test(character)) return 1;
+    if (DISPLAY_UPPERCASE_PATTERN.test(character)) return 0.72;
+    if (DISPLAY_LOWERCASE_PATTERN.test(character)) return 0.58;
+    if (DISPLAY_NUMBER_PATTERN.test(character)) return 0.62;
+    if (DISPLAY_PUNCTUATION_PATTERN.test(character)) return 0.38;
+    return 0.8;
+}
+
 export function measureLyricsDisplayWidth(value) {
     let width = 0;
     for (const character of String(value || '')) {
-        if (DISPLAY_MARK_PATTERN.test(character)) continue;
-        if (DISPLAY_WHITESPACE_PATTERN.test(character)) {
-            width += 0.33;
-        } else if (DISPLAY_FULL_WIDTH_PATTERN.test(character)) {
-            width += 1;
-        } else if (DISPLAY_UPPERCASE_PATTERN.test(character)) {
-            width += 0.72;
-        } else if (DISPLAY_LOWERCASE_PATTERN.test(character)) {
-            width += 0.58;
-        } else if (DISPLAY_NUMBER_PATTERN.test(character)) {
-            width += 0.62;
-        } else if (DISPLAY_PUNCTUATION_PATTERN.test(character)) {
-            width += 0.38;
-        } else {
-            width += 0.8;
-        }
+        width += getLyricsDisplayCharacterWidth(character);
     }
     return width;
 }

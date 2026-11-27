@@ -1,18 +1,19 @@
 import { joinSyllableText, normalizeDisplayText, normalizeInlineText } from "./lyricsPlusInput.mjs";
 import { measureLyricsDisplayWidth } from "./lyricsDisplayWidth.mjs";
+import { getTimedLineSplitPlan, LINE_SPLIT_TRIGGER_WIDTH, LINE_SPLIT_HARD_WIDTH } from "./lyricsLineSplitPlan.mjs";
 
 export { measureLyricsDisplayWidth };
 
-const SOLO_LINE_SPLIT_TRIGGER_WIDTH = 22;
-const SOLO_LINE_SPLIT_HARD_WIDTH = 26;
-const SOLO_LINE_SPLIT_MIN_WIDTH = 6;
-const SOLO_LINE_SPLIT_MIN_DURATION_MS = 500;
-const SOLO_LINE_SPLIT_MAX_SEGMENTS = 4;
+const BOUNDARY_IGNORED_CHARACTER = /[\s\p{Mark}]/u;
 
 function getBoundaryCharacter(value, fromEnd = false) {
-    const characters = Array.from(String(value || ''))
-        .filter(character => !/[\s\p{Mark}]/u.test(character));
-    return (fromEnd ? characters[characters.length - 1] : characters[0]) || '';
+    let last = '';
+    for (const character of value) {
+        if (BOUNDARY_IGNORED_CHARACTER.test(character)) continue;
+        if (!fromEnd) return character;
+        last = character;
+    }
+    return last;
 }
 
 function isLatinOrNumber(character) {
@@ -78,94 +79,6 @@ function getSafeSoloLineBoundary(leftSyllable, rightSyllable) {
     };
 }
 
-function getSoloLineSplitPlan(syllables, totalWidth) {
-    const candidateBoundaries = new Map();
-    for (let index = 1; index < syllables.length; index++) {
-        const boundary = getSafeSoloLineBoundary(syllables[index - 1], syllables[index]);
-        if (boundary) candidateBoundaries.set(index, boundary);
-    }
-    if (candidateBoundaries.size === 0) return null;
-
-    const rawTexts = syllables.map(syllable => String(syllable.text || ''));
-    const maximumSegmentCount = Math.min(
-        SOLO_LINE_SPLIT_MAX_SEGMENTS,
-        candidateBoundaries.size + 1,
-        syllables.length
-    );
-    const minimumSegmentCount = Math.max(
-        2,
-        Math.ceil(totalWidth / SOLO_LINE_SPLIT_HARD_WIDTH)
-    );
-
-    const findPlanForCount = segmentCount => {
-        const targetWidth = totalWidth / segmentCount;
-        const memo = new Map();
-
-        const search = (startIndex, remainingSegments) => {
-            const memoKey = `${startIndex}:${remainingSegments}`;
-            if (memo.has(memoKey)) return memo.get(memoKey);
-
-            if (remainingSegments === 1) {
-                const width = measureLyricsDisplayWidth(rawTexts.slice(startIndex).join(''));
-                const first = syllables[startIndex];
-                const last = syllables[syllables.length - 1];
-                const duration = last.endTime - first.startTime;
-                const result = width >= SOLO_LINE_SPLIT_MIN_WIDTH
-                    && width <= SOLO_LINE_SPLIT_HARD_WIDTH
-                    && duration >= SOLO_LINE_SPLIT_MIN_DURATION_MS
-                    ? { cost: Math.pow(width - targetWidth, 2), boundaries: [] }
-                    : null;
-                memo.set(memoKey, result);
-                return result;
-            }
-
-            let best = null;
-            const maximumEndIndex = syllables.length - (remainingSegments - 1);
-            for (let endIndex = startIndex + 1; endIndex <= maximumEndIndex; endIndex++) {
-                const boundary = candidateBoundaries.get(endIndex);
-                if (!boundary) continue;
-
-                const width = measureLyricsDisplayWidth(rawTexts.slice(startIndex, endIndex).join(''));
-                const first = syllables[startIndex];
-                const last = syllables[endIndex - 1];
-                const duration = last.endTime - first.startTime;
-                if (width < SOLO_LINE_SPLIT_MIN_WIDTH
-                    || width > SOLO_LINE_SPLIT_HARD_WIDTH
-                    || duration < SOLO_LINE_SPLIT_MIN_DURATION_MS) {
-                    continue;
-                }
-
-                const remaining = search(endIndex, remainingSegments - 1);
-                if (!remaining) continue;
-                const timingGapBonus = Math.min(boundary.gapMs / 200, 1);
-                const cost = Math.pow(width - targetWidth, 2)
-                    + (boundary.penalty * 4)
-                    - timingGapBonus
-                    + remaining.cost;
-                if (!best || cost < best.cost) {
-                    best = {
-                        cost,
-                        boundaries: [endIndex, ...remaining.boundaries]
-                    };
-                }
-            }
-
-            memo.set(memoKey, best);
-            return best;
-        };
-
-        return search(0, segmentCount);
-    };
-
-    for (let segmentCount = minimumSegmentCount;
-        segmentCount <= maximumSegmentCount;
-        segmentCount++) {
-        const plan = findPlanForCount(segmentCount);
-        if (plan) return [0, ...plan.boundaries, syllables.length];
-    }
-    return null;
-}
-
 export function splitLongSoloVocalLine(line, previousLine = null, nextLine = null) {
     const syllables = Array.isArray(line?.syllables) ? line.syllables : [];
     if (syllables.length < 2
@@ -206,14 +119,14 @@ export function splitLongSoloVocalLine(line, previousLine = null, nextLine = nul
     if (!lineText || lineText !== syllableText) return [line];
 
     const totalWidth = measureLyricsDisplayWidth(lineText);
-    if (totalWidth <= SOLO_LINE_SPLIT_TRIGGER_WIDTH
+    if (totalWidth <= LINE_SPLIT_TRIGGER_WIDTH
         || syllables.some(syllable => (
-            measureLyricsDisplayWidth(syllable.text) > SOLO_LINE_SPLIT_HARD_WIDTH
+            measureLyricsDisplayWidth(syllable.text) > LINE_SPLIT_HARD_WIDTH
         ))) {
         return [line];
     }
 
-    const plan = getSoloLineSplitPlan(syllables, totalWidth);
+    const plan = getTimedLineSplitPlan(syllables, totalWidth, getSafeSoloLineBoundary);
     if (!plan || plan.length < 3) return [line];
 
     const sourceLineKey = String(
@@ -253,12 +166,11 @@ export function splitLongSoloVocalLine(line, previousLine = null, nextLine = nul
     };
     const fragments = plan.slice(0, -1).map(buildSoloLineFragment);
 
-    const isSoloLineSplitSafe = () => {
     const flattenedSyllables = fragments.flatMap(fragment => fragment.syllables);
     const preservesSyllables = flattenedSyllables.length === syllables.length
         && flattenedSyllables.every((syllable, index) => syllable === syllables[index]);
     const preservesText = normalizeDisplayText(
-        fragments.flatMap(fragment => fragment.syllables).map(syllable => syllable.text).join('')
+        flattenedSyllables.map(syllable => syllable.text).join('')
     ) === lineText;
     const hasSafeFragmentTiming = fragments.every((fragment, index) => (
         index === 0
@@ -268,9 +180,7 @@ export function splitLongSoloVocalLine(line, previousLine = null, nextLine = nul
                 <= fragment.syllables[0].startTime
         )
     ));
-    return preservesSyllables && preservesText && hasSafeFragmentTiming;
-    };
-    return isSoloLineSplitSafe()
+    return preservesSyllables && preservesText && hasSafeFragmentTiming
         ? fragments
         : [line];
 }
