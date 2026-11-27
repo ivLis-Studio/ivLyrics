@@ -1,6 +1,8 @@
 export function createSyncCreatorDraftHistoryCodec({ getCodec, cloneValue, isPlainObject, normalizeDraft }) {
-  const changedFields = (before, after) => ({
-    put: Object.fromEntries(Object.entries(after).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(before[key]))),
+  const changedFields = (before, after, handledSeparately = null) => ({
+    put: Object.fromEntries(Object.entries(after).filter(([key, value]) => (
+      !handledSeparately?.has(key) && JSON.stringify(value) !== JSON.stringify(before[key])
+    ))),
     remove: Object.keys(before).filter(key => !Object.prototype.hasOwnProperty.call(after, key)),
   });
   const applyFields = (before, patch) => {
@@ -18,12 +20,14 @@ export function createSyncCreatorDraftHistoryCodec({ getCodec, cloneValue, isPla
     return result;
   };
   const draftPatch = (before, after, codec) => {
-    const patch = changedFields(before, after);
-    if (before.syncData?.version === 6 && after.syncData?.version === 6) {
-      delete patch.put.syncData;
-      patch.sync = codec.diff(before.syncData, after.syncData);
-    }
-    if (before.editor && after.editor) { delete patch.put.editor; patch.editor = changedFields(before.editor, after.editor); }
+    const handledSeparately = new Set();
+    if (before.syncData?.version === 6 && after.syncData?.version === 6) handledSeparately.add("syncData");
+    if (before.editor && after.editor) handledSeparately.add("editor");
+    // These fields already have their own patch format. Avoid stringifying
+    // entire timing bodies and draft editor settings just to discard the result.
+    const patch = changedFields(before, after, handledSeparately);
+    if (handledSeparately.has("syncData")) patch.sync = codec.diff(before.syncData, after.syncData);
+    if (handledSeparately.has("editor")) patch.editor = changedFields(before.editor, after.editor);
     return patch;
   };
   const applyDraftPatch = (before, patch, codec) => {
