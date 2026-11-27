@@ -6,13 +6,7 @@ export function createI18n({
     onLanguageChanged,
     debug,
 }) {
-    // Cached language data
-    let currentLanguage = null;
-    let languageData = {};
-    let fallbackData = {};
     const DEFAULT_LANGUAGE = "ko";
-    const AVAILABLE_LANGUAGES = [];
-    const KEY_PATH_CACHE_LIMIT = 2048;
     const RESEARCH_KEY_ALIASES = {
         "tmi.title": "research.title",
         "tmi.requireKey": "research.requireProvider",
@@ -36,15 +30,24 @@ export function createI18n({
         "settingsAdvanced.tmiStyle.fontSize.desc": "research.fontSizeDesc",
         "settingsAdvanced.tmiStyle.fontSize.info": "research.fontSizeInfo"
     };
-    const keyPathCache = new Map();
-    let keyPathSplit = null;
-    let lastKeyPath = null;
-    let lastKeyPathSegments = null;
-    let canCacheKeyPaths = false;
-    try {
-        keyPathSplit = String.prototype.split;
-        canCacheKeyPaths = /\{\s*\[native code\]\s*\}/.test(Function.prototype.toString.call(keyPathSplit));
-    } catch (e) { }
+
+    let currentLanguage = null;
+    let languageData = {};
+    let fallbackData = {};
+    // Resolved strings of the current language (with the default language as
+    // fallback), by key path. Interface text is looked up on every render, and
+    // the dictionaries do not change while a language is active.
+    const resolvedStrings = new Map();
+
+    const getLanguageData = (langCode) => languages.get(langCode) || null;
+
+    // The catalog is fixed when the bundle is built, so the language list is
+    // computed once. The default language is always offered.
+    const AVAILABLE_LANGUAGES = [];
+    for (const code of languages.keys()) {
+        if (languages.hasData?.(code) ?? Boolean(getLanguageData(code))) AVAILABLE_LANGUAGES.push(code);
+    }
+    if (!AVAILABLE_LANGUAGES.includes(DEFAULT_LANGUAGE)) AVAILABLE_LANGUAGES.unshift(DEFAULT_LANGUAGE);
 
     function getSavedLanguage() {
         try {
@@ -62,65 +65,14 @@ export function createI18n({
         }
     }
 
-    const getLanguageData = (langCode) => languages.get(langCode) || null;
-
-    /**
-     * Keep the public language list aligned with language files actually loaded.
-     */
-    function refreshAvailableLanguages() {
-        let hasDefaultLanguage = false;
-        AVAILABLE_LANGUAGES.length = 0;
-
-        for (const code of languages.keys()) {
-            if (languages.hasData?.(code) ?? Boolean(getLanguageData(code))) {
-                AVAILABLE_LANGUAGES.push(code);
-                if (code === DEFAULT_LANGUAGE) {
-                    hasDefaultLanguage = true;
-                }
-            }
-        }
-
-        if (!hasDefaultLanguage) {
-            AVAILABLE_LANGUAGES.unshift(DEFAULT_LANGUAGE);
-        }
-
-        return AVAILABLE_LANGUAGES;
+    function useLanguage(langCode, data) {
+        languageData = data;
+        currentLanguage = langCode;
+        resolvedStrings.clear();
     }
 
-    /**
-     * Get nested value from object by key path
-     */
-    function getKeyPathSegments(keyPath) {
-        if (
-            typeof keyPath !== "string"
-            || keyPath.length > 256
-            || !canCacheKeyPaths
-            || String.prototype.split !== keyPathSplit
-        ) {
-            return keyPath.split(".");
-        }
-
-        if (keyPath === lastKeyPath) return lastKeyPathSegments;
-
-        const cached = keyPathCache.get(keyPath);
-        if (cached) {
-            lastKeyPath = keyPath;
-            lastKeyPathSegments = cached;
-            return cached;
-        }
-
-        const keys = keyPath.split(".");
-        lastKeyPath = keyPath;
-        lastKeyPathSegments = keys;
-        if (keyPathCache.size < KEY_PATH_CACHE_LIMIT) {
-            keyPathCache.set(keyPath, keys);
-        }
-        return keys;
-    }
-
-    function getNestedValue(obj, keyPath) {
-        if (!obj || !keyPath) return null;
-        const keys = getKeyPathSegments(keyPath);
+    // A leaf value at the key path, or null for a missing key or a section.
+    function getNestedValue(obj, keys) {
         let value = obj;
         for (let i = 0; i < keys.length; i++) {
             if (value && typeof value === "object" && keys[i] in value) {
@@ -132,38 +84,32 @@ export function createI18n({
         return (typeof value === "object") ? null : value;
     }
 
+    function resolveString(keyPath) {
+        if (resolvedStrings.has(keyPath)) return resolvedStrings.get(keyPath);
+        const keys = keyPath.split(".");
+        let value = getNestedValue(languageData, keys);
+        if (value === null && fallbackData) value = getNestedValue(fallbackData, keys);
+        resolvedStrings.set(keyPath, value);
+        return value;
+    }
+
     /**
-     * Get translation string.
+     * Translation for a key path, with {name} placeholders replaced from params.
+     * Returns an empty string for unknown keys so callers can use their fallback.
      */
     function getString(keyPath, params) {
         if (!keyPath) return "";
         keyPath = RESEARCH_KEY_ALIASES[keyPath] || keyPath;
+        if (currentLanguage === null) initSync();
 
-        // Try to initialize if not done yet
-        if (currentLanguage === null) {
-            initSync();
-        }
+        const value = resolveString(keyPath);
+        if (value === null) return "";
 
-        // Try current language
-        let value = getNestedValue(languageData, keyPath);
-
-        // Try fallback language
-        if (value === null && fallbackData) {
-            value = getNestedValue(fallbackData, keyPath);
-        }
-
-        // Return an empty string if no translation found so caller fallbacks can run.
-        if (value === null) {
-            return "";
-        }
-
-        // Replace parameters
         if (typeof value === "string" && params && typeof params === "object") {
             return value.replace(/\{(\w+)\}/g, function (match, paramKey) {
                 return params[paramKey] !== undefined ? params[paramKey] : match;
             });
         }
-
         return value;
     }
 
@@ -172,9 +118,7 @@ export function createI18n({
      */
     function initSync() {
         if (currentLanguage !== null) return;
-        refreshAvailableLanguages();
 
-        // Get saved language
         let savedLang = getSavedLanguage();
 
         if (!savedLang || AVAILABLE_LANGUAGES.indexOf(savedLang) === -1) {
@@ -192,18 +136,10 @@ export function createI18n({
             }
         }
 
-        // Load fallback data first
         fallbackData = getLanguageData(DEFAULT_LANGUAGE) || {};
-
-        // Load selected language
         const data = getLanguageData(savedLang);
-        if (data) {
-            languageData = data;
-            currentLanguage = savedLang;
-        } else {
-            languageData = fallbackData;
-            currentLanguage = DEFAULT_LANGUAGE;
-        }
+        if (data) useLanguage(savedLang, data);
+        else useLanguage(DEFAULT_LANGUAGE, fallbackData);
 
         // The custom-app entrypoint can run before this subfile. Keep the
         // already-created runtime config aligned with the validated language.
@@ -232,8 +168,6 @@ export function createI18n({
      * Set the interface language, persisting it unless this is a preview.
      */
     function setLanguage(langCode, options) {
-        refreshAvailableLanguages();
-
         if (AVAILABLE_LANGUAGES.indexOf(langCode) === -1) {
             console.error("[I18n] Invalid language: " + langCode);
             return Promise.resolve(false);
@@ -255,8 +189,7 @@ export function createI18n({
             fallbackData = getLanguageData(DEFAULT_LANGUAGE) || {};
         }
 
-        languageData = newData;
-        currentLanguage = langCode;
+        useLanguage(langCode, newData);
         onLanguageChanged(currentLanguage);
 
         if (options?.persist !== false) saveLanguage(langCode);
@@ -269,8 +202,6 @@ export function createI18n({
      * Get list of available languages
      */
     function getAvailableLanguages() {
-        refreshAvailableLanguages();
-
         return AVAILABLE_LANGUAGES.map(function (code) {
             return { code, name: languageNames[code] || code };
         });
@@ -284,20 +215,18 @@ export function createI18n({
     }
 
     /**
-     * 주어진 i18n 키의 번역 문자열을 로드된 모든 언어에서 수집하여 반환
-     * 검색 시 모든 언어의 번역을 검색 대상에 포함시키기 위해 사용
-     * @param {string} keyPath - i18n 키 경로 (예: "settings.language.label")
-     * @returns {string[]} - 중복 제거된 번역 문자열 배열
+     * Every distinct translation of a key path across the available languages,
+     * so settings search matches names typed in any language.
      */
     function getAllTranslations(keyPath) {
         if (!keyPath) return [];
         keyPath = RESEARCH_KEY_ALIASES[keyPath] || keyPath;
+        const keys = keyPath.split(".");
         const translations = [];
-        const availableLanguages = refreshAvailableLanguages();
-        for (let i = 0; i < availableLanguages.length; i++) {
-            const langData = getLanguageData(availableLanguages[i]);
+        for (let i = 0; i < AVAILABLE_LANGUAGES.length; i++) {
+            const langData = getLanguageData(AVAILABLE_LANGUAGES[i]);
             if (langData) {
-                const value = getNestedValue(langData, keyPath);
+                const value = getNestedValue(langData, keys);
                 if (value && translations.indexOf(value) === -1) {
                     translations.push(value);
                 }
@@ -312,8 +241,6 @@ export function createI18n({
     function isInitialized() {
         return currentLanguage !== null;
     }
-
-    refreshAvailableLanguages();
 
     return {
         init,
