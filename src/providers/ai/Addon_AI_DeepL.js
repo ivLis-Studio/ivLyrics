@@ -98,7 +98,7 @@ export default function initializeDeepLAddon(services = createBuiltinAiProviderS
         getSettingsUI() {
             const React = getSpicetify().React;
             return function DeepLSettings() {
-                const [key, setKey] = React.useState(getKey());
+                const [key, setKey] = React.useState(() => getKey());
                 return React.createElement('div', { className: 'ai-addon-settings' },
                     React.createElement('div', { className: 'ai-addon-setting' },
                         React.createElement('label', { htmlFor: 'ivlyrics-deepl-api-key' }, t('settings.aiProviders.apiKey', 'API Key')),

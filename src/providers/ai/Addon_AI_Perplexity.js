@@ -10,7 +10,16 @@ import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedA
 import { isSupersededAbort, throwIfAiRequestAborted, waitForAiRetry } from "./aiRequestCancellation.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
-import { createAiAdvancedParamsSection, renderAiConnectionTestRow } from "./aiProviderSettings.mjs";
+import {
+    createAiAdvancedParamsSection,
+    renderAiConnectionTestRow,
+    useAiApiKeyValue,
+    renderAiModelRow,
+    renderAiApiKeyRow,
+    renderAiDefaultModelOptions,
+    useAiModelPicker,
+    testAiConnection,
+} from "./aiProviderSettings.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { createStreamingOutput } from "./aiStreamingOutput.mjs";
 import { consumeJsonSse, hasBufferedJsonBody } from "./aiEventStream.mjs";
@@ -140,12 +149,6 @@ export default function initializePerplexityAddon(services = createBuiltinAiProv
             debug('[Perplexity Addon] Error fetching models:', e.message);
             return [];
         }
-    }
-
-    async function getModels() {
-        const apiKeys = getApiKeys();
-        if (apiKeys.length === 0) return [];
-        return await fetchAvailableModels(apiKeys[0]);
     }
 
     // ============================================
@@ -474,15 +477,12 @@ export default function initializePerplexityAddon(services = createBuiltinAiProv
 
         getSettingsUI() {
             const React = getSpicetify().React;
-            const { useState, useCallback } = React;
+            const { useState } = React;
             const AdvancedParamsSection = createAiAdvancedParamsSection({ React, getSetting, setSetting, aiText });
 
             return function PerplexitySettings() {
-                const initialApiKeys = getSetting('api-keys', '') || getSetting('api-key', '');
-                const [apiKeys, setApiKeys] = useState(
-                    Array.isArray(initialApiKeys) ? JSON.stringify(initialApiKeys) : initialApiKeys
-                );
-                const [selectedModel, setSelectedModel] = useState(getSelectedModel());
+                const [apiKeys, setApiKeys] = useAiApiKeyValue(React, getSetting);
+                const [selectedModel, setSelectedModel] = useState(() => getSelectedModel());
                 const [testStatus, setTestStatus] = useState('');
 
                 const handleApiKeyChange = (e) => {
@@ -497,103 +497,47 @@ export default function initializePerplexityAddon(services = createBuiltinAiProv
                     setSetting('model', val);
                 };
 
-                const handleTest = async () => {
-                    setTestStatus(aiText('testingConnection', 'Testing...'));
-                    try {
-                        const result = await callPerplexityAPIRaw('Say "Hello" in one word.');
-                        setTestStatus(result
-                            ? '✓ ' + aiText('connectionSuccess', 'Connection successful')
-                            : '✗ ' + aiText('emptyResponse', 'Empty response'));
-                    } catch (e) {
-                        setTestStatus(`✗ ${e.message}`);
-                    }
-                };
+                const handleTest = () => testAiConnection(callPerplexityAPIRaw, setTestStatus, aiText);
 
-                const [availableModels, setAvailableModels] = useState([]);
-                const [modelsLoading, setModelsLoading] = useState(false);
-
-                const loadModels = useCallback(async () => {
-                    const keys = getApiKeys();
-                    if (keys.length === 0) {
-                        setAvailableModels([]);
-                        return;
-                    }
-                    setModelsLoading(true);
-                    try {
-                        const models = await getModels();
-                        setAvailableModels(models);
-                        if (models.length > 0) {
-                            ADDON_INFO.models = models;
-                            // A retired or unknown saved id would otherwise stay selected unseen.
-                            const current = getSelectedModel();
-                            if (!models.some(model => model.id === current)) {
-                                const next = (models.find(model => model.id === DEFAULT_MODEL) || models[0]).id;
-                                setSelectedModel(next);
-                                setSetting('model', next);
-                            }
+                const { availableModels, modelsLoading, loadModels } = useAiModelPicker(React, {
+                    apiKeys, getApiKeys, fetchModels: fetchAvailableModels, logName: 'Perplexity',
+                    onLoaded(models) {
+                        if (models.length === 0) return;
+                        ADDON_INFO.models = models;
+                        // A retired or unknown saved id would otherwise stay selected unseen.
+                        const current = getSelectedModel();
+                        if (!models.some(model => model.id === current)) {
+                            const next = (models.find(model => model.id === DEFAULT_MODEL) || models[0]).id;
+                            setSelectedModel(next);
+                            setSetting('model', next);
                         }
-                    } catch (e) {
-                        console.error('[Perplexity Addon] Failed to load models:', e);
                     }
-                    setModelsLoading(false);
-                }, [apiKeys]);
-
-                React.useEffect(() => {
-                    const keys = getApiKeys();
-                    if (keys.length > 0) {
-                        loadModels();
-                    } else {
-                        setAvailableModels([]);
-                    }
-                }, [apiKeys]);
-
-
-
+                });
 
                 const hasApiKey = getApiKeys().length > 0;
 
-                const renderApiKeyRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('label', null, aiText('apiKey', 'API Key(s)')),
-                        React.createElement('div', { className: 'ai-addon-input-group' },
-                            React.createElement('input', {
-                                type: 'text',
-                                value: apiKeys,
-                                onChange: handleApiKeyChange,
-                                placeholder: 'pplx-...'
-                            }),
-                            React.createElement('button', {
-                                type: 'button',
-                                onClick: () => window.open(ADDON_INFO.apiKeyUrl, '_blank'),
-                                className: 'ai-addon-btn ai-addon-btn-secondary'
-                            }, aiText('getApiKey', 'Get API Key'))
-                        ),
-                        React.createElement('small', null, aiText('apiKeyRotationDesc', 'Enter a single key or JSON array for rotation'))
-                    );
-                const renderModelRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('label', null, aiText('model', 'Model')),
-                        React.createElement('div', { className: 'ai-addon-input-group' },
-                            React.createElement('select', {
-                                value: selectedModel,
-                                onChange: handleModelChange,
-                                disabled: modelsLoading
-                            },
-                                modelsLoading
-                                    ? React.createElement('option', { value: '' }, aiText('loadingModels', 'Loading models...'))
-                                    : availableModels.length > 0
-                                        ? availableModels.map(m => React.createElement('option', { key: m.id, value: m.id }, m.name))
-                                        : React.createElement('option', { value: selectedModel }, selectedModel || (hasApiKey ? aiText('noModels', 'No models found') : aiText('enterApiKeyFirst', 'Enter API key first')))
-                            ),
-                            React.createElement('button', {
-                                type: 'button',
-                                onClick: loadModels,
-                                className: 'ai-addon-btn ai-addon-btn-secondary ai-addon-connection-icon',
-                                disabled: modelsLoading || !hasApiKey,
-                                'aria-label': aiText('refreshModels', 'Refresh model list'),
-                                title: aiText('refreshModels', 'Refresh model list')
-                            }, modelsLoading ? '...' : '↻')
-                        ),
+                const renderApiKeyRow = () => renderAiApiKeyRow(React, {
+                    aiText, value: apiKeys, onChange: handleApiKeyChange, placeholder: 'pplx-...',
+                    onOpen: () => window.open(ADDON_INFO.apiKeyUrl, '_blank')
+                });
+                const renderModelRow = () => renderAiModelRow(React, {
+                    aiText,
+                    select: React.createElement('select', {
+                        value: selectedModel,
+                        onChange: handleModelChange,
+                        disabled: modelsLoading
+                    },
+                        renderAiDefaultModelOptions(React, {
+                            aiText, loading: modelsLoading, models: availableModels, selectedModel, hasApiKey
+                        })
+                    ),
+                    onRefresh: loadModels,
+                    loading: modelsLoading,
+                    refreshDisabled: modelsLoading || !hasApiKey,
+                    below: [
                         React.createElement('small', null, aiText('perplexityAgentModels', 'Models load automatically from the Perplexity Agent API with your key. Music research also searches the web.'))
-                    );
+                    ]
+                });
                 const renderTestRow = () => renderAiConnectionTestRow(React, { onTest: handleTest, testStatus, aiText });
 
                 return React.createElement('div', { className: 'ai-addon-settings perplexity-settings' },

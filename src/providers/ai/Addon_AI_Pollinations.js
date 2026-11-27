@@ -9,7 +9,13 @@
 import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedAiCapabilities.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
-import { createAiAdvancedParamsSection, readAiAdvancedRequestParams, renderAiConnectionTestRow } from "./aiProviderSettings.mjs";
+import {
+    createAiAdvancedParamsSection,
+    readAiAdvancedRequestParams,
+    renderAiConnectionTestRow,
+    useAiApiKeyValue,
+    renderAiModelRow,
+} from "./aiProviderSettings.mjs";
 import { createPollinationsConnection } from "./createPollinationsConnection.mjs";
 import { normalizePromptRequest } from "./aiProviderInputs.mjs";
 import { createChatCompletionsClient } from "./chatCompletionsClient.mjs";
@@ -259,10 +265,7 @@ export default function initializePollinationsAddon(services = createBuiltinAiPr
             const AdvancedParamsSection = createAiAdvancedParamsSection({ React, getSetting, setSetting, aiText });
 
             return function PollinationsSettings() {
-                const initialApiKeys = getSetting('api-keys', '') || getSetting('api-key', '');
-                const [apiKeys, setApiKeys] = useState(
-                    Array.isArray(initialApiKeys) ? JSON.stringify(initialApiKeys) : initialApiKeys
-                );
+                const [apiKeys, setApiKeys] = useAiApiKeyValue(React, getSetting);
                 const [authStatus, setAuthStatus] = useState('');
                 const [testStatus, setTestStatus] = useState('');
                 const [keyInfo, setKeyInfo] = useState(null);
@@ -270,7 +273,7 @@ export default function initializePollinationsAddon(services = createBuiltinAiPr
                 const [deviceAuth, setDeviceAuth] = useState(null);
                 const [isConnecting, setIsConnecting] = useState(false);
                 const [manualExpanded, setManualExpanded] = useState(false);
-                const [selectedModel, setSelectedModel] = useState(getSelectedModel());
+                const [selectedModel, setSelectedModel] = useState(() => getSelectedModel());
                 const [availableModels, setAvailableModels] = useState([]);
                 const [modelsLoading, setModelsLoading] = useState(false);
                 const [modelsError, setModelsError] = useState(false);
@@ -402,8 +405,6 @@ export default function initializePollinationsAddon(services = createBuiltinAiPr
                     }
                 }, [loadKeyInfo]);
 
-
-
                 const keyStatusText = hasApiKey
                     ? aiText('pollinationsKeyStatus', 'Connected key: %s').replace('%s', maskKey(getPrimaryApiKey()))
                     : aiText('pollinationsDescription', 'Sign in to Pollinations to create a user key.');
@@ -468,36 +469,31 @@ export default function initializePollinationsAddon(services = createBuiltinAiPr
                             React.createElement('small', null, aiText('apiKeyDesc', 'Enter your API key.'))
                         )
                     );
-                const renderModelRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('label', null, aiText('model', 'Model')),
-                        React.createElement('div', { className: 'ai-addon-input-group' },
-                            React.createElement('select', {
-                                value: selectedModel,
-                                onChange: handleModelChange,
-                                disabled: modelsLoading || availableModels.length === 0
-                            },
-                                !availableModels.some(m => m.id === selectedModel) &&
-                                    React.createElement('option', { value: selectedModel }, selectedModel || DEFAULT_MODEL),
-                                availableModels.map(m => React.createElement('option', { key: m.id, value: m.id },
-                                    m.name === m.id ? m.id : `${m.name} · ${m.id}`))
-                            ),
-                            React.createElement('button', {
-                                type: 'button',
-                                onClick: () => setModelsRevision(value => value + 1),
-                                className: 'ai-addon-btn ai-addon-btn-secondary ai-addon-connection-icon',
-                                disabled: modelsLoading,
-                                'aria-label': aiText('refreshModels', 'Refresh model list'),
-                                title: aiText('refreshModels', 'Refresh model list')
-                            }, modelsLoading ? '...' : '↻')
-                        ),
+                const renderModelRow = () => renderAiModelRow(React, {
+                    aiText,
+                    select: React.createElement('select', {
+                        value: selectedModel,
+                        onChange: handleModelChange,
+                        disabled: modelsLoading || availableModels.length === 0
+                    },
+                        !availableModels.some(m => m.id === selectedModel) &&
+                            React.createElement('option', { value: selectedModel }, selectedModel || DEFAULT_MODEL),
+                        availableModels.map(m => React.createElement('option', { key: m.id, value: m.id },
+                            m.name === m.id ? m.id : `${m.name} · ${m.id}`))
+                    ),
+                    onRefresh: () => setModelsRevision(value => value + 1),
+                    loading: modelsLoading,
+                    refreshDisabled: modelsLoading,
+                    below: [
                         modelsError && React.createElement('small', null, aiText('modelsUnavailable', 'Could not load models. Enter a model ID below.')),
-                        React.createElement('input', {
-                            value: selectedModel,
-                            onChange: handleModelChange,
-                            placeholder: aiText('modelId', 'Model ID'),
-                            'aria-label': aiText('modelId', 'Model ID')
-                        })
-                    );
+                    React.createElement('input', {
+                        value: selectedModel,
+                        onChange: handleModelChange,
+                        placeholder: aiText('modelId', 'Model ID'),
+                        'aria-label': aiText('modelId', 'Model ID')
+                    })
+                    ]
+                });
                 const renderTestRow = () => renderAiConnectionTestRow(React, { onTest: handleTest, testStatus, aiText });
 
                 return React.createElement('div', { className: 'ai-addon-settings pollinations-settings' },

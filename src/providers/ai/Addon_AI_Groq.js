@@ -9,7 +9,17 @@
 import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedAiCapabilities.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
-import { createAiAdvancedParamsSection, readAiAdvancedRequestParams, renderAiConnectionTestRow } from "./aiProviderSettings.mjs";
+import {
+    createAiAdvancedParamsSection,
+    readAiAdvancedRequestParams,
+    renderAiConnectionTestRow,
+    useAiApiKeyValue,
+    renderAiModelRow,
+    renderAiApiKeyRow,
+    renderAiDefaultModelOptions,
+    useAiModelPicker,
+    testAiConnection,
+} from "./aiProviderSettings.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { createChatCompletionsClient } from "./chatCompletionsClient.mjs";
 import { extractJSON } from "./aiResponseParsing.mjs";
@@ -264,43 +274,16 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
 
         getSettingsUI() {
             const React = getSpicetify().React;
-            const { useState, useEffect, useCallback } = React;
+            const { useState } = React;
             const AdvancedParamsSection = createAiAdvancedParamsSection({ React, getSetting, setSetting, aiText });
 
             return function GroqSettings() {
-                const initialApiKeys = getSetting('api-keys', '') || getSetting('api-key', '');
-                const [apiKeys, setApiKeys] = useState(
-                    Array.isArray(initialApiKeys) ? JSON.stringify(initialApiKeys) : initialApiKeys
-                );
-                const [selectedModel, setSelectedModel] = useState(getSetting('model', 'llama-3.3-70b-versatile'));
-                const [availableModels, setAvailableModels] = useState([]);
-                const [modelsLoading, setModelsLoading] = useState(false);
+                const [apiKeys, setApiKeys] = useAiApiKeyValue(React, getSetting);
+                const [selectedModel, setSelectedModel] = useState(() => getSetting('model', 'llama-3.3-70b-versatile'));
+                const { availableModels, modelsLoading, loadModels } = useAiModelPicker(React, {
+                    apiKeys, getApiKeys, fetchModels: fetchAvailableModels, logName: 'Groq'
+                });
                 const [testStatus, setTestStatus] = useState('');
-
-                const loadModels = useCallback(async () => {
-                    const keys = getApiKeys();
-                    if (keys.length === 0) {
-                        setAvailableModels([]);
-                        return;
-                    }
-                    setModelsLoading(true);
-                    try {
-                        const models = await fetchAvailableModels(keys[0]);
-                        setAvailableModels(models);
-                    } catch (e) {
-                        console.error('[Groq Addon] Failed to load models:', e);
-                    }
-                    setModelsLoading(false);
-                }, [apiKeys]);
-
-                useEffect(() => {
-                    const keys = getApiKeys();
-                    if (keys.length > 0) {
-                        loadModels();
-                    } else {
-                        setAvailableModels([]);
-                    }
-                }, [apiKeys]);
 
                 const handleApiKeyChange = (e) => {
                     const val = e.target.value;
@@ -314,64 +297,33 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
                     setSetting('model', val);
                 };
 
-                const handleTest = async () => {
-                    setTestStatus(aiText('testingConnection', 'Testing...'));
-                    try {
-                        const result = await callGroqAPIRaw('Say "Hello" in one word.');
-                        setTestStatus(result
-                            ? '✓ ' + aiText('connectionSuccess', 'Connection successful')
-                            : '✗ ' + aiText('emptyResponse', 'Empty response'));
-                    } catch (e) {
-                        setTestStatus(`✗ ${e.message}`);
-                    }
-                };
-
-
+                const handleTest = () => testAiConnection(callGroqAPIRaw, setTestStatus, aiText);
 
                 const hasApiKey = getApiKeys().length > 0;
 
-                const renderApiKeyRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('label', null, aiText('apiKey', 'API Key(s)')),
-                        React.createElement('div', { className: 'ai-addon-input-group' },
-                            React.createElement('input', {
-                                type: 'text',
-                                value: apiKeys,
-                                onChange: handleApiKeyChange,
-                                placeholder: 'gsk_...'
-                            }),
-                            React.createElement('button', {
-                                type: 'button',
-                                onClick: () => window.open(ADDON_INFO.apiKeyUrl, '_blank'),
-                                className: 'ai-addon-btn ai-addon-btn-secondary'
-                            }, aiText('getFreeApiKey', 'Get API Key (Free)'))
-                        ),
-                        React.createElement('small', null, aiText('apiKeyRotationDesc', 'Enter a single key or JSON array for rotation'))
-                    );
-                const renderModelRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('label', null, aiText('model', 'Model')),
-                        React.createElement('div', { className: 'ai-addon-input-group' },
-                            React.createElement('select', {
-                                value: selectedModel,
-                                onChange: handleModelChange,
-                                disabled: modelsLoading
-                            },
-                                modelsLoading
-                                    ? React.createElement('option', { value: '' }, aiText('loadingModels', 'Loading models...'))
-                                    : availableModels.length > 0
-                                        ? availableModels.map(m => React.createElement('option', { key: m.id, value: m.id }, m.name))
-                                        : React.createElement('option', { value: selectedModel }, selectedModel || (hasApiKey ? aiText('noModels', 'No models found') : aiText('enterApiKeyFirst', 'Enter API key first')))
-                            ),
-                            React.createElement('button', {
-                                type: 'button',
-                                onClick: loadModels,
-                                className: 'ai-addon-btn ai-addon-btn-secondary ai-addon-connection-icon',
-                                disabled: modelsLoading || !hasApiKey,
-                                'aria-label': aiText('refreshModels', 'Refresh model list'),
-                                title: aiText('refreshModels', 'Refresh model list')
-                            }, modelsLoading ? '...' : '↻')
-                        ),
+                const renderApiKeyRow = () => renderAiApiKeyRow(React, {
+                    aiText, value: apiKeys, onChange: handleApiKeyChange, placeholder: 'gsk_...',
+                    onOpen: () => window.open(ADDON_INFO.apiKeyUrl, '_blank'),
+                    linkText: aiText('getFreeApiKey', 'Get API Key (Free)')
+                });
+                const renderModelRow = () => renderAiModelRow(React, {
+                    aiText,
+                    select: React.createElement('select', {
+                        value: selectedModel,
+                        onChange: handleModelChange,
+                        disabled: modelsLoading
+                    },
+                        renderAiDefaultModelOptions(React, {
+                            aiText, loading: modelsLoading, models: availableModels, selectedModel, hasApiKey
+                        })
+                    ),
+                    onRefresh: loadModels,
+                    loading: modelsLoading,
+                    refreshDisabled: modelsLoading || !hasApiKey,
+                    below: [
                         React.createElement('small', null, aiText('groqDesc', 'Groq provides free, ultra-fast inference'))
-                    );
+                    ]
+                });
                 const renderTestRow = () => renderAiConnectionTestRow(React, { onTest: handleTest, testStatus, aiText });
 
                 return React.createElement('div', { className: 'ai-addon-settings groq-settings' },

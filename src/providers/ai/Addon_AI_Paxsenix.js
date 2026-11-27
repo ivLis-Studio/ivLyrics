@@ -9,7 +9,16 @@
 import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedAiCapabilities.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
-import { renderAiConnectionTestRow } from "./aiProviderSettings.mjs";
+import {
+    createAiAdvancedParamsSection,
+    readAiAdvancedRequestParams,
+    renderAiConnectionTestRow,
+    useAiApiKeyValue,
+    renderAiModelRow,
+    renderAiApiKeyRow,
+    useAiModelPicker,
+    testAiConnection,
+} from "./aiProviderSettings.mjs";
 import { createProviderText } from "../providerText.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { createChatCompletionsClient } from "./chatCompletionsClient.mjs";
@@ -165,16 +174,7 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
 
 
     function getAdvancedRequestParams() {
-        const params = {};
-        const useMaxTokens = getSetting('adv-maxTokens-enabled', true);
-        if (useMaxTokens) {
-            params.max_tokens = parseInt(getSetting('adv-maxTokens-value', DEFAULT_MAX_TOKENS)) || DEFAULT_MAX_TOKENS;
-        }
-        const useTemperature = getSetting('adv-temperature-enabled', false);
-        if (useTemperature) {
-            params.temperature = parseFloat(getSetting('adv-temperature-value', 0.3)) || 0.3;
-        }
-        return params;
+        return readAiAdvancedRequestParams(getSetting, { maxTokens: DEFAULT_MAX_TOKENS, temperature: false });
     }
 
     async function getResearchRequestOverrides() {
@@ -316,44 +316,20 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
 
         getSettingsUI() {
             const React = getSpicetify().React;
-            const { useState, useEffect, useCallback } = React;
+            const { useState } = React;
+            const AdvancedParamsSection = createAiAdvancedParamsSection({
+                React, getSetting, setSetting, aiText, maxTokens: DEFAULT_MAX_TOKENS, temperature: false,
+            });
 
             return function PaxsenixSettings() {
-                const initialApiKeys = getSetting('api-keys', '') || getSetting('api-key', '');
-                const [apiKeys, setApiKeys] = useState(
-                    Array.isArray(initialApiKeys) ? JSON.stringify(initialApiKeys) : initialApiKeys
-                );
-                const [selectedModel, setSelectedModel] = useState(getSetting('model', ''));
-                const [customModel, setCustomModel] = useState(getSetting('custom-model', ''));
-                const [usingCustomModel, setUsingCustomModel] = useState(Boolean(getSetting('custom-model', '')));
-                const [availableModels, setAvailableModels] = useState([]);
-                const [modelsLoading, setModelsLoading] = useState(false);
+                const [apiKeys, setApiKeys] = useAiApiKeyValue(React, getSetting);
+                const [selectedModel, setSelectedModel] = useState(() => getSetting('model', ''));
+                const [customModel, setCustomModel] = useState(() => getSetting('custom-model', ''));
+                const [usingCustomModel, setUsingCustomModel] = useState(() => Boolean(getSetting('custom-model', '')));
+                const { availableModels, modelsLoading, loadModels } = useAiModelPicker(React, {
+                    apiKeys, getApiKeys, fetchModels: fetchAvailableModels, logName: 'Paxsenix'
+                });
                 const [testStatus, setTestStatus] = useState('');
-
-                const loadModels = useCallback(async () => {
-                    const keys = getApiKeys();
-                    if (keys.length === 0) {
-                        setAvailableModels([]);
-                        return;
-                    }
-                    setModelsLoading(true);
-                    try {
-                        const models = await fetchAvailableModels(keys[0]);
-                        setAvailableModels(models);
-                    } catch (e) {
-                        console.error('[Paxsenix Addon] Failed to load models:', e);
-                    }
-                    setModelsLoading(false);
-                }, [apiKeys]);
-
-                useEffect(() => {
-                    const keys = getApiKeys();
-                    if (keys.length > 0) {
-                        loadModels();
-                    } else {
-                        setAvailableModels([]);
-                    }
-                }, [apiKeys]);
 
                 const handleApiKeyChange = (e) => {
                     const val = e.target.value;
@@ -392,68 +368,38 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
                     }
                 };
 
-                const handleTest = async () => {
-                    setTestStatus(aiText('testingConnection', 'Testing...'));
-                    try {
-                        const result = await callPaxsenixAPIRaw('Say "Hello" in one word.');
-                        setTestStatus(result
-                            ? '✓ ' + aiText('connectionSuccess', 'Connection successful')
-                            : '✗ ' + aiText('emptyResponse', 'Empty response'));
-                    } catch (e) {
-                        setTestStatus(`✗ ${e.message}`);
-                    }
-                };
-
-
+                const handleTest = () => testAiConnection(callPaxsenixAPIRaw, setTestStatus, aiText);
 
                 const isModelInList = availableModels.some(m => m.id === selectedModel);
                 const isUnknownSelectedModel = Boolean(selectedModel) && availableModels.length > 0 && !isModelInList;
                 const showCustomModel = usingCustomModel || isUnknownSelectedModel;
                 const hasApiKey = getApiKeys().length > 0;
 
-                const renderApiKeyRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('label', null, aiText('apiKey', 'API Key(s)')),
-                        React.createElement('div', { className: 'ai-addon-input-group' },
-                            React.createElement('input', {
-                                type: 'text',
-                                value: apiKeys,
-                                onChange: handleApiKeyChange,
-                                placeholder: aiText('apiKey', 'API key')
-                            }),
-                            React.createElement('button', {
-                                type: 'button',
-                                onClick: () => window.open(ADDON_INFO.apiKeyUrl, '_blank'),
-                                className: 'ai-addon-btn ai-addon-btn-secondary'
-                            }, aiText('getApiKey', 'Get API Key'))
-                        ),
-                        React.createElement('small', null, aiText('apiKeyRotationDesc', 'Enter a single key or JSON array for rotation'))
-                    );
-                const renderModelRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('label', null, aiText('model', 'Model')),
-                        React.createElement('div', { className: 'ai-addon-input-group' },
-                            React.createElement('select', {
-                                value: showCustomModel ? '__custom__' : (isModelInList ? selectedModel : ''),
-                                onChange: handleModelChange,
-                                disabled: modelsLoading || availableModels.length === 0
-                            },
-                                modelsLoading && React.createElement('option', { value: '' }, aiText('loadingModels', 'Loading models...')),
-                                !modelsLoading && !hasApiKey && React.createElement('option', { value: '' }, aiText('enterApiKeyFirst', 'Enter API key first')),
-                                !modelsLoading && hasApiKey && availableModels.length === 0 && React.createElement('option', { value: '' }, aiText('noModels', 'No models found')),
-                                !modelsLoading && availableModels.length > 0 && !selectedModel && React.createElement('option', { value: '' }, aiText('selectModel', 'Select a model')),
-                                availableModels.map(m => React.createElement('option', { key: m.id, value: m.id }, m.name)),
-                                React.createElement('option', { value: '__custom__' }, aiText('customModel', 'Custom Model'))
-                            ),
-                            React.createElement('button', {
-                                type: 'button',
-                                onClick: loadModels,
-                                className: 'ai-addon-btn ai-addon-btn-secondary ai-addon-connection-icon',
-                                disabled: modelsLoading || !hasApiKey,
-                                'aria-label': aiText('refreshModels', 'Refresh model list'),
-                                title: aiText('refreshModels', 'Refresh model list')
-                            }, modelsLoading ? '...' : '↻')
-                        ),
+                const renderApiKeyRow = () => renderAiApiKeyRow(React, {
+                    aiText, value: apiKeys, onChange: handleApiKeyChange, placeholder: aiText('apiKey', 'API key'),
+                    onOpen: () => window.open(ADDON_INFO.apiKeyUrl, '_blank')
+                });
+                const renderModelRow = () => renderAiModelRow(React, {
+                    aiText,
+                    select: React.createElement('select', {
+                        value: showCustomModel ? '__custom__' : (isModelInList ? selectedModel : ''),
+                        onChange: handleModelChange,
+                        disabled: modelsLoading || availableModels.length === 0
+                    },
+                        modelsLoading && React.createElement('option', { value: '' }, aiText('loadingModels', 'Loading models...')),
+                        !modelsLoading && !hasApiKey && React.createElement('option', { value: '' }, aiText('enterApiKeyFirst', 'Enter API key first')),
+                        !modelsLoading && hasApiKey && availableModels.length === 0 && React.createElement('option', { value: '' }, aiText('noModels', 'No models found')),
+                        !modelsLoading && availableModels.length > 0 && !selectedModel && React.createElement('option', { value: '' }, aiText('selectModel', 'Select a model')),
+                        availableModels.map(m => React.createElement('option', { key: m.id, value: m.id }, m.name)),
+                        React.createElement('option', { value: '__custom__' }, aiText('customModel', 'Custom Model'))
+                    ),
+                    onRefresh: loadModels,
+                    loading: modelsLoading,
+                    refreshDisabled: modelsLoading || !hasApiKey,
+                    below: [
                         availableModels.length > 0 && React.createElement('small', null, aiText('modelsAvailable', '{count} models available', { count: availableModels.length }))
-                    );
+                    ]
+                });
                 const renderCustomModelRow = () => React.createElement('div', { className: 'ai-addon-setting' },
                         React.createElement('label', null, aiText('modelId', 'Custom Model ID')),
                         React.createElement('input', { type: 'text', value: customModel, onChange: handleCustomModelChange, placeholder: aiText('modelId', 'Enter a model ID'), 'aria-label': aiText('modelId', 'Custom Model ID') })
@@ -469,49 +415,6 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
                     renderTestRow()
                 );
             };
-
-            function AdvancedParamsSection() {
-                const [expanded, setExpanded] = useState(getSetting('adv-expanded', false));
-                const [maxTokensEnabled, setMaxTokensEnabled] = useState(getSetting('adv-maxTokens-enabled', true));
-                const [maxTokensValue, setMaxTokensValue] = useState(getSetting('adv-maxTokens-value', DEFAULT_MAX_TOKENS));
-                const [temperatureEnabled, setTemperatureEnabled] = useState(getSetting('adv-temperature-enabled', false));
-                const [temperatureValue, setTemperatureValue] = useState(getSetting('adv-temperature-value', 0.3));
-
-                const toggleExpanded = useCallback(() => {
-                    const next = !expanded;
-                    setExpanded(next);
-                    setSetting('adv-expanded', next);
-                }, [expanded]);
-
-                return React.createElement('div', { className: 'ai-addon-setting ai-addon-advanced-params' },
-                    React.createElement('button', {
-                        type: 'button',
-                        className: 'ai-addon-advanced-toggle',
-                        'aria-expanded': expanded,
-                        onClick: toggleExpanded
-                    },
-                        React.createElement('span', { className: 'ai-addon-advanced-chevron', 'aria-hidden': 'true' }, '▶'),
-                        aiText('advancedParams', 'Advanced API Parameters')
-                    ),
-                    expanded && React.createElement('div', { className: 'ai-addon-advanced-body' },
-                        React.createElement('div', { className: 'ai-addon-advanced-row' },
-                            React.createElement('label', { className: 'ai-addon-advanced-check' },
-                                React.createElement('input', { type: 'checkbox', checked: maxTokensEnabled, onChange: (e) => { setMaxTokensEnabled(e.target.checked); setSetting('adv-maxTokens-enabled', e.target.checked); } }),
-                                React.createElement('span', null, aiText('maxTokens', 'Max Tokens'))
-                            ),
-                            React.createElement('input', { type: 'number', value: maxTokensValue, disabled: !maxTokensEnabled, 'aria-label': aiText('maxTokens', 'Max Tokens'), onChange: (e) => { const v = parseInt(e.target.value) || DEFAULT_MAX_TOKENS; setMaxTokensValue(v); setSetting('adv-maxTokens-value', v); } })
-                        ),
-                        React.createElement('div', { className: 'ai-addon-advanced-row' },
-                            React.createElement('label', { className: 'ai-addon-advanced-check' },
-                                React.createElement('input', { type: 'checkbox', checked: temperatureEnabled, onChange: (e) => { setTemperatureEnabled(e.target.checked); setSetting('adv-temperature-enabled', e.target.checked); } }),
-                                React.createElement('span', null, aiText('temperature', 'Temperature'))
-                            ),
-                            React.createElement('input', { type: 'number', value: temperatureValue, disabled: !temperatureEnabled, 'aria-label': aiText('temperature', 'Temperature'), step: '0.1', min: '0', max: '2', onChange: (e) => { const v = parseFloat(e.target.value) || 0.3; setTemperatureValue(v); setSetting('adv-temperature-value', v); } })
-                        ),
-                        React.createElement('small', null, aiText('advancedParamsDesc', 'Uncheck to exclude parameter from API request.'))
-                    )
-                );
-            }
         },
 
         ...createPromptedAiCapabilities({

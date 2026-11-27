@@ -10,7 +10,17 @@ import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedA
 import { isSupersededAbort, throwIfAiRequestAborted, waitForAiRetry } from "./aiRequestCancellation.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
-import { renderAiConnectionTestRow } from "./aiProviderSettings.mjs";
+import {
+    renderAiAdvancedParams,
+    readAiAdvancedRequestParams,
+    renderAiConnectionTestRow,
+    useAiApiKeyValue,
+    renderAiModelRow,
+    renderAiApiKeyRow,
+    renderAiDefaultModelOptions,
+    useAiModelPicker,
+    testAiConnection,
+} from "./aiProviderSettings.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { createStreamingOutput } from "./aiStreamingOutput.mjs";
 import { consumeSseFrames, hasBufferedJsonBody } from "./aiEventStream.mjs";
@@ -136,12 +146,6 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
         }
     }
 
-    async function getModels() {
-        const apiKeys = getApiKeys();
-        if (apiKeys.length === 0) return [];
-        return await fetchAvailableModels(apiKeys[0]);
-    }
-
     // ============================================
     // Helper Functions
     // ============================================
@@ -181,12 +185,7 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
     }
 
     function getAdvancedRequestParams() {
-        const params = {};
-        const useMaxTokens = getSetting('adv-maxTokens-enabled', true);
-        if (useMaxTokens) {
-            params.max_tokens = parseInt(getSetting('adv-maxTokens-value', 16000)) || 16000;
-        }
-        return params;
+        return readAiAdvancedRequestParams(getSetting, { temperature: null });
     }
 
     async function getResearchMaxTokens() {
@@ -539,11 +538,8 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
             const { useState, useCallback } = React;
 
             return function ClaudeSettings() {
-                const initialApiKeys = getSetting('api-keys', '') || getSetting('api-key', '');
-                const [apiKeys, setApiKeys] = useState(
-                    Array.isArray(initialApiKeys) ? JSON.stringify(initialApiKeys) : initialApiKeys
-                );
-                const [selectedModel, setSelectedModel] = useState(getSetting('model', 'claude-sonnet-4-20250514'));
+                const [apiKeys, setApiKeys] = useAiApiKeyValue(React, getSetting);
+                const [selectedModel, setSelectedModel] = useState(() => getSetting('model', 'claude-sonnet-4-20250514'));
                 const [testStatus, setTestStatus] = useState('');
 
                 const handleApiKeyChange = (e) => {
@@ -558,95 +554,37 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
                     setSetting('model', val);
                 };
 
-                const handleTest = async () => {
-                    setTestStatus(aiText('testingConnection', 'Testing...'));
-                    try {
-                        const result = await callClaudeAPIRaw('Say "Hello" in one word.');
-                        setTestStatus(result
-                            ? '✓ ' + aiText('connectionSuccess', 'Connection successful')
-                            : '✗ ' + aiText('emptyResponse', 'Empty response'));
-                    } catch (e) {
-                        setTestStatus(`✗ ${e.message}`);
+                const handleTest = () => testAiConnection(callClaudeAPIRaw, setTestStatus, aiText);
+
+                const { availableModels, modelsLoading, loadModels } = useAiModelPicker(React, {
+                    apiKeys, getApiKeys, fetchModels: fetchAvailableModels, logName: 'Claude',
+                    onLoaded(models) {
+                        if (models.length === 0) return;
+                        ADDON_INFO.models = models;
                     }
-                };
-
-                const [availableModels, setAvailableModels] = useState([]);
-                const [modelsLoading, setModelsLoading] = useState(false);
-
-                const loadModels = useCallback(async () => {
-                    const keys = getApiKeys();
-                    if (keys.length === 0) {
-                        setAvailableModels([]);
-                        return;
-                    }
-                    setModelsLoading(true);
-                    try {
-                        const models = await getModels();
-                        setAvailableModels(models);
-                        if (models.length > 0) {
-                            ADDON_INFO.models = models;
-                        }
-                    } catch (e) {
-                        console.error('[Claude Addon] Failed to load models:', e);
-                    }
-                    setModelsLoading(false);
-                }, [apiKeys]);
-
-                React.useEffect(() => {
-                    const keys = getApiKeys();
-                    if (keys.length > 0) {
-                        loadModels();
-                    } else {
-                        setAvailableModels([]);
-                    }
-                }, [apiKeys]);
-
-
-
+                });
 
                 const hasApiKey = getApiKeys().length > 0;
 
-                const renderApiKeyRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('label', null, aiText('apiKey', 'API Key(s)')),
-                        React.createElement('div', { className: 'ai-addon-input-group' },
-                            React.createElement('input', {
-                                type: 'text',
-                                value: apiKeys,
-                                onChange: handleApiKeyChange,
-                                placeholder: 'sk-ant-...'
-                            }),
-                            React.createElement('button', {
-                                type: 'button',
-                                onClick: () => window.open(ADDON_INFO.apiKeyUrl, '_blank'),
-                                className: 'ai-addon-btn ai-addon-btn-secondary'
-                            }, aiText('getApiKey', 'Get API Key'))
-                        ),
-                        React.createElement('small', null, aiText('apiKeyRotationDesc', 'Enter a single key or JSON array for rotation'))
-                    );
-                const renderModelRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('label', null, aiText('model', 'Model')),
-                        React.createElement('div', { className: 'ai-addon-input-group' },
-                            React.createElement('select', {
-                                value: selectedModel,
-                                onChange: handleModelChange,
-                                disabled: modelsLoading
-                            },
-                                modelsLoading
-                                    ? React.createElement('option', { value: '' }, aiText('loadingModels', 'Loading models...'))
-                                    : availableModels.length > 0
-                                        ? availableModels.map(m => React.createElement('option', { key: m.id, value: m.id }, m.name))
-                                        : React.createElement('option', { value: selectedModel }, selectedModel || (hasApiKey ? aiText('noModels', 'No models found') : aiText('enterApiKeyFirst', 'Enter API key first')))
-                            ),
-                            React.createElement('button', {
-                                type: 'button',
-                                onClick: loadModels,
-                                className: 'ai-addon-btn ai-addon-btn-secondary ai-addon-connection-icon',
-                                disabled: modelsLoading || !hasApiKey,
-                                'aria-label': aiText('refreshModels', 'Refresh model list'),
-                                title: aiText('refreshModels', 'Refresh model list')
-                            }, modelsLoading ? '...' : '↻')
-                        )
-                    );
+                const renderApiKeyRow = () => renderAiApiKeyRow(React, {
+                    aiText, value: apiKeys, onChange: handleApiKeyChange, placeholder: 'sk-ant-...',
+                    onOpen: () => window.open(ADDON_INFO.apiKeyUrl, '_blank')
+                });
+                const renderModelRow = () => renderAiModelRow(React, {
+                    aiText,
+                    select: React.createElement('select', {
+                        value: selectedModel,
+                        onChange: handleModelChange,
+                        disabled: modelsLoading
+                    },
+                        renderAiDefaultModelOptions(React, {
+                            aiText, loading: modelsLoading, models: availableModels, selectedModel, hasApiKey
+                        })
+                    ),
+                    onRefresh: loadModels,
+                    loading: modelsLoading,
+                    refreshDisabled: modelsLoading || !hasApiKey
+                });
                 const renderTestRow = () => renderAiConnectionTestRow(React, { onTest: handleTest, testStatus, aiText });
 
                 return React.createElement('div', { className: 'ai-addon-settings claude-settings' },
@@ -658,9 +596,9 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
             };
 
             function AdvancedParamsSection() {
-                const [expanded, setExpanded] = useState(getSetting('adv-expanded', false));
-                const [maxTokensEnabled, setMaxTokensEnabled] = useState(getSetting('adv-maxTokens-enabled', true));
-                const [maxTokensValue, setMaxTokensValue] = useState(getSetting('adv-maxTokens-value', 16000));
+                const [expanded, setExpanded] = useState(() => getSetting('adv-expanded', false));
+                const [maxTokensEnabled, setMaxTokensEnabled] = useState(() => getSetting('adv-maxTokens-enabled', true));
+                const [maxTokensValue, setMaxTokensValue] = useState(() => getSetting('adv-maxTokens-value', 16000));
 
                 const toggleExpanded = useCallback(() => {
                     const next = !expanded;
@@ -668,16 +606,7 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
                     setSetting('adv-expanded', next);
                 }, [expanded]);
 
-                return React.createElement('div', { className: 'ai-addon-setting ai-addon-advanced-params' },
-                    React.createElement('button', {
-                        type: 'button',
-                        className: 'ai-addon-advanced-toggle',
-                        'aria-expanded': expanded,
-                        onClick: toggleExpanded
-                    },
-                        React.createElement('span', { className: 'ai-addon-advanced-chevron', 'aria-hidden': 'true' }, '▶'),
-                        aiText('advancedParams', 'Advanced API Parameters')
-                    ),
+                return renderAiAdvancedParams(React, { aiText, expanded, toggleExpanded },
                     expanded && React.createElement('div', { className: 'ai-addon-advanced-body' },
                         React.createElement('div', { className: 'ai-addon-advanced-row' },
                             React.createElement('label', { className: 'ai-addon-advanced-check' },

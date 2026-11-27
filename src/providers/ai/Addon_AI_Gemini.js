@@ -9,7 +9,13 @@
 import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedAiCapabilities.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
-import { renderAiConnectionTestRow } from "./aiProviderSettings.mjs";
+import {
+    renderAiAdvancedParams,
+    renderAiConnectionTestRow,
+    useAiApiKeyValue,
+    renderAiModelRow,
+    renderAiApiKeyRow,
+} from "./aiProviderSettings.mjs";
 import { createProviderText } from "../providerText.mjs";
 import { readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { extractJSON } from "./aiResponseParsing.mjs";
@@ -144,12 +150,9 @@ export default function initializeGeminiAddon(services = createBuiltinAiProvider
             const { useState, useCallback, useEffect } = React;
 
             return function GeminiSettings() {
-                const initialApiKeys = getSetting('api-keys', '') || getSetting('api-key', '');
-                const [apiKeys, setApiKeys] = useState(
-                    Array.isArray(initialApiKeys) ? JSON.stringify(initialApiKeys) : initialApiKeys
-                );
-                const [baseUrl, setBaseUrl] = useState(getSetting('base-url', GEMINI_BASE_URL));
-                const [model, setModel] = useState(getSelectedModel());
+                const [apiKeys, setApiKeys] = useAiApiKeyValue(React, getSetting);
+                const [baseUrl, setBaseUrl] = useState(() => getSetting('base-url', GEMINI_BASE_URL));
+                const [model, setModel] = useState(() => getSelectedModel());
                 const [testStatus, setTestStatus] = useState('');
                 const [availableModels, setAvailableModels] = useState([]);
                 const [modelsLoading, setModelsLoading] = useState(false);
@@ -219,23 +222,10 @@ export default function initializeGeminiAddon(services = createBuiltinAiProvider
 
                 const hasApiKey = getApiKeys().length > 0;
 
-                const renderApiKeyRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('label', null, aiText('apiKey', 'API Key(s)')),
-                        React.createElement('div', { className: 'ai-addon-input-group' },
-                            React.createElement('input', {
-                                type: 'text',
-                                value: apiKeys,
-                                onChange: handleApiKeyChange,
-                                placeholder: 'AIza...'
-                            }),
-                            React.createElement('button', {
-                                type: 'button',
-                                onClick: () => window.open(ADDON_INFO.apiKeyUrl, '_blank'),
-                                className: 'ai-addon-btn ai-addon-btn-secondary'
-                            }, aiText('getApiKey', 'Get API Key'))
-                        ),
-                        React.createElement('small', null, aiText('apiKeyRotationDesc', 'Enter a single key or JSON array for rotation'))
-                    );
+                const renderApiKeyRow = () => renderAiApiKeyRow(React, {
+                    aiText, value: apiKeys, onChange: handleApiKeyChange, placeholder: 'AIza...',
+                    onOpen: () => window.open(ADDON_INFO.apiKeyUrl, '_blank')
+                });
                 const renderBaseUrlRow = () => React.createElement('div', { className: 'ai-addon-setting' },
                         React.createElement('label', null, aiText('baseUrl', 'Base URL')),
                         React.createElement('input', {
@@ -246,34 +236,29 @@ export default function initializeGeminiAddon(services = createBuiltinAiProvider
                         }),
                         React.createElement('small', null, aiText('geminiBaseUrlDesc', 'Change this to use Gemini-compatible APIs'))
                     );
-                const renderModelRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('label', null, aiText('model', 'Model')),
-                        React.createElement('div', { className: 'ai-addon-input-group' },
-                            React.createElement('select', {
-                                value: model || '',
-                                onChange: handleModelChange,
-                                disabled: modelsLoading
-                            },
-                                modelsLoading
-                                    ? React.createElement('option', { value: '' }, aiText('loadingModels', 'Loading models...'))
-                                    : availableModels.length > 0
-                                        ? [
-                                            !model && React.createElement('option', { key: '__placeholder__', value: '' }, aiText('selectModel', '-- Select a model --')),
-                                            ...availableModels.map(m => React.createElement('option', { key: m.id, value: m.id }, m.name))
-                                        ].filter(Boolean)
-                                        : React.createElement('option', { value: '' }, hasApiKey ? aiText('noModels', 'No models found') : aiText('enterApiKeyFirst', 'Enter API key first'))
-                            ),
-                            React.createElement('button', {
-                                type: 'button',
-                                onClick: handleRefreshModels,
-                                className: 'ai-addon-btn ai-addon-btn-secondary ai-addon-connection-icon',
-                                disabled: modelsLoading || !hasApiKey,
-                                'aria-label': aiText('refreshModels', 'Refresh model list'),
-                                title: aiText('refreshModels', 'Refresh model list')
-                            }, modelsLoading ? '...' : '↻')
-                        ),
+                const renderModelRow = () => renderAiModelRow(React, {
+                    aiText,
+                    select: React.createElement('select', {
+                        value: model || '',
+                        onChange: handleModelChange,
+                        disabled: modelsLoading
+                    },
+                        modelsLoading
+                            ? React.createElement('option', { value: '' }, aiText('loadingModels', 'Loading models...'))
+                            : availableModels.length > 0
+                                ? [
+                                    !model && React.createElement('option', { key: '__placeholder__', value: '' }, aiText('selectModel', '-- Select a model --')),
+                                    ...availableModels.map(m => React.createElement('option', { key: m.id, value: m.id }, m.name))
+                                ].filter(Boolean)
+                                : React.createElement('option', { value: '' }, hasApiKey ? aiText('noModels', 'No models found') : aiText('enterApiKeyFirst', 'Enter API key first'))
+                    ),
+                    onRefresh: handleRefreshModels,
+                    loading: modelsLoading,
+                    refreshDisabled: modelsLoading || !hasApiKey,
+                    below: [
                         availableModels.length > 0 && React.createElement('small', null, aiText('modelsAvailable', '{count} models available', { count: availableModels.length }))
-                    );
+                    ]
+                });
                 const renderTestRow = () => renderAiConnectionTestRow(React, { onTest: handleTest, testStatus, aiText });
 
                 return React.createElement('div', { className: 'ai-addon-settings gemini-settings' },
@@ -288,11 +273,11 @@ export default function initializeGeminiAddon(services = createBuiltinAiProvider
             };
 
             function AdvancedParamsSection() {
-                const [expanded, setExpanded] = useState(getSetting('adv-expanded', false));
-                const [maxTokensEnabled, setMaxTokensEnabled] = useState(getSetting('adv-maxOutputTokens-enabled', true));
-                const [maxTokensValue, setMaxTokensValue] = useState(getSetting('adv-maxOutputTokens-value', DEFAULT_GEMINI_OUTPUT_TOKENS));
-                const [thinkingEnabled, setThinkingEnabled] = useState(getSetting('adv-thinking-enabled', false));
-                const [thinkingBudget, setThinkingBudget] = useState(getSetting('adv-thinking-budget', 1024));
+                const [expanded, setExpanded] = useState(() => getSetting('adv-expanded', false));
+                const [maxTokensEnabled, setMaxTokensEnabled] = useState(() => getSetting('adv-maxOutputTokens-enabled', true));
+                const [maxTokensValue, setMaxTokensValue] = useState(() => getSetting('adv-maxOutputTokens-value', DEFAULT_GEMINI_OUTPUT_TOKENS));
+                const [thinkingEnabled, setThinkingEnabled] = useState(() => getSetting('adv-thinking-enabled', false));
+                const [thinkingBudget, setThinkingBudget] = useState(() => getSetting('adv-thinking-budget', 1024));
 
                 const toggleExpanded = useCallback(() => {
                     const next = !expanded;
@@ -300,16 +285,7 @@ export default function initializeGeminiAddon(services = createBuiltinAiProvider
                     setSetting('adv-expanded', next);
                 }, [expanded]);
 
-                return React.createElement('div', { className: 'ai-addon-setting ai-addon-advanced-params' },
-                    React.createElement('button', {
-                        type: 'button',
-                        className: 'ai-addon-advanced-toggle',
-                        'aria-expanded': expanded,
-                        onClick: toggleExpanded
-                    },
-                        React.createElement('span', { className: 'ai-addon-advanced-chevron', 'aria-hidden': 'true' }, '▶'),
-                        aiText('advancedParams', 'Advanced API Parameters')
-                    ),
+                return renderAiAdvancedParams(React, { aiText, expanded, toggleExpanded },
                     expanded && React.createElement('div', { className: 'ai-addon-advanced-body' },
                         // Max Output Tokens
                         React.createElement('div', { className: 'ai-addon-advanced-row' },

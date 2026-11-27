@@ -1,3 +1,4 @@
+import { renderAiAdvancedParams } from "./aiProviderSettings.mjs";
 import {
     ENDPOINT_CAPABILITIES, ENDPOINT_CAPABILITY_FALLBACKS, createEndpointId, isEndpointCapabilityEnabled,
     parseConnectionKeys, toggleEndpointCapability,
@@ -56,9 +57,9 @@ export function createOpenAiSettings({
             const [apiKeys, setApiKeys] = useState(
                 Array.isArray(initialApiKeys) ? JSON.stringify(initialApiKeys) : initialApiKeys
             );
-            const [baseUrl, setBaseUrl] = useState(getSetting('base-url', DEFAULT_OPENAI_BASE_URL));
-            const [model, setModel] = useState(getSelectedModel());
-            const [customModel, setCustomModel] = useState(getSetting('custom-model', ''));
+            const [baseUrl, setBaseUrl] = useState(() => getSetting('base-url', DEFAULT_OPENAI_BASE_URL));
+            const [model, setModel] = useState(() => getSelectedModel());
+            const [customModel, setCustomModel] = useState(() => getSetting('custom-model', ''));
             const [testStatus, setTestStatus] = useState('');
             // Remount token for the additional-provider list after a chain
             // swap, plus a re-render nudge so this card's move control
@@ -408,7 +409,7 @@ export function createOpenAiSettings({
         }
 
         function AdvancedParamsSection() {
-            const [expanded, setExpanded] = useState(getSetting('adv-expanded', false));
+            const [expanded, setExpanded] = useState(() => getSetting('adv-expanded', false));
             const [requestBodyMergeJson, setRequestBodyMergeJson] = useState(() => {
                 const savedValue = normalizeRequestBodyMergeJson(getSetting('adv-requestBodyMergeJson', ''));
                 return savedValue || getDefaultRequestBodyMergeJson();
@@ -427,16 +428,7 @@ export function createOpenAiSettings({
                 setSetting('adv-expanded', next);
             }, [expanded]);
 
-            return React.createElement('div', { className: 'ai-addon-setting ai-addon-advanced-params' },
-                React.createElement('button', {
-                    type: 'button',
-                    className: 'ai-addon-advanced-toggle',
-                    'aria-expanded': expanded,
-                    onClick: toggleExpanded
-                },
-                    React.createElement('span', { className: 'ai-addon-advanced-chevron', 'aria-hidden': 'true' }, '▶'),
-                    aiText('advancedParams', 'Advanced API Parameters')
-                ),
+            return renderAiAdvancedParams(React, { aiText, expanded, toggleExpanded },
                 expanded && React.createElement('div', { className: 'ai-addon-advanced-body' },
                     React.createElement('label', { className: 'ai-addon-advanced-field' },
                         React.createElement('span', null, aiText('requestBodyMerge', 'Request Body Merge JSON')),

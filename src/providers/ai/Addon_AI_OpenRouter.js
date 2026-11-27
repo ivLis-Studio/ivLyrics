@@ -9,7 +9,16 @@
 import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedAiCapabilities.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
-import { createAiAdvancedParamsSection, readAiAdvancedRequestParams, renderAiConnectionTestRow } from "./aiProviderSettings.mjs";
+import {
+    createAiAdvancedParamsSection,
+    readAiAdvancedRequestParams,
+    renderAiConnectionTestRow,
+    useAiApiKeyValue,
+    renderAiModelRow,
+    renderAiApiKeyRow,
+    useAiModelPicker,
+    testAiConnection,
+} from "./aiProviderSettings.mjs";
 import { createProviderText } from "../providerText.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { createChatCompletionsClient } from "./chatCompletionsClient.mjs";
@@ -232,44 +241,17 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
 
         getSettingsUI() {
             const React = getSpicetify().React;
-            const { useState, useEffect, useCallback } = React;
+            const { useState } = React;
             const AdvancedParamsSection = createAiAdvancedParamsSection({ React, getSetting, setSetting, aiText });
 
             return function OpenRouterSettings() {
-                const initialApiKeys = getSetting('api-keys', '') || getSetting('api-key', '');
-                const [apiKeys, setApiKeys] = useState(
-                    Array.isArray(initialApiKeys) ? JSON.stringify(initialApiKeys) : initialApiKeys
-                );
-                const [selectedModel, setSelectedModel] = useState(getSetting('model', 'anthropic/claude-3.5-sonnet'));
-                const [customModel, setCustomModel] = useState(getSetting('custom-model', ''));
-                const [availableModels, setAvailableModels] = useState([]);
-                const [modelsLoading, setModelsLoading] = useState(false);
+                const [apiKeys, setApiKeys] = useAiApiKeyValue(React, getSetting);
+                const [selectedModel, setSelectedModel] = useState(() => getSetting('model', 'anthropic/claude-3.5-sonnet'));
+                const [customModel, setCustomModel] = useState(() => getSetting('custom-model', ''));
+                const { availableModels, modelsLoading, loadModels } = useAiModelPicker(React, {
+                    apiKeys, getApiKeys, fetchModels: fetchAvailableModels, logName: 'OpenRouter'
+                });
                 const [testStatus, setTestStatus] = useState('');
-
-                const loadModels = useCallback(async () => {
-                    const keys = getApiKeys();
-                    if (keys.length === 0) {
-                        setAvailableModels([]);
-                        return;
-                    }
-                    setModelsLoading(true);
-                    try {
-                        const models = await fetchAvailableModels(keys[0]);
-                        setAvailableModels(models);
-                    } catch (e) {
-                        console.error('[OpenRouter Addon] Failed to load models:', e);
-                    }
-                    setModelsLoading(false);
-                }, [apiKeys]);
-
-                useEffect(() => {
-                    const keys = getApiKeys();
-                    if (keys.length > 0) {
-                        loadModels();
-                    } else {
-                        setAvailableModels([]);
-                    }
-                }, [apiKeys]);
 
                 const handleApiKeyChange = (e) => {
                     const val = e.target.value;
@@ -296,64 +278,34 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
                     }
                 };
 
-                const handleTest = async () => {
-                    setTestStatus(aiText('testingConnection', 'Testing...'));
-                    try {
-                        const result = await callOpenRouterAPIRaw('Say "Hello" in one word.');
-                        setTestStatus(result
-                            ? '✓ ' + aiText('connectionSuccess', 'Connection successful')
-                            : '✗ ' + aiText('emptyResponse', 'Empty response'));
-                    } catch (e) {
-                        setTestStatus(`✗ ${e.message}`);
-                    }
-                };
-
-
+                const handleTest = () => testAiConnection(callOpenRouterAPIRaw, setTestStatus, aiText);
 
                 const isModelInList = availableModels.some(m => m.id === selectedModel);
                 const hasApiKey = getApiKeys().length > 0;
 
-                const renderApiKeyRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('label', null, aiText('apiKey', 'API Key(s)')),
-                        React.createElement('div', { className: 'ai-addon-input-group' },
-                            React.createElement('input', {
-                                type: 'text',
-                                value: apiKeys,
-                                onChange: handleApiKeyChange,
-                                placeholder: 'sk-or-...'
-                            }),
-                            React.createElement('button', {
-                                type: 'button',
-                                onClick: () => window.open(ADDON_INFO.apiKeyUrl, '_blank'),
-                                className: 'ai-addon-btn ai-addon-btn-secondary'
-                            }, aiText('getApiKey', 'Get API Key'))
-                        ),
-                        React.createElement('small', null, aiText('apiKeyRotationDesc', 'Enter a single key or JSON array for rotation'))
-                    );
-                const renderModelRow = () => React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('label', null, aiText('model', 'Model')),
-                        React.createElement('div', { className: 'ai-addon-input-group' },
-                            React.createElement('select', {
-                                value: isModelInList ? selectedModel : '__custom__',
-                                onChange: handleModelChange,
-                                disabled: modelsLoading || availableModels.length === 0
-                            },
-                                modelsLoading && React.createElement('option', { value: '' }, aiText('loadingModels', 'Loading models...')),
-                                !modelsLoading && availableModels.length === 0 && React.createElement('option', { value: '' }, hasApiKey ? aiText('noModels', 'No models found') : aiText('enterApiKeyFirst', 'Enter API key first')),
-                                availableModels.map(m => React.createElement('option', { key: m.id, value: m.id }, m.name)),
-                                !isModelInList && React.createElement('option', { value: '__custom__' }, aiText('customModel', 'Custom Model'))
-                            ),
-                            React.createElement('button', {
-                                type: 'button',
-                                onClick: loadModels,
-                                className: 'ai-addon-btn ai-addon-btn-secondary ai-addon-connection-icon',
-                                disabled: modelsLoading || !hasApiKey,
-                                'aria-label': aiText('refreshModels', 'Refresh model list'),
-                                title: aiText('refreshModels', 'Refresh model list')
-                            }, modelsLoading ? '...' : '↻')
-                        ),
+                const renderApiKeyRow = () => renderAiApiKeyRow(React, {
+                    aiText, value: apiKeys, onChange: handleApiKeyChange, placeholder: 'sk-or-...',
+                    onOpen: () => window.open(ADDON_INFO.apiKeyUrl, '_blank')
+                });
+                const renderModelRow = () => renderAiModelRow(React, {
+                    aiText,
+                    select: React.createElement('select', {
+                        value: isModelInList ? selectedModel : '__custom__',
+                        onChange: handleModelChange,
+                        disabled: modelsLoading || availableModels.length === 0
+                    },
+                        modelsLoading && React.createElement('option', { value: '' }, aiText('loadingModels', 'Loading models...')),
+                        !modelsLoading && availableModels.length === 0 && React.createElement('option', { value: '' }, hasApiKey ? aiText('noModels', 'No models found') : aiText('enterApiKeyFirst', 'Enter API key first')),
+                        availableModels.map(m => React.createElement('option', { key: m.id, value: m.id }, m.name)),
+                        !isModelInList && React.createElement('option', { value: '__custom__' }, aiText('customModel', 'Custom Model'))
+                    ),
+                    onRefresh: loadModels,
+                    loading: modelsLoading,
+                    refreshDisabled: modelsLoading || !hasApiKey,
+                    below: [
                         availableModels.length > 0 && React.createElement('small', null, aiText('modelsAvailable', '{count} models available', { count: availableModels.length }))
-                    );
+                    ]
+                });
                 const renderCustomModelRow = () => React.createElement('div', { className: 'ai-addon-setting' },
                         React.createElement('label', null, aiText('modelId', 'Custom Model ID')),
                         React.createElement('input', { type: 'text', value: customModel, onChange: handleCustomModelChange, placeholder: 'anthropic/claude-3-opus', 'aria-label': aiText('modelId', 'Custom Model ID') })
