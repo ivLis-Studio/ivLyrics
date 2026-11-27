@@ -32,7 +32,7 @@ import { commitSettingsControlValue, isSettingsControlDisabled } from "./setting
 
 // Controls the assistant may set by itself. Hotkeys, the karaoke curve, Helper
 // toggles, action buttons and custom panels are only shown to the user.
-export const SETTINGS_ASSISTANT_EDITABLE_CONTROLS = new Set(["toggle", "range", "font-weight", "select", "color", "font"]);
+const SETTINGS_ASSISTANT_EDITABLE_CONTROLS = new Set(["toggle", "range", "font-weight", "select", "color", "font"]);
 
 export const SETTINGS_GUIDE_ENTRY_BY_KEY = new Map(SETTINGS_GUIDE_SETTINGS.map((entry) => [entry.key, entry]));
 // Section keys are unique across menus; the AI names sections by key alone.
@@ -70,7 +70,7 @@ export function getSettingsAssistantLocation(tabId, sectionKey, translate) {
   return parts.filter(Boolean).join(" › ");
 }
 
-export function isSettingsAssistantEditable(entry, registryEntry) {
+function isSettingsAssistantEditable(entry, registryEntry) {
   return Boolean(entry && registryEntry && entry.assistant !== "show"
     && SETTINGS_ASSISTANT_EDITABLE_CONTROLS.has(entry.control));
 }

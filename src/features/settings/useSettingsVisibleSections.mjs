@@ -49,19 +49,20 @@ export function useSettingsVisibleSections(react, {
       }
 
       const head = pageHeadRef.current;
-      head?.classList.toggle("is-stuck", container.scrollTop > 4);
       if (isProgrammaticScrollRef.current) return;
       if (sections.length === 0) {
         activeSectionSignal.set(null);
         return;
       }
 
-      const pinned = sections.find(section => section.key === pinnedSectionRef.current);
+      const pinnedKey = pinnedSectionRef.current;
+      const pinned = pinnedKey && sections.find(section => section.key === pinnedKey);
       if (pinned) {
         activeSectionSignal.set(pinned.key);
         return;
       }
-      if (container.scrollTop > 4 && container.scrollTop + container.clientHeight >= container.scrollHeight - 4) {
+      const scrollTop = container.scrollTop;
+      if (scrollTop > 4 && scrollTop + container.clientHeight >= container.scrollHeight - 4) {
         activeSectionSignal.set(sections.at(-1).key);
         return;
       }

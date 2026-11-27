@@ -104,8 +104,6 @@
  *   role         English explanation (required).
  */
 
-export const SETTINGS_GUIDE_VERSION = 1;
-
 // Fullscreen view switch labels (settingsMenuMetadata.mjs fullscreenViews).
 export const SETTINGS_GUIDE_VIEW_LABELS = Object.freeze({
   basic: "settingsUi.fullscreenViews.basic",

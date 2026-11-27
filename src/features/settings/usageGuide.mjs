@@ -61,7 +61,6 @@
  *   related    Ids of related topics (optional).
  */
 
-export const USAGE_GUIDE_VERSION = 1;
 // Upper bound for the whole rendered guide (characters). Requests carry only
 // the index and a few topics, but the guide should stay a quick read.
 export const USAGE_GUIDE_MAX_CHARS = 60000;
@@ -957,7 +956,7 @@ export function listUsageGuideUiNames(topic) {
 }
 
 /** Replaces each [[i18n.key]] with the quoted name the user sees. */
-export function renderUsageGuideText(text, translate) {
+function renderUsageGuideText(text, translate) {
   return String(text ?? "").replace(UI_NAME_PATTERN, (_match, key, fallback) => {
     const value = translate(key.trim());
     const label = typeof value === "string" ? plainText(value) : "";
@@ -1105,7 +1104,7 @@ function buildSearchIndex(translate) {
 }
 
 /** Topics that share words with the message, best first, with their scores. */
-export function rankUsageGuideTopics({ message, previousMessage = "", translate }) {
+function rankUsageGuideTopics({ message, previousMessage = "", translate }) {
   const { topics, rarity } = buildSearchIndex(translate);
   const query = new Map();
   for (const term of readUsageGuideSearchTerms(previousMessage)) query.set(term, PREVIOUS_MESSAGE_WEIGHT);

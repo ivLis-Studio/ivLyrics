@@ -520,7 +520,7 @@ export const createSettingsModalCss = (APP_NAME) => getSettingsSurfaceTokenCss(`
 #${APP_NAME}-config-container .settings-hotkey-label { font-size: 13px; font-weight: 500; }
 #${APP_NAME}-config-container .settings-hotkey-cell .setting-row { display: contents; }
 #${APP_NAME}-config-container .settings-hotkey-cell .setting-row-content { display: block; width: 100%; min-height: 0; }
-#${APP_NAME}-config-container .settings-hotkey-cell.is-changed .config-hotkey-recorder { color: var(--accent-text); border-color: var(--accent-line); }
+#${APP_NAME}-config-container .settings-hotkey-cell.is-changed .config-hotkey-recorder { color: var(--accent-text); }
 #${APP_NAME}-config-container .settings-hotkey-cell .setting-row-left { display: none; }
 #${APP_NAME}-config-container .settings-hotkey-cell .setting-row-right, #${APP_NAME}-config-container .settings-hotkey-cell .config-hotkey-control { width: 100%; }
 #${APP_NAME}-config-container .settings-hotkey-cell .config-hotkey-recorder { flex: 1; min-width: 0; }
@@ -681,7 +681,6 @@ export const createSettingsModalCss = (APP_NAME) => getSettingsSurfaceTokenCss(`
 #${APP_NAME}-config-container .settings-cap-toggle svg { width: 13px; height: 13px; stroke-width: 2.2; }
 #${APP_NAME}-config-container .settings-cap-toggle.is-on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-text); }
 #${APP_NAME}-config-container .settings-cap-toggle.is-owner { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-#${APP_NAME}-config-container .settings-cap-toggle.is-static { cursor: default; }
 #${APP_NAME}-config-container .settings-cap-none { width: 4px; height: 4px; border-radius: 50%; background: var(--line-3); }
 #${APP_NAME}-config-container .settings-provider-more { display: grid; place-items: center; width: 28px; height: 28px; justify-self: end; padding: 0; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); transition: background var(--t-fast), color var(--t-fast); }
 #${APP_NAME}-config-container .settings-provider-more:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
@@ -692,7 +691,6 @@ export const createSettingsModalCss = (APP_NAME) => getSettingsSurfaceTokenCss(`
 #${APP_NAME}-config-container .settings-cap-chip { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: transparent; color: var(--text-3); font-size: 12px; font-weight: 500; white-space: nowrap; transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast); }
 #${APP_NAME}-config-container .settings-cap-chip.is-on { border-color: var(--line-3); background: var(--surface-3); color: var(--text); }
 #${APP_NAME}-config-container .settings-cap-chip.is-owner { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-#${APP_NAME}-config-container .settings-cap-chip.is-static { cursor: default; }
 #${APP_NAME}-config-container .lyrics-provider-card-body { grid-column: 1 / -1; margin: 6px 0 4px; padding: 2px 0 0 14px; border-left: 1px solid var(--line-2); }
 #${APP_NAME}-config-container .settings-provider-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--text-3); }
 #${APP_NAME}-config-container .settings-provider-legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -797,7 +795,6 @@ export const createSettingsModalCss = (APP_NAME) => getSettingsSurfaceTokenCss(`
 #${APP_NAME}-config-container .ai-addon-cap-chip.is-blocked::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: repeating-linear-gradient(-18deg, transparent 0 4px, rgba(150, 150, 150, .75) 4px 6px); pointer-events: none; }
 #${APP_NAME}-config-container .ai-addon-cap-chip svg { width: 12px; height: 12px; }
 #${APP_NAME}-config-container .ai-addon-capabilities-title { margin-bottom: 6px; font-size: 12.5px; font-weight: 500; color: var(--text-2); }
-#${APP_NAME}-config-container .ai-addon-capabilities-desc { margin-top: 6px; font-size: 12px; color: var(--text-3); }
 #${APP_NAME}-config-container .ai-addon-connections { margin-top: 4px; }
 #${APP_NAME}-config-container .ai-addon-connection-card { margin: 10px 0; padding: 12px 14px; border-radius: var(--r-md); border: 1px dashed var(--line-3); background: transparent; min-width: 0; }
 #${APP_NAME}-config-container .ai-addon-connection-header { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
@@ -1044,7 +1041,7 @@ export const createSettingsModalCss = (APP_NAME) => getSettingsSurfaceTokenCss(`
 #${APP_NAME}-config-container .settings-cd-artwork.is-spinning { transform-origin: 100px 100px; animation: settings-cd-spin var(--cd-rotation-period, 24s) linear infinite; }
 @keyframes settings-cd-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  #${APP_NAME}-config-container .settings-cd-artwork.is-spinning { animation: none; }
+  #${APP_NAME}-config-container .settings-cd-artwork.is-spinning,
   #${APP_NAME}-config-container .settings-fs-record.is-spin { animation: none; }
 }
 #${APP_NAME}-config-container .settings-fs-info { display: grid; flex: 0 0 auto; width: 100%; justify-items: center; gap: 4px; }
