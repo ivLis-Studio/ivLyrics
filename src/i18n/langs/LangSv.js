@@ -91,7 +91,7 @@ export default {
       "resetConfirm": "Återställa {count} inställningar till standardvärdena?"
     },
     "assistant": {
-      "intro": "Berätta vad du vill ändra. Jag hittar matchande inställningar, tillämpar dem och visar dem här så att du kan finjustera dem.",
+      "intro": "Berätta vad du vill ändra eller fråga hur en funktion används. Jag tillämpar matchande inställningar och visar dem här, eller går igenom stegen med dig.",
       "providerNote": "Använder dina AI-leverantörer som har ”Inställningsassistent” påslaget. Ditt meddelande och listan över ivLyrics-inställningar skickas till den leverantören.",
       "placeholder": "Fråga vad som helst om inställningarna, t.ex. ”Dölj kontrollern automatiskt i helskärm”",
       "send": "Skicka",
@@ -103,7 +103,9 @@ export default {
         "autoHide": "Dölj kontrollern automatiskt i helskärm",
         "fontSize": "Gör låttexten större",
         "translation": "Översätt låttexten till engelska",
-        "performance": "Låttextsidan känns seg. Gör den lättare."
+        "performance": "Låttextsidan känns seg. Gör den lättare.",
+        "syncCreator": "Hur lägger jag till synkade låttexter till en låt?",
+        "videoSubmit": "Kan jag lägga till en bakgrundsvideo själv?"
       },
       "noProviderTitle": "Ingen AI-leverantör är redo",
       "noProviderDesc": "Lägg till din API-nyckel hos en AI-leverantör som ChatGPT, Gemini eller Claude, aktivera den och låt ”Inställningsassistent” vara på.",

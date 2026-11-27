@@ -91,7 +91,7 @@ export default {
       "resetConfirm": "{count}개 설정을 기본값으로 되돌릴까요?"
     },
     "assistant": {
-      "intro": "바꾸고 싶은 걸 말해 주세요. 맞는 설정을 찾아 바로 적용하고, 여기서 더 조정할 수 있게 보여 드릴게요.",
+      "intro": "바꾸고 싶은 설정이나 궁금한 사용법을 물어보세요. 맞는 설정은 바로 적용해 여기서 보여 드리고, 기능 사용법은 단계별로 알려 드릴게요.",
       "providerNote": "AI 제공자에서 '설정 어시스턴트'가 켜진 제공자를 사용해요. 입력한 메시지와 ivLyrics 설정 목록이 해당 제공자로 전송됩니다.",
       "placeholder": "예: 전체화면에서 컨트롤러 자동으로 숨겨 줘",
       "send": "보내기",
@@ -103,7 +103,9 @@ export default {
         "autoHide": "전체화면에서 컨트롤러 자동으로 숨겨 줘",
         "fontSize": "가사 글자 좀 키워 줘",
         "translation": "가사를 영어로 번역해 줘",
-        "performance": "가사 화면이 버벅여요. 가볍게 해 줘"
+        "performance": "가사 화면이 버벅여요. 가볍게 해 줘",
+        "syncCreator": "가사에 싱크를 등록하고 싶은데 어떻게 해?",
+        "videoSubmit": "영상을 직접 등록할 수 있어?"
       },
       "noProviderTitle": "사용할 수 있는 AI 제공자가 없어요",
       "noProviderDesc": "ChatGPT, Gemini, Claude 같은 AI 제공자에 API 키를 넣고 활성화한 다음 '설정 어시스턴트' 기능을 켜 주세요.",

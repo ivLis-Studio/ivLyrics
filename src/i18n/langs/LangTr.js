@@ -91,7 +91,7 @@ export default {
       "resetConfirm": "{count} ayar varsayılana sıfırlansın mı?"
     },
     "assistant": {
-      "intro": "Neyi değiştirmek istediğinizi söyleyin. Uygun ayarları bulup uygularım ve ince ayar yapabilmeniz için burada gösteririm.",
+      "intro": "Neyi değiştirmek istediğinizi söyleyin ya da bir özelliğin nasıl kullanıldığını sorun. Uygun ayarları uygulayıp burada gösteririm ya da adımları tek tek anlatırım.",
       "providerNote": "“Ayar asistanı” açık olan yapay zeka sağlayıcılarınızı kullanır. Mesajınız ve ivLyrics ayarlarının listesi bu sağlayıcıya gönderilir.",
       "placeholder": "Ayarlarla ilgili her şeyi sorabilirsiniz, ör. “Tam ekranda kontrolcüyü otomatik gizle”",
       "send": "Gönder",
@@ -103,7 +103,9 @@ export default {
         "autoHide": "Tam ekranda kontrolcüyü otomatik gizle",
         "fontSize": "Şarkı sözlerini büyüt",
         "translation": "Şarkı sözlerini İngilizceye çevir",
-        "performance": "Söz sayfası takılıyor. Daha hafif hale getir."
+        "performance": "Söz sayfası takılıyor. Daha hafif hale getir.",
+        "syncCreator": "Bir şarkıya senkronize sözleri nasıl eklerim?",
+        "videoSubmit": "Arka plan videosunu kendim ekleyebilir miyim?"
       },
       "noProviderTitle": "Hazır yapay zeka sağlayıcısı yok",
       "noProviderDesc": "ChatGPT, Gemini veya Claude gibi bir yapay zeka sağlayıcısına API anahtarınızı ekleyin, sağlayıcıyı etkinleştirin ve “Ayar asistanı” özelliğini açık tutun.",

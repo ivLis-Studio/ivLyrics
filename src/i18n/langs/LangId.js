@@ -91,7 +91,7 @@ export default {
       "resetConfirm": "Kembalikan {count} pengaturan ke bawaan?"
     },
     "assistant": {
-      "intro": "Beri tahu saya apa yang ingin Anda ubah. Saya akan mencari pengaturan yang cocok, menerapkannya, dan menampilkannya di sini agar bisa Anda sesuaikan.",
+      "intro": "Beri tahu saya apa yang ingin Anda ubah, atau tanyakan cara memakai suatu fitur. Saya akan menerapkan pengaturan yang cocok dan menampilkannya di sini, atau memandu Anda langkah demi langkah.",
       "providerNote": "Menggunakan penyedia AI Anda yang mengaktifkan “Asisten pengaturan”. Pesan Anda dan daftar pengaturan ivLyrics dikirim ke penyedia tersebut.",
       "placeholder": "Tanyakan apa saja tentang pengaturan, mis. “Sembunyikan kontroler otomatis di layar penuh”",
       "send": "Kirim",
@@ -103,7 +103,9 @@ export default {
         "autoHide": "Sembunyikan kontroler otomatis di layar penuh",
         "fontSize": "Perbesar teks lirik",
         "translation": "Terjemahkan lirik ke bahasa Inggris",
-        "performance": "Halaman lirik terasa lambat. Buat lebih ringan."
+        "performance": "Halaman lirik terasa lambat. Buat lebih ringan.",
+        "syncCreator": "Bagaimana cara menambahkan sinkronisasi lirik ke lagu?",
+        "videoSubmit": "Bisakah saya menambahkan video latar sendiri?"
       },
       "noProviderTitle": "Belum ada penyedia AI yang siap",
       "noProviderDesc": "Tambahkan kunci API ke penyedia AI seperti ChatGPT, Gemini, atau Claude, aktifkan, lalu biarkan “Asisten pengaturan” tetap menyala.",

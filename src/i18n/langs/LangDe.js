@@ -91,7 +91,7 @@ export default {
       "resetConfirm": "{count} Einstellungen auf den Standardwert zurücksetzen?"
     },
     "assistant": {
-      "intro": "Sag mir, was du ändern möchtest. Ich suche die passenden Einstellungen, wende sie an und zeige sie dir hier, damit du sie feinjustieren kannst.",
+      "intro": "Sag mir, was du ändern möchtest, oder frag, wie eine Funktion funktioniert. Ich wende passende Einstellungen an und zeige sie hier oder erkläre dir die Schritte.",
       "providerNote": "Verwendet deine KI-Anbieter, bei denen „Einstellungsassistent“ aktiviert ist. Deine Nachricht und die Liste der ivLyrics-Einstellungen werden an diesen Anbieter gesendet.",
       "placeholder": "Frag einfach drauflos, z. B. „Controller im Vollbild automatisch ausblenden“",
       "send": "Senden",
@@ -103,7 +103,9 @@ export default {
         "autoHide": "Controller im Vollbild automatisch ausblenden",
         "fontSize": "Mach den Songtext größer",
         "translation": "Übersetze den Songtext ins Englische",
-        "performance": "Die Songtext-Seite ruckelt. Mach sie leichter."
+        "performance": "Die Songtext-Seite ruckelt. Mach sie leichter.",
+        "syncCreator": "Wie füge ich einem Song synchronisierte Lyrics hinzu?",
+        "videoSubmit": "Kann ich selbst ein Hintergrundvideo hinzufügen?"
       },
       "noProviderTitle": "Kein KI-Anbieter bereit",
       "noProviderDesc": "Hinterlege bei einem KI-Anbieter wie ChatGPT, Gemini oder Claude deinen API-Schlüssel, aktiviere ihn und lass „Einstellungsassistent“ dafür eingeschaltet.",

@@ -91,7 +91,7 @@ export default {
       "resetConfirm": "Reset {count} settings to their defaults?"
     },
     "assistant": {
-      "intro": "Tell me what you want to change. I'll find the matching settings, apply them and show them here so you can fine-tune them.",
+      "intro": "Tell me what you want to change, or ask how to use a feature. I'll apply the matching settings and show them here, or walk you through the steps.",
       "providerNote": "Uses your AI providers that have “Settings assistant” turned on. Your message and the list of ivLyrics settings are sent to that provider.",
       "placeholder": "Ask anything about settings, e.g. “Hide the controller automatically in fullscreen”",
       "send": "Send",
@@ -103,7 +103,9 @@ export default {
         "autoHide": "Hide the controller automatically in fullscreen",
         "fontSize": "Make the lyrics bigger",
         "translation": "Translate lyrics into English",
-        "performance": "The lyrics page feels slow. Make it lighter."
+        "performance": "The lyrics page feels slow. Make it lighter.",
+        "syncCreator": "How do I add synced lyrics to a song?",
+        "videoSubmit": "Can I add a background video myself?"
       },
       "noProviderTitle": "No AI provider is ready",
       "noProviderDesc": "Add your API key to an AI provider such as ChatGPT, Gemini or Claude, enable it, and keep “Settings assistant” on for it.",

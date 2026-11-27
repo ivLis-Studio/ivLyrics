@@ -91,7 +91,7 @@ export default {
       "resetConfirm": "Đặt lại {count} cài đặt về mặc định?"
     },
     "assistant": {
-      "intro": "Hãy cho tôi biết bạn muốn thay đổi gì. Tôi sẽ tìm các cài đặt phù hợp, áp dụng và hiển thị ở đây để bạn tinh chỉnh thêm.",
+      "intro": "Hãy cho tôi biết bạn muốn thay đổi gì, hoặc hỏi cách dùng một tính năng. Tôi sẽ áp dụng cài đặt phù hợp và hiển thị ở đây, hoặc hướng dẫn bạn từng bước.",
       "providerNote": "Sử dụng các nhà cung cấp AI của bạn đã bật “Trợ lý cài đặt”. Tin nhắn của bạn và danh sách cài đặt ivLyrics sẽ được gửi đến nhà cung cấp đó.",
       "placeholder": "Hỏi bất cứ điều gì về cài đặt, ví dụ: “Tự động ẩn bộ điều khiển khi toàn màn hình”",
       "send": "Gửi",
@@ -103,7 +103,9 @@ export default {
         "autoHide": "Tự động ẩn bộ điều khiển khi toàn màn hình",
         "fontSize": "Phóng to lời bài hát",
         "translation": "Dịch lời bài hát sang tiếng Anh",
-        "performance": "Trang lời bài hát bị giật. Làm nhẹ hơn giúp mình."
+        "performance": "Trang lời bài hát bị giật. Làm nhẹ hơn giúp mình.",
+        "syncCreator": "Làm sao để thêm lời đồng bộ cho bài hát?",
+        "videoSubmit": "Tôi có thể tự thêm video nền không?"
       },
       "noProviderTitle": "Chưa có nhà cung cấp AI nào sẵn sàng",
       "noProviderDesc": "Thêm khóa API vào một nhà cung cấp AI như ChatGPT, Gemini hoặc Claude, bật nhà cung cấp đó và giữ “Trợ lý cài đặt” ở trạng thái bật.",

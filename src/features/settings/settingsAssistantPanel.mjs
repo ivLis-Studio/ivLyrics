@@ -33,6 +33,8 @@ const SETTINGS_ASSISTANT_EXAMPLES = Object.freeze([
   "settingsUi.assistant.examples.fontSize",
   "settingsUi.assistant.examples.translation",
   "settingsUi.assistant.examples.performance",
+  "settingsUi.assistant.examples.syncCreator",
+  "settingsUi.assistant.examples.videoSubmit",
 ]);
 const MAX_ROWS_PER_REPLY = 10;
 // A section the AI points to is shown as its rows when it is this small;

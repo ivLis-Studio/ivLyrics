@@ -91,7 +91,7 @@ export default {
       "resetConfirm": "Rétablir {count} paramètres à leur valeur par défaut ?"
     },
     "assistant": {
-      "intro": "Dites-moi ce que vous voulez changer. Je trouve les paramètres correspondants, je les applique et je les affiche ici pour que vous puissiez les ajuster.",
+      "intro": "Dites-moi ce que vous voulez changer ou demandez comment utiliser une fonction. J'applique les paramètres correspondants et je les affiche ici, ou je vous guide étape par étape.",
       "providerNote": "Utilise vos fournisseurs d'IA pour lesquels « Assistant des paramètres » est activé. Votre message et la liste des paramètres d'ivLyrics sont envoyés à ce fournisseur.",
       "placeholder": "Posez votre question, p. ex. « Masquer automatiquement le contrôleur en plein écran »",
       "send": "Envoyer",
@@ -103,7 +103,9 @@ export default {
         "autoHide": "Masquer automatiquement le contrôleur en plein écran",
         "fontSize": "Agrandir les paroles",
         "translation": "Traduire les paroles en anglais",
-        "performance": "La page des paroles rame, il faudrait l'alléger."
+        "performance": "La page des paroles rame, il faudrait l'alléger.",
+        "syncCreator": "Comment ajouter des paroles synchronisées à une chanson ?",
+        "videoSubmit": "Puis-je ajouter moi-même une vidéo d'arrière-plan ?"
       },
       "noProviderTitle": "Aucun fournisseur d'IA n'est prêt",
       "noProviderDesc": "Ajoutez votre clé API à un fournisseur d'IA comme ChatGPT, Gemini ou Claude, activez-le et laissez « Assistant des paramètres » activé.",

@@ -19,6 +19,10 @@
  *       settingsAssistantPanel.mjs    chat UI; shows the menus' own rows
  *     `role`, `visibleWhen` and the limits below are what the AI reads, so
  *     keep them accurate: a wrong range or option makes the assistant wrong.
+ *     How to use features outside these rows (lyrics-page buttons, dialogs,
+ *     the Sync Creator, community videos, fullscreen views, ...) is explained
+ *     in usageGuide.mjs, which the assistant reads after this catalog. When
+ *     such a feature changes, update its topic there as well.
  *   - tests/settings_guide.test.mjs renders every settings menu and compares it
  *     with this file. It fails when a row is missing here, an entry no longer
  *     exists in the menus, or a range, option list, default or i18n key differs.
@@ -112,7 +116,7 @@ export const SETTINGS_GUIDE_VIEW_LABELS = Object.freeze({
 
 // Menus in sidebar order. Labels: SETTINGS_TAB_TRANSLATION_KEYS.
 export const SETTINGS_GUIDE_MENUS = Object.freeze([
-  { id: "assistant", role: "This AI settings assistant. Describe what you want to change and it finds, explains and applies the matching settings." },
+  { id: "assistant", role: "This AI assistant. Describe what you want to change and it finds, explains and applies the matching settings; ask how to use a feature and it explains the steps from the usage guide (usageGuide.mjs)." },
   { id: "general", role: "Interface language, the language lyrics are translated into, and the ivLyrics desktop overlay app." },
   { id: "lyrics-providers", role: "Which lyrics sources are used, their order, the lyric types each one may supply and the lookup priority." },
   { id: "ai-providers", role: "AI providers per task (translation, pronunciation, metadata, research, cultural notes, motion lyrics, this assistant), their API keys and models, translation style, retries and cultural context explanations." },

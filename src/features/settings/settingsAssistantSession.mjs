@@ -6,6 +6,8 @@
  * survives switching menus and closing/reopening the settings window. Each
  * message goes to the user's AI provider; the reply's changes are checked and
  * saved by settingsAssistantCatalog.mjs through the settings registry.
+ * The catalog the AI reads is the settings catalog followed by the usage guide
+ * (usageGuide.mjs), so it can also explain features outside the settings rows.
  *
  * The settings window rebuilds its handlers on every render, so callers pass a
  * fresh `runtime` with each send/undo:
@@ -30,6 +32,7 @@ import { buildSettingsAssistantPrompt, readSettingsAssistantReply } from "./sett
 import {
   applySettingsAssistantChanges, buildSettingsAssistantCatalog, planSettingsAssistantChanges, readChangedSettingsForAssistant,
 } from "./settingsAssistantCatalog.mjs";
+import { buildUsageGuideCatalog } from "./usageGuide.mjs";
 
 const toRegistryMap = (registry) => new Map(Array.from(registry || [], (entry) => [entry.key, entry]));
 
@@ -55,7 +58,10 @@ export function createSettingsAssistantSession({ createId } = {}) {
     const registryByKey = toRegistryMap(runtime.readRegistry());
     return {
       registryByKey,
-      catalog: buildSettingsAssistantCatalog({ translate: runtime.translate, registryByKey }),
+      catalog: [
+        buildSettingsAssistantCatalog({ translate: runtime.translate, registryByKey }),
+        buildUsageGuideCatalog({ translate: runtime.translate }),
+      ].join("\n\n"),
       changedValues: readChangedSettingsForAssistant({
         registryByKey, isSettingChanged: runtime.isSettingChanged, readValue: runtime.readValue,
       }),

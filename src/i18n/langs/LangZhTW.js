@@ -91,7 +91,7 @@ export default {
       "resetConfirm": "要將 {count} 項設定還原為預設值嗎？"
     },
     "assistant": {
-      "intro": "告訴我你想改什麼。我會找到對應的設定並立即套用，再顯示在這裡讓你進一步微調。",
+      "intro": "告訴我你想改什麼，或問我某個功能怎麼用。我會套用對應的設定並顯示在這裡，或一步步告訴你怎麼做。",
       "providerNote": "會使用已開啟「設定助理」的 AI 提供者。你輸入的訊息和 ivLyrics 設定清單會傳送給該提供者。",
       "placeholder": "關於設定的問題儘管問，例如「全螢幕時自動隱藏控制器」",
       "send": "傳送",
@@ -103,7 +103,9 @@ export default {
         "autoHide": "全螢幕時自動隱藏控制器",
         "fontSize": "把歌詞字體調大一點",
         "translation": "把歌詞翻譯成英文",
-        "performance": "歌詞頁面有點卡，幫我調輕一些"
+        "performance": "歌詞頁面有點卡，幫我調輕一些",
+        "syncCreator": "要怎麼為歌曲新增同步歌詞？",
+        "videoSubmit": "我可以自己新增背景影片嗎？"
       },
       "noProviderTitle": "沒有可用的 AI 提供者",
       "noProviderDesc": "在 ChatGPT、Gemini 或 Claude 等 AI 提供者中輸入 API 金鑰並啟用，然後開啟「設定助理」。",

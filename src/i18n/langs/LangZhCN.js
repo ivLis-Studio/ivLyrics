@@ -91,7 +91,7 @@ export default {
       "resetConfirm": "要将 {count} 项设置恢复为默认值吗？"
     },
     "assistant": {
-      "intro": "告诉我你想改什么。我会找到相应的设置并立即应用，再显示在这里供你进一步微调。",
+      "intro": "告诉我你想改什么，或者问我某个功能怎么用。我会应用相应的设置并显示在这里，或一步步告诉你怎么做。",
       "providerNote": "将使用已开启“设置助手”的 AI 提供商。你输入的消息和 ivLyrics 设置列表会发送给该提供商。",
       "placeholder": "关于设置的问题尽管问，例如“全屏时自动隐藏控制器”",
       "send": "发送",
@@ -103,7 +103,9 @@ export default {
         "autoHide": "全屏时自动隐藏控制器",
         "fontSize": "把歌词字体调大一点",
         "translation": "把歌词翻译成英文",
-        "performance": "歌词页面有点卡，帮我调轻一些"
+        "performance": "歌词页面有点卡，帮我调轻一些",
+        "syncCreator": "怎么给歌曲添加同步歌词？",
+        "videoSubmit": "我可以自己添加背景视频吗？"
       },
       "noProviderTitle": "没有可用的 AI 提供商",
       "noProviderDesc": "在 ChatGPT、Gemini 或 Claude 等 AI 提供商中填入 API 密钥并启用，然后开启“设置助手”。",

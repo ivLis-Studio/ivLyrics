@@ -91,7 +91,7 @@ export default {
       "resetConfirm": "Ripristinare {count} impostazioni ai valori predefiniti?"
     },
     "assistant": {
-      "intro": "Dimmi cosa vuoi cambiare. Troverò le impostazioni giuste, le applicherò e te le mostrerò qui per rifinirle.",
+      "intro": "Dimmi cosa vuoi cambiare o chiedimi come usare una funzione. Applicherò le impostazioni giuste mostrandole qui, oppure ti guiderò passo passo.",
       "providerNote": "Usa i tuoi provider AI con «Assistente impostazioni» attivo. Il tuo messaggio e l'elenco delle impostazioni di ivLyrics vengono inviati a quel provider.",
       "placeholder": "Chiedi qualsiasi cosa sulle impostazioni, ad es. «Nascondi automaticamente il controller a schermo intero»",
       "send": "Invia",
@@ -103,7 +103,9 @@ export default {
         "autoHide": "Nascondi automaticamente il controller a schermo intero",
         "fontSize": "Ingrandisci i testi",
         "translation": "Traduci i testi in inglese",
-        "performance": "La pagina dei testi è lenta. Rendila più leggera."
+        "performance": "La pagina dei testi è lenta. Rendila più leggera.",
+        "syncCreator": "Come aggiungo il testo sincronizzato a un brano?",
+        "videoSubmit": "Posso aggiungere io un video di sfondo?"
       },
       "noProviderTitle": "Nessun provider AI pronto",
       "noProviderDesc": "Aggiungi la tua chiave API a un provider AI come ChatGPT, Gemini o Claude, attivalo e lascia attivo «Assistente impostazioni».",

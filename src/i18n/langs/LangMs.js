@@ -91,7 +91,7 @@ export default {
       "resetConfirm": "Set semula {count} tetapan kepada lalai?"
     },
     "assistant": {
-      "intro": "Beritahu saya apa yang anda mahu ubah. Saya akan cari tetapan yang sepadan, menggunakannya dan memaparkannya di sini supaya anda boleh memperhalusinya.",
+      "intro": "Beritahu saya apa yang anda mahu ubah, atau tanya cara menggunakan sesuatu ciri. Saya akan menggunakan tetapan yang sepadan dan memaparkannya di sini, atau membimbing anda langkah demi langkah.",
       "providerNote": "Menggunakan penyedia AI anda yang menghidupkan “Pembantu tetapan”. Mesej anda dan senarai tetapan ivLyrics akan dihantar kepada penyedia tersebut.",
       "placeholder": "Tanya apa sahaja tentang tetapan, cth. “Sembunyikan pengawal secara automatik dalam skrin penuh”",
       "send": "Hantar",
@@ -103,7 +103,9 @@ export default {
         "autoHide": "Sembunyikan pengawal secara automatik dalam skrin penuh",
         "fontSize": "Besarkan lirik",
         "translation": "Terjemahkan lirik ke bahasa Inggeris",
-        "performance": "Halaman lirik terasa perlahan. Jadikan lebih ringan."
+        "performance": "Halaman lirik terasa perlahan. Jadikan lebih ringan.",
+        "syncCreator": "Bagaimana cara menambah lirik yang disegerakkan pada lagu?",
+        "videoSubmit": "Bolehkah saya menambah video latar sendiri?"
       },
       "noProviderTitle": "Tiada penyedia AI yang sedia",
       "noProviderDesc": "Tambah kunci API anda pada penyedia AI seperti ChatGPT, Gemini atau Claude, aktifkannya dan pastikan “Pembantu tetapan” dihidupkan.",

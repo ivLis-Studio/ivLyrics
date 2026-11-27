@@ -91,7 +91,7 @@ export default {
       "resetConfirm": "Restaurar {count} configurações para o padrão?"
     },
     "assistant": {
-      "intro": "Diga o que você quer mudar. Vou encontrar as configurações certas, aplicá-las e mostrá-las aqui para você ajustar os detalhes.",
+      "intro": "Diga o que você quer mudar ou pergunte como usar um recurso. Vou aplicar as configurações certas e mostrá-las aqui, ou explicar o passo a passo.",
       "providerNote": "Usa seus provedores de IA com “Assistente de configurações” ativado. Sua mensagem e a lista de configurações do ivLyrics são enviadas para esse provedor.",
       "placeholder": "Pergunte qualquer coisa sobre as configurações, ex.: “Ocultar o controlador automaticamente na tela cheia”",
       "send": "Enviar",
@@ -103,7 +103,9 @@ export default {
         "autoHide": "Ocultar o controlador automaticamente na tela cheia",
         "fontSize": "Deixe a letra maior",
         "translation": "Traduza a letra para o inglês",
-        "performance": "A página da letra está lenta. Deixe mais leve."
+        "performance": "A página da letra está lenta. Deixe mais leve.",
+        "syncCreator": "Como adiciono letras sincronizadas a uma música?",
+        "videoSubmit": "Posso adicionar um vídeo de fundo eu mesmo?"
       },
       "noProviderTitle": "Nenhum provedor de IA pronto",
       "noProviderDesc": "Adicione sua chave de API a um provedor de IA como ChatGPT, Gemini ou Claude, ative-o e mantenha “Assistente de configurações” ligado.",

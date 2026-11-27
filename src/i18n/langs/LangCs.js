@@ -91,7 +91,7 @@ export default {
       "resetConfirm": "Obnovit výchozí hodnoty u {count} nastavení?"
     },
     "assistant": {
-      "intro": "Napište, co chcete změnit. Najdu odpovídající nastavení, použiju je a zobrazím je tady, abyste je mohli doladit.",
+      "intro": "Napište, co chcete změnit, nebo se zeptejte, jak použít některou funkci. Odpovídající nastavení použiju a zobrazím tady, nebo vás provedu krok za krokem.",
       "providerNote": "Používá vaše poskytovatele AI, kteří mají zapnutou funkci „Asistent nastavení“. Vaše zpráva a seznam nastavení ivLyrics se odešlou tomuto poskytovateli.",
       "placeholder": "Zeptejte se na cokoli o nastavení, např. „Na celé obrazovce automaticky skrývej ovladač“",
       "send": "Odeslat",
@@ -103,7 +103,9 @@ export default {
         "autoHide": "Na celé obrazovce automaticky skrývej ovladač",
         "fontSize": "Zvětši texty písní",
         "translation": "Přelož texty do angličtiny",
-        "performance": "Stránka s texty se seká. Odlehči ji."
+        "performance": "Stránka s texty se seká. Odlehči ji.",
+        "syncCreator": "Jak přidám k písni synchronizovaný text?",
+        "videoSubmit": "Můžu si sám přidat video na pozadí?"
       },
       "noProviderTitle": "Žádný poskytovatel AI není připraven",
       "noProviderDesc": "Přidejte klíč API k poskytovateli AI, například ChatGPT, Gemini nebo Claude, povolte ho a nechte u něj zapnutou funkci „Asistent nastavení“.",
