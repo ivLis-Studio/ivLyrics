@@ -14,6 +14,7 @@ export function createLocalModelEngine({
     function setState(patch, { soft = false } = {}) {
         if (!soft && 'phase' in patch) statusVersion++;
         Object.assign(state, patch);
+        if (!listeners.size) return;
         const snapshot = { ...state };
         for (const listener of listeners) {
             try { listener(snapshot); } catch { /* A closed settings card must not break the engine. */ }

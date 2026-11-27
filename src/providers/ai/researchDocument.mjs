@@ -95,10 +95,17 @@
         return {
             push(delta) {
                 if (!delta) return;
-                buffer += String(delta);
+                const chunk = String(delta);
+                const chunkStart = buffer.length;
+                buffer += chunk;
 
                 for (; cursor < buffer.length; cursor++) {
-                    const char = buffer[cursor];
+                    // Reading the full concatenation can flatten the entire document
+                    // for each delta. Only slice it when a key or value is complete.
+                    const indexInChunk = cursor - chunkStart;
+                    const char = indexInChunk >= 0 && indexInChunk < chunk.length
+                        ? chunk[indexInChunk]
+                        : buffer[cursor];
 
                     if (inString) {
                         if (escaped) {

@@ -73,7 +73,7 @@ test('DeepL settings use the shared field row with an associated password label 
     const saved = [];
     const React = {
         createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
-        useState: value => [value, () => {}],
+        useState: value => [typeof value === 'function' ? value() : value, () => {}],
     };
     const window = { AIAddonManager: {
         register: value => { addon = value; },

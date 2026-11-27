@@ -36,16 +36,24 @@ export default function initializeDeepLAddon(services = createBuiltinAiProviderS
         const target = targetLanguage(lang);
         const output = [];
         // Both the API's text-count limit and its UTF-8 request-size limit apply.
+        const encoder = new TextEncoder();
+        let next;
+        let nextBytes = 0;
         for (let start = 0; start < text.length;) {
             throwIfAiRequestAborted(signal);
             const batch = [];
             let size = 0;
             while (start < text.length && batch.length < 50) {
-                const next = String(text[start]);
-                const bytes = new TextEncoder().encode(JSON.stringify(next)).length;
-                if (bytes > 120000) throw new Error('[DeepL] A lyric line is too large');
-                if (size + bytes > 120000 && batch.length) break;
-                batch.push(next); start++; size += bytes + 1;
+                if (!nextBytes) {
+                    next = String(text[start]);
+                    nextBytes = encoder.encode(JSON.stringify(next)).length;
+                }
+                if (nextBytes > 120000) throw new Error('[DeepL] A lyric line is too large');
+                if (size + nextBytes > 120000 && batch.length) break;
+                batch.push(next);
+                start++;
+                size += nextBytes + 1;
+                nextBytes = 0;
             }
             const response = await getAiRequest()(endpoint, {
                 method: 'POST', credentials: 'omit',
