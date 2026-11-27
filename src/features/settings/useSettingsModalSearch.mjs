@@ -111,16 +111,18 @@ export function useSettingsModalSearch(react, {
   } : null;
 
   const handleSearchKeyDown = (event) => {
+    const { key } = event;
+    if (key !== "ArrowDown" && key !== "ArrowUp" && key !== "Enter") return;
     const results = getVisibleSearchResults();
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    if (key === "ArrowDown" || key === "ArrowUp") {
       if (!results.length) return;
       event.preventDefault();
-      const direction = event.key === "ArrowDown" ? 1 : -1;
+      const direction = key === "ArrowDown" ? 1 : -1;
       searchState.update({
         panelOpen: true,
         activeIndex: (index) => Math.min(results.length - 1, Math.max(0, index + direction)),
       });
-    } else if (event.key === "Enter") {
+    } else {
       event.preventDefault();
       const { query, activeIndex: searchActiveIndex } = searchState.get();
       const activeIndex = Math.min(searchActiveIndex, results.length - 1);
@@ -132,6 +134,7 @@ export function useSettingsModalSearch(react, {
 
   const renderSearchPanel = () => {
     const { query, panelOpen, activeIndex } = searchState.get();
+    if (!panelOpen || !query.trim()) return null;
     return renderSettingsSearchPanel(react, {
       searchQuery: query,
       searchPanelOpen: panelOpen,

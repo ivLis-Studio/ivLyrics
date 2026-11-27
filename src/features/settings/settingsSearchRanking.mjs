@@ -8,11 +8,14 @@ const normalizeSettingsSearchText = (value) =>
 export const SETTINGS_SEARCH_RESULT_LIMIT = 60;
 
 export function buildSettingsSearchEntries(discoveredSearchSettings, getTranslations) {
+  const translationsByKey = new Map();
   return discoveredSearchSettings.map((setting) => {
     const directTranslations = [];
     const contextTranslations = [];
     (setting.i18nKeys || []).forEach((key) => {
-      const translations = getTranslations(key) || [];
+      // Section and tab keys repeat across many rows. A lookup walks all loaded languages.
+      if (!translationsByKey.has(key)) translationsByKey.set(key, getTranslations(key) || []);
+      const translations = translationsByKey.get(key);
       if (setting.isTabResult || !/^(tabs|sections)\./.test(key)) {
         directTranslations.push(...translations);
       } else {
@@ -48,30 +51,26 @@ export function rankSettingsSearchEntries(searchQuery, searchableSettingEntries)
   const query = normalizeSettingsSearchText(searchQuery);
   if (!query) return [];
 
-  const tokens = [...new Set(query.split(" ").filter(Boolean))];
-  const rankEntry = (entry) => {
-    if (entry.normalizedName === query) return 0;
-    if (entry.normalizedName.startsWith(query)) return 1;
-    if (tokens.every((token) => entry.normalizedName.includes(token))) return 2;
-    if (tokens.every((token) => entry.normalizedDescription.includes(token))) return 3;
-    if (tokens.every((token) => entry.directSearchText.includes(token))) return 4;
-    return 5;
-  };
+  const tokens = [...new Set(query.split(" "))];
+  const matches = [];
+  for (const entry of searchableSettingEntries) {
+    let directMatches = 0;
+    for (const token of tokens) {
+      if (entry.directSearchText.includes(token)) directMatches++;
+    }
+    if (directMatches === 0) continue;
+    const directMatch = directMatches === tokens.length;
+    if (!directMatch && !tokens.every((token) => entry.searchText.includes(token))) continue;
 
-  return searchableSettingEntries
-    .filter(({ directSearchText, searchText }) => {
-      const directMatch = tokens.every((token) => directSearchText.includes(token));
-      if (directMatch) return true;
+    let rank = directMatch ? 4 : 5;
+    if (entry.normalizedName === query) rank = 0;
+    else if (entry.normalizedName.startsWith(query)) rank = 1;
+    else if (tokens.every((token) => entry.normalizedName.includes(token))) rank = 2;
+    else if (tokens.every((token) => entry.normalizedDescription.includes(token))) rank = 3;
+    matches.push({ entry, rank });
+  }
 
-      return (
-        tokens.length > 1 &&
-        tokens.some((token) => directSearchText.includes(token)) &&
-        tokens.every((token) => searchText.includes(token))
-      );
-    })
-    .map((entry) => ({ entry, rank: rankEntry(entry) }))
-    .sort((a, b) =>
-      a.rank - b.rank || a.entry.setting.order - b.entry.setting.order
-    )
+  return matches
+    .sort((a, b) => a.rank - b.rank || a.entry.setting.order - b.entry.setting.order)
     .map(({ entry }) => entry.setting);
 }

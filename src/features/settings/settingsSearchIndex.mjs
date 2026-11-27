@@ -13,22 +13,31 @@ const TAB_FALLBACK_LABELS = {
 
 const readOwnedText = (node, selector) => {
   const isSettingRow = node.classList.contains("setting-row");
-  const ownedElement = Array.from(node.querySelectorAll(selector)).find((candidate) => {
-    if (isSettingRow) {
-      return candidate.closest(".setting-row") === node;
-    }
-    if (candidate.closest(".setting-row")) return false;
-    return candidate.closest("[data-setting-key]") === node;
-  });
-  return ownedElement?.textContent?.replace(/\s+/g, " ").trim() || "";
+  for (const candidate of node.querySelectorAll(selector)) {
+    const owningRow = candidate.closest(".setting-row");
+    const owned = isSettingRow ? owningRow === node
+      : !owningRow && candidate.closest("[data-setting-key]") === node;
+    if (owned) return candidate.textContent?.replace(/\s+/g, " ").trim() || "";
+  }
+  return "";
 };
 
 const readNodeTextWithoutNestedSettings = (node) => {
-  const clone = node.cloneNode(true);
-  clone.querySelectorAll("[data-setting-key]").forEach((nestedNode) => {
-    nestedNode.remove();
-  });
-  return clone.textContent?.replace(/\s+/g, " ").trim() || "";
+  // Use native textContent for branches without another setting. Keep the live
+  // subtree intact, including custom elements that may react to being cloned.
+  const readText = (branch) => {
+    if (!branch.querySelector("[data-setting-key]")) return branch.textContent;
+    let text = "";
+    for (const child of branch.childNodes) {
+      if (child.nodeType === 1) {
+        if (!child.hasAttribute("data-setting-key")) text += readText(child);
+      } else if (child.nodeType === 3 || child.nodeType === 4) {
+        text += child.nodeValue;
+      }
+    }
+    return text;
+  };
+  return readText(node)?.replace(/\s+/g, " ").trim() || "";
 };
 
 function mergeSearchSetting(settingsByResultKey, candidate) {
