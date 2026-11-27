@@ -278,7 +278,7 @@ test('sequential vocal rows only render changing glyphs while future and settled
   assert.equal(baseline.counts.leafRenders, 4);
 });
 
-test('vocal anchor and child offsets share one character scan per row without changing playback output', () => {
+test('only anchored vocal stacks scan their characters without changing playback output', () => {
   for (const rowCount of [2, 4, 8]) {
     const current = createHarness();
     const baseline = createHarness(baselineSource);
@@ -290,10 +290,11 @@ test('vocal anchor and child offsets share one character scan per row without ch
       assert.deepEqual(normalize(current.render(line, position)), normalize(baseline.render(line, position)),
         `${rowCount} rows at ${position}`);
     }
-    assert.equal(current.counts.activeCharScans, positions.length * rowCount);
-    assert.equal(current.counts.activeCharVisits, positions.length * rowCount * 120);
+    const anchoredRows = rowCount >= 4 ? rowCount : 0;
+    assert.equal(current.counts.activeCharScans, positions.length * anchoredRows);
+    assert.equal(current.counts.activeCharVisits, positions.length * anchoredRows * 120);
     assert.equal(baseline.counts.activeCharScans, positions.length * rowCount * (rowCount >= 4 ? 2 : 1));
-    assert.equal(baseline.counts.activeCharVisits, current.counts.activeCharVisits * (rowCount >= 4 ? 2 : 1));
+    assert.equal(baseline.counts.activeCharVisits, baseline.counts.activeCharScans * 120);
 
     current.resetCounts();
     const props = { phonetic: 'new reading at a paused position' };
@@ -302,7 +303,7 @@ test('vocal anchor and child offsets share one character scan per row without ch
     current.resetCounts();
     assert.deepEqual(normalize(current.render(line, 1400, { ...props, settingsRevision: 1 })),
       normalize(baseline.render(line, 1400, { ...props, settingsRevision: 1 })));
-    assert.equal(current.counts.activeCharScans, rowCount, 'source preparation invalidation refreshes every row index');
+    assert.equal(current.counts.activeCharScans, anchoredRows, 'source preparation invalidation refreshes anchored row indices');
   }
 });
 

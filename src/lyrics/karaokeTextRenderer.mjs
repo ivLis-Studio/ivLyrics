@@ -229,7 +229,7 @@ export function createKaraokeTextRenderer({
 	const buildKaraokeWordElements = (
 		timedChars,
 		charElements,
-		{ position = 0, isActive = false, isComplete = false, globalCharOffset = 0, activeGlobalCharIndex = -1, wordTimed = false, wordRenderCache = null, presentationCache = null, elementCache = null, wordSupplementByKey = null, livePaint = false, motionStyle = null, expressiveWordStarts = null, preferWhitespaceWrap = false, charMarkers = null } = {}
+		{ position = 0, isActive = false, isComplete = false, wordTimed = false, wordRenderCache = null, presentationCache = null, elementCache = null, wordSupplementByKey = null, livePaint = false, motionStyle = null, expressiveWordStarts = null, preferWhitespaceWrap = false, charMarkers = null } = {}
 	) => {
 		if (!Array.isArray(timedChars) || !Array.isArray(charElements) || timedChars.length !== charElements.length) {
 			return charElements;
@@ -628,8 +628,6 @@ export function createKaraokeTextRenderer({
 		isActive,
 		isComplete,
 		textDirection,
-		globalCharOffset = 0,
-		activeGlobalCharIndex = -1,
 		wordTimed = false,
 		preserveInlineStyles = true,
 		preparedSegments = null,

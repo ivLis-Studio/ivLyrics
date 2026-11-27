@@ -243,12 +243,6 @@ export function createLyricsRenderer({
 		getSharedSegmenter: () => getWordSegmenter(),
 	});
 
-	const getKaraokeSyllableCharCount = (syllables) => (
-		Array.isArray(syllables)
-			? splitKaraokeGraphemes(syllables.map((syllable) => syllable?.text || "").join("")).length
-			: 0
-	);
-
 	const { buildKaraokeFuriganaMap, buildKaraokeTimedChars, getKaraokeLineFillEndTime } = createKaraokeLineTiming({
 		splitKaraokeGraphemes, coalesceKaraokeTimedGraphemes,
 		getLocale: () => readLyricRenderingLocale(window),
@@ -481,7 +475,7 @@ export function createLyricsRenderer({
 		useScrollActivity, usePreparedSyncedLyrics, useLyricIndexNotification, useSyncedLyricsViewport,
 		syncedManualScrollReturns, compactLyricsLineMotion, prefersReducedLyricsMotion,
 		buildPaddedSyncedLyrics,
-		buildSyncedLinePlaybackWindows, prepareGlobalCharTimeline,
+		buildSyncedLinePlaybackWindows,
 		isAutoInstrumentalBreakEnabled, buildKaraokeCumulativeEndTimes,
 		getTrailingKaraokeInterludeInfo, createActiveTrailingKaraokeInterludeLine, getInterludeHandoffState,
 		getKaraokeSpeakerStyle, getKaraokeLineMetaClass, getLyricsLineDetailClass,
@@ -564,7 +558,7 @@ export function createLyricsRenderer({
 		buildKaraokeFuriganaMap, buildKaraokeTimedChars, buildKaraokeVocalRowRenderData, splitKaraokeGraphemes,
 		assignKaraokeWordIndexes,
 		textRenderer: {
-			getKaraokeSyllableCharCount, getKaraokeKindClassParts,
+			getKaraokeKindClassParts,
 			...karaokeTextRenderer,
 		},
 	});

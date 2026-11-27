@@ -34,7 +34,7 @@ const loadFillEnd = (segmenter) => {
 	vm.runInContext([
 		...pageSource.match(/const KARAOKE_PRE_SPACE_[A-Z_]+ = [\d.]+;/g),
 		slice("const getTimedSyllablesFromLine", "const getKaraokeSpeakerPresentation"),
-		slice("const { splitKaraokeGraphemes,", "const getKaraokeSyllableCharCount"),
+		pageSource.match(/const \{ splitKaraokeGraphemes, coalesceKaraokeTimedGraphemes \} = createKaraokeGraphemes\([\s\S]*?\n\}\);/)[0],
 		slice("const getLastSyllableEndTime", "const { getInterludeInfo"),
 		slice("const getKaraokeLineBounds", "const buildKaraokeFuriganaMap"),
 		slice("const buildKaraokeTimedChars", "const getActiveKaraokeTimedCharIndex"),

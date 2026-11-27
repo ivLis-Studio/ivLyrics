@@ -2,7 +2,6 @@ import {
     buildSyncedPlaybackBoundaries, getSyncedPlaybackBoundaryIndex, prepareSyncedLineStartIndex,
     getActiveTimedLineIndex, getPrecenteredTimedLineIndex, getSyncedLeadingEmptyLineCount, getSyncedLinePlaybackState,
 } from "./lyricPlaybackTimeline.mjs";
-import { queryGlobalCharTimeline, EMPTY_GLOBAL_CHAR_STATE } from "./karaokeCharacterTimeline.mjs";
 import { createCompactLyricsLineController } from "./lyricsCompactLineController.mjs";
 import { createCompactLyricsDisplay } from "./compactLyricsDisplay.mjs";
 import { createSyncedLyricRowStyleReader } from "./syncedLyricRowStyles.mjs";
@@ -16,7 +15,7 @@ export function createSyncedLyricsEngine({
     useScrollActivity, usePreparedSyncedLyrics, useLyricIndexNotification, useSyncedLyricsViewport,
     syncedManualScrollReturns, compactLyricsLineMotion, prefersReducedLyricsMotion,
     buildPaddedSyncedLyrics,
-    buildSyncedLinePlaybackWindows, prepareGlobalCharTimeline,
+    buildSyncedLinePlaybackWindows,
     isAutoInstrumentalBreakEnabled, buildKaraokeCumulativeEndTimes,
     getTrailingKaraokeInterludeInfo, createActiveTrailingKaraokeInterludeLine, getInterludeHandoffState,
     getKaraokeSpeakerStyle, getKaraokeLineMetaClass, getLyricsLineDetailClass,
@@ -152,20 +151,6 @@ export function createSyncedLyricsEngine({
         }, [compact, visualDisplayLineIndex, linesBefore]);
 
         const visualAnchorLineNumber = visualLineIndex;
-
-        const globalCharTimeline = useMemo(() => {
-            if (!isKara || getVisualSettings()["karaoke-bounce"] !== true) {
-                return null;
-            }
-
-            return prepareGlobalCharTimeline(lyrics);
-        }, [lyrics, isKara, getVisualSettings()["karaoke-bounce"], settingsRevision]);
-
-        const { globalCharOffsets, activeGlobalCharIndex } = useMemo(() => (
-            globalCharTimeline
-                ? queryGlobalCharTimeline(globalCharTimeline, position)
-                : EMPTY_GLOBAL_CHAR_STATE
-        ), [globalCharTimeline, position]);
 
         const cumulativeVocalEndTimes = useMemo(
             () => isKara ? buildKaraokeCumulativeEndTimes(preparedLyrics) : [],
@@ -472,10 +457,6 @@ export function createSyncedLyricsEngine({
                             || lineNumber === visualAnchorLineNumber
                         ),
                     karaokePosition: isKara ? playbackState.renderPosition : 0,
-                    globalCharOffset: lineNumber >= leadingEmptyLines && lineNumber - leadingEmptyLines < globalCharOffsets.length
-                        ? globalCharOffsets[lineNumber - leadingEmptyLines]
-                        : 0,
-                    activeGlobalCharIndex: isAnimatingLine ? activeGlobalCharIndex : -1,
                     hiddenFromAccessibility: isOutsideVisibleRange,
                 };
 
@@ -503,8 +484,6 @@ export function createSyncedLyricsEngine({
                         karaokeActive: false,
                         effectFocused: false,
                         effectLive: false,
-                        globalCharOffset: 0,
-                        activeGlobalCharIndex: -1,
                     }
                 ];
             });
@@ -535,7 +514,6 @@ export function createSyncedLyricsEngine({
             trailingInterludeKey,
             trailingInterludeLineStyle,
             isTrailingInterludeActive,
-            globalCharOffsets,
             getRowStyle,
             getLinePresentation,
             linesBefore,
@@ -555,8 +533,8 @@ export function createSyncedLyricsEngine({
         // changes. Between them, preserve every static item and update live rows only.
         const liveRenderFrame = useMemo(() => prepareLiveSyncedRenderItems(preparedRenderItems, position),
             [preparedRenderItems]);
-        const renderItems = useMemo(() => advanceLiveSyncedRenderItems(liveRenderFrame, position, activeGlobalCharIndex),
-            [liveRenderFrame, isKara ? position : 0, activeGlobalCharIndex]);
+        const renderItems = useMemo(() => advanceLiveSyncedRenderItems(liveRenderFrame, position),
+            [liveRenderFrame, isKara ? position : 0]);
 
         return {
             isScrolling,
@@ -565,8 +543,6 @@ export function createSyncedLyricsEngine({
             compactOffset,
             activeLineIndex,
             activeLyricIndex: Math.max(0, activeLineIndex - leadingEmptyLines),
-            globalCharOffsets,
-            activeGlobalCharIndex,
         };
     }
 }

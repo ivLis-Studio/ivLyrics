@@ -26,6 +26,7 @@ let harness = helper.slice(helper.indexOf('const repoRoot'), helper.indexOf('tes
       return value.split(' ').filter(name => name !== 'lyrics-lyricsContainer-LyricsLine-complete').join(' ');
     }
     return (key === 'lineRef' && Object.hasOwn(this, 'delay')) || key === 'fadeDurationMs'
+      || key === 'globalCharOffset' || key === 'activeGlobalCharIndex'
       || key === '--lyrics-interlude-fade-duration' || key.startsWith('--line-motion-') ? undefined : value;
   }));`)
   .replace('if (props.compact && !props.isKara && !scrolling && !motionPreference.matches)', 'if (false)')

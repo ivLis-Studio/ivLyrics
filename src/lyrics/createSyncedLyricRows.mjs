@@ -60,8 +60,6 @@ export function createSyncedLyricRows({ react, IdlingIndicator, LyricsLineBlock 
 					isEffectFocused: item.effectFocused,
 					isEffectLive: item.effectLive,
 					settingsRevision,
-					globalCharOffset: item.globalCharOffset,
-					activeGlobalCharIndex: item.activeGlobalCharIndex,
 					hiddenFromAccessibility: item.hiddenFromAccessibility === true,
 				});
 			cache?.elementsByItem?.set(item, { position: renderPosition, element });
@@ -89,26 +87,23 @@ export function createSyncedLyricRows({ react, IdlingIndicator, LyricsLineBlock 
 		const frame = {
 			items,
 			revision: 0,
-			live: items.flatMap((item, index) => item.karaokeActive ? [{
-				index,
-				// A pinned completion is contentEnd + 900ms, beyond the 820ms release
-				// window. Only rows following the clock have this preparation position.
-				followsClock: item.karaokePosition === position,
-			}] : []),
+			// Pinned completion rows keep their final position through release.
+			liveIndices: items.flatMap((item, index) => (
+				item.karaokeActive && item.karaokePosition === position ? [index] : []
+			)),
 		};
 		syncedRenderItemUpdates.set(items, { frame, revision: 0, indices: [] });
 		return frame;
 	};
 
-	const advanceLiveSyncedRenderItems = (frame, position, activeGlobalCharIndex) => {
+	const advanceLiveSyncedRenderItems = (frame, position) => {
 		let items = frame.items;
 		const indices = [];
-		for (const { index, followsClock } of frame.live) {
+		for (const index of frame.liveIndices) {
 			const item = items[index];
-			const karaokePosition = followsClock ? position : item.karaokePosition;
-			if (item.karaokePosition === karaokePosition && item.activeGlobalCharIndex === activeGlobalCharIndex) continue;
+			if (item.karaokePosition === position) continue;
 			if (items === frame.items) items = items.slice();
-			items[index] = { ...item, karaokePosition, activeGlobalCharIndex };
+			items[index] = { ...item, karaokePosition: position };
 			indices.push(index);
 		}
 		if (items !== frame.items) {

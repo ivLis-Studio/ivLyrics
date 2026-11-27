@@ -63,6 +63,8 @@ const normalizePresentation = (value) => JSON.parse(JSON.stringify(value, functi
 	// Anchor ownership now follows the visual handoff instead of assigning the
 	// same ref to both the prelude and first lyric. Its lifecycle is tested below.
 	if (key === "lineRef" && Object.hasOwn(this, "delay")) return undefined;
+	// Older renderers passed these unused fields to the karaoke glyph builders.
+	if (key === "globalCharOffset" || key === "activeGlobalCharIndex") return undefined;
 	// Scripted rows also carry their travel clock (--line-motion-*); its
 	// routing is verified in the scripted presentation test below.
 	if (key === "detailClassName" || key === "fadeDurationMs" || key === "--lyrics-interlude-fade-duration"
@@ -268,7 +270,7 @@ const compare = (engines, lyrics, position, options = {}, label = "") => {
 			if (!row.line?.text?.length || row.line.isVirtualTrailingInterlude || row.line.interludeInfo?.isInterlude) continue;
 			const original = expected.elements.find(item => JSON.stringify(item.props.line?.text) === JSON.stringify(row.line.text))?.props;
 			assert.ok(original, JSON.stringify(row.line.text));
-			for (const key of ["mainText", "subText", "subText2", "originalText", "seekTime", "isActive", "position", "globalCharOffset", "activeGlobalCharIndex"]) {
+			for (const key of ["mainText", "subText", "subText2", "originalText", "seekTime", "isActive", "position"]) {
 				assert.deepEqual(row[key], original[key], `${row.line.text} ${key} at ${position}`);
 			}
 		}
@@ -842,8 +844,8 @@ test("advancing the live rows keeps pinned lyrics and interlude elements stable"
   const liveClock = {};
   const cache = {};
   const baseItems = [
-    { key: "singing", karaokeActive: true, karaokePosition: 1000, activeGlobalCharIndex: 5 },
-    { key: "complete", karaokeActive: true, karaokePosition: 3000, activeGlobalCharIndex: 5 },
+    { key: "singing", karaokeActive: true, karaokePosition: 1000 },
+    { key: "complete", karaokeActive: true, karaokePosition: 3000 },
     { key: "break", type: "indicator" },
   ];
   const frame = prepareLiveSyncedRenderItems(baseItems, 1000);
@@ -853,7 +855,7 @@ test("advancing the live rows keeps pinned lyrics and interlude elements stable"
   assert.equal(initial[0].props.liveClock, liveClock);
   assert.equal(initial[1].props.liveClock, undefined);
 
-  const nextItems = advanceLiveSyncedRenderItems(frame, 1004, 5);
+  const nextItems = advanceLiveSyncedRenderItems(frame, 1004);
   const next = render(nextItems, 1004);
   assert.notEqual(next[0], initial[0]);
   assert.equal(next[0].props.position, 1004);
@@ -861,8 +863,8 @@ test("advancing the live rows keeps pinned lyrics and interlude elements stable"
   assert.equal(next[2], initial[2]);
   assert.equal(render(nextItems, 1004), next);
 
-  advanceLiveSyncedRenderItems(frame, 1010, 5);
-  const latestItems = advanceLiveSyncedRenderItems(frame, 1014, 5);
+  advanceLiveSyncedRenderItems(frame, 1010);
+  const latestItems = advanceLiveSyncedRenderItems(frame, 1014);
   const latest = render(latestItems, 1014);
   assert.equal(latest[0].props.position, 1014);
   assert.equal(latest[1], next[1]);

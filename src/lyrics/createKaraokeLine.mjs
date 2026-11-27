@@ -54,14 +54,14 @@ export function createKaraokeLine({
 		getKaraokeBounceValues, getKaraokeExpressiveMotion, getKaraokeExpressivePhase, isKaraokeExpressiveMotionEnabled,
 	} = motion;
 	const {
-		getKaraokeSyllableCharCount, getKaraokeKindClassParts, getKaraokeTextDirection,
+		getKaraokeKindClassParts, getKaraokeTextDirection,
 		getKaraokeInstantWordFill, getKaraokeLiveState, getCachedKaraokeStateClassName,
 		shouldPreferKaraokeWhitespaceWrap, shouldUseKaraokeTextRun, shouldWrapKaraokeByWord,
 		buildKaraokeTextRunElements, buildKaraokeTextRunReadings, buildKaraokeTextRunSegments,
 		buildKaraokeWordElements, wrapKaraokeInlineStyleRuns,
 	} = textRenderer;
 
-	const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = isActive, isEffectLive = isActive || isEffectFocused, settingsRevision = 0, globalCharOffset = 0, activeGlobalCharIndex = -1, phonetic = null, translation = null, furiganaMapOverride = null, charReadings = null, culturalAnnotations = null, renderGranularity = null, liveClock = null, livePositionMap = null }) => {
+	const KaraokeLine = react.memo(({ line, position, isActive, isEffectFocused = isActive, isEffectLive = isActive || isEffectFocused, settingsRevision = 0, phonetic = null, translation = null, furiganaMapOverride = null, charReadings = null, culturalAnnotations = null, renderGranularity = null, liveClock = null, livePositionMap = null }) => {
 	  if (!line) {
 	          return "";
 	  }
@@ -99,16 +99,15 @@ export function createKaraokeLine({
 		const vocalRowRenderData = useMemo(() => Array.isArray(vocalRows)
 			? prepareKaraokeVocalAnchorWindows(vocalRows.map((row) => ({
 				...buildKaraokeVocalRowRenderData(line, row, true),
-				charCount: getKaraokeSyllableCharCount(row.syllables),
 				hasInlineEffects: Array.isArray(row.syllables) && row.syllables.some(syllable => (
 					syllable?.inlineStyle === true
 					&& KARAOKE_TEXT_EFFECT_KIND_CLASSES.has(String(syllable?.styleKind || "").trim().toLowerCase())
 				)),
 			})))
 				: null, [line, vocalRows, lyricsLocale, getSegmenter()?.segmentGraphemes]);
-		const vocalActiveCharIndexes = useMemo(() => vocalRowRenderData
+		const vocalActiveCharIndexes = useMemo(() => shouldUseVocalRowAnchor
 			? vocalRowRenderData.map(({ timedChars }) => getActiveKaraokeTimedCharIndex(timedChars, position))
-			: null, [vocalRowRenderData, position]);
+			: null, [shouldUseVocalRowAnchor, vocalRowRenderData, position]);
 		// Each voice row clamps the shared clock to its own render window.
 		const vocalRowLivePositionMaps = useMemo(() => livePaint && Array.isArray(vocalRowRenderData)
 			? vocalRowRenderData.map((rowData) => (value) => getKaraokeVocalRowRenderPosition(rowData,
@@ -160,7 +159,6 @@ export function createKaraokeLine({
 
 	  if (vocalRows) {
 			const { rowPhonetics, rowTranslations, stackPhonetic, stackTranslation, culturalAnnotationsByRow } = vocalAuxiliaryData;
-	          let rowGlobalCharOffset = globalCharOffset;
 			  const stackChildren = vocalRows.map((row, rowIndex) => {
 	                  const rowRenderData = vocalRowRenderData[rowIndex];
 				const rowLine = rowRenderData.line;
@@ -172,10 +170,6 @@ export function createKaraokeLine({
 	                          shouldUseVocalRowAnchor && rowIndex === activeVocalRowIndex ? "active-vocal-row" : "",
 	                          row.speakerClass ? `speaker-${row.speakerClass}` : "",
 	                  ].filter(Boolean);
-	                  const currentOffset = rowGlobalCharOffset;
-	                  rowGlobalCharOffset += rowRenderData.charCount;
-				const rowActiveCharIndex = vocalActiveCharIndexes[rowIndex];
-				const rowActiveGlobalCharIndex = rowActiveCharIndex >= 0 ? currentOffset + rowActiveCharIndex : -1;
 				const rowPhonetic = row.phonetic || rowPhonetics[rowIndex] || "";
 				const rowTranslation = row.translation || rowTranslations[rowIndex] || "";
 				const rowPhoneticUnits = row.phoneticUnits ? getPhoneticFillUnits(row.phoneticUnits, rowPhonetic) : null;
@@ -196,8 +190,6 @@ export function createKaraokeLine({
 						isEffectFocused,
 						isEffectLive,
 						settingsRevision,
-						globalCharOffset: currentOffset,
-						activeGlobalCharIndex: rowActiveGlobalCharIndex,
 						culturalAnnotations: culturalAnnotationsByRow[rowIndex],
 						renderGranularity,
 						...(vocalRowLivePositionMaps ? { liveClock, livePositionMap: vocalRowLivePositionMaps[rowIndex] } : {}),
@@ -556,8 +548,6 @@ export function createKaraokeLine({
 				isActive,
 				isComplete,
 				textDirection,
-				globalCharOffset,
-				activeGlobalCharIndex,
 				wordTimed,
 				preserveInlineStyles,
 				textRunSegments,
@@ -573,8 +563,6 @@ export function createKaraokeLine({
 				position,
 				isActive,
 				isComplete,
-				globalCharOffset,
-				activeGlobalCharIndex,
 				wordTimed,
 				wordRenderCache,
 				charMarkers,

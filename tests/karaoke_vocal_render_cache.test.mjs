@@ -19,9 +19,9 @@ const slice = (source, startMarker, endMarker) => {
 };
 // Row clocks can be pinned outside their fill/release window. The recursive
 // output-equivalence suite checks those rendered glyphs; retain all row data,
-// anchor, presentation and active-character contracts in this shallow harness.
+// anchor and presentation contracts in this shallow harness.
 const normalize = (tree) => JSON.parse(JSON.stringify(tree, (key, value) => {
-	if (key === "position") return undefined;
+	if (key === "position" || key === "globalCharOffset" || key === "activeGlobalCharIndex") return undefined;
 	if (value?.props?.className === "lyrics-vocal-main") return value.children[0];
 	if (key === "className" && typeof value === "string") return value.split(" ").filter(name => name !== "lyrics-line-vocals").join(" ");
 	return value;
@@ -141,7 +141,7 @@ test("focused vocal stacks keep their final anchor after release and when seekin
 	}
 });
 
-test("vocal rows preserve v6.5.9 anchors, character offsets and presentation across playback and seeks", () => {
+test("vocal rows preserve v6.5.9 anchors and presentation across playback and seeks", () => {
 	for (const rowCount of [2, 4]) {
 		const current = createRenderer();
 		const baseline = createRenderer(baselineSource);
