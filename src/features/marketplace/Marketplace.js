@@ -97,29 +97,24 @@ export function createMarketplacePage({ react, host, i18n, utils, toast, readMan
             }));
         }, [addons]);
 
+        const installedSearchText = useMemo(() => new Map(installedAddons.map(addon => [
+            addon, `${addon.name || ''} ${addon.author || ''} ${addon.runtimeId || ''} ${addon.downloadUrl || ''}`.toLowerCase(),
+        ])), [installedAddons]);
+        const query = searchQuery.trim().toLowerCase();
+
         const filteredAddons = useMemo(() => {
             let result = addons;
             if (filter !== FILTER_ALL) result = result.filter(addon => addon.type === filter);
-            if (searchQuery.trim()) {
-                const query = searchQuery.trim().toLowerCase();
-                result = result.filter(addon => addonSearchTextById.get(addon.id)?.includes(query));
-            }
+            if (query) result = result.filter(addon => addonSearchTextById.get(addon.id)?.includes(query));
             return result;
-        }, [addonSearchTextById, addons, filter, searchQuery]);
+        }, [addonSearchTextById, addons, filter, query]);
 
         const filteredInstalledAddons = useMemo(() => {
             let result = installedAddons;
             if (filter !== FILTER_ALL) result = result.filter(addon => addon.type === filter);
-            if (searchQuery.trim()) {
-                const query = searchQuery.trim().toLowerCase();
-                result = result.filter(addon =>
-                    `${addon.name || ''} ${addon.author || ''} ${addon.runtimeId || ''} ${addon.downloadUrl || ''}`
-                        .toLowerCase()
-                        .includes(query)
-                );
-            }
+            if (query) result = result.filter(addon => installedSearchText.get(addon).includes(query));
             return result;
-        }, [filter, installedAddons, searchQuery]);
+        }, [filter, installedAddons, installedSearchText, query]);
 
         const marketplaceAddonsById = useMemo(() => new Map(addons.map(addon => [addon.id, addon])), [addons]);
         const marketplaceStateKnown = !loading && !error;
