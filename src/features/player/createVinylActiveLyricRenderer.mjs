@@ -1,4 +1,3 @@
-import { queryGlobalCharTimeline, EMPTY_GLOBAL_CHAR_STATE } from "../../lyrics/karaokeCharacterTimeline.mjs";
 import { createVinylLyricAutoScroll } from "./vinylLyricAutoScroll.mjs";
 
 export function createVinylActiveLyricRenderer({
@@ -18,7 +17,6 @@ export function createVinylActiveLyricRenderer({
         useLyricsPlaybackPosition,
         useKaraokeLiveClock = () => null,
         getPseudoKaraokeRenderAdvance,
-        prepareGlobalCharTimeline,
         getInterludeInfo,
         createActiveTrailingKaraokeInterludeLine,
         getEmbeddedAuxiliaryDisplayValues,
@@ -88,17 +86,6 @@ export function createVinylActiveLyricRenderer({
             lineEndTime,
             scrollClock
         );
-        const globalCharTimeline = useMemo(
-            () => isKara && Array.isArray(lyrics) ? prepareGlobalCharTimeline(lyrics) : null,
-            [lyrics, isKara]
-        );
-        const { globalCharOffsets, activeGlobalCharIndex } = useMemo(
-            () => globalCharTimeline
-                ? queryGlobalCharTimeline(globalCharTimeline, renderPosition)
-                : EMPTY_GLOBAL_CHAR_STATE,
-            [globalCharTimeline, renderPosition]
-        );
-
         const firstLyricStartTime = Number(lyrics?.[0]?.startTime) || 1;
         const isLeadingPrelude = renderPosition < firstLyricStartTime;
         const sourceInterludeInfo = useMemo(() => sourceLine ? getInterludeInfo(
@@ -203,10 +190,6 @@ export function createVinylActiveLyricRenderer({
                 isActive: isKara && !trailingInterludeLine,
                 isCurrentLine: true,
                 settingsRevision,
-                globalCharOffset: globalCharOffsets[safeLineIndex] || 0,
-                activeGlobalCharIndex: isKara && !trailingInterludeLine
-                    ? activeGlobalCharIndex
-                    : -1,
                 singleLineScroll,
             })
         );

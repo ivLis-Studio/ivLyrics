@@ -9,6 +9,30 @@ import { useVinylTrackTransition } from "./vinylTrackTransition.mjs";
 
 const NO_LYRICS = Object.freeze([]);
 
+const readVinylTypography = vinylSettings => ({
+    "--iv-vinyl-original-font-family": `'${String(vinylSettings.originalFontFamily || "Pretendard Variable").replace(/'/g, "\\'")}'`,
+    "--iv-vinyl-original-font-size": `${Number(vinylSettings.originalFontSize) || 31}px`,
+    "--iv-vinyl-original-font-weight": Number(vinylSettings.originalFontWeight) || 600,
+    "--iv-vinyl-original-opacity": Math.min(1, Math.max(0, (Number(vinylSettings.originalOpacity) || 95) / 100)),
+    "--iv-vinyl-original-letter-spacing": `${Number(vinylSettings.originalLetterSpacing) || 0}px`,
+    "--iv-vinyl-phonetic-font-family": `'${String(vinylSettings.phoneticFontFamily || "Pretendard Variable").replace(/'/g, "\\'")}'`,
+    "--iv-vinyl-phonetic-font-size": `${Number(vinylSettings.phoneticFontSize) || 11}px`,
+    "--iv-vinyl-phonetic-font-weight": Number(vinylSettings.phoneticFontWeight) || 100,
+    "--iv-vinyl-phonetic-opacity": Math.min(1, Math.max(0, (Number(vinylSettings.phoneticOpacity) || 70) / 100)),
+    "--iv-vinyl-phonetic-spacing": `${Number.isFinite(Number(vinylSettings.phoneticSpacing)) ? Number(vinylSettings.phoneticSpacing) : -1}px`,
+    "--iv-vinyl-phonetic-letter-spacing": `${Number(vinylSettings.phoneticLetterSpacing) || 0}px`,
+    "--iv-vinyl-translation-font-family": `'${String(vinylSettings.translationFontFamily || "Pretendard Variable").replace(/'/g, "\\'")}'`,
+    "--iv-vinyl-translation-font-size": `${Number(vinylSettings.translationFontSize) || 15}px`,
+    "--iv-vinyl-translation-font-weight": Number(vinylSettings.translationFontWeight) || 300,
+    "--iv-vinyl-translation-opacity": Math.min(1, Math.max(0, (Number(vinylSettings.translationOpacity) || 85) / 100)),
+    "--iv-vinyl-translation-spacing": `${Number(vinylSettings.translationSpacing) || 0}px`,
+    "--iv-vinyl-translation-letter-spacing": `${Number(vinylSettings.translationLetterSpacing) || 0}px`,
+    "--iv-vinyl-cultural-note-font-family": `'${String(vinylSettings.culturalFontFamily || "Pretendard Variable").replace(/'/g, "\\'")}'`,
+    "--iv-vinyl-cultural-note-font-size": `${Number(vinylSettings.culturalFontSize) || 12}px`,
+    "--iv-vinyl-cultural-note-font-weight": Number(vinylSettings.culturalFontWeight) || 300,
+    "--iv-vinyl-cultural-note-opacity": Math.min(1, Math.max(0, (Number(vinylSettings.culturalOpacity) || 60) / 100)),
+});
+
 // Focused fullscreen LP player mode.
 //
 // FullscreenOverlay owns only the entry gesture and supplies playback data.
@@ -57,7 +81,6 @@ export function createVinylPlayerMode({
         isClosing = false,
         isPortraitLayout = false,
         presentationMode = "vinyl",
-        controlsVisible = true,
         isPlaying = false,
         position = 0,
         duration = 0,
@@ -181,42 +204,23 @@ export function createVinylPlayerMode({
                 : plainLyric);
         };
 
+        const typography = readVinylTypography(vinylSettings);
         const vinylOverlayStyle = {
-                "--iv-vinyl-original-font-family": `'${String(vinylSettings.originalFontFamily || "Pretendard Variable").replace(/'/g, "\\'")}'`,
-                "--iv-vinyl-original-font-size": `${Number(vinylSettings.originalFontSize) || 31}px`,
-                "--iv-vinyl-original-font-weight": Number(vinylSettings.originalFontWeight) || 600,
-                "--iv-vinyl-original-opacity": Math.min(1, Math.max(0, (Number(vinylSettings.originalOpacity) || 95) / 100)),
-                "--iv-vinyl-original-letter-spacing": `${Number(vinylSettings.originalLetterSpacing) || 0}px`,
+                ...typography,
                 "--iv-vinyl-original-outline-shadow": createVinylTextOutline(
                     vinylSettings.originalOutlineWidth,
                     vinylSettings.originalOutlineColor
                 ),
                 "--iv-vinyl-original-outline-stroke-width": `${(Number(vinylSettings.originalOutlineWidth) || 0) * 2}px`,
                 "--iv-vinyl-original-outline-stroke-color": vinylSettings.originalOutlineColor || "#000000",
-                "--iv-vinyl-phonetic-font-family": `'${String(vinylSettings.phoneticFontFamily || "Pretendard Variable").replace(/'/g, "\\'")}'`,
-                "--iv-vinyl-phonetic-font-size": `${Number(vinylSettings.phoneticFontSize) || 11}px`,
-                "--iv-vinyl-phonetic-font-weight": Number(vinylSettings.phoneticFontWeight) || 100,
-                "--iv-vinyl-phonetic-opacity": Math.min(1, Math.max(0, (Number(vinylSettings.phoneticOpacity) || 70) / 100)),
-                "--iv-vinyl-phonetic-spacing": `${Number.isFinite(Number(vinylSettings.phoneticSpacing)) ? Number(vinylSettings.phoneticSpacing) : -1}px`,
-                "--iv-vinyl-phonetic-letter-spacing": `${Number(vinylSettings.phoneticLetterSpacing) || 0}px`,
                 "--iv-vinyl-phonetic-outline-shadow": createVinylTextOutline(
                     vinylSettings.phoneticOutlineWidth,
                     vinylSettings.phoneticOutlineColor
                 ),
-                "--iv-vinyl-translation-font-family": `'${String(vinylSettings.translationFontFamily || "Pretendard Variable").replace(/'/g, "\\'")}'`,
-                "--iv-vinyl-translation-font-size": `${Number(vinylSettings.translationFontSize) || 15}px`,
-                "--iv-vinyl-translation-font-weight": Number(vinylSettings.translationFontWeight) || 300,
-                "--iv-vinyl-translation-opacity": Math.min(1, Math.max(0, (Number(vinylSettings.translationOpacity) || 85) / 100)),
-                "--iv-vinyl-translation-spacing": `${Number(vinylSettings.translationSpacing) || 0}px`,
-                "--iv-vinyl-translation-letter-spacing": `${Number(vinylSettings.translationLetterSpacing) || 0}px`,
                 "--iv-vinyl-translation-outline-shadow": createVinylTextOutline(
                     vinylSettings.translationOutlineWidth,
                     vinylSettings.translationOutlineColor
                 ),
-                "--iv-vinyl-cultural-note-font-family": `'${String(vinylSettings.culturalFontFamily || "Pretendard Variable").replace(/'/g, "\\'")}'`,
-                "--iv-vinyl-cultural-note-font-size": `${Number(vinylSettings.culturalFontSize) || 12}px`,
-                "--iv-vinyl-cultural-note-font-weight": Number(vinylSettings.culturalFontWeight) || 300,
-                "--iv-vinyl-cultural-note-opacity": Math.min(1, Math.max(0, (Number(vinylSettings.culturalOpacity) || 60) / 100)),
                 "--iv-vinyl-cultural-note-outline-shadow": createVinylTextOutline(
                     vinylSettings.culturalOutlineWidth,
                     vinylSettings.culturalOutlineColor
@@ -295,27 +299,7 @@ export function createVinylPlayerMode({
                     "--iv-vinyl-album-scale": albumScale,
                     "--iv-vinyl-record-scale": recordScale,
                     "--iv-vinyl-safe-scale-factor": safeScaleFactor,
-                    "--iv-vinyl-original-font-family": `'${String(vinylSettings.originalFontFamily || "Pretendard Variable").replace(/'/g, "\\'")}'`,
-                    "--iv-vinyl-original-font-size": `${Number(vinylSettings.originalFontSize) || 31}px`,
-                    "--iv-vinyl-original-font-weight": Number(vinylSettings.originalFontWeight) || 600,
-                    "--iv-vinyl-original-opacity": Math.min(1, Math.max(0, (Number(vinylSettings.originalOpacity) || 95) / 100)),
-                    "--iv-vinyl-original-letter-spacing": `${Number(vinylSettings.originalLetterSpacing) || 0}px`,
-                    "--iv-vinyl-phonetic-font-family": `'${String(vinylSettings.phoneticFontFamily || "Pretendard Variable").replace(/'/g, "\\'")}'`,
-                    "--iv-vinyl-phonetic-font-size": `${Number(vinylSettings.phoneticFontSize) || 11}px`,
-                    "--iv-vinyl-phonetic-font-weight": Number(vinylSettings.phoneticFontWeight) || 100,
-                    "--iv-vinyl-phonetic-opacity": Math.min(1, Math.max(0, (Number(vinylSettings.phoneticOpacity) || 70) / 100)),
-                    "--iv-vinyl-phonetic-spacing": `${Number.isFinite(Number(vinylSettings.phoneticSpacing)) ? Number(vinylSettings.phoneticSpacing) : -1}px`,
-                    "--iv-vinyl-phonetic-letter-spacing": `${Number(vinylSettings.phoneticLetterSpacing) || 0}px`,
-                    "--iv-vinyl-translation-font-family": `'${String(vinylSettings.translationFontFamily || "Pretendard Variable").replace(/'/g, "\\'")}'`,
-                    "--iv-vinyl-translation-font-size": `${Number(vinylSettings.translationFontSize) || 15}px`,
-                    "--iv-vinyl-translation-font-weight": Number(vinylSettings.translationFontWeight) || 300,
-                    "--iv-vinyl-translation-opacity": Math.min(1, Math.max(0, (Number(vinylSettings.translationOpacity) || 85) / 100)),
-                    "--iv-vinyl-translation-spacing": `${Number(vinylSettings.translationSpacing) || 0}px`,
-                    "--iv-vinyl-translation-letter-spacing": `${Number(vinylSettings.translationLetterSpacing) || 0}px`,
-                    "--iv-vinyl-cultural-note-font-family": `'${String(vinylSettings.culturalFontFamily || "Pretendard Variable").replace(/'/g, "\\'")}'`,
-                    "--iv-vinyl-cultural-note-font-size": `${Number(vinylSettings.culturalFontSize) || 12}px`,
-                    "--iv-vinyl-cultural-note-font-weight": Number(vinylSettings.culturalFontWeight) || 300,
-                    "--iv-vinyl-cultural-note-opacity": Math.min(1, Math.max(0, (Number(vinylSettings.culturalOpacity) || 60) / 100)),
+                    ...typography,
                     "--iv-vinyl-accent": displayedTrack.accent
                 },
                 coverUrl: displayedTrack.coverUrl,

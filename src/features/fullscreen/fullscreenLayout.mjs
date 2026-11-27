@@ -49,16 +49,19 @@ export function observeFullscreenControllerHeight(container, fallbackView) {
     const pixels = value => Number.parseFloat(value) || 0;
     const measurement = createMeasurementFrame(view, () => {
         if (!container.isConnected) return;
-        const children = Array.from(container.children).filter(child => child.offsetHeight > 0);
         const style = view.getComputedStyle(container);
+        const childHeights = [];
+        for (const child of container.children) {
+            // offsetHeight ignores the ancestor's hidden-state scale.
+            const naturalHeight = child.offsetHeight;
+            if (!(naturalHeight > 0)) continue;
+            const childStyle = view.getComputedStyle(child);
+            childHeights.push(naturalHeight + pixels(childStyle.marginTop) + pixels(childStyle.marginBottom));
+        }
         let height = pixels(style.paddingTop) + pixels(style.paddingBottom)
             + pixels(style.borderTopWidth) + pixels(style.borderBottomWidth)
-            + Math.max(0, children.length - 1) * pixels(style.rowGap);
-        for (const child of children) {
-            const childStyle = view.getComputedStyle(child);
-            // offsetHeight ignores the ancestor's hidden-state scale.
-            height += child.offsetHeight + pixels(childStyle.marginTop) + pixels(childStyle.marginBottom);
-        }
+            + Math.max(0, childHeights.length - 1) * pixels(style.rowGap);
+        for (const childHeight of childHeights) height += childHeight;
         if (height <= 0) return;
         const value = `${Math.ceil(height)}px`;
         if (container.style.getPropertyValue(property) !== value) container.style.setProperty(property, value);
@@ -133,25 +136,24 @@ export function observeFullscreenAlbumLyricsRegion(panel, readAlignment, fallbac
             return;
         }
         const rootBox = root.getBoundingClientRect();
-        const visibleBoxes = [];
+        const reversed = root.classList.contains("layout-reversed");
+        let edge = reversed ? Infinity : -Infinity;
+        let hasVisibleVisual = false;
         for (const visual of visuals) {
             const box = visual.getBoundingClientRect();
+            if (!(box.width > 0 && box.height > 0 && Number.isFinite(box.left) && Number.isFinite(box.right))) continue;
             const style = view.getComputedStyle(visual);
-            if (box.width > 0 && box.height > 0 &&
-                Number.isFinite(box.left) && Number.isFinite(box.right) &&
-                style.visibility !== "hidden" && style.visibility !== "collapse" &&
+            if (style.visibility !== "hidden" && style.visibility !== "collapse" &&
                 style.display !== "none" && Number.parseFloat(style.opacity) !== 0) {
-                visibleBoxes.push(box);
+                edge = reversed ? Math.min(edge, box.left) : Math.max(edge, box.right);
+                hasVisibleVisual = true;
             }
         }
-        if (rootBox.width <= 0 || rootBox.height <= 0 || !visibleBoxes.length) {
+        if (rootBox.width <= 0 || rootBox.height <= 0 || !hasVisibleVisual) {
             reset();
             return;
         }
-        const reversed = root.classList.contains("layout-reversed");
-        const inset = reversed
-            ? rootBox.right - Math.min(...visibleBoxes.map(box => box.left))
-            : Math.max(...visibleBoxes.map(box => box.right)) - rootBox.left;
+        const inset = reversed ? rootBox.right - edge : edge - rootBox.left;
         if (!Number.isFinite(inset) || inset <= 0 || inset >= rootBox.width) {
             reset();
             return;

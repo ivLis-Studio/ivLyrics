@@ -128,7 +128,6 @@ export const createHarness = ({
         IdlingIndicator: () => null,
         useLyricsPlaybackPosition: () => liveClock ? liveClock.position : 6000,
         getPseudoKaraokeRenderAdvance: () => 0,
-        prepareGlobalCharTimeline: () => null,
         getInterludeInfo: () => ({ isInterlude: false }),
         createActiveTrailingKaraokeInterludeLine: () => null,
         getEmbeddedAuxiliaryDisplayValues: line => line,

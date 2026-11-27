@@ -17,7 +17,7 @@ export function createFullscreenPlaybackControls({ react, spotify, translate, ge
         const [isPlaying, setIsPlaying] = useState(false);
         const [isShuffle, setIsShuffle] = useState(false);
         const [repeatMode, setRepeatMode] = useState(0);
-        const [volume, setVolume] = useState(spotify.Player.getVolume?.() ?? 1);
+        const [volume, setVolume] = useState(() => spotify.Player.getVolume?.() ?? 1);
         const [isMuted, setIsMuted] = useState(false);
         const [isVolumeHovered, setIsVolumeHovered] = useState(false);
         const [isVolumeChanging, setIsVolumeChanging] = useState(false);

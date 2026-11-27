@@ -341,7 +341,6 @@ export function createFullscreenOverlay({
                 isClosing: lpModeClosing,
                 isPortraitLayout: isPortraitViewport,
                 presentationMode: normalizedPresentationMode,
-                controlsVisible: uiVisible,
                 onPresentationModeChange: handlePresentationModeChange,
                 isPlaying,
                 position,
