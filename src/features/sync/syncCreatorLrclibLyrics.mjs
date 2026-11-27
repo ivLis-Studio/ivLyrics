@@ -115,7 +115,7 @@ export const buildSyntheticLrclibResult = (candidate) => {
 
 // One LRCLIB entry can carry different timed and plain texts. These find
 // the version a saved sync source was made from.
-export const getLrclibRecordVariantText = (record, variant) => {
+const getLrclibRecordVariantText = (record, variant) => {
 	const hasVariant = variant === 'synced' ? !!record?.syncedLyrics : (variant === 'plain' && !!record?.plainLyrics);
 	return hasVariant ? getLrclibCandidateText({ ...record, preferredLyricsSource: variant }) : '';
 };

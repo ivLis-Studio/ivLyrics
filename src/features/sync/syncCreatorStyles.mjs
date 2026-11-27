@@ -6,7 +6,7 @@ export const SYNC_CREATOR_RECORDING_BACKGROUND = 'rgba(255, 152, 0, 0.6)';
 export const TOSS_BLUE = 'rgb(var(--spice-rgb-accent, 30, 215, 96))';
 export const TOSS_BLUE_SOFT = 'rgba(var(--spice-rgb-accent, 30, 215, 96), 0.13)';
 export const TOSS_BLUE_BORDER = 'rgba(var(--spice-rgb-accent, 30, 215, 96), 0.36)';
-export const TOSS_BLUE_RING = 'rgba(var(--spice-rgb-accent, 30, 215, 96), 0.15)';
+const TOSS_BLUE_RING = 'rgba(var(--spice-rgb-accent, 30, 215, 96), 0.15)';
 export const TOSS_RED = '#e5484d';
 export const TOSS_BORDER = 'rgba(255,255,255,0.08)';
 

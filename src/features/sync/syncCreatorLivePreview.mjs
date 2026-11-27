@@ -165,12 +165,12 @@ export function useSyncCreatorLivePreview({
 	// Same revision the page renderer receives: cache invalidation follows the
 	// visual settings instead of a frozen 0.
 	const previewSettingsRevision = previewSettingsRevisionRef.current;
-	const livePreviewLyricVars = useMemo(() => getSyncCreatorPreviewVariables({
+	const livePreviewLyricVars = useMemo(() => showLivePreview ? getSyncCreatorPreviewVariables({
 		visualConfig: getVisualSettings(),
 		getLyricsContainer: () => getDocument().querySelector('.lyrics-lyricsContainer-LyricsContainer'),
 		readComputedStyle,
 		editorGlyphSize,
-	}), [showLivePreview, previewVisualSignature]);
+	}) : null, [showLivePreview, previewVisualSignature]);
 	// Error boundary so a failing karaoke preview can never crash the editor.
 	// Remounted via key whenever the previewed line or its timing changes.
 	const SyncCreatorPreviewBoundary = useMemo(() => (

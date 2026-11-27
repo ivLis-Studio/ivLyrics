@@ -485,13 +485,11 @@ export function createSyncCreatorKeyboardRecorder({
 				debug('[SyncDataCreator] All chars reverted, sync reset');
 			}
 		}
-		return;
 	};
 	const revertWord = () => {
 		pendingSyllableSyncRef.current = null;
 		if (syncGranularity === 'word') revertOneSelectedWord();
 		else revertOneWord();
-		return;
 	};
 	const advanceSyllable = (currentTime) => {
 		if (getActiveRecordingLockRange()) return advanceLockedKeyboardSync(currentTime, 'syllable');
@@ -576,7 +574,6 @@ export function createSyncCreatorKeyboardRecorder({
 			endIdx: nextSegment.end,
 			startTime: currentTime
 		};
-		return;
 	};
 	const cancelRecording = () => {
 		scoreInputRef.current = null;
@@ -586,7 +583,6 @@ export function createSyncCreatorKeyboardRecorder({
 			clearRecordingLock();
 			setRecordingProgressIndex(-1);
 		}
-		return;
 	};
 
 	const advance = (unit, autoAdvanceBoundaries) => {

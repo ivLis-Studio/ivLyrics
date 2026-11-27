@@ -272,5 +272,4 @@ export {
     createSyncCreatorPlaybackViews,
     createSyncCreatorPositionStore,
     getSyncCreatorPreviewProgressIndex,
-    startSyncCreatorPositionPolling,
 };

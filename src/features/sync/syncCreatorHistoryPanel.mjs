@@ -1,6 +1,6 @@
 import { TOSS_BLUE } from "./syncCreatorStyles.mjs";
 
-export const SYNC_CREATOR_HISTORY_MIN_HEIGHT = 130;
+const SYNC_CREATOR_HISTORY_MIN_HEIGHT = 130;
 
 const SYNC_CREATOR_HISTORY_HEIGHT_STORAGE_KEY = 'ivLyrics:syncCreator:history-panel-height';
 

@@ -1,4 +1,3 @@
-import { getSyncCreatorParallelPartDisplayItems, rangesToCharRefs } from './syncCreatorVocalLayout.mjs';
 import { SYNC_CREATOR_DEFAULT_KIND, SYNC_CREATOR_DEFAULT_SPEAKER } from './syncCreatorVocalStyles.mjs';
 
 function renderPartPreviewGlyphs({
@@ -103,7 +102,7 @@ function renderPartPreviewGlyphs({
 export function renderSyncCreatorParallelPart({
 	react, styles: s, part, index, preview, previewReadings, getSyncCreatorProgressGradient,
 	line: {
-		activeParallelTargetId, currentFullLineChars, currentLineStart, currentLineDirection,
+		activeParallelTargetId, currentLineDirection,
 		useCurrentLineTextRun, hasCurrentLineCharacterPronunciation, usePrimaryCharacterPronunciation,
 	},
 	vocalStyles: { isSyncCreatorDuetSpeaker, getSyncCreatorKindLabel, normalizeSyncCreatorKind },
@@ -111,12 +110,10 @@ export function renderSyncCreatorParallelPart({
 	textEffectsDisabled,
 }) {
 	const isActive = activeParallelTargetId === part.id;
-	const partCharCount = rangesToCharRefs(part.ranges, currentFullLineChars, currentLineStart).length;
-	const partDisplayItems = isActive
-		? []
-		: getSyncCreatorParallelPartDisplayItems(part, currentFullLineChars, currentLineStart);
-	const { chars: previewChars, color: partSpeakerTextColor, mutedColor: partMutedColor,
-		direction: partDirection, useTextRun: usePartTextRun } = preview;
+	const {
+		chars: previewChars, color: partSpeakerTextColor, mutedColor: partMutedColor,
+		direction: partDirection, useTextRun: usePartTextRun, charCount: partCharCount, displayItems: partDisplayItems,
+	} = preview;
 	const syncedCount = previewChars.length;
 	const speakerLabel = part.speaker || SYNC_CREATOR_DEFAULT_SPEAKER;
 	const isDuetSpeaker = isSyncCreatorDuetSpeaker(speakerLabel, part['speaker-fallback']);

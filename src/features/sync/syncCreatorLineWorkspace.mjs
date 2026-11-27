@@ -326,7 +326,7 @@ export function useSyncCreatorLineWorkspace({
 	return {
 		currentLineStart, currentExistingLineData, getLineEndAtIndex, getMergedLineIndexesForStart, findMergedOwnerLineIndex,
 		isLineCoveredByMergedPrevious, findNavigableLineIndex, currentMergedLineIndexes,
-		currentLineMergedWithNext, currentLineCoveredByPrevious, previousNavigableLineIndex, nextNavigableLineIndex,
+		currentLineMergedWithNext, previousNavigableLineIndex, nextNavigableLineIndex,
 		currentFullLineChars, currentAutoMergeSplitPoints, currentAutoMergeSplitPointSet, nextMergeLineIndexes,
 		canMergeCurrentLineWithNext, currentLineMeta, currentLineStyleRanges, getParallelTemplateForLineData,
 		currentParallelTemplate, currentParallelData, currentParallelParts, hasCurrentParallelParts, activeParallelPart,

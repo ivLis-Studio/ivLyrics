@@ -525,7 +525,6 @@ function createSyncCreatorParallelEditing({ getSyncCreatorSyncDataValidationErro
 
 	return {
 		getSyncCreatorRejoinedLineChars,
-		inheritSyncCreatorParallelPartChars,
 		refreshSyncCreatorLineCharsFromParallel,
 		resolveSyncCreatorParallelTemplateParts,
 		rejoinSyncCreatorParallelLine,

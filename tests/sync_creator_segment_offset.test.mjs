@@ -195,7 +195,7 @@ function createEditor({ rows = ['PRE', 'ABCD', 'TAIL'], data = null } = {}) {
             getParallelTemplateForLineData, getMergedLineIndexesForStart, findMergedOwnerLineIndex, getAutoMergeSplitPointsForLine,
             materializeSyncCreatorParallelDrafts,
             sanitizeSyncCreatorSyncData, compactSyncCreatorSyncData, assertValidSyncCreatorSyncData,
-            getSyncCreatorRejoinedLineChars, inheritSyncCreatorParallelPartChars,
+            getSyncCreatorRejoinedLineChars,
             getSyncCreatorParallelPreviewChars, buildSyncCreatorSessionRecord, applySyncCreatorSessionRecord,
             exportSyncData, importSyncData, handleSubmit, buildScoreSnapshot, repairScoreSnapshot,
         };`, context);

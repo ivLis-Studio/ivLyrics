@@ -270,8 +270,6 @@ export {
 	isWordBoundary,
 	isLeadingChar,
 	isTrailingChar,
-	isInternalJoiner,
-	isWordChar,
 	getPreviousRecordedSyncTime,
 	getSequentialSyncTime,
 	interpolateSyncCreatorUnit,

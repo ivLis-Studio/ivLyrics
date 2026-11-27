@@ -243,7 +243,6 @@ const getSyncCreatorLockedPlaybackProgressIndex = (previewIndex, lockIndex, reco
 export {
 	getSyncCreatorLockedPlaybackProgressIndex,
     normalizeSyncCreatorLockRange,
-    resolveSyncCreatorLockDragRange,
     resolveSyncCreatorOffsetSelectionRange,
     getSyncCreatorStyleSelectionRanges,
     shouldUseSyncCreatorSelectionEffect,
@@ -252,7 +251,6 @@ export {
     formatSyncCreatorSelectedSubtitle,
     resolveSyncCreatorPaintCharColor,
     isSyncCreatorIndexLocked,
-    buildSyncCreatorLockedCharTimesForRange,
     getSyncCreatorNextEditableIndex,
     clampSyncCreatorTimesToLockRange,
     shiftSyncCreatorSelectionTimes,

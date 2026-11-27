@@ -4,7 +4,7 @@ import {
     getSyncCreatorPreviewProgressIndex, readSyncCreatorPreviewTime,
 } from "./syncCreatorPlayback.mjs";
 
-import { rangesToCharRefs } from './syncCreatorVocalLayout.mjs';
+import { getSyncCreatorParallelPartDisplayItems } from './syncCreatorVocalLayout.mjs';
 import { getSyncCreatorTextLayout } from './syncCreatorLyricText.mjs';
 
 export function createSyncCreatorParallelPreviewTargets({
@@ -15,11 +15,19 @@ export function createSyncCreatorParallelPreviewTargets({
 	for (const part of currentParallelData?.parts || []) {
 		const savedPart = currentExistingLineData?.parallel?.parts?.find(item => item.id === part.id);
 		const chars = getSyncCreatorParallelPreviewChars(part, savedPart);
-		const text = rangesToCharRefs(part.ranges, currentFullLineChars, currentLineStart).map(ref => ref.char).join('');
+		const displayItems = getSyncCreatorParallelPartDisplayItems(part, currentFullLineChars, currentLineStart);
+		let text = '';
+		let charCount = 0;
+		for (const item of displayItems) {
+			if (item.type === 'char') {
+				text += item.char;
+				charCount++;
+			}
+		}
 		const color = getSyncCreatorSpeakerTextColor(part.speaker, part['speaker-color'], part['speaker-fallback']);
 		const preview = {
 			chars, ordered: hasOrderedSyncCreatorTimes(chars), color, mutedColor: `color-mix(in srgb, ${color} 54%, transparent)`,
-			...getSyncCreatorTextLayout(text),
+			displayItems, charCount, ...getSyncCreatorTextLayout(text),
 		};
 		preview.ref = (element) => {
 			if (!element) {

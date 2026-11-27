@@ -216,7 +216,6 @@ export function createSyncDataCreator({
 	const {
 		rejoinSyncCreatorParallelLine,
 		getSyncCreatorRejoinedLineChars,
-		inheritSyncCreatorParallelPartChars,
 		refreshSyncCreatorLineCharsFromParallel,
 		resolveSyncCreatorParallelTemplateParts,
 		sliceSyncCreatorLineTiming,
@@ -277,7 +276,7 @@ export function createSyncDataCreator({
 		data, lyricsText, drafts, SYNC_CREATOR_SYNC_DATA_VERSION, mergedLineTiming
 	);
 
-	const SyncDataCreator = ({ trackInfo, initialData, onClose, registerCloseRequest }) => {
+	const SyncDataCreator = ({ trackInfo, onClose, registerCloseRequest }) => {
 		const { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } = react;
 		const syncCreatorDraftStore = editorDraftStore;
 
@@ -404,7 +403,7 @@ export function createSyncDataCreator({
 			getStorage: getSyncCreatorStorage, cancelTimer: clearTimeout,
 			scheduleFrame: scheduleSyncCreatorHistoryFrame, i18n: I18n, toast: Toast,
 		});
-		const { activeSessionDraftKeyRef, latestSessionRecordRef, sessionWriteGenerationRef, sessionEditorRevisionRef } = sessionRefs;
+		const { activeSessionDraftKeyRef, latestSessionRecordRef, sessionEditorRevisionRef } = sessionRefs;
 		const lifetimeRef = useRef(null);
 		const lifetime = lifetimeRef.current ??= createSyncCreatorEditorLifetime(() => Boolean(containerRef.current?.isConnected));
 		const { isOpen: isEditorOpen, canStartOperation: isRecordingInputOpen } = lifetime;
@@ -561,7 +560,7 @@ export function createSyncDataCreator({
 		const {
 			currentLineStart, currentExistingLineData, getMergedLineIndexesForStart, findMergedOwnerLineIndex,
 			isLineCoveredByMergedPrevious, findNavigableLineIndex, currentMergedLineIndexes,
-			currentLineMergedWithNext, currentLineCoveredByPrevious, previousNavigableLineIndex, nextNavigableLineIndex,
+			currentLineMergedWithNext, previousNavigableLineIndex, nextNavigableLineIndex,
 			currentFullLineChars, currentAutoMergeSplitPoints, currentAutoMergeSplitPointSet, nextMergeLineIndexes,
 			canMergeCurrentLineWithNext, currentLineMeta, currentLineStyleRanges, getParallelTemplateForLineData,
 			currentParallelTemplate, currentParallelData, currentParallelParts, hasCurrentParallelParts, activeParallelPart,
@@ -1284,10 +1283,13 @@ export function createSyncDataCreator({
 		]);
 
 		const currentLineData = syncLinesByStart?.get(lineCharOffsets[currentLineIndex]);
-		const currentLineTimes = getSyncCreatorLineTimes(activeParallelPart || { chars: getSyncCreatorRejoinedLineChars(currentLineData) });
-		const hasCurrentLineTiming = currentLineTimes.length > 0;
+		const currentLineTimingBounds = useMemo(() => {
+			const times = getSyncCreatorLineTimes(activeParallelPart || { chars: getSyncCreatorRejoinedLineChars(currentLineData) });
+			return times.length > 0 ? [Math.min(...times), Math.max(...times)] : null;
+		}, [activeParallelPart, currentLineData]);
+		const hasCurrentLineTiming = currentLineTimingBounds !== null;
 		const currentLineTimingLabel = hasCurrentLineTiming
-			? `${formatSeconds(Math.min(...currentLineTimes))} - ${formatSeconds(Math.max(...currentLineTimes))}`
+			? `${formatSeconds(currentLineTimingBounds[0])} - ${formatSeconds(currentLineTimingBounds[1])}`
 			: (I18n.t('syncCreator.lineOffsetUnavailable') || '싱크 후 조정 가능');
 		const currentLinePreviewIndex = currentLineText
 			? getPreviewProgressIndex(currentLineIndex)
@@ -1350,7 +1352,7 @@ export function createSyncDataCreator({
 			preview: currentParallelPreviewTargets.get(part.id),
 			previewReadings: currentParallelPartReadingMaps.get(part.id),
 			line: {
-				activeParallelTargetId, currentFullLineChars, currentLineStart, currentLineDirection,
+				activeParallelTargetId, currentLineDirection,
 				useCurrentLineTextRun, hasCurrentLineCharacterPronunciation, usePrimaryCharacterPronunciation,
 			},
 			vocalStyles: syncCreatorVocalStyles,
