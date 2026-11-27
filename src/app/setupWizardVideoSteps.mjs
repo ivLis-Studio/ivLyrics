@@ -8,9 +8,9 @@ export function createSetupWizardVideoSteps({
   const { useState } = react;
 
   // Video Test step - Check if YouTube embed requires login
-  const VideoTestStep = ({ onNext, onBack, onNeedHelper, onSkip }) => {
+  const VideoTestStep = ({ onBack, onNeedHelper, onSkip }) => {
     const [loginRequired, setLoginRequired] = useState(null);
-    const [playerReady, setPlayerReady] = useState(false);
+    const [, setPlayerReady] = useState(false);
     const playerContainerRef = react.useRef(null);
     const playerRef = react.useRef(null);
     const playerIdRef = react.useRef("yt-wizard-player-" + Math.random().toString(36).substr(2, 9));

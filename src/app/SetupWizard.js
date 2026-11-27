@@ -228,7 +228,7 @@ export function createSetupWizard({
                 helperEnabled: videoHelperEnabled, onHelperChange: setVideoHelperEnabled,
               })
             : react.createElement(VideoTestStep, {
-                onNext: () => setVideoCheck(null), onBack: () => setVideoCheck(null), onSkip: () => setVideoCheck(null),
+                onBack: () => setVideoCheck(null), onSkip: () => setVideoCheck(null),
                 onNeedHelper: () => setVideoCheck("helper"),
               })));
     };
