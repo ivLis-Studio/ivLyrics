@@ -31,12 +31,6 @@
   }
 }
 
-.fullscreen-tv-tmi-overlay .tmi-fullview,
-.fullscreen-tv-tmi-overlay .tmi-loading-view {
-  max-width: 90vw;
-  max-height: 90vh;
-}
-
 /* TV Mode Album Wrapper */
 .fullscreen-tv-album-wrapper {
   position: relative;

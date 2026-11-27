@@ -388,11 +388,6 @@
 }
 
 /* Hide other elements in fullscreen */
-.lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-tabBar-header {
-  display: none;
-  /* Hide tab bar in fullscreen for clean look */
-}
-
 /* Menu buttons in fullscreen - hidden by default, show on mouse move */
 .lyrics-lyricsContainer-LyricsContainer.fullscreen-active .lyrics-config-button-container {
   --iv-floating-toolbar-top-gap: 20px;

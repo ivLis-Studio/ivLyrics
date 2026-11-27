@@ -90,7 +90,6 @@
 /* Shared motion layer across settings, community UI, and marketplace */
 #ivLyrics-config-container button,
 #ivLyrics-config-container .btn,
-.lyrics-tooltip-wrapper button,
 .community-video-selector button,
 .community-video-overlay button,
 .ivlyrics-marketplace-root button,
@@ -107,7 +106,6 @@
 
 #ivLyrics-config-container button:hover:not(:disabled),
 #ivLyrics-config-container .btn:hover:not(:disabled),
-.lyrics-tooltip-wrapper button:hover:not(:disabled),
 .community-video-selector button:hover:not(:disabled),
 .community-video-overlay button:hover:not(:disabled),
 .ivlyrics-marketplace-root button:hover:not(:disabled),
@@ -118,7 +116,6 @@
 
 #ivLyrics-config-container button:active:not(:disabled),
 #ivLyrics-config-container .btn:active:not(:disabled),
-.lyrics-tooltip-wrapper button:active:not(:disabled),
 .community-video-selector button:active:not(:disabled),
 .community-video-overlay button:active:not(:disabled),
 .ivlyrics-marketplace-root button:active:not(:disabled),
@@ -150,7 +147,6 @@
 }
 
 #ivLyrics-config-container .setting-row,
-.lyrics-tooltip-wrapper .setting-row,
 .community-video-item,
 .community-video-submit-form,
 .community-video-embed,
@@ -168,7 +164,6 @@
 }
 
 #ivLyrics-config-container .setting-row:hover,
-.lyrics-tooltip-wrapper .setting-row:hover,
 .community-video-item:hover,
 .ivlyrics-marketplace-sidebar-dev:hover,
 .ivlyrics-marketplace-sidebar-minicard:hover {

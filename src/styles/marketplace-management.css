@@ -613,7 +613,3 @@
 }
 
 /* Marketplace button active state */
-.lyrics-marketplace-button.active {
-  background: rgba(var(--spice-rgb-text), 0.2) !important;
-}
-

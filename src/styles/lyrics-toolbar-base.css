@@ -152,59 +152,6 @@
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(var(--spice-rgb-accent, 30, 215, 96), 0.12);
 }
 
-/* Separator between tools and mode buttons */
-.lyrics-config-separator {
-  width: 28px;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.18);
-  border-radius: 0;
-  margin: 4px 0;
-  pointer-events: none;
-}
-
-/* Mode switching buttons */
-.lyrics-mode-button {
-  width: 38px !important;
-  height: 38px !important;
-  opacity: 0.6;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.lyrics-mode-button:hover {
-  opacity: 1;
-}
-
-.lyrics-mode-button.active {
-  opacity: 1;
-  background: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.16) !important;
-  border-color: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.5) !important;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(var(--spice-rgb-accent, 30, 215, 96), 0.12);
-}
-
-.lyrics-mode-button.active:hover {
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(var(--spice-rgb-accent, 30, 215, 96), 0.12);
-}
-
-.lyrics-mode-button.active svg {
-  color: var(--spice-accent, #1ed760);
-}
-
-.lyrics-mode-button.mode-locked::after {
-  content: "";
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 6px;
-  height: 6px;
-  border: 1.5px solid var(--spice-accent, #1ed760);
-  border-radius: 50% 50% 50% 0;
-  background:
-    radial-gradient(circle at 50% 50%, var(--spice-accent, #1ed760) 0 1px, transparent 1.5px),
-    rgba(var(--spice-rgb-main, 18, 18, 18), 0.92);
-  transform: rotate(-45deg);
-  pointer-events: none;
-}
-
 .lyrics-config-button-container .main-contextMenu-menu {
   color: var(--spice-text);
   padding: 12px 12px 6px;
@@ -228,15 +175,6 @@
   padding-right: 50px;
 }
 
-.split .lyrics-versionSelector {
-  margin-right: 50px;
-  margin-left: 50px;
-}
-
-.split .lyrics-versionSelector select {
-  width: 100%;
-}
-
 .main-content-view {
   height: 100%;
 }
@@ -247,10 +185,6 @@
     padding-right: 75px;
   }
 
-  .split .lyrics-versionSelector {
-    margin-right: 75px;
-    margin-left: 75px;
-  }
 }
 
 @media (min-width: 1280px) {
@@ -259,9 +193,5 @@
     padding-right: 100px;
   }
 
-  .split .lyrics-versionSelector {
-    margin-right: 100px;
-    margin-left: 100px;
-  }
 }
 

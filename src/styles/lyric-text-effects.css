@@ -427,7 +427,3 @@
     0 2px 10px rgba(0, 0, 0, 0.5);
 }
 
-.tmi-fullview {
-  text-shadow: var(--fullscreen-tmi-outline-shadow, 0 0 0 transparent);
-}
-
