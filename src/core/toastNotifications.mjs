@@ -1,5 +1,33 @@
 export function createToastNotifications(host) {
   const { document } = host;
+  const createToastCloseButton = (dismiss) => {
+    const button = document.createElement('button');
+    button.className = 'ivlyrics-toast-close';
+    button.innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>';
+    button.onclick = (event) => {
+      event.stopPropagation();
+      dismiss();
+    };
+    return button;
+  };
+
+  const hideToast = (toast, onRemoved) => {
+    toast.classList.remove('ivlyrics-toast-show');
+    toast.classList.add('ivlyrics-toast-hide');
+    host.setTimeout(() => {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+      onRemoved?.();
+    }, 300);
+  };
+
+  const refreshProgressTimeout = (owner, current) => {
+    if (current.dismissing) return;
+    if (current.timeout != null) host.clearTimeout(current.timeout);
+    current.timeout = host.setTimeout(() => {
+      if (owner._progressToast === current) owner.dismissProgress();
+    }, 60000);
+  };
+
   return {
     _container: null,
     _toasts: [],
@@ -11,7 +39,7 @@ export function createToastNotifications(host) {
      */
     _ensureContainer() {
       if (this._container && document.body.contains(this._container)) {
-        document.body.appendChild(this._container);
+        if (document.body.lastChild !== this._container) document.body.appendChild(this._container);
         return this._container;
       }
 
@@ -48,14 +76,7 @@ export function createToastNotifications(host) {
       text.className = 'ivlyrics-toast-message';
       text.textContent = message;
 
-      // Close button
-      const closeBtn = document.createElement('button');
-      closeBtn.className = 'ivlyrics-toast-close';
-      closeBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>';
-      closeBtn.onclick = (e) => {
-        e.stopPropagation();
-        this.dismiss(id);
-      };
+      const closeBtn = createToastCloseButton(() => this.dismiss(id));
 
       toast.appendChild(icon);
       toast.appendChild(text);
@@ -99,10 +120,7 @@ export function createToastNotifications(host) {
         if (barEl) barEl.style.width = `${Math.min(100, Math.max(0, percent))}%`;
 
         // 타임아웃 리셋 (활동이 있으면 연장)
-        if (this._progressToast.timeout) {
-          host.clearTimeout(this._progressToast.timeout);
-        }
-        this._progressToast.timeout = host.setTimeout(() => this.dismissProgress(), 60000);
+        refreshProgressTimeout(this, this._progressToast);
 
         return this._progressToast.id;
       }
@@ -133,14 +151,7 @@ export function createToastNotifications(host) {
 
       progressContainer.appendChild(progressBar);
 
-      // Close button
-      const closeBtn = document.createElement('button');
-      closeBtn.className = 'ivlyrics-toast-close';
-      closeBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>';
-      closeBtn.onclick = (e) => {
-        e.stopPropagation();
-        this.dismissProgress();
-      };
+      const closeBtn = createToastCloseButton(() => this.dismissProgress());
 
       toast.appendChild(icon);
       toast.appendChild(text);
@@ -149,9 +160,10 @@ export function createToastNotifications(host) {
 
       this._container.appendChild(toast);
 
-      // 안전장치: 60초 후 자동 닫힘
-      const timeout = host.setTimeout(() => this.dismissProgress(), 60000);
-      this._progressToast = { id, element: toast, timeout };
+      // A detached progress toast may still have an outstanding timer.
+      if (this._progressToast?.timeout != null) host.clearTimeout(this._progressToast.timeout);
+      this._progressToast = { id, element: toast, timeout: null };
+      refreshProgressTimeout(this, this._progressToast);
 
       // Trigger animation
       host.requestAnimationFrame(() => {
@@ -165,23 +177,15 @@ export function createToastNotifications(host) {
      * Dismiss progress toast
      */
     dismissProgress() {
-      if (!this._progressToast) return;
+      const current = this._progressToast;
+      if (!current || current.dismissing) return;
+      current.dismissing = true;
+      if (current.timeout != null) host.clearTimeout(current.timeout);
+      current.timeout = null;
 
-      // 타임아웃 정리
-      if (this._progressToast.timeout) {
-        host.clearTimeout(this._progressToast.timeout);
-      }
-
-      const toast = this._progressToast.element;
-      toast.classList.remove('ivlyrics-toast-show');
-      toast.classList.add('ivlyrics-toast-hide');
-
-      host.setTimeout(() => {
-        if (toast.parentNode) {
-          toast.parentNode.removeChild(toast);
-        }
-        this._progressToast = null;
-      }, 300);
+      hideToast(current.element, () => {
+        if (this._progressToast === current) this._progressToast = null;
+      });
     },
 
     /**
@@ -194,27 +198,13 @@ export function createToastNotifications(host) {
 
       const toastData = this._toasts[index];
 
-      // 중복 dismiss 방지: 이미 dismissing 중이면 무시
-      if (toastData.dismissing) return;
-      toastData.dismissing = true;
-
       if (toastData.timeout) {
         host.clearTimeout(toastData.timeout);
         toastData.timeout = null;
       }
 
-      toastData.element.classList.remove('ivlyrics-toast-show');
-      toastData.element.classList.add('ivlyrics-toast-hide');
-
-      // 즉시 배열에서 제거 (index 불일치 문제 해결)
       this._toasts.splice(index, 1);
-
-      // DOM 제거는 애니메이션 후 처리
-      host.setTimeout(() => {
-        if (toastData.element.parentNode) {
-          toastData.element.parentNode.removeChild(toastData.element);
-        }
-      }, 300);
+      hideToast(toastData.element);
     },
 
     /**
@@ -229,7 +219,7 @@ export function createToastNotifications(host) {
      * This handles edge cases where DOM elements persist but tracking was lost
      */
     _cleanupOrphanedToasts() {
-      if (!this._container) return;
+      if (!this._container || this._container.childElementCount === 0) return;
 
       const trackedIds = new Set(this._toasts.map(t => t.id));
       const domToasts = this._container.querySelectorAll('.ivlyrics-toast');
