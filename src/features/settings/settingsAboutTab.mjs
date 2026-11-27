@@ -103,6 +103,18 @@ export function renderSettingsAboutTab(react, {
             },
             react.createElement(SettingsUiIcon, { name: "coffee", size: 15 }),
             react.createElement("span", null, translate("settingsAdvanced.donate.button"))
+          ),
+          react.createElement(
+            "button",
+            {
+              type: "button",
+              className: "btn btn-sm settings-fairy-btn",
+              title: translate("settingsAdvanced.donate.fairyTitle"),
+              onClick: () => openLink("https://fairy.hada.io/@ivlyrics", "_blank"),
+            },
+            react.createElement(SettingsUiIcon, { name: "fairy", size: 15 }),
+            // Fairy is a platform name, so the label stays the same in every language.
+            react.createElement("span", null, "Fairy")
           )
         )
       )

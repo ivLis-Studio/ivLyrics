@@ -1215,7 +1215,8 @@ export default {
     },
     "donate": {
       "title": "请开发者喝一杯咖啡",
-      "button": "赞助"
+      "button": "赞助",
+      "fairyTitle": "在 Fairy 上赞助 ivLyrics（仅限韩国）"
     },
     "multiVocalColors": {
       "title": "多声部颜色",

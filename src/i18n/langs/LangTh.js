@@ -1215,7 +1215,8 @@ export default {
     },
     "donate": {
       "title": "เลี้ยงกาแฟนักพัฒนา",
-      "button": "สนับสนุน"
+      "button": "สนับสนุน",
+      "fairyTitle": "สนับสนุน ivLyrics บน Fairy (เฉพาะในเกาหลี)"
     },
     "multiVocalColors": {
       "title": "สีหลายเสียงร้อง",

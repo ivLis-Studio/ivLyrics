@@ -1215,7 +1215,8 @@ export default {
     },
     "donate": {
       "title": "Traktir kopi untuk pengembang",
-      "button": "Donasi"
+      "button": "Donasi",
+      "fairyTitle": "Dukung ivLyrics di Fairy (khusus Korea)"
     },
     "multiVocalColors": {
       "title": "Warna multi-vokal",

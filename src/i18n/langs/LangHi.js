@@ -1215,7 +1215,8 @@ export default {
     },
     "donate": {
       "title": "डेवलपर को कॉफी पिलाएं",
-      "button": "डोनेट करें"
+      "button": "डोनेट करें",
+      "fairyTitle": "Fairy पर ivLyrics का समर्थन करें (केवल कोरिया में)"
     },
     "multiVocalColors": {
       "title": "मल्टी-वोकल रंग",

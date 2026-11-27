@@ -1215,7 +1215,8 @@ export default {
     },
     "donate": {
       "title": "Köp utvecklaren en kaffe",
-      "button": "Donera"
+      "button": "Donera",
+      "fairyTitle": "Stöd ivLyrics på Fairy (endast i Korea)"
     },
     "multiVocalColors": {
       "title": "Färger för flera sångare",

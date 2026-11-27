@@ -1215,7 +1215,8 @@ export default {
     },
     "donate": {
       "title": "개발자에게 커피 한잔 사주기",
-      "button": "후원"
+      "button": "후원",
+      "fairyTitle": "Fairy에서 ivLyrics 후원하기 (국내 전용)"
     },
     "multiVocalColors": {
       "title": "멀티 보컬 색상",

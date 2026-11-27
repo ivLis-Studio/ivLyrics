@@ -1215,7 +1215,8 @@ export default {
     },
     "donate": {
       "title": "خرید یک قهوه برای توسعه‌دهنده",
-      "button": "حمایت مالی"
+      "button": "حمایت مالی",
+      "fairyTitle": "از ivLyrics در Fairy حمایت کنید (فقط در کره)"
     },
     "multiVocalColors": {
       "title": "رنگ‌های چندخواننده",

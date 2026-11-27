@@ -1215,7 +1215,8 @@ export default {
     },
     "donate": {
       "title": "Belanja pembangun secawan kopi",
-      "button": "Sumbang"
+      "button": "Sumbang",
+      "fairyTitle": "Sokong ivLyrics di Fairy (Korea sahaja)"
     },
     "multiVocalColors": {
       "title": "Warna berbilang vokal",

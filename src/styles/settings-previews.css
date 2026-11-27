@@ -133,7 +133,8 @@
 
 .settings-github-btn,
 .settings-coffee-btn,
-.settings-discord-btn {
+.settings-discord-btn,
+.settings-fairy-btn {
   display: inline-flex;
   /* Use inline-flex to respect height/width better */
   align-items: center;
@@ -161,7 +162,8 @@
 
 .settings-github-btn:hover,
 .settings-coffee-btn:hover,
-.settings-discord-btn:hover {
+.settings-discord-btn:hover,
+.settings-fairy-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
@@ -178,10 +180,16 @@
   /* Coffee Brand Color */
 }
 
+.settings-fairy-btn {
+  color: #19bca8;
+  /* Fairy Brand Color */
+}
+
 /* Ensure SVGs are sized correctly */
 .settings-github-btn svg,
 .settings-coffee-btn svg,
-.settings-discord-btn svg {
+.settings-discord-btn svg,
+.settings-fairy-btn svg {
   width: 16px;
   height: 16px;
   flex-shrink: 0;

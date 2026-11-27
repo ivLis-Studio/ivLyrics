@@ -1215,7 +1215,8 @@ export default {
     },
     "donate": {
       "title": "請開發者喝杯咖啡",
-      "button": "贊助"
+      "button": "贊助",
+      "fairyTitle": "在 Fairy 上贊助 ivLyrics（僅限韓國）"
     },
     "multiVocalColors": {
       "title": "多聲部顏色",

@@ -1215,7 +1215,8 @@ export default {
     },
     "donate": {
       "title": "Mua cho nhà phát triển một ly cà phê",
-      "button": "Ủng hộ"
+      "button": "Ủng hộ",
+      "fairyTitle": "Ủng hộ ivLyrics trên Fairy (chỉ tại Hàn Quốc)"
     },
     "multiVocalColors": {
       "title": "Màu nhiều giọng hát",

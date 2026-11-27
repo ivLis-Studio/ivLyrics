@@ -1215,7 +1215,8 @@ export default {
     },
     "donate": {
       "title": "اشترِ قهوة للمطور",
-      "button": "تبرع"
+      "button": "تبرع",
+      "fairyTitle": "ادعم ivLyrics عبر Fairy (لكوريا فقط)"
     },
     "multiVocalColors": {
       "title": "ألوان الأصوات المتعددة",

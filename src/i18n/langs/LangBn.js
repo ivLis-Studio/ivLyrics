@@ -1215,7 +1215,8 @@ export default {
     },
     "donate": {
       "title": "ডেভেলপারকে এক কাপ কফি কিনে দিন",
-      "button": "দান করুন"
+      "button": "দান করুন",
+      "fairyTitle": "Fairy-তে ivLyrics-কে সমর্থন করুন (শুধু কোরিয়ায়)"
     },
     "multiVocalColors": {
       "title": "মাল্টি-ভোকাল রং",

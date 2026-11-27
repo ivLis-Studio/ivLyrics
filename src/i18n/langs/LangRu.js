@@ -1215,7 +1215,8 @@ export default {
     },
     "donate": {
       "title": "Купить кофе разработчику",
-      "button": "Пожертвовать"
+      "button": "Пожертвовать",
+      "fairyTitle": "Поддержать ivLyrics на Fairy (только в Корее)"
     },
     "multiVocalColors": {
       "title": "Цвета нескольких вокалов",

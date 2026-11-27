@@ -1215,7 +1215,8 @@ export default {
     },
     "donate": {
       "title": "Geliştiriciye bir kahve ısmarla",
-      "button": "Bağış Yap"
+      "button": "Bağış Yap",
+      "fairyTitle": "ivLyrics'i Fairy'de destekle (yalnızca Kore)"
     },
   "multiVocalColors": {
     "title": "Çoklu Vokal Renkleri",

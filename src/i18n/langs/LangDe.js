@@ -1215,7 +1215,8 @@ export default {
     },
     "donate": {
       "title": "Dem Entwickler einen Kaffee spendieren",
-      "button": "Unterstützen"
+      "button": "Unterstützen",
+      "fairyTitle": "ivLyrics auf Fairy unterstützen (nur in Korea)"
     },
     "multiVocalColors": {
       "title": "Mehrstimmen-Farben",
