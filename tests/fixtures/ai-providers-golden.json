@@ -1,0 +1,544 @@
+{
+  "ChatGPT": {
+    "empty": "d06c5980f5e9ab100fbb4ec4ed89b29d5047a82d11d6b402b3eaa2d32e59a431",
+    "default": "8b28de97df371a8aa284dddf7d8f8f7505ada0ee558f39fde5fc66b585df4750",
+    "expanded": "4a1f452f3f496f0a890decb2af3542f1b25e2e3013e14f8ff9d7d8e49654b7d5",
+    "translation": {
+      "count": 1,
+      "digest": "94954ae42fdaa80d0e7b0d14c72ea891ff09ede9e5181505e60c656932924b4f"
+    },
+    "streamedTranslation": {
+      "count": 1,
+      "digest": "0e9c74ff3118e44f721511e62ce7220a1133b9a1696dd96e1bd91c9fe1374799"
+    },
+    "pronunciation": {
+      "count": 1,
+      "digest": "752d01d61231f1ecc7e759dbb5aa2a9841a048fb4c0be9110d36ee7ba8c667c9"
+    },
+    "metadata": {
+      "count": 1,
+      "digest": "3f487efc0e4b4ccd8d48b15d256ac50fb4660c125151811fb487f9f0e44fbf0c"
+    },
+    "research": {
+      "count": 1,
+      "digest": "ea783f9345e2abdfcbf516a80bf541420e82410cd9f84d9d522ebcdacb5b539e"
+    },
+    "researchWithSearch": {
+      "count": 1,
+      "digest": "30dc656a30229e0cc586cd943df36e8f47cf9162619a31d20aa2d9be761d4010"
+    },
+    "characterPronunciation": {
+      "count": 1,
+      "digest": "0cbff5c21390f18d885e1dbedb19e894fe902192172fe7fb68b13af0d04e7cf1"
+    },
+    "motionDirection": {
+      "count": 1,
+      "digest": "e161d0a1e80391f6c4d57fbe99d89d3e6f5bb84af696e5020f4ee3b8af808ba9"
+    },
+    "lyricsStudy": {
+      "count": 1,
+      "digest": "13c9754cee8d1526f2b1c1d210e6b93bcfccf5de7e370640b9a90fc50dc9c759"
+    },
+    "culturalAnnotations": {
+      "count": 1,
+      "digest": "7a650634587b5e931b9d4bae3827549c541176491c579aac6e1b07a7d52c9a74"
+    },
+    "settingsAssistant": {
+      "count": 1,
+      "digest": "458b74dcd990413132a705b22b5ff88aa869edc2619ec2f16d3110a55c466f7d"
+    },
+    "testConnection": {
+      "count": 1,
+      "digest": "709da1f6d27d2ce6421244a0102241971d873a4c0bb7a52a18e4cd27c5adc219"
+    }
+  },
+  "Claude": {
+    "empty": "01c23adc84f5076400442b938af7629b65ef05a42dee7fcc5cf4c27cbc19cd0b",
+    "default": "a5dccb7d67621a7b65f4eaad14946fcba4e88b7ae6f60b33f89dc07358b76b77",
+    "expanded": "ab65ea391f067ddb82c95feb06843ac7d162f49741a0a51876b69608e60e6e10",
+    "translation": {
+      "count": 1,
+      "digest": "8d1c581752fa086501d961211f829b7df8c0b99596c0c3cab7913cb0622edb22"
+    },
+    "streamedTranslation": {
+      "count": 1,
+      "digest": "e3b9509e976fdc4f4b5243ee26018e80fddd1ea89acb1845606a8d716c11883d"
+    },
+    "pronunciation": {
+      "count": 1,
+      "digest": "97c0f26d9cd94df6c5be90985a3788c8e71832d7c4b7f4e2a4c36af7c751503b"
+    },
+    "metadata": {
+      "count": 1,
+      "digest": "c8768d234adb839218c22fe48a588754951d287f3ad2d8108f5e9c90a1a49f77"
+    },
+    "research": {
+      "count": 2,
+      "digest": "77e238a7452262178b602a4909d12326de27e40ac58802dbaa93ab0012471433"
+    },
+    "researchWithSearch": {
+      "count": 2,
+      "digest": "294a9671a858e8a305b2ceb14a87f38c0c159789ccd7afb584cae6c1227d1c6d"
+    },
+    "characterPronunciation": {
+      "count": 1,
+      "digest": "724a8871900fca925cfb64813546a121f4a89d97d688980d47a816ced0433ffa"
+    },
+    "motionDirection": {
+      "count": 1,
+      "digest": "5836410853946dee0d1d0d50353964c03faf410196035b0c987af146a9088317"
+    },
+    "lyricsStudy": {
+      "count": 1,
+      "digest": "3a6b4b90d1dd50f33afc5cb3c4ed245a9b6969bfc1670dcee3c7d1cd2794cb3a"
+    },
+    "culturalAnnotations": {
+      "count": 1,
+      "digest": "3f6e91d858b888bd09b8d55a302a67424b685997d5cffe557819d256ca0f435c"
+    },
+    "settingsAssistant": {
+      "count": 1,
+      "digest": "96451a5af84edfec90c04b372017479bc755e0777247bb7050f5ce2009b5a336"
+    }
+  },
+  "Gemini": {
+    "empty": "09cf737e3fa81984810312a8982d380911ba0eecce3e5ab089e1a52ada7bfa94",
+    "default": "55f8d2d7e2a7d47badc2fa1e6b30de782e47335d3fc75a46b3418ab05f4313aa",
+    "expanded": "251de394e61247c15f4b3ca4d0b62ef194c903e26212f80b470c725e62999a4c",
+    "translation": {
+      "count": 1,
+      "digest": "b42dbb26318840460013aaf0188a10cbc951a5bdd730512a35a505ea4206c6cf"
+    },
+    "streamedTranslation": {
+      "count": 1,
+      "digest": "810ec7be02270adad326d47d0c512744fd6de74b0c5bb41a9f0c183352e0046c"
+    },
+    "pronunciation": {
+      "count": 1,
+      "digest": "07440767359d11d4f924dcbd86eaf50516e27c882a20b84b70aa4ebb78679828"
+    },
+    "metadata": {
+      "count": 1,
+      "digest": "0e3f4bb286130c03bec2111f963ea0d2fb47ff98ccfcf9287e0fe0c94093b7a0"
+    },
+    "research": {
+      "count": 2,
+      "digest": "c103a002656fce603d7a2b9769372710a21bbad6b9ecde11e01c98fa5aa8a80f"
+    },
+    "researchWithSearch": {
+      "count": 2,
+      "digest": "b93c17485c9813341b550d823b05f1a354049989e6fe13d8f9d7519128e42248"
+    },
+    "characterPronunciation": {
+      "count": 1,
+      "digest": "4621300d9abb1ccc83952e64a35889418e9e1880bb74c52044a0da740fd3d0e4"
+    },
+    "motionDirection": {
+      "count": 1,
+      "digest": "57ca1a0580a23163de87b29466ab58c95e8af0a7ec1228dce830f68554f5cac5"
+    },
+    "lyricsStudy": {
+      "count": 1,
+      "digest": "fa03b9480e13bb7bea6d75377e96a68f17f7d152b2f4721e7f11ca237bb53063"
+    },
+    "culturalAnnotations": {
+      "count": 1,
+      "digest": "feec3eea2f71a68de428a0de67441ff11746e60d098284ce8304d910ab50ea60"
+    },
+    "settingsAssistant": {
+      "count": 1,
+      "digest": "f3e6070a9408b41dd5bb41b2240b1ecaa255e8c05ce9e93236bbe134104a1681"
+    },
+    "testConnection": {
+      "count": 1,
+      "digest": "122c45912076dfa58c8cd2872757f813c93fb8e2b90c57aab49ba5a5bf59cbaf"
+    }
+  },
+  "Groq": {
+    "empty": "85d6ed3166adc0c62b2f4ed81e98e768574cacc97359e1b624780b2550a40e77",
+    "default": "96d448b1d5aec388bc12b3c8d9b132cf9fa00d2995a3d051bd5d7a55bcc202cb",
+    "expanded": "cc1106e8a6788a943650fbd8963d59549bb6af6655a8e013114cc1676385f378",
+    "translation": {
+      "count": 1,
+      "digest": "87ac07b7043fc5aa6563be1f1deb60d4963c0f3f4c3d0d361293fd356c63de72"
+    },
+    "streamedTranslation": {
+      "count": 1,
+      "digest": "c1eff76a881ece8cc099525143b0faec81ca8816efb3e1bfc674e3843986c468"
+    },
+    "pronunciation": {
+      "count": 1,
+      "digest": "a3f90421241972d7161f42b39c354d2dfbaacbc2b7eead2e7c5741fe963cb485"
+    },
+    "metadata": {
+      "count": 1,
+      "digest": "4253dd9e6b8e5f1691a895888d75a1382d29b20913b935cbb0d23197024ce3f1"
+    },
+    "research": {
+      "count": 2,
+      "digest": "9e7100073fd45148b2a5b7e46f324898ddc7dcb444e52554533041955d0fadd3"
+    },
+    "researchWithSearch": {
+      "count": 3,
+      "digest": "659afa17da8a3bcaa776da920413da6a398caf1914fe305825d991742feea4a1"
+    },
+    "characterPronunciation": {
+      "count": 1,
+      "digest": "098274f6b5814dcb8efdce630f076e3af80f39e0b8513b5c7195716bdfcf7513"
+    },
+    "motionDirection": {
+      "count": 1,
+      "digest": "fbdc361f25c9dffa3fcaa043499b2c5e7d17c0aec1bab82a09c560a98ec6e84a"
+    },
+    "lyricsStudy": {
+      "count": 1,
+      "digest": "585fe1e89ed5a4895c30a7bcbadff6d93a872030f28be6348cb0e17ca160f4f2"
+    },
+    "culturalAnnotations": {
+      "count": 1,
+      "digest": "b9ab7b74ed142563e077e6e73a758b4d4cb4e0eb2c422ba88fcc5987bd20774b"
+    },
+    "settingsAssistant": {
+      "count": 1,
+      "digest": "0a4349265c6493bfe3d95ee2688286fef4db5b3aa58aee92afe9beb9a5531628"
+    }
+  },
+  "OpenRouter": {
+    "empty": "b77eaee1b10f098a9cc8d689c714bc48bfd103d1af4581743dca4fe803f3395f",
+    "default": "150481d07bc838989eefa998aa6f0dd6fa29f9b35f30476ed52e3e13e5db5344",
+    "expanded": "b53ceb92d923ada086d9c38735f5f965c68661198132a831494f52b851969cbf",
+    "translation": {
+      "count": 1,
+      "digest": "d68344a27c2878e84e0d0ddfb251aa72fa9108fd7c1d05a68ef8807f4aec2827"
+    },
+    "streamedTranslation": {
+      "count": 1,
+      "digest": "84ec4b9822a29cf7c527c9e1c3be1583bab96260680e47245a42bf213155fb76"
+    },
+    "pronunciation": {
+      "count": 1,
+      "digest": "d0e6798a888bd2f94c4acd0c74320e0d5323215e2647a8607335bd5964fdb518"
+    },
+    "metadata": {
+      "count": 1,
+      "digest": "c1ac442b9983e4e772e8dff86bd0fc50d21826bd486d9d842458a18feef509c6"
+    },
+    "research": {
+      "count": 2,
+      "digest": "d2090d1fc7cb479356eeb293a255879df7a498d003db24a6600497268576444d"
+    },
+    "researchWithSearch": {
+      "count": 2,
+      "digest": "5d91da1e8624f35eff905fa62343df738d668754cd7fe042a73451fb20c01ede"
+    },
+    "characterPronunciation": {
+      "count": 1,
+      "digest": "70fb06ab0959e52bcc910d591c4a15061a5f3ef83f22420f43f252228917162a"
+    },
+    "motionDirection": {
+      "count": 1,
+      "digest": "6b9acaf4ed3fdbb7d7722f61bb2ef0cdf39f5bb2d467a144293588ccfa8cb006"
+    },
+    "lyricsStudy": {
+      "count": 1,
+      "digest": "4597b331daa2c2f7ccb8d7df287fd995cda5067485a08638be932a9514157947"
+    },
+    "culturalAnnotations": {
+      "count": 1,
+      "digest": "2d3b4d057476d578b36b693b875852f9bdeebb31b078a3f0fbbdb99fdee573ff"
+    },
+    "settingsAssistant": {
+      "count": 1,
+      "digest": "4baeeedaec03adad1f92a7659b2765f4923d23b793917fddc6efbab55934e2e9"
+    }
+  },
+  "Paxsenix": {
+    "empty": "de1137abd1d2915967b16ca2068cdcf3d8753193bd0ac33744b60978ce1f5edd",
+    "default": "0c1a9b04bd2431c02f5906e1304a953e19838247510f6e1942be1243b10f7e26",
+    "expanded": "f19f0061493fc289815674aaac22769862dfd885467d1013145f758de30d5ea2",
+    "translation": {
+      "count": 1,
+      "digest": "ef9bdd9bfbd9c008eaedbe7278c85f74d8dde2d72da1f7e245e17afe4f089d98"
+    },
+    "streamedTranslation": {
+      "count": 1,
+      "digest": "c1d574002f2ddd91d719e7e396d4043f4e3bf2b3abe0c18b79147c9b9f1cf2b5"
+    },
+    "pronunciation": {
+      "count": 1,
+      "digest": "1775bb64c779426fe173783b2b8939902bd064bc08c42494615193bdb400d3e7"
+    },
+    "metadata": {
+      "count": 1,
+      "digest": "125a7e5a2609fa0b7f0c01fffa5703eb6db85553b01ed8b0ace35ac7aaad045c"
+    },
+    "research": {
+      "count": 2,
+      "digest": "6371d18781aeecedb9f9e0da1f56dce4986320fa59f845507c0ad05b70a2d61d"
+    },
+    "researchWithSearch": {
+      "count": 3,
+      "digest": "22350bbd48b2080b71cb5437d7cb6d0274ea2e924d9758720f0ace378c3e17ea"
+    },
+    "characterPronunciation": {
+      "count": 1,
+      "digest": "b33beb3eef4ec75cef73ed046b565a821e2d54568a390d6a1810103b10bda1c1"
+    },
+    "motionDirection": {
+      "count": 1,
+      "digest": "67d2587555d284fbbbe684e8fc407e08edb40ae1bc19cbe1277f3302b4e65c3f"
+    },
+    "lyricsStudy": {
+      "count": 1,
+      "digest": "15d0865a0a199754ff79b1ca414e72243b4dcf6970b32f78f82de7d627a70327"
+    },
+    "culturalAnnotations": {
+      "count": 1,
+      "digest": "0e749095160033b03690ea442298b7060754f8602a6ad402bc9032d3d7230da1"
+    },
+    "settingsAssistant": {
+      "count": 1,
+      "digest": "a0e46d8695bf66e33f11af9b6fb86e3ee6f26a3c39957cdd7dfb4bcce2738eae"
+    }
+  },
+  "Perplexity": {
+    "empty": "53930b485ad743c91afb8757a4dd7535f4cc7703b3ca1181484eabd1cd0048dc",
+    "default": "4d26be7a66483378595b6490b971e68677f04eb406a1397e8c909833cd7877c5",
+    "expanded": "faaa0b17519c7ff8426fbc0888ede87edc7b6c733ac7ad7d1c1a951164778778",
+    "translation": {
+      "count": 1,
+      "digest": "07217a3d2a5beb657f3582bca7f572b2096b8226544107a81180ac21aa9797e7"
+    },
+    "streamedTranslation": {
+      "count": 1,
+      "digest": "93632d9d23bcde9c9b05bb6bee2dd1742683f91140e0b1815da0cafad72e259f"
+    },
+    "pronunciation": {
+      "count": 1,
+      "digest": "de807b10f5cb13d32f797a08e315b30b690537c8b812c20c6c43e1e6c51bf4d7"
+    },
+    "metadata": {
+      "count": 1,
+      "digest": "4541f9e01df9fe5cc7db37b4c9b55e9625afbe6e4e93d8bbf830e81223d1a478"
+    },
+    "research": {
+      "count": 1,
+      "digest": "5d842cd2d616c045f8936e467c6bbde21636446eee1fac5198923b67aa9fe847"
+    },
+    "researchWithSearch": {
+      "count": 1,
+      "digest": "d416df6bf54a5d5e4a640e7729a4d9932458384f55acc617c6b29517c6016ae2"
+    },
+    "characterPronunciation": {
+      "count": 1,
+      "digest": "634939a57059ac092075d3cbc09ca05dba57eb86aa8719a9254a8293c7c521a8"
+    },
+    "motionDirection": {
+      "count": 1,
+      "digest": "2385df7ddcff8eea15de0678699a6dee38aa04eb7947ac912ae2dac734225a72"
+    },
+    "lyricsStudy": {
+      "count": 1,
+      "digest": "9e341963b3a6df4b0ee3df12a6f1d4a77b51c0b9e598db01a2ed5fbee7bcef11"
+    },
+    "culturalAnnotations": {
+      "count": 1,
+      "digest": "0e01a519c66da6a94123344c23f92d02fb505ad10d6bb4e031e78b3d7a4883a8"
+    },
+    "settingsAssistant": {
+      "count": 1,
+      "digest": "d850aa128492337db1fd0d38eb611dec4f4305d167295cd742e7a9b22f118fbb"
+    }
+  },
+  "Pollinations": {
+    "empty": "2775abba58e934268e74896e11b2e4cf4bd3681046012de7bb6d1f6db0e4fc86",
+    "default": "790e1e01b0bb04d2f2be3366d753ba9085c72eba8e62c326f658beed6264d6f6",
+    "expanded": "7b2295883d2e67d8d1fd5a7e5f6f1386d28c95cf7c20e94ca6930493e850bcfb",
+    "translation": {
+      "count": 1,
+      "digest": "e6c3336835b8e9e10547e7baabb464f15538606803826622adc0eb183d606bb6"
+    },
+    "streamedTranslation": {
+      "count": 1,
+      "digest": "bf055d04c7e447fb9c9076ef85e2bae339236e8fb6114b3b413aa03563360691"
+    },
+    "pronunciation": {
+      "count": 1,
+      "digest": "7e5b181420153d69314db8b90e740376c5f4ed7a066f821079ba83ff23e1a53b"
+    },
+    "metadata": {
+      "count": 1,
+      "digest": "8bcfce4b17d54daf09d48c85b3eedbf7486e7d1535388b37f6a66c6452aeb7f7"
+    },
+    "research": {
+      "count": 1,
+      "digest": "8012b8c3511c75b40ca43bbcd7b0a34d290b625571bebf9db69ffee84c8371d0"
+    },
+    "researchWithSearch": {
+      "count": 2,
+      "digest": "cac60e97f9b602e25666d6e4bd5a25de8d35eb6aff41ca0bfbf2df4d9dae757f"
+    },
+    "characterPronunciation": {
+      "count": 1,
+      "digest": "3ba9f10f6f7370146bed5ea14e0f7bc3de7441cf52857381f4613a465fe4e908"
+    },
+    "motionDirection": {
+      "count": 1,
+      "digest": "368c52303429f6b92e83ae9608036da93d4c60f6f22dc8e8775bcfd80b53bbe2"
+    },
+    "lyricsStudy": {
+      "count": 1,
+      "digest": "d3bddd6e74974592ea018c46ef0ea2d3f0a99d9eecf56a09eeb58516fb12f7f2"
+    },
+    "culturalAnnotations": {
+      "count": 1,
+      "digest": "440b1e04854cf1323d4c61b00a3c98246ee78b634aeb10af76f317c88fed7415"
+    },
+    "settingsAssistant": {
+      "count": 1,
+      "digest": "9709a2ad5a2145fb4c99001971c631816d29f561a343b9890fcb7b001cf1a56b"
+    },
+    "testConnection": {
+      "count": 1,
+      "digest": "d4e68b9f023f090c1fb7c053e4a89338bc5eed8c372a66b7b9f0b21ea6d75fa4"
+    }
+  },
+  "NvidiaNim": {
+    "empty": "bbf60e114d0a418728b1aa20eea07183d4fd0fb8e7a77ca03adfc9043374dca7",
+    "default": "d13831ec92a60327cd46656c41b1a7faaa8fb1848ddf4381bbf1dbd722cc012d",
+    "expanded": "77c07bc1108d97adc7655d2c8a44b7ac62ece9c7b77ff3f03fbd498a9636e742",
+    "translation": {
+      "count": 1,
+      "digest": "6d49c38442a0ca497e094695010f89e43dde62af8c72689cafc50d0467fc98d4"
+    },
+    "streamedTranslation": {
+      "count": 1,
+      "digest": "d7d6a403e8e854ae67c690f52e572a407e3ffdeb2d0abffc1b83911781744ed1"
+    },
+    "pronunciation": {
+      "count": 1,
+      "digest": "fea00e4c8601a786421ae58ed8a2b21ce26f26d24cc5b791a4f8a8d3278dcdf5"
+    },
+    "metadata": {
+      "count": 1,
+      "digest": "dc9d4b23367d840b730ad68bc9cbb783f37f97cb8eaccec26d3e44b680728e5f"
+    },
+    "research": {
+      "count": 1,
+      "digest": "3846a5f7a159cedbf9d4b0ad1d6a244a3f83965ed862dab2211bb1633ad51b0b"
+    },
+    "characterPronunciation": {
+      "count": 1,
+      "digest": "8794db5ed3febc3340223fc27634b0014d0180ba29a90a4a21b17d18bfe6c740"
+    },
+    "lyricsStudy": {
+      "count": 1,
+      "digest": "08c1350c8bc61234777f6493d432e95759c32ea9b874b424ef77cad464e540fe"
+    },
+    "culturalAnnotations": {
+      "count": 1,
+      "digest": "89eb07d7c3e0d63ef18f530ceead1602b563b5570728505203d5cac9ec0aa03e"
+    },
+    "settingsAssistant": {
+      "count": 1,
+      "digest": "79bc14cac977aa25a23a1f8460640d4482a06a4dcb26b2283193a109cfcf9edb"
+    },
+    "testConnection": {
+      "count": 1,
+      "digest": "f5c0e25588459cff3466347cba94b522a55e4ae9242978cb6721489f59f65f79"
+    }
+  },
+  "DeepL": {
+    "empty": "da8f3d99d61136c2a0dbc7a976a8c434f143418b160b3dea375e94028791721f",
+    "default": "667b0e3f33b49435abfd1cacf1cd982e0f47da92a25ea0085efa1bd87aef30aa",
+    "expanded": "667b0e3f33b49435abfd1cacf1cd982e0f47da92a25ea0085efa1bd87aef30aa",
+    "translation": {
+      "count": 1,
+      "digest": "3bfa27ab3854f8bb1d508d09692180cc1334a2d493511cde1529a98a14e75e95"
+    },
+    "streamedTranslation": {
+      "count": 1,
+      "digest": "3bfa27ab3854f8bb1d508d09692180cc1334a2d493511cde1529a98a14e75e95"
+    },
+    "metadata": {
+      "count": 1,
+      "digest": "1a14e3a6803c893323f10144ace9e9b8dffd9393eba308afff56fa88317a7b01"
+    },
+    "testConnection": {
+      "count": 1,
+      "digest": "1486496b58587c6bd214381b14c133081fc1d6a496f9d89ce66ef88e87ec9308"
+    }
+  },
+  "GoogleTranslate": {
+    "empty": "2d76db06c4d14d13182f2fad60b62f8cafa43245f8e022a65c7210c8b7e9725e",
+    "default": "2d76db06c4d14d13182f2fad60b62f8cafa43245f8e022a65c7210c8b7e9725e",
+    "expanded": "2d76db06c4d14d13182f2fad60b62f8cafa43245f8e022a65c7210c8b7e9725e",
+    "translation": {
+      "count": 1,
+      "digest": "f5d7244e17280e11113412afe81edee256371f5d40f594b035ef2dedf0d4f459"
+    },
+    "streamedTranslation": {
+      "count": 1,
+      "digest": "f5d7244e17280e11113412afe81edee256371f5d40f594b035ef2dedf0d4f459"
+    },
+    "metadata": {
+      "count": 1,
+      "digest": "8bcb3dbc85153cb88cb27f4255f50f7b9dff06d4dcca264ec4ceec8f5e5451f6"
+    },
+    "testConnection": {
+      "count": 1,
+      "digest": "7111e28ca16494eff2a6f063ccccf3a82688ac8695d6bbbf28f47dc2cb1a64f3"
+    }
+  },
+  "BingTranslate": {
+    "empty": "a4b695a7e6dbc75b69c2b4b0f4db35d19351c8f39410a224161ecb8d5cc5ef8d",
+    "default": "a4b695a7e6dbc75b69c2b4b0f4db35d19351c8f39410a224161ecb8d5cc5ef8d",
+    "expanded": "a4b695a7e6dbc75b69c2b4b0f4db35d19351c8f39410a224161ecb8d5cc5ef8d",
+    "translation": {
+      "count": 2,
+      "digest": "ca935e8aeaaff9e825b509c0b37ad49681aa426bbbd34190f6fbce083205eceb"
+    },
+    "streamedTranslation": {
+      "count": 2,
+      "digest": "ca935e8aeaaff9e825b509c0b37ad49681aa426bbbd34190f6fbce083205eceb"
+    },
+    "metadata": {
+      "count": 2,
+      "digest": "31bbcf3cc7f205fb9600c6804325c6e2b9b63e278403f5b295a28dff70def8d8"
+    },
+    "testConnection": {
+      "count": 2,
+      "digest": "807f5a5727cd33878e2f4807779004f25b7f3969fa851ab453610b0f6cf84814"
+    }
+  },
+  "LocalModel": {
+    "empty": "aba34f2fa4fd04a30a44431163550a889a904fdbef6bef470eb22f25dafbc496",
+    "default": "aba34f2fa4fd04a30a44431163550a889a904fdbef6bef470eb22f25dafbc496",
+    "expanded": "aba34f2fa4fd04a30a44431163550a889a904fdbef6bef470eb22f25dafbc496",
+    "translation": {
+      "count": 2,
+      "digest": "a7cb746bb8aa704c741af7c5f53388dd16b2c650d2355f911e02769976595082"
+    },
+    "streamedTranslation": {
+      "count": 2,
+      "digest": "a7cb746bb8aa704c741af7c5f53388dd16b2c650d2355f911e02769976595082"
+    },
+    "testConnection": {
+      "count": 2,
+      "digest": "dcb068b795ea1f4012fcfdf6a4b3af2bb255e698b3fbbdf3cb1d335056d49402"
+    }
+  },
+  "PronunciationLab": {
+    "empty": "e9116a2d86a99a7b85c98547ae8ae49582337eeacc3986b705117f1592d644ce",
+    "default": "e9116a2d86a99a7b85c98547ae8ae49582337eeacc3986b705117f1592d644ce",
+    "expanded": "e9116a2d86a99a7b85c98547ae8ae49582337eeacc3986b705117f1592d644ce",
+    "pronunciation": {
+      "count": 2,
+      "digest": "94021648e00c268080c0962b1ec2c4ba8c6a951c19243a1fed3bfd6397362952"
+    },
+    "testConnection": {
+      "count": 2,
+      "digest": "7bdcf163685601ac768ddbcbb0d4eb55952623ba6e35c3f2d9f7be9abdf08455"
+    }
+  }
+}
