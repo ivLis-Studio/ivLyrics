@@ -83,6 +83,23 @@ test("lrc.red aborts the request in flight and starts no further request once re
     assert.deepEqual(h.warnings, []);
 });
 
+test("lrc.red skips the LRC fallback when the TTML request is retired", async () => {
+    const h = loadLrcRed();
+    const controller = new AbortController();
+    const pending = h.addon.getLyrics(lrcRedTrack, { signal: controller.signal });
+    await flush();
+    h.calls[0].resolve(json({ isrc: "JPAAA2600002", title: lrcRedTrack.title }));
+    await flush();
+    assert.equal(h.calls.length, 2);
+    assert.match(h.calls[1].url.pathname, /\.ttml$/);
+    controller.abort();
+
+    assert.equal((await pending).error, "No lyrics");
+    assert.equal(h.calls[1].signal.aborted, true);
+    assert.equal(h.calls.length, 2);
+    assert.deepEqual(h.warnings, []);
+});
+
 test("lrc.red keeps its complete lookup chain without a signal", async () => {
     const h = loadLrcRed();
     const pending = h.addon.getLyrics(lrcRedTrack);

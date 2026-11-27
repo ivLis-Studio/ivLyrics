@@ -31,10 +31,13 @@ import { readTrackIdentityService } from "../../core/trackIdentity.mjs";
  */
 
 import { getRuntimeService } from "../../spicetify/runtimeServices.mjs";
+import { createAttributedLyricsResult } from "./createAttributedLyricsResult.mjs";
+import { renderLyricsAttributionSettings } from "./renderLyricsAttributionSettings.mjs";
 import { createProviderText } from "../providerText.mjs";
 import { readLyricsAddonManager, registerLyricsAddon } from "./lyricsAddonRegistration.mjs";
 import { readLyricsTextParser } from "./lyricsParserRuntime.mjs";
 import { getMountedLyricsPage } from "../../spicetify/lyricsPageEffects.mjs";
+import { createLrcRedSearchHitScorer } from "./lrcRedSearchMatch.mjs";
 import { createLrcRedWordSyncQueue } from "./lrcRedWordSyncQueue.mjs";
 import { createLrcRedTimingDelivery } from "./lrcRedTimingDelivery.mjs";
 import { getPlaybackPositionService, isPlaybackLyricsTargetCurrent } from "../../core/playbackPositionService.mjs";
@@ -106,6 +109,7 @@ export default function initializeLrcRedLyricsAddon() {
     // ================================================================================
 
     const fetchWithTimeout = async (url, { signal, ...init } = {}, timeoutMs = REQUEST_TIMEOUT_MS, read = response => response) => {
+        signal?.throwIfAborted();
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         // A retired lookup aborts the request in flight, and every later
@@ -131,19 +135,6 @@ export default function initializeLrcRedLyricsAddon() {
             signal?.removeEventListener?.('abort', abort);
         }
     };
-
-    const normalizeString = (str) => String(str || '')
-        .normalize('NFKC')
-        .toLowerCase()
-        // Fold Latin accents without dropping Japanese voicing or marks in
-        // other scripts. Canonical spellings still compare identically.
-        .normalize('NFD')
-        .replace(/(\p{Script=Latin})\p{M}+/gu, '$1')
-        .normalize('NFC')
-        .replace(/['’‘`´]/g, '')
-        .replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
 
     const normalizeDurationSeconds = (info) => {
         const duration = Number(info?.durationMs ?? info?.duration_ms ?? info?.duration ?? 0);
@@ -172,47 +163,6 @@ export default function initializeLrcRedLyricsAddon() {
         push(`${baseTitle} ${artist}`);
         push(baseTitle);
         return queries;
-    };
-
-    const titleMatchScore = (actual, expected) => {
-        const compact = (value) => normalizeString(value).replace(/ /g, '');
-        const wanted = compact(expected);
-        if (!wanted || !compact(actual)) return 0;
-        if (compact(actual) === wanted) return 1;
-        // Query simplification can remove any subtitle, but identity matching
-        // may ignore only known version labels, never e.g. "Song (Part II)".
-        const versionLabel = /\b(?:feat(?:uring)?|ft|version|remaster(?:ed)?|remix|mix|edit|edition|live|acoustic|mono|stereo)\b|\bfrom the vault\b/i;
-        const core = (value) => compact(String(value || '')
-            .replace(/\(([^()]*)\)|\[([^\[\]]*)\]/g,
-                (whole, parentheses, brackets) => versionLabel.test(parentheses ?? brackets) ? ' ' : whole)
-            .replace(/\s+-\s+(.+)$/, (whole, suffix) => versionLabel.test(suffix) ? '' : whole));
-        const wantedCore = core(expected);
-        const actualCore = core(actual);
-        return wantedCore && actualCore === wantedCore ? 0.9 : 0;
-    };
-
-    const sameArtist = (actual, expected) => {
-        const wanted = normalizeString(expected);
-        const candidate = normalizeString(actual);
-        if (!wanted || !candidate) return false;
-        if (candidate === wanted) return true;
-        // A catalog may include featured artists where Spotify supplies only
-        // the lead. Do not accept arbitrary substrings such as tribute acts.
-        const lead = (value) => normalizeString(String(value || '').split(
-            /\s+(?:feat(?:uring)?\.?|ft\.?|with|[x×])\s+|[,;&]/iu
-        )[0]);
-        return Boolean(lead(expected)) && lead(actual) === lead(expected);
-    };
-
-    const scoreSearchHit = (hit, info, durationSeconds) => {
-        const titleScore = titleMatchScore(hit?.title, info?.title);
-        if (!normalizeIsrc(hit?.isrc) || !titleScore || !sameArtist(hit?.artist, info?.artist)) return null;
-        const candidateDuration = Number(hit.duration);
-        const durationScore = durationSeconds > 0 && candidateDuration > 0
-            ? Math.max(0, 1 - Math.abs(durationSeconds - candidateDuration) / 30)
-            : 0;
-        // Duration ranks only candidates already identified as the same song.
-        return titleScore * 0.6 + 0.3 + durationScore * 0.1;
     };
 
     const resolveIsrcFromInfo = (info) => {
@@ -424,34 +374,17 @@ export default function initializeLrcRedLyricsAddon() {
         getSettingsUI() {
             const React = Spicetify.React;
             return function LrcRedLyricsSettings() {
-                return React.createElement('div', { className: 'ai-addon-settings lrcred-settings' },
-                    React.createElement('div', { className: 'ai-addon-setting', style: { marginTop: '16px' } },
-                        React.createElement('div', { className: 'ai-addon-info-box' },
-                            React.createElement('p', { style: { fontWeight: 700, marginBottom: '8px' } }, 'lrc.red'),
-                            React.createElement('p', { style: { marginBottom: '8px' } }, lyricsText('attribution', ATTRIBUTION, { source: 'lrc.red' })),
-                            React.createElement('a', {
-                                href: 'https://lrc.red',
-                                target: '_blank',
-                                rel: 'noreferrer'
-                            }, 'lrc.red')
-                        )
-                    )
-                );
+                return renderLyricsAttributionSettings(React, {
+                    className: 'lrcred-settings',
+                    title: 'lrc.red',
+                    attribution: lyricsText('attribution', ATTRIBUTION, { source: 'lrc.red' }),
+                    link: { href: 'https://lrc.red', text: 'lrc.red' }
+                });
             };
         },
 
         async getLyrics(info, { signal } = {}) {
-            const result = {
-                uri: info?.uri || '',
-                provider: ADDON_INFO.id,
-                cacheVersion: CACHE_VERSION,
-                karaoke: null,
-                synced: null,
-                unsynced: null,
-                karaokeSource: null,
-                copyright: ATTRIBUTION,
-                error: null,
-            };
+            const result = createAttributedLyricsResult(info, ADDON_INFO, ATTRIBUTION);
 
             const title = String(info?.title || '').trim();
             const artist = String(info?.artist || '').trim();
@@ -468,7 +401,11 @@ export default function initializeLrcRedLyricsAddon() {
                 let bestHit = null;
                 let bestScore = -1;
 
-                const resolvedIsrc = await resolveTrackIsrc(info);
+                const resolvedIsrc = signal?.aborted ? '' : await resolveTrackIsrc(info);
+                if (signal?.aborted) {
+                    result.error = 'No lyrics';
+                    return result;
+                }
                 if (resolvedIsrc) {
                     try {
                         const trackData = await getTrackByIsrc(resolvedIsrc, signal);
@@ -491,11 +428,16 @@ export default function initializeLrcRedLyricsAddon() {
                 }
 
                 if (!bestHit) {
+                    let scoreHit;
                     for (const query of buildSearchQueries(title, artist)) {
                         if (signal?.aborted) break;
                         const data = await searchTracks(query, signal).catch(() => null);
-                        for (const hit of Array.isArray(data?.hits) ? data.hits : []) {
-                            const score = scoreSearchHit(hit, info, durationSeconds);
+                        if (signal?.aborted) break;
+                        const hits = data?.hits;
+                        if (!Array.isArray(hits) || !hits.length) continue;
+                        scoreHit ??= createLrcRedSearchHitScorer(info, durationSeconds);
+                        for (const hit of hits) {
+                            const score = scoreHit(hit);
                             if (score !== null && score > bestScore) {
                                 bestScore = score;
                                 bestHit = { ...hit, isrc: normalizeIsrc(hit.isrc) };

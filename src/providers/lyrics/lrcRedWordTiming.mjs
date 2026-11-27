@@ -67,7 +67,7 @@ export const hasSameLrcRedLyrics = (left, right) => {
     return a.length > 0 && a.length === b.length && a.every((line, index) => line === b[index]);
 };
 
-export function matchesLrcRedRecording(result, update) {
+function matchesLrcRedRecording(result, update) {
     const currentIsrc = normalizeLrcRedIsrc(result?.lrcred?.isrc);
     return !currentIsrc || currentIsrc === normalizeLrcRedIsrc(update.lrcred?.isrc);
 }
