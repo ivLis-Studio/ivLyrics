@@ -65,11 +65,6 @@ export function createPageTranslationMemoryCache({ now = () => Date.now() } = {}
       if (this._cleanupTimer !== null) return;
       // Start periodic cleanup to prevent memory leaks
       this._startPeriodicCleanup();
-
-      // Listen for memory pressure events
-      if ("memory" in performance) {
-        this._setupMemoryPressureListener();
-      }
     },
 
     get(key) {
@@ -133,34 +128,6 @@ export function createPageTranslationMemoryCache({ now = () => Date.now() } = {}
           this._stats.cleanups++;
         }
       }, 5 * 60 * 1000);
-    },
-
-    _setupMemoryPressureListener() {
-      // Aggressive cleanup on memory pressure
-      if (typeof PerformanceObserver !== "undefined") {
-        try {
-          const observer = new PerformanceObserver((list) => {
-            for (const entry of list.getEntries()) {
-              if (entry.name === "memory") {
-                const { usedJSHeapSize, jsHeapSizeLimit } = entry;
-                const memoryUsage = usedJSHeapSize / jsHeapSizeLimit;
-
-                // If memory usage > 80%, clear half the cache
-                if (memoryUsage > 0.8) {
-                  this._aggressiveCleanup();
-                }
-              }
-            }
-          });
-          observer.observe({ entryTypes: ["measure"] });
-        } catch (error) {
-          // Performance Observer not available
-        }
-      }
-    },
-
-    _aggressiveCleanup() {
-      evictOldestEntries(this._cache, Math.floor(this._cache.size * 0.5));
     },
 
     clear() {

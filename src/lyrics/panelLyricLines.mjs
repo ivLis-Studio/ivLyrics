@@ -5,8 +5,9 @@ import {
     shouldWrapKaraokeByWord, getKaraokeSyllablesText, getKaraokeTextRunFill, buildKaraokeTextRunSegments, getSyllablesFromLine,
 } from "./panelKaraokeText.mjs";
 import {
-    VOCAL_STACK_CENTER_THRESHOLD, observePanelVocalAnchor, splitLineByVocalRowShape,
+    VOCAL_STACK_CENTER_THRESHOLD, observePanelVocalAnchor,
 } from "./panelVocalLayout.mjs";
+import { splitLineByVocalRowShape } from "./vocalRowText.mjs";
 import { TEXT_EFFECT_KIND_CLASSES } from "./panelLyricLineStyles.mjs";
 
 export function createPanelLyricLines({

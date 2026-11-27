@@ -1,10 +1,7 @@
 import { GOOGLE_FONTS, lyricsFontStylesheet } from "../core/lyricsFontCatalog.mjs";
 import { getLyricsLineMotionCurve } from "./lyricsLineMotion.mjs";
 import { PANEL_LYRICS_PAGE_CLASS } from "./panelRouteObserver.mjs";
-
 import { createOutsideTextOutlineShadow } from "./lyricsTextOutline.mjs";
-
-export { createOutsideTextOutlineShadow as createPanelOutsideTextOutlineShadow };
 
 const PANEL_VISUAL_PREFIX = "ivLyrics:visual:";
 const PANEL_STYLE_ID = "ivlyrics-panel-lyrics-styles";

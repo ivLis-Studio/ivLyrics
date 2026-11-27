@@ -1,34 +1,13 @@
-const formatTime = (ms) => {
-    if (!ms || ms < 0) return "0:00";
-    const totalSeconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-};
+import { clampSeekPositionToLiveDuration, formatTime } from "../fullscreen/fullscreenPlaybackTiming.mjs";
 
 const normalizeRotationSpeed = (value) => {
     const speed = Number(value ?? 100);
     return Number.isFinite(speed) ? Math.min(200, Math.max(25, speed)) : 100;
 };
 
-const VINYL_SEEK_END_GUARD_MIN_MS = 250;
-const VINYL_SEEK_END_GUARD_MAX_MS = 500;
-
 const clampVinylProgress = (value) => Math.min(Math.max(value, 0), 1);
-const clampVinylSeekPosition = (value, duration) => {
-    const safeDuration = Math.max(Number(duration) || 0, 0);
-    const safeValue = Math.max(Number(value) || 0, 0);
-    if (safeDuration <= 0) return safeValue;
-
-    const endGuard = Math.min(
-        safeDuration,
-        Math.max(
-            VINYL_SEEK_END_GUARD_MIN_MS,
-            Math.min(VINYL_SEEK_END_GUARD_MAX_MS, safeDuration * 0.02)
-        )
-    );
-    return Math.min(safeValue, Math.max(safeDuration - endGuard, 0));
-};
+// The record keeps the same end-of-track seek guard as the fullscreen bar.
+const clampVinylSeekPosition = clampSeekPositionToLiveDuration;
 
 export { formatTime, normalizeRotationSpeed, clampVinylProgress, clampVinylSeekPosition };
 

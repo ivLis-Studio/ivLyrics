@@ -1,4 +1,7 @@
-const openBatches = new WeakMap();
+// The page and startup bundles each include this module and write the same
+// Storage objects. A batch opened by one bundle must also hear about writes
+// made by the other, so the open batches live on the shared window.
+const openBatches = globalThis[Symbol.for("ivLyrics.settingsStorageBatches")] ??= new WeakMap();
 
 export function noteStorageWrite(storage, key) {
   const batches = openBatches.get(storage);

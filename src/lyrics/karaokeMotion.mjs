@@ -295,10 +295,10 @@ const getKaraokeExpressiveWordWindow = (timedChars, startIndex, charCount, wordT
 	let startTime = Infinity;
 	let endTime = -Infinity;
 	for (let index = start; index < end; index++) {
-		const window = getKaraokeExpressiveGlyphWindow(timedChars[index]);
-		if (!window) continue;
-		startTime = Math.min(startTime, window.startTime);
-		endTime = Math.max(endTime, window.endTime);
+		const glyphWindow = getKaraokeExpressiveGlyphWindow(timedChars[index]);
+		if (!glyphWindow) continue;
+		startTime = Math.min(startTime, glyphWindow.startTime);
+		endTime = Math.max(endTime, glyphWindow.endTime);
 	}
 	return { startTime, endTime };
 };
