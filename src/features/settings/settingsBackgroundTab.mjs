@@ -225,9 +225,7 @@ export function useSettingsBackgroundTab({
   // This component owns stateful helper controls. Keep its type stable across
   // ConfigModal renders so their mount effects cannot trigger a remount loop.
   const BackgroundExperienceSection = react.useMemo(() => function BackgroundExperienceSectionContent() {
-    const [selectedMode, setSelectedMode] = react.useState(
-      getCurrentSettingsBackgroundMode()
-    );
+    const [selectedMode, setSelectedMode] = react.useState(getCurrentSettingsBackgroundMode);
     useSettingsConfigRevision();
 
     const applyMode = (modeId) => {
@@ -308,12 +306,8 @@ export function useSettingsBackgroundTab({
     );
   }, [isFadActive]);
 
-  const performanceBackgroundKeys = new Set(
-    backgroundPresets.map((preset) => preset.id).filter((id) => id !== "none")
-  );
-
   const handlePerformanceSettingChange = (name, value) => {
-    if (performanceBackgroundKeys.has(name) && value) {
+    if (value && name !== "none" && backgroundPresets.some((preset) => preset.id === name)) {
       applyBackgroundMode(name);
       return;
     }

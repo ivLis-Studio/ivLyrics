@@ -29,16 +29,29 @@ const AI_TRANSLATION_STYLE_OPTIONS = [
 // AI 제공자 설정 탭 컴포넌트. 문화적 배경 설명 섹션은 설정 창이 children으로 넘긴다.
 
 export function createSettingsAiProviderTab({
-  react, translate, readManager, schedule, cancel, requestFrame, findConnectionCard,
+  react, translate, readManager, schedule, cancel, requestFrame, cancelFrame, findConnectionCard,
   listView: { renderSettingsProviderItems, renderSettingsProviderTableHead, renderSettingsProviderLegend },
   AddonSettingsCard, OptionList, ConfigSliderRange,
 }) {
-  const { useState } = react;
+  const { useLayoutEffect, useRef, useState } = react;
   const AIProvidersTab = ({ children } = {}) => {
     const [translationStyle, setTranslationStyle] = useState(() => readManager()?.getTranslationStyle?.() || "natural");
     const [providerRetryCount, setProviderRetryCount] = useState(() => readManager()?.getProviderRetryCount?.() ?? 2);
     // Capability switches change which provider is tried first.
     const [, setCapabilityRevision] = useState(0);
+
+    const pendingRevealsRef = useRef(null);
+    useLayoutEffect(() => {
+      const pending = new Set();
+      pendingRevealsRef.current = pending;
+      return () => {
+        pendingRevealsRef.current = null;
+        for (const reveal of pending) {
+          if (reveal.frameId != null) cancelFrame(reveal.frameId);
+        }
+        pending.clear();
+      };
+    }, []);
 
     const {
       providers, sortedProviders, enabledProviders, expandedProviders, setExpandedProviders, dragState,
@@ -111,7 +124,17 @@ export function createSettingsAiProviderTab({
         card.classList.add("is-flash");
         card.querySelector(".settings-connection-head")?.focus({ preventScroll: true });
       };
-      requestFrame(() => requestFrame(bringIntoView));
+      const pending = pendingRevealsRef.current;
+      if (!pending) return;
+      const reveal = { frameId: null };
+      pending.add(reveal);
+      reveal.frameId = requestFrame(() => {
+        if (!pending.has(reveal)) return;
+        // Wait for the expanded card to commit before measuring its position.
+        reveal.frameId = requestFrame(() => {
+          if (pending.delete(reveal)) bringIntoView();
+        });
+      });
     };
 
     const capabilityColumns = getSettingsAiProviderColumns(sortedProviders);

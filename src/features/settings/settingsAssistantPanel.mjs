@@ -100,7 +100,7 @@ export function createSettingsAssistantPanel({
     return rows.length && rows.length <= MAX_SECTION_ROWS ? rows : [key];
   };
 
-  const renderReplyRows = (message, registryByKey, navigateToDestination) => {
+  const renderReplyRows = (message, registryByKey, navigateToDestination, backgroundMode) => {
     const keys = [...new Set([
       ...message.changes.map((change) => change.key),
       ...message.show.flatMap((key) => expandShownKey(key, registryByKey)),
@@ -120,7 +120,7 @@ export function createSettingsAssistantPanel({
         key: "rows",
         items: rows.map((entry) => ({
           ...entry.item,
-          defaultValue: entry.key === SETTINGS_BACKGROUND_MODE_KEY ? getCurrentSettingsBackgroundMode() : entry.item.defaultValue,
+          defaultValue: entry.key === SETTINGS_BACKGROUND_MODE_KEY ? backgroundMode : entry.item.defaultValue,
           // The user asked about this row, so show it even when its menu hides it.
           when: undefined,
           onChange: (_name, value, event) => entry.onChange(entry.key, value, event),
@@ -150,7 +150,7 @@ export function createSettingsAssistantPanel({
     ];
   };
 
-  const renderAssistantMessage = (message, { registryByKey, runtime, navigateToDestination }) => {
+  const renderAssistantMessage = (message, { registryByKey, runtime, navigateToDestination, backgroundMode }) => {
     let body;
     if (message.status === "error") body = text("error", "The AI request failed: {message}").replace("{message}", message.text || "-");
     else if (message.status === "invalid") body = text("invalidResponse", "The AI's answer could not be read. Please try again.");
@@ -191,7 +191,7 @@ export function createSettingsAssistantPanel({
           text("adjusted", "Adjusted to the allowed range: {settings}").replace("{settings}", adjusted.join(", "))) : null,
         rejected.length ? react.createElement("p", { className: "settings-assistant-note is-warning" },
           text("skipped", "Could not change: {settings}").replace("{settings}", rejected.join(", "))) : null,
-        ...renderReplyRows(message, registryByKey, navigateToDestination)
+        ...renderReplyRows(message, registryByKey, navigateToDestination, backgroundMode)
       )
     );
   };
@@ -281,7 +281,19 @@ export function createSettingsAssistantPanel({
       )
     );
 
-    const context = { registryByKey, runtime, navigateToDestination };
+    const backgroundMode = getCurrentSettingsBackgroundMode();
+    // Editing the draft keeps the existing messages and their embedded controls.
+    const history = useMemo(() => {
+      const context = { registryByKey, runtime, navigateToDestination, backgroundMode };
+      return messages.map((message) => (message.role === "user"
+          ? react.createElement(
+            "div",
+            { key: message.id, className: "settings-assistant-msg is-user" },
+            react.createElement("span", { className: "settings-visually-hidden" }, text("you", "You")),
+            react.createElement("p", { className: "settings-assistant-bubble" }, message.text)
+          )
+          : renderAssistantMessage(message, context)));
+    }, [messages, registryByKey, runtime, navigateToDestination, backgroundMode]);
     return react.createElement(
       "div",
       { className: "tab-content active settings-assistant", "data-tab-id": "assistant" },
@@ -295,14 +307,7 @@ export function createSettingsAssistantPanel({
           "aria-busy": pending ? "true" : undefined,
         },
         messages.length ? null : renderEmptyState(),
-        ...messages.map((message) => (message.role === "user"
-          ? react.createElement(
-            "div",
-            { key: message.id, className: "settings-assistant-msg is-user" },
-            react.createElement("span", { className: "settings-visually-hidden" }, text("you", "You")),
-            react.createElement("p", { className: "settings-assistant-bubble" }, message.text)
-          )
-          : renderAssistantMessage(message, context))),
+        ...history,
         pending ? react.createElement(
           "div",
           { className: "settings-assistant-msg is-assistant is-pending" },

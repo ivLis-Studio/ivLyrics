@@ -527,6 +527,7 @@ export function createSettingsPage({
     schedule: (callback, delay) => setTimeout(callback, delay),
     cancel: (id) => clearTimeout(id),
     requestFrame: (callback) => window.requestAnimationFrame?.(callback),
+    cancelFrame: (id) => window.cancelAnimationFrame?.(id),
     findConnectionCard: (id) => document.getElementById?.(`ivlyrics-ai-connection-${id}`),
     listView: providerSettingsListView, AddonSettingsCard, OptionList, ConfigSliderRange,
   });
@@ -536,8 +537,8 @@ export function createSettingsPage({
     requestFrame: (callback) => requestAnimationFrame(callback),
     cancelFrame: (id) => cancelAnimationFrame(id),
   };
-  const useSettingsConfigRevision = (previewEvent = null) =>
-    useSettingsConfigSignal(react, settingsSignalHost, previewEvent);
+  const useSettingsConfigRevision = (previewEvent = null, readSnapshot) =>
+    useSettingsConfigSignal(react, settingsSignalHost, previewEvent, readSnapshot);
 
   const SettingsSection = ({ sectionKey, title, subtitle, view, hidden, className = "", children }) =>
     renderSettingsSectionShell(react, {
@@ -697,6 +698,26 @@ export function createSettingsPage({
       ?.classList.toggle("motion-reduced", reduceMotion);
   };
 
+  const {
+    saveLyricsTypographySetting,
+    saveVinylSetting,
+    handleVisualConfigChange,
+    handleAppearancePreviewChange,
+    handleNowPlayingPanelChange,
+    changeInterfaceLanguage,
+    saveLyricsHelperSetting,
+    saveInstrumentalLabelSetting,
+  } = createSettingsSaveEffects({
+    visualSettingsActions, persistConfig,
+    persistVisualSetting: (name, value) => StorageManager.setItem(`${APP_NAME}:visual:${name}`, value),
+    updatePreviewStyles: syncSettingsLyricsPreviewStyles,
+    loadFont: (value) => loadGoogleFontFamily(value),
+    publishConfigChange: publishSettingsConfigChange,
+    publishEvent: publishSettingsEvent,
+    setInterfaceLanguage: setSettingsLanguage,
+    reopenLanguageSettings: () => queueReloadIntoIvLyrics({ reopenSettings: true, initialTab: "general" }),
+  });
+
   const ConfigModal = ({
     onRequestClose = () => {},
     onContentReady,
@@ -842,25 +863,6 @@ export function createSettingsPage({
         },
       });
 
-    const {
-      saveLyricsTypographySetting,
-      saveVinylSetting,
-      handleVisualConfigChange,
-      handleAppearancePreviewChange,
-      handleNowPlayingPanelChange,
-      changeInterfaceLanguage,
-      saveLyricsHelperSetting,
-      saveInstrumentalLabelSetting,
-    } = createSettingsSaveEffects({
-      visualSettingsActions, persistConfig,
-      persistVisualSetting: (name, value) => StorageManager.setItem(`${APP_NAME}:visual:${name}`, value),
-      updatePreviewStyles: () => syncSettingsLyricsPreviewStyles(),
-      loadFont: (value) => loadGoogleFontFamily(value),
-      publishConfigChange: publishSettingsConfigChange,
-      publishEvent: publishSettingsEvent,
-      setInterfaceLanguage: setSettingsLanguage,
-      reopenLanguageSettings: () => queueReloadIntoIvLyrics({ reopenSettings: true, initialTab: "general" }),
-    });
     const renderTabContent = createSettingsTabContent({
       react, translate: key => I18n.t(key), activeTab, fullscreenView, isFadActive,
       getSettingsText, getVisualSettings: () => CONFIG.visual,

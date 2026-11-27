@@ -154,6 +154,24 @@ test("disabled panel stays subscribed and can be enabled, disabled and reset whi
   }
 });
 
+test("panel preview ignores unrelated settings and still honors explicit preview updates", () => {
+  const h = createHarness({ component: "NowPlayingPanelPreview" });
+  const initial = h.renders();
+  h.update({ "prefetch-video-enabled": false }, { type: "config", name: "prefetch-video-enabled" });
+  assert.equal(h.renders(), initial);
+
+  h.update({ "panel-lyrics-original-size": "24" }, { type: "config", name: "legacy-bulk-change" });
+  assert.equal(h.renders(), initial + 1);
+  assert.equal(panelOriginals(h.tree)[0].props.style.fontSize, "24px");
+  h.update({ "panel-lyrics-original-size": 24 });
+  assert.equal(h.renders(), initial + 1, "equivalent configured values leave the preview alone");
+
+  h.emit("ivLyrics:panel-preview-update", { source: "settings-preset" });
+  h.flush();
+  assert.equal(h.renders(), initial + 2);
+  h.unmount();
+});
+
 test("annotation master switch updates its sample note on generic config notifications", () => {
   const h = createHarness({ props: { kind: "annotation" } });
   for (const value of [true, false, "true", "false"]) {

@@ -52,7 +52,11 @@ function createHarness(source, component, options = {}) {
       effects.push(() => { slots[index].cleanup?.(); slots[index].cleanup = effect(); });
     }
   };
-  const react = { useState, useEffect, createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) };
+  const useRef = current => {
+    const index = cursor++;
+    return slots[index] ??= { current };
+  };
+  const react = { useState, useEffect, useLayoutEffect: useEffect, useRef, createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) };
   const makeManager = label => {
     let providers = options.providers || [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }];
     let order = ['b', 'missing', 'a'];
@@ -78,6 +82,7 @@ function createHarness(source, component, options = {}) {
   const health = label => { calls.push([label, 'health']); return new Promise(resolve => pendingHealth.push(resolve)); };
   const window = {
     LyricsAddonManager: makeManager('lyrics'), AIAddonManager: makeManager('ai'),
+    ...options.animationFrames,
     lyricsHelperSender: { checkConnection: () => health('lyrics-helper'), enabled: false },
     dispatchEvent: event => calls.push(['event', event.type, normalize(event.detail)]),
     addEventListener: (name, callback) => listeners.set(name, callback),
@@ -137,6 +142,7 @@ function createHarness(source, component, options = {}) {
         ...tabOptions,
         readManager: services.readAiSettingsManager,
         requestFrame: (callback) => window.requestAnimationFrame?.(callback),
+        cancelFrame: (id) => window.cancelAnimationFrame?.(id),
         findConnectionCard: (id) => context.document.getElementById?.(`ivlyrics-ai-connection-${id}`),
         AddonSettingsCard: context.AddonSettingsCard,
         ConfigSliderRange: context.ConfigSliderRange,
@@ -221,6 +227,34 @@ const comparableCalls = calls => normalize(calls.filter(([, operation, event]) =
   !(['subscribe', 'unsubscribe'].includes(operation) && ['addon:registered', 'addon:unregistered',
     'provider:order:changed', 'provider:enabled:changed', 'addon:setting:changed', 'provider:capability:changed',
     'provider:sync-data-priority:changed', 'provider:lyrics-type-priority:changed'].includes(event))));
+
+test("unmounting AI providers cancels both stages of a connection reveal", () => {
+  for (const runFirstFrame of [false, true]) {
+    const frames = new Map();
+    let id = 0;
+    const h = createHarness(current, 'AIProvidersTab', {
+      providers: [{ id: 'a', name: 'A', getSettingsUI() {} }],
+      animationFrames: {
+        requestAnimationFrame(callback) { frames.set(++id, callback); return id; },
+        cancelAnimationFrame(frameId) { frames.delete(frameId); },
+      },
+    });
+    h.render(); h.flushEffects();
+    card(h.render(), 'a').onExpandToggle();
+    assert.equal(frames.size, 1);
+    if (runFirstFrame) {
+      const [frameId, callback] = frames.entries().next().value;
+      frames.delete(frameId);
+      callback();
+      assert.equal(frames.size, 1);
+    }
+    const stale = frames.values().next().value;
+    h.unmount();
+    assert.equal(frames.size, 0);
+    stale();
+    assert.equal(frames.size, 0, 'a callback already dequeued by the host must stay cancelled');
+  }
+});
 
 for (const component of ['LyricsProvidersTab', 'AIProvidersTab']) {
   test(`${component}: live manager updates reconcile the list and a drop onto a removed provider is ignored`, () => {

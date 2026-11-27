@@ -2,48 +2,74 @@ import { createOutsideTextOutlineShadow } from "#ivlyrics/lyrics/lyricsTextOutli
 import { DEFAULT_PANEL_ORIGINAL_SIZE, getPanelLineSlotHeight } from "#ivlyrics/lyrics/panelLyricsStyles.mjs";
 import { readSettingFlag } from "./settingsPreviewValues.mjs";
 
+const parsePanelNumber = (value, fallback) => {
+  const parsed = parseInt(value, 10);
+  return Number.isNaN(parsed) ? fallback : parsed;
+};
+const parsePanelFloat = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const PANEL_PREVIEW_LINES = [
+  { original: "君を好きになって", phonetic: "kimi wo suki ni natte", translation: "너를 좋아하게 되어서" },
+  { original: "しまったみたいだ", phonetic: "shimatta mitai da", translation: "버린 것 같아" },
+  { original: "どんな言葉を", phonetic: "donna kotoba wo", translation: "어떤 말을" },
+  { original: "選んでも足りない", phonetic: "erande mo tarinai", translation: "골라도 부족해" },
+  { original: "君と過ごす時間", phonetic: "kimi to sugosu jikan", translation: "너와 보내는 시간" },
+  { original: "全てが宝物", phonetic: "subete ga takaramono", translation: "전부 소중해" },
+  { original: "もう離れたくない", phonetic: "mou hanaretakunai", translation: "이제 떨어지고 싶지 않아" },
+  { original: "ずっとそばにいて", phonetic: "zutto soba ni ite", translation: "계속 곁에 있어줘" },
+  { original: "この気持ちが", phonetic: "kono kimochi ga", translation: "이 마음이" },
+];
+
+const PANEL_PREVIEW_ACTIVE_INDEX = 4;
+
 export function createSettingsPanelPreview({ react, getVisualSettings, translate, useSettingsConfigRevision, getSupplementVisibility }) {
-  return function NowPlayingPanelPreview() {
-    useSettingsConfigRevision("ivLyrics:panel-preview-update");
+  const readPreviewSettings = () => {
     const visual = getVisualSettings() || {};
-    if (!readSettingFlag(visual, "panel-lyrics-enabled", true)) return null;
-
-    const parsePanelNumber = (value, fallback) => {
-      const parsed = parseInt(value, 10);
-      return Number.isNaN(parsed) ? fallback : parsed;
-    };
-    const parsePanelFloat = (value, fallback) => {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : fallback;
-    };
-
-    const fontFamily = visual["panel-lyrics-font-family"] || "Pretendard Variable";
-    const originalFont = visual["panel-lyrics-original-font"] || "";
-    const phoneticFont = visual["panel-lyrics-phonetic-font"] || "";
-    const translationFont = visual["panel-lyrics-translation-font"] || "";
-    const fontScale = parsePanelNumber(visual["panel-font-scale"], 100);
-    const originalSize = parsePanelNumber(visual["panel-lyrics-original-size"], DEFAULT_PANEL_ORIGINAL_SIZE);
-    const phoneticSize = parsePanelNumber(visual["panel-lyrics-phonetic-size"], 13);
-    const translationSize = parsePanelNumber(visual["panel-lyrics-translation-size"], 13);
-    const originalOutlineWidth = parsePanelFloat(visual["panel-lyrics-original-outline-width"], 0);
-    const originalOutlineColor = visual["panel-lyrics-original-outline-color"] || "#000000";
-    const phoneticOutlineWidth = parsePanelFloat(visual["panel-lyrics-phonetic-outline-width"], 0);
-    const phoneticOutlineColor = visual["panel-lyrics-phonetic-outline-color"] || "#000000";
-    const translationOutlineWidth = parsePanelFloat(visual["panel-lyrics-translation-outline-width"], 0);
-    const translationOutlineColor = visual["panel-lyrics-translation-outline-color"] || "#000000";
-
-    // 배경 설정
-    const bgType = visual["panel-bg-type"] || "album";
-    const bgColor = visual["panel-bg-color"] || "#6366f1";
-    const bgGradient1 = visual["panel-bg-gradient-1"] || "#6366f1";
-    const bgGradient2 = visual["panel-bg-gradient-2"] || "#a855f7";
-    const bgOpacity = parsePanelNumber(visual["panel-bg-opacity"], 30);
-
-    // Border 설정
-    const borderEnabled = readSettingFlag(visual, "panel-border-enabled", false);
-    const borderColor = visual["panel-border-color"] || "#ffffff";
-    const borderOpacity = parsePanelNumber(visual["panel-border-opacity"], 10);
+    const enabled = readSettingFlag(visual, "panel-lyrics-enabled", true);
+    if (!enabled) return { enabled };
     const supplements = getSupplementVisibility();
+    return {
+      enabled,
+      fontFamily: visual["panel-lyrics-font-family"] || "Pretendard Variable",
+      originalFont: visual["panel-lyrics-original-font"] || "",
+      phoneticFont: visual["panel-lyrics-phonetic-font"] || "",
+      translationFont: visual["panel-lyrics-translation-font"] || "",
+      fontScale: parsePanelNumber(visual["panel-font-scale"], 100),
+      originalSize: parsePanelNumber(visual["panel-lyrics-original-size"], DEFAULT_PANEL_ORIGINAL_SIZE),
+      phoneticSize: parsePanelNumber(visual["panel-lyrics-phonetic-size"], 13),
+      translationSize: parsePanelNumber(visual["panel-lyrics-translation-size"], 13),
+      originalOutlineWidth: parsePanelFloat(visual["panel-lyrics-original-outline-width"], 0),
+      originalOutlineColor: visual["panel-lyrics-original-outline-color"] || "#000000",
+      phoneticOutlineWidth: parsePanelFloat(visual["panel-lyrics-phonetic-outline-width"], 0),
+      phoneticOutlineColor: visual["panel-lyrics-phonetic-outline-color"] || "#000000",
+      translationOutlineWidth: parsePanelFloat(visual["panel-lyrics-translation-outline-width"], 0),
+      translationOutlineColor: visual["panel-lyrics-translation-outline-color"] || "#000000",
+      bgType: visual["panel-bg-type"] || "album",
+      bgColor: visual["panel-bg-color"] || "#6366f1",
+      bgGradient1: visual["panel-bg-gradient-1"] || "#6366f1",
+      bgGradient2: visual["panel-bg-gradient-2"] || "#a855f7",
+      bgOpacity: parsePanelNumber(visual["panel-bg-opacity"], 30),
+      borderEnabled: readSettingFlag(visual, "panel-border-enabled", false),
+      borderColor: visual["panel-border-color"] || "#ffffff",
+      borderOpacity: parsePanelNumber(visual["panel-border-opacity"], 10),
+      pronunciation: supplements.pronunciation,
+      translation: supplements.translation,
+    };
+  };
+
+  return function NowPlayingPanelPreview() {
+    useSettingsConfigRevision("ivLyrics:panel-preview-update", readPreviewSettings);
+    const {
+      enabled, fontFamily, originalFont, phoneticFont, translationFont, fontScale,
+      originalSize, phoneticSize, translationSize, originalOutlineWidth, originalOutlineColor,
+      phoneticOutlineWidth, phoneticOutlineColor, translationOutlineWidth, translationOutlineColor,
+      bgType, bgColor, bgGradient1, bgGradient2, bgOpacity, borderEnabled, borderColor, borderOpacity,
+      pronunciation, translation,
+    } = readPreviewSettings();
+    if (!enabled) return null;
 
     const scale = fontScale / 100;
     const baseFontFamily = `'${fontFamily}', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif`;
@@ -52,25 +78,10 @@ export function createSettingsPanelPreview({ react, getVisualSettings, translate
     const phoneticFontFamily = phoneticFont ? `${phoneticFont}, ${baseFontFamily}` : baseFontFamily;
     const translationFontFamily = translationFont ? `${translationFont}, ${baseFontFamily}` : baseFontFamily;
 
-    // 샘플 가사 데이터 (원어 → 발음 → 번역 순서)
-    const allSampleLyrics = [
-      { original: "君を好きになって", phonetic: "kimi wo suki ni natte", translation: "너를 좋아하게 되어서" },
-      { original: "しまったみたいだ", phonetic: "shimatta mitai da", translation: "버린 것 같아" },
-      { original: "どんな言葉を", phonetic: "donna kotoba wo", translation: "어떤 말을" },
-      { original: "選んでも足りない", phonetic: "erande mo tarinai", translation: "골라도 부족해" },
-      { original: "君と過ごす時間", phonetic: "kimi to sugosu jikan", translation: "너와 보내는 시간" },
-      { original: "全てが宝物", phonetic: "subete ga takaramono", translation: "전부 소중해" },
-      { original: "もう離れたくない", phonetic: "mou hanaretakunai", translation: "이제 떨어지고 싶지 않아" },
-      { original: "ずっとそばにいて", phonetic: "zutto soba ni ite", translation: "계속 곁에 있어줘" },
-      { original: "この気持ちが", phonetic: "kono kimochi ga", translation: "이 마음이" },
-    ];
-
-    const activeIndex = 4;
     const previewLineSlotHeight = getPanelLineSlotHeight(originalSize, fontScale);
-    const sampleLyrics = allSampleLyrics.map((line, idx) => ({
-      ...line,
-      active: idx === activeIndex
-    }));
+    const originalOutline = createOutsideTextOutlineShadow(originalOutlineWidth, originalOutlineColor);
+    const phoneticOutline = pronunciation ? createOutsideTextOutlineShadow(phoneticOutlineWidth, phoneticOutlineColor) : "";
+    const translationOutline = translation ? createOutsideTextOutlineShadow(translationOutlineWidth, translationOutlineColor) : "";
 
     // 배경 스타일 계산
     const getBackgroundStyle = () => {
@@ -127,7 +138,7 @@ export function createSettingsPanelPreview({ react, getVisualSettings, translate
                   minHeight: `${previewLineSlotHeight}px`,
                   gap: "2px",
                   padding: "4px 0",
-                  opacity: line.active ? 1 : 0.5,
+                  opacity: idx === PANEL_PREVIEW_ACTIVE_INDEX ? 1 : 0.5,
                   transition: "opacity 0.3s ease",
                 }
               },
@@ -138,40 +149,40 @@ export function createSettingsPanelPreview({ react, getVisualSettings, translate
                   style: {
                     fontSize: `${originalSize * scale}px`,
                     fontWeight: 700,
-                    color: line.active ? "#ffffff" : "rgba(255, 255, 255, 0.7)",
+                    color: idx === PANEL_PREVIEW_ACTIVE_INDEX ? "#ffffff" : "rgba(255, 255, 255, 0.7)",
                     lineHeight: 1.4,
                     fontFamily: originalFontFamily,
-                    textShadow: createOutsideTextOutlineShadow(originalOutlineWidth, originalOutlineColor),
+                    textShadow: originalOutline,
                   }
                 },
                 line.original
               ),
               // 발음 (두 번째)
-              supplements.pronunciation && react.createElement(
+              pronunciation && react.createElement(
                 "div",
                 {
                   style: {
                     fontSize: `${phoneticSize * scale}px`,
                     fontWeight: 400,
-                    color: line.active ? "rgba(255, 255, 255, 0.75)" : "rgba(255, 255, 255, 0.55)",
+                    color: idx === PANEL_PREVIEW_ACTIVE_INDEX ? "rgba(255, 255, 255, 0.75)" : "rgba(255, 255, 255, 0.55)",
                     lineHeight: 1.35,
                     fontFamily: phoneticFontFamily,
-                    textShadow: createOutsideTextOutlineShadow(phoneticOutlineWidth, phoneticOutlineColor),
+                    textShadow: phoneticOutline,
                   }
                 },
                 line.phonetic
               ),
               // 번역 (마지막)
-              supplements.translation && react.createElement(
+              translation && react.createElement(
                 "div",
                 {
                   style: {
                     fontSize: `${translationSize * scale}px`,
                     fontWeight: 500,
-                    color: line.active ? "rgba(255, 255, 255, 0.8)" : "rgba(255, 255, 255, 0.5)",
+                    color: idx === PANEL_PREVIEW_ACTIVE_INDEX ? "rgba(255, 255, 255, 0.8)" : "rgba(255, 255, 255, 0.5)",
                     lineHeight: 1.35,
                     fontFamily: translationFontFamily,
-                    textShadow: createOutsideTextOutlineShadow(translationOutlineWidth, translationOutlineColor),
+                    textShadow: translationOutline,
                   }
                 },
                 line.translation
@@ -225,7 +236,7 @@ export function createSettingsPanelPreview({ react, getVisualSettings, translate
               zIndex: 1,
             }
           },
-          ...sampleLyrics.map((line, idx) => renderPreviewLine(line, idx))
+          ...PANEL_PREVIEW_LINES.map((line, idx) => renderPreviewLine(line, idx))
         )
       )
     );

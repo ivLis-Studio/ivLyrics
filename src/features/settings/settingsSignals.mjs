@@ -22,29 +22,42 @@ export function useSettingsSignal(react, signal) {
 }
 
 // Read current CONFIG after config or optional preview notifications, once per frame.
-export function useSettingsConfigSignal(react, { host, requestFrame, cancelFrame }, previewEvent = null) {
+export function useSettingsConfigSignal(react, { host, requestFrame, cancelFrame }, previewEvent = null, readSnapshot) {
   const [revision, setRevision] = react.useState(0);
   react.useEffect(() => {
     let frameId = null;
     let stopped = false;
+    let previous = readSnapshot?.();
+    let forceRefresh = false;
     const schedule = () => {
       if (stopped || frameId != null) return;
       frameId = requestFrame(() => {
         frameId = null;
-        if (!stopped) setRevision((value) => value + 1);
+        if (stopped) return;
+        const next = readSnapshot?.();
+        const refresh = forceRefresh || !readSnapshot
+          || Object.keys(next).length !== Object.keys(previous).length
+          || Object.keys(next).some(key => !Object.is(next[key], previous[key]));
+        previous = next;
+        forceRefresh = false;
+        if (refresh) setRevision((value) => value + 1);
       });
     };
     const handleConfig = (event) => {
       if (event?.detail?.type === "config") schedule();
     };
+    const handlePreview = () => {
+      forceRefresh = true;
+      schedule();
+    };
     host.addEventListener("ivLyrics", handleConfig);
-    if (previewEvent) host.addEventListener(previewEvent, schedule);
+    if (previewEvent) host.addEventListener(previewEvent, handlePreview);
     return () => {
       stopped = true;
       host.removeEventListener("ivLyrics", handleConfig);
-      if (previewEvent) host.removeEventListener(previewEvent, schedule);
+      if (previewEvent) host.removeEventListener(previewEvent, handlePreview);
       if (frameId != null) cancelFrame(frameId);
     };
-  }, [previewEvent]);
+  }, [previewEvent, readSnapshot]);
   return revision;
 }
