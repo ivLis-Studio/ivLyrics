@@ -16,30 +16,33 @@ const WRAPPER_PAIRS = new Map([
 ]);
 
 const decodeEntities = (value) => {
-	let decoded = String(value ?? "")
-		.replace(/&amp;/giu, "&")
-		.replace(/&lt;/giu, "<")
-		.replace(/&gt;/giu, ">")
-		.replace(/&nbsp;/giu, " ")
-		.replace(/&sung;/giu, CANONICAL_MARKER)
-		.replace(/&flat;/giu, "♭")
-		.replace(/&natur;/giu, "♮")
-		.replace(/&sharp;/giu, "♯");
+	let decoded = String(value ?? "");
+	if (decoded.includes("&")) {
+		decoded = decoded
+			.replace(/&amp;/giu, "&")
+			.replace(/&lt;/giu, "<")
+			.replace(/&gt;/giu, ">")
+			.replace(/&nbsp;/giu, " ")
+			.replace(/&sung;/giu, CANONICAL_MARKER)
+			.replace(/&flat;/giu, "♭")
+			.replace(/&natur;/giu, "♮")
+			.replace(/&sharp;/giu, "♯");
 
-	decoded = decoded.replace(/&#(?:x([0-9a-f]+)|([0-9]+));?/giu, (match, hexadecimal, decimal) => {
-		const codePoint = Number.parseInt(hexadecimal || decimal, hexadecimal ? 16 : 10);
-		if (!Number.isInteger(codePoint) || codePoint < 0 || codePoint > 0x10FFFF) {
-			return match;
-		}
-		try {
-			return String.fromCodePoint(codePoint);
-		} catch {
-			return match;
-		}
-	});
+		decoded = decoded.replace(/&#(?:x([0-9a-f]+)|([0-9]+));?/giu, (match, hexadecimal, decimal) => {
+			const codePoint = Number.parseInt(hexadecimal || decimal, hexadecimal ? 16 : 10);
+			if (!Number.isInteger(codePoint) || codePoint < 0 || codePoint > 0x10FFFF) {
+				return match;
+			}
+			try {
+				return String.fromCodePoint(codePoint);
+			} catch {
+				return match;
+			}
+		});
+	}
 
 	// Remove real formatting tags without treating a marker such as <♪> as HTML.
-	return decoded.replace(/<\/?[a-z][^>]*>/giu, "");
+	return decoded.includes("<") ? decoded.replace(/<\/?[a-z][^>]*>/giu, "") : decoded;
 };
 
 const unwrapMarker = (value) => {
