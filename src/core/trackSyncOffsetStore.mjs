@@ -6,8 +6,8 @@ import {
   requestTrackPreference,
 } from "./trackPreferenceDatabase.mjs";
 import { runIdbTransaction } from "./indexedDbTransaction.mjs";
+import { clampSyncOffset } from "./globalSyncOffset.mjs";
 
-const MAX_TRACK_SYNC_OFFSET = 10000;
 export const TRACK_SYNC_OFFSETS_STORAGE_KEY = "ivLyrics:track-sync-offsets";
 export const TRACK_SYNC_IMPORT_RECEIPT_KEY = "ivLyrics:settings-import-receipt";
 export const TRACK_SYNC_OFFSETS_RESTORED_KEY = "ivLyrics:track-sync-offsets-restored";
@@ -63,10 +63,7 @@ export const normalizeTrackSyncOffsets = (
       throw new TypeError("Track sync offsets backup has an invalid entry.");
     }
 
-    normalizedOffsets[trackUri] = Math.max(
-      -MAX_TRACK_SYNC_OFFSET,
-      Math.min(MAX_TRACK_SYNC_OFFSET, Math.round(numericOffset))
-    );
+    normalizedOffsets[trackUri] = clampSyncOffset(numericOffset);
   });
 
   if (ignoredEntryCount > 0) {

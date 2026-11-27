@@ -73,6 +73,8 @@ export function createSettingsPersistence({
   const nextRevision = (current = 0) =>
     Math.max(Date.now(), Number(current) + 1 || 1);
 
+  // Only persisted input needs validation. Locally collected settings and
+  // edits have already passed the managed-key and string-value checks.
   const normalizeSettings = (settings) => {
     if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
       return {};
@@ -117,7 +119,7 @@ export function createSettingsPersistence({
       revision: nextRevision(previousRevision),
       ...(resetRevision ? { resetRevision } : {}),
       updatedAt: Date.now(),
-      settings: normalizeSettings(settings),
+      settings,
     };
   };
 
