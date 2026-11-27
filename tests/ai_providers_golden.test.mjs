@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
+import { buildWordGlossPrompt, buildWordPronunciationPrompt } from "../src/providers/ai/wordSupplementRequests.mjs";
 import baseline from "./fixtures/ai-providers-golden.json" with { type: "json" };
 
 // Captured from 3d6c0026, with all HTTP and runtime imports intercepted.
@@ -49,7 +50,7 @@ function fixture(name, initialize, mode, capability) {
     const reads = [];
     const writes = [];
     const isLyrics = capability === "translation" || capability === "pronunciation"
-        || capability === "streamedTranslation";
+        || capability === "streamedTranslation" || capability === "wordGloss" || capability === "wordPronunciation";
     const answer = isLyrics ? "First result\nSecond result" : resultJson;
     const settings = new Map([
         ...mode === "empty" ? [] : [["api-key", "fixture-key:fx"], ["api-keys", '["fixture-key", "fallback-key"]']],
@@ -142,10 +143,20 @@ function fixture(name, initialize, mode, capability) {
     return { addon, requests, reads, writes };
 }
 
+const wordParams = { words: ["First", "Second"], lineText: lines.join(" "), targetLang: "ko", sourceLang: "en" };
+const wordInput = { text: wordParams.words.join("\n"), endpointCapability: "wordSupplements" };
+
 const capabilities = {
     translation: ["translate", "translateLyrics"],
     streamedTranslation: ["translate", "translateLyrics", { onLine() {} }],
     pronunciation: ["pronunciation", "translateLyrics", { wantSmartPhonetic: true }],
+    wordGloss: ["wordSupplements", "translateLyrics", {
+        ...wordInput, translationPrompt: buildWordGlossPrompt(wordParams),
+    }],
+    wordPronunciation: ["wordSupplements", "translateLyrics", {
+        ...wordInput, phoneticPrompt: buildWordPronunciationPrompt(wordParams),
+        wantSmartPhonetic: true, pronunciationNotation: "latin",
+    }],
     metadata: ["metadata", "translateMetadata"],
     research: ["tmi", "generateTMI", { webSearch: false }],
     researchWithSearch: ["researchWebSearch", "generateTMI"],
@@ -177,7 +188,11 @@ for (const name of providers) {
         }
         for (const [capability, [support, method, extra]] of Object.entries(capabilities)) {
             const { addon, requests } = fixture(name, initialize, "default", capability);
-            if (support && !addon.supports[support] || typeof addon[method] !== "function") continue;
+            if (typeof addon[method] !== "function") continue;
+            const supported = support === "wordSupplements"
+                ? addon.supports.wordSupplements ?? addon.supports.translate
+                : !support || addon.supports[support];
+            if (!supported || (capability === "wordPronunciation" && addon.supports.pronunciation === false)) continue;
             const signal = new AbortController().signal;
             let result;
             try {
