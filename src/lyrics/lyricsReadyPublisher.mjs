@@ -5,7 +5,7 @@ const hasOwn = (object, key) =>
 const SHARED_SNAPSHOT_HANDLED = Symbol.for("ivLyrics.lyrics-ready.shared-snapshot-handled");
 export const isLyricsReadySnapshotHandled = event => event[SHARED_SNAPSHOT_HANDLED] === true;
 
-export const buildLyricsReadyDetail = (options = {}) => {
+const buildLyricsReadyDetail = (options = {}) => {
   const track = options.trackInfo || {};
   const detail = {
     trackInfo: {

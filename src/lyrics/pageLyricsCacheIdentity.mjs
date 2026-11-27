@@ -1,6 +1,6 @@
 import { normalizeLyricSourceLanguage } from "./lyricPresentationIdentity.mjs";
 
-export const SYNC_DATA_RENDERER_VERSION = "2026-07-13-timestamp-cluster-v1";
+const SYNC_DATA_RENDERER_VERSION = "2026-07-13-timestamp-cluster-v1";
 
 const getLyricsTextCacheHash = (lyrics = []) => {
   const lines = Array.isArray(lyrics) ? lyrics : [];

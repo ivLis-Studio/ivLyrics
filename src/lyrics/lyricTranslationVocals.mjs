@@ -13,7 +13,7 @@ export const getTranslationPartText = (part) => {
   return "";
 };
 
-export const getDisplayedVocalParts = (line) => {
+const getDisplayedVocalParts = (line) => {
   if (!Array.isArray(line?.vocals?.lead?.syllables) || line.vocals.lead.syllables.length === 0) {
     return null;
   }

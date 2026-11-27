@@ -25,7 +25,7 @@ export const resolveModeSpecificLyrics = (state, currentMode) => {
   return undefined;
 };
 export const getLyricsModeTypeKey = (mode) => LYRICS_MODE_TYPE_KEYS[getLyricsDataMode(mode)] || null;
-export const normalizeLyricsRenderModeLock = (value) => {
+const normalizeLyricsRenderModeLock = (value) => {
   if (value === null || value === undefined || value === "") return -1;
   const mode = Number(value);
   return [KARAOKE, WORD_KARAOKE, SYNCED, UNSYNCED].includes(mode) ? mode : -1;

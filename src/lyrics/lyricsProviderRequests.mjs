@@ -6,7 +6,8 @@ export const LYRICS_PROVIDER_SELECTION_CHANGED = "ivLyrics:lyrics-provider-selec
 export const supersededLyricsRequest = uri => ({ uri, error: 'Lyrics request superseded', stale: true });
 
 export function createLyricsProviderLookup(host, requests) {
-    return async function getLyricsFromProviders(info, providerOrder = [], mode = 1, forcedProviderId = null, { signal } = {}) {
+    // Older consumers still pass the provider and mode positions.
+    return async function getLyricsFromProviders(info, _legacyProviderOrder = undefined, _legacyMode, forcedProviderId = null, { signal } = {}) {
         const pendingChange = waitForMarketplaceLyricsProviderChanges(host, signal);
         if (pendingChange) {
             const uri = info?.uri || '';

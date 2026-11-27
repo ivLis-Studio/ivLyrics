@@ -18,13 +18,11 @@ import { getTranslationSourceCacheHash } from "./translationPresentation.mjs";
 import { createLyricsPresentationPreferences, createLyricsServicePreferences } from "./lyricsServicePreferences.mjs";
 import { createTranslator } from "./createTranslator.mjs";
 import { createLocalLanguageConverter } from "./localLanguageConverter.mjs";
-import { LRUCache } from "../core/LRUCache.mjs";
 import { createOverlayPlaybackVisibility, resolveSpotifyImageUrl } from "../features/overlay/overlayPresentationHost.mjs";
 import { createOverlayOffsetResolver } from "../features/overlay/overlayOffsets.mjs";
 import { createOverlayLyricPayload } from "../features/overlay/overlayLyricPayload.mjs";
 import { createOverlaySenders } from "../features/overlay/createOverlaySenders.mjs";
 import { KaraokeWordTiming } from "./karaokeWordTiming.mjs";
-import { SyncDataSourceCompatibility } from "./syncDataSourceCompatibility.mjs";
 import { createSyncDataService } from "./createSyncDataService.mjs";
 import { getSpotifyAccountKey } from "../core/spotifyFields.mjs";
 import { createLyricsLanguageModel } from "./lyricsLanguageModel.mjs";
@@ -46,8 +44,6 @@ import { getTrackSyncOffsetStore } from "../core/trackSyncOffsetRuntime.mjs";
 import { createPseudoKaraokeService } from "./pseudo-karaoke/createPseudoKaraokeService.mjs";
 import { createLocalLyricsStore } from "./localLyricsStore.mjs";
 import { createTrackLyricsProviderReader } from "./trackLyricsProviderReader.mjs";
-
-export { KaraokeWordTiming, SyncDataSourceCompatibility };
 
 export default function LyricsServiceExtension() {
 
@@ -100,10 +96,7 @@ export default function LyricsServiceExtension() {
         languageModel: LanguageModel,
         readSetting: (key) => Spicetify.LocalStorage.get(key),
     });
-    const Utils = {
-        ...languageCache,
-        ...playbackPosition,
-
+    const createTrackIdentityMethods = () => ({
         isSpotifyTrackId(value) {
             return TrackIdentity.isSpotifyTrackId(value);
         },
@@ -123,6 +116,13 @@ export default function LyricsServiceExtension() {
         getTranslationCacheId(uri) {
             return TrackIdentity.getTranslationCacheId(uri);
         },
+    });
+
+    const Utils = {
+        ...languageCache,
+        ...playbackPosition,
+
+        ...createTrackIdentityMethods(),
 
         isSectionHeader: sharedIsLyricsSectionHeader,
 
@@ -324,25 +324,7 @@ export default function LyricsServiceExtension() {
             return TrackIdentity.getTrackArtwork(track);
         },
 
-        isSpotifyTrackId(value) {
-            return TrackIdentity.isSpotifyTrackId(value);
-        },
-
-        isSpotifyTrackUri(uri) {
-            return TrackIdentity.isSpotifyTrackUri(uri);
-        },
-
-        isLocalTrackUri(uri) {
-            return TrackIdentity.isLocalTrackUri(uri);
-        },
-
-        extractTrackId(uri) {
-            return TrackIdentity.extractTrackId(uri);
-        },
-
-        getTranslationCacheId(uri) {
-            return TrackIdentity.getTranslationCacheId(uri);
-        },
+        ...createTrackIdentityMethods(),
 
         // 언어 감지 (Extension 내 Utils에서 직접 참조)
         detectLanguage(lyrics) {

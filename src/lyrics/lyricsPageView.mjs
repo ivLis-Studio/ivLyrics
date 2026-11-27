@@ -4,7 +4,6 @@ import { clearFirstLyricTime, writeFirstLyricTime } from "../features/video/vide
 import { isFocusedLyricsPresentation, normalizeFullscreenPresentation } from "../features/fullscreen/fullscreenPresentation.mjs";
 import { getPlaybackPositionService } from "../core/playbackPositionService.mjs";
 import { isVideoTrackCurrent } from "../features/video/videoBackgroundPlayback.mjs";
-import { getRuntimeService } from "../spicetify/runtimeServices.mjs";
 import { SYNCED, getKaraokeRenderGranularity, isKaraokeRenderMode, resolveModeSpecificLyrics } from "./lyricsRenderModes.mjs";
 import { resolveFadLyricsContainer, getLyricsPageRenderStyles, resolveLyricsPageRenderMode } from "./lyricsPageRenderState.mjs";
 import { commitLyricsPagePresentation } from "./commitLyricsPagePresentation.mjs";

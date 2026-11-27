@@ -21,7 +21,7 @@ export const getPanelSupplementVisibility = (displayMode1, displayMode2, hasExpl
     };
 };
 
-export function matchesPanelSupplementSettings(snapshot, readSetting, preferences) {
+function matchesPanelSupplementSettings(snapshot, readSetting, preferences) {
     const trackLanguageOverride = snapshot.trackInfo?.languageOverride;
     const playbackPreferences = readLyricPlaybackPreferences(readSetting, trackLanguageOverride);
     if (!matchesLyricPlaybackPreferences(snapshot.playbackPreferences, playbackPreferences)) return false;
@@ -58,7 +58,7 @@ export function readInitialPanelLyrics(uri, snapshot, cache, readSetting, prefer
     };
 }
 
-export function isPanelKaraokeSnapshot(snapshot) {
+function isPanelKaraokeSnapshot(snapshot) {
     return snapshot.lyricsType ? snapshot.lyricsType === "karaoke" : Boolean(snapshot.karaokeSource);
 }
 

@@ -1,4 +1,4 @@
-export const IV_LYRICS_DEFAULT_SPEAKER_TEXT_COLORS = {
+const IV_LYRICS_DEFAULT_SPEAKER_TEXT_COLORS = {
   "MALE 1": "#a8ccff",
   "MALE 2": "#9ae8d4",
   "MALE 3": "#bfe8ff",

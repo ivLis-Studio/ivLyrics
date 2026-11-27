@@ -614,7 +614,7 @@ export function createLyricsRenderer({
 		);
 	}
 
-	const UnsyncedLyricsPage = react.memo(({ lyrics = [], trackUri = "", provider, contributors, copyright, trackRevealKey = null }) => {
+	const UnsyncedLyricsPage = react.memo(({ lyrics = [], trackUri = "", trackRevealKey = null }) => {
 		const pageRef = useRef(null);
 		const lyricsDisplayMode = CONFIG.visual["translate:display-mode"];
 		const furiganaEnabled = !!CONFIG.visual["furigana-enabled"];
