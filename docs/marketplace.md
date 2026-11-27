@@ -73,9 +73,9 @@ The [full guide](https://github.com/ivLis-Studio/ivLyrics/blob/main/README_EN.md
 
 Report issues on [Discord](https://discord.gg/2fu36fUzdE) or [GitHub](https://github.com/ivLis-Studio/ivLyrics/issues) with your versions, song link, and reproduction steps. Remove API keys and account tokens from screenshots and logs.
 
-[Support development](https://buymeacoffee.com/ivlis) · [Credits and license](https://github.com/ivLis-Studio/ivLyrics/blob/main/README_EN.md#support-and-credits)
+Support development on [Buy Me a Coffee](https://buymeacoffee.com/ivlis) or [Fairy](https://fairy.hada.io/@ivlyrics) (Korea only) · [Credits and license](https://github.com/ivLis-Studio/ivLyrics/blob/main/README_EN.md#support-and-credits)
 
-ivLyrics is an unofficial project and is not affiliated with Spotify. Lyrics, translations, and videos belong to their respective rights holders. See the [full usage notice](https://github.com/ivLis-Studio/ivLyrics/blob/main/README_EN.md#support-and-credits) before using or sharing content.
+ivLyrics is an unofficial project and is not affiliated with Spotify. Lyrics, translations, and videos belong to their respective rights holders. See the [full usage notice](https://github.com/ivLis-Studio/ivLyrics/blob/main/README_EN.md#unofficial-project-copyright-and-terms) before using or sharing content.
 
 ## License and open-source notices
 
