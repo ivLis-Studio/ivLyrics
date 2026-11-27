@@ -2,6 +2,7 @@ import { backgroundFrame, barsLevel, cameraFilter, floodAt, panelAt } from "./mo
 import { createBoardMount } from "./motionBoardDom.mjs";
 import { createBoardPainter } from "./motionBoardPainter.mjs";
 import { createBoardWindowIndex, collectVisibleBoards } from "./motionBoardWindows.mjs";
+import { createDepthReader } from "./motionCameraFraming.mjs";
 import { cameraPose, lineIndexAt, progressAt, recentEvent, restAt } from "./motionCamera.mjs";
 import { createMotionContrast } from "./motionContrast.mjs";
 import { createInterludeRenderer } from "./motionInterludeRenderer.mjs";
@@ -55,6 +56,8 @@ export function createEngine({
 	let backgroundCheckedAt = -Infinity;
 	let lastPose = null;
 	let lastFrameAt = 0;
+	let paintedPausedTime = NaN;
+	let lastBackgroundFrame = null;
 	let swapFlashAt = -Infinity;
 	const mounted = new Map();
 	const cache = { camera: {}, viewport: {}, flash: {}, wash: {}, background: {}, hud: {}, panel: {}, bars: {}, rest: {}, flood: {} };
@@ -157,7 +160,9 @@ export function createEngine({
 		mounted.delete(index);
 	};
 	const unmountAll = () => {
-		for (const index of [...mounted.keys()]) unmount(index);
+		for (const entry of mounted.values()) entry.el.remove();
+		mounted.clear();
+		paintedPausedTime = NaN;
 		currentLine = -2;
 		currentBoard = -2;
 		clearScenes();
@@ -228,10 +233,18 @@ export function createEngine({
 		const at = now();
 		swapIfDue(time, at);
 		watchFrames(at);
-		const pose = cameraPose(plan, time, pulses || plan.pulses);
-		write(cache.camera, "transform",
-			"rotateX(" + round(pose.pitch || 0, 2) + "deg) rotateY(" + round(pose.yaw || 0, 2) + "deg) rotateZ(" + round(-pose.roll, 3) + "deg) translate3d(" + round(-pose.x) + "px," + round(-pose.y) + "px," + round(-pose.z) + "px)",
-			(value) => { camera.style.transform = value; });
+		const lineIndex = lineIndexAt(plan, time);
+		const restLevel = restAt(plan, time, lineIndex);
+		// Paused ticks still follow seeks and refresh the backdrop. Its contrast can
+		// change even when the camera and the lyrics are frozen at the same time.
+		const repaint = playing || !lastPose || time !== paintedPausedTime;
+		const pose = repaint ? cameraPose(plan, time, pulses || plan.pulses, lineIndex) : lastPose;
+		if (repaint) {
+			lastBackgroundFrame = null;
+			write(cache.camera, "transform",
+				"rotateX(" + round(pose.pitch || 0, 2) + "deg) rotateY(" + round(pose.yaw || 0, 2) + "deg) rotateZ(" + round(-pose.roll, 3) + "deg) translate3d(" + round(-pose.x) + "px," + round(-pose.y) + "px," + round(-pose.z) + "px)",
+				(value) => { camera.style.transform = value; });
+		}
 
 		// Motion blur while the camera whips between boards (not in lite quality).
 		let blur = 0;
@@ -250,32 +263,40 @@ export function createEngine({
 
 		const backdrop = findBackground(at);
 		if (backdrop) {
-			const frameState = backgroundFrame(plan, pose, time);
+			const frameState = lastBackgroundFrame ??= backgroundFrame(plan, pose, time, restLevel);
 			contrast.setFrame(frameState);
-			writeBackgroundTransform("rotate", round(frameState.rotate, 2) + "deg");
-			writeBackgroundTransform("scale", String(round(frameState.scale, 4)));
-			writeBackgroundTransform("translate", round(frameState.x) + "px " + round(frameState.y) + "px");
+			if (cache.background.frame !== frameState) {
+				cache.background.frame = frameState;
+				writeBackgroundTransform("rotate", round(frameState.rotate, 2) + "deg");
+				writeBackgroundTransform("scale", String(round(frameState.scale, 4)));
+				writeBackgroundTransform("translate", round(frameState.x) + "px " + round(frameState.y) + "px");
+			}
 			writeBackgroundFilter(backdrop, blur >= 1 ? round(blur * 0.5, 1) : 0);
 			if (!quality.lite) contrast.sampleContrast(backdrop, at, plan, backgroundFilter);
 		}
 
-		const lineIndex = lineIndexAt(plan, time);
-		const line = plan.lines[lineIndex];
-		const through = line?.move?.type === "through" && time > line.leave ? line.board : -1;
-		const progress = progressAt(plan, time, lineIndex);
-		collectVisibleBoards(boardWindows, time, visibleBoards);
-		for (const index of mounted.keys()) {
-			if (!visibleBoards.has(index)) unmount(index);
-		}
-		for (const index of visibleBoards) {
-			let entry = mounted.get(index);
-			if (!entry) {
-				entry = mountBoard(plan, index);
-				mounted.set(index, entry);
+		if (repaint) {
+			const line = plan.lines[lineIndex];
+			const through = line?.move?.type === "through" && time > line.leave ? line.board : -1;
+			const progress = progressAt(plan, time, lineIndex);
+			collectVisibleBoards(boardWindows, time, visibleBoards);
+			for (const index of mounted.keys()) {
+				if (!visibleBoards.has(index)) unmount(index);
 			}
-			paintBoard(plan, entry, time, pose, progress, pose.beat || 0, through);
+			if (visibleBoards.size) {
+				const depthOf = createDepthReader(pose);
+				for (const index of visibleBoards) {
+					let entry = mounted.get(index);
+					if (!entry) {
+						entry = mountBoard(plan, index);
+						mounted.set(index, entry);
+					}
+					paintBoard(plan, entry, time, depthOf, progress, pose.beat || 0, through);
+				}
+			}
+			paintInterludes(time);
+			paintedPausedTime = playing ? NaN : time;
 		}
-		paintInterludes(time);
 		if (!quality.lite) contrast.paintContrast(at);
 
 		const index = Math.max(0, lineIndex);
@@ -290,7 +311,7 @@ export function createEngine({
 			}
 		}
 		// Interludes, intro and outro: the video comes forward and the subtitle steps aside.
-		const rest = round(restAt(plan, time), 2);
+		const rest = round(restLevel, 2);
 		// The shade over the frame: lighter in interludes, and over a dark picture (where it can be read).
 		const shade = round((1 - rest * 0.5) * (contrast.mean === null ? 1 : clamp(0.55 + contrast.mean * 0.9, 0.62, 1)), 2);
 		write(cache.rest, "shade", shade, (value) => {
@@ -382,6 +403,7 @@ export function createEngine({
 		},
 		setPulses(nextPulses) {
 			pulses = nextPulses || plan?.pulses || null;
+			paintedPausedTime = NaN;
 		},
 		setLyrics(nextLyrics) {
 			lyrics = Array.isArray(nextLyrics) ? nextLyrics : [];

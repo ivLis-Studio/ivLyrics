@@ -3,7 +3,7 @@ import {
 	BOX_ACCENTS, applyFont, createLoop, createOutlines, createScribble, setOutlineText,
 } from "./motionDomEffects.mjs";
 import { motionShapes } from "./MotionLyricsShapes.mjs";
-import { round } from "./motionMath.mjs";
+import { hashString, round } from "./motionMath.mjs";
 import { CHAR_FX, LETTER_EXITS, flexOf } from "./motionTypeEffects.mjs";
 import { FALLBACK_SPEC } from "./motionTypesetting.mjs";
 
@@ -171,7 +171,10 @@ export function createBoardMount({ document, camera, defs, shapedOutlines }) {
 			}
 			const words = line.shown.map((word, wordIndex) => mountWord(board, line, word, wordIndex, place.block.words[wordIndex], lineEl));
 			el.appendChild(lineEl);
-			return { el: lineEl, line, words, rule, base, cache: {}, settled: null };
+			const animateUntil = Number.isFinite(line.exitAt)
+				? Math.max(line.end + 1700, line.exitAt + line.exitSpan + 60)
+				: line.end + 1700;
+			return { el: lineEl, line, words, rule, base, seed: hashString(line.text), animateUntil, cache: {}, settled: null };
 		});
 		camera.appendChild(el);
 		return { el, board, lines, motifs, strokes, plates, streams, echo, reveal: board.index > 0 && REVEAL_ENTERS.has(board.enter), cache: {} };

@@ -15,21 +15,28 @@ const LOOP_PATH = [
 	["C", 0.92, 0.9, 0.5, 1.02, 0.24, 0.94], ["C", 0.0, 0.86, -0.03, 0.48, 0.16, 0.26],
 ];
 
-/** The loop of the "circle" accent, sized to a word. */
-export const createLoop = (document, width, height, stroke) => {
+const createAccentStroke = (document, width, height, stroke, className, d) => {
 	const svg = document.createElementNS(SVG_NS, "svg");
-	svg.setAttribute("class", "ivlyrics-motion-loop");
-	svg.setAttribute("viewBox", "0 0 " + round(width) + " " + round(height));
+	svg.setAttribute("class", className);
+	const w = round(width);
+	const h = round(height);
+	svg.setAttribute("viewBox", "0 0 " + w + " " + h);
 	svg.setAttribute("aria-hidden", "true");
 	svg.setAttribute("focusable", "false");
-	svg.style.width = round(width) + "px";
-	svg.style.height = round(height) + "px";
+	svg.style.width = w + "px";
+	svg.style.height = h + "px";
 	const path = document.createElementNS(SVG_NS, "path");
-	path.setAttribute("d", LOOP_PATH.map(([command, ...points]) => command + points.map((value, index) => round(value * (index % 2 ? height : width))).join(" ")).join(" "));
+	path.setAttribute("d", d);
 	path.setAttribute("pathLength", "1");
 	path.setAttribute("stroke-width", String(round(stroke, 2)));
 	svg.appendChild(path);
 	return svg;
+};
+
+/** The loop of the "circle" accent, sized to a word. */
+export const createLoop = (document, width, height, stroke) => {
+	const d = LOOP_PATH.map(([command, ...points]) => command + points.map((value, index) => round(value * (index % 2 ? height : width))).join(" ")).join(" ");
+	return createAccentStroke(document, width, height, stroke, "ivlyrics-motion-loop", d);
 };
 
 /** The squiggle of the "scribble" accent: a pen line wobbling under a word. */
@@ -40,19 +47,7 @@ export const createScribble = (document, width, height, stroke) => {
 	for (let index = 0; index < waves; index += 1) {
 		d += " Q" + round(step * (index + 0.5)) + " " + round(index % 2 ? height * 1.05 : -height * 0.05) + " " + round(step * (index + 1)) + " " + round(height * 0.5);
 	}
-	const svg = document.createElementNS(SVG_NS, "svg");
-	svg.setAttribute("class", "ivlyrics-motion-loop is-scribble");
-	svg.setAttribute("viewBox", "0 0 " + round(width) + " " + round(height));
-	svg.setAttribute("aria-hidden", "true");
-	svg.setAttribute("focusable", "false");
-	svg.style.width = round(width) + "px";
-	svg.style.height = round(height) + "px";
-	const path = document.createElementNS(SVG_NS, "path");
-	path.setAttribute("d", d);
-	path.setAttribute("pathLength", "1");
-	path.setAttribute("stroke-width", String(round(stroke, 2)));
-	svg.appendChild(path);
-	return svg;
+	return createAccentStroke(document, width, height, stroke, "ivlyrics-motion-loop is-scribble", d);
 };
 
 const SVG_FILTER_UNITS = Object.freeze({ x: "-0.1", y: "-0.3", width: "1.2", height: "1.6" });

@@ -2161,6 +2161,62 @@ test("the renderer recomputes visible scene windows when a paused direction is r
 	assert.equal(pausedTick, null);
 });
 
+test("paused frames reuse the camera and lyrics while still honoring new inputs", t => {
+	const { motion, director, type } = load();
+	const lyrics = [line(["One", "morning"], 2000, { translation: "Original" })];
+	const model = motion.buildModel(lyrics);
+	const plan = compose(motion, type, model, director.normalizeDirection(null, model), 33, "en");
+	const camera = makeEngineNode();
+	const subtitle = makeEngineNode();
+	let time = 2200;
+	let now = 0;
+	let pausedTick;
+	let background = null;
+	const engine = createMotionEngine({
+		stage: makeEngineNode(), viewport: makeEngineNode(), camera, flash: makeEngineNode(),
+		wash: makeEngineNode(), subtitle,
+	}, {
+		document: { createElement: makeEngineNode, createElementNS: makeEngineNode, querySelector: () => background },
+		readTime: () => time,
+		now: () => now,
+		isTrackCurrent: () => true,
+		readComputedStyle: () => ({}),
+		scheduleTimer(tick) { pausedTick = tick; return 1; },
+		cancelTimer() { pausedTick = null; },
+	});
+	t.after(() => engine.destroy());
+	engine.setLyrics(lyrics);
+	engine.setPlan(plan, "paused");
+	const transform = camera.style.transform;
+	const board = camera.children[0];
+	const sine = t.mock.method(Math, "sin");
+	now += 200;
+	pausedTick();
+	assert.equal(sine.mock.callCount(), 0);
+	assert.equal(camera.style.transform, transform);
+	assert.equal(camera.children[0], board);
+
+	engine.setLyrics([{ ...lyrics[0], text2: "Updated while paused" }]);
+	pausedTick();
+	assert.equal(subtitle.textContent, "Updated while paused");
+	assert.equal(sine.mock.callCount(), 0);
+
+	engine.setPulses({ times: [time], strengths: [1] });
+	pausedTick();
+	assert.notEqual(camera.style.transform, transform);
+	time += 500;
+	const beforeSeek = camera.style.transform;
+	pausedTick();
+	assert.notEqual(camera.style.transform, beforeSeek);
+
+	background = makeEngineNode();
+	background.isConnected = true;
+	now += 1000;
+	pausedTick();
+	assert.equal(background.classList.contains("is-motion-camera"), true);
+	assert.match(background.style.rotate, /deg$/);
+});
+
 test("the motion engine clears previous-track subtitles and camera effects while the new plan is unavailable", () => {
 	const makeNode = makeEngineNode;
 	const { motion, director, type } = load();

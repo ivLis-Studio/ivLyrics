@@ -9,6 +9,7 @@ export function createInterludeRenderer({ document, interlude, readPlan, readPul
 	// ---- Interludes: scenes over the video while no lyrics are on screen (interludesOf)
 	let cueCache = {};
 	const scenesShown = new Map();
+	const due = new Set();
 	let cueEl = null;
 	const node = (tag, className, parent) => {
 		const element = document.createElement(tag);
@@ -41,9 +42,13 @@ export function createInterludeRenderer({ document, interlude, readPlan, readPul
 		return found;
 	};
 	/** How hard the beat hits now (0 to 1), dying away after each beat. */
-	const beatLevel = (scene, time) => {
+	const beatLevel = (hits, time) => {
 		let level = 0;
-		for (const hit of beatsBefore(scene, time, 600)) level = Math.max(level, clamp01(hit.strength * 1.15) * Math.exp(-(time - hit.time) / 190));
+		for (const hit of hits) {
+			const age = time - hit.time;
+			if (age > 600) break;
+			level = Math.max(level, clamp01(hit.strength * 1.15) * Math.exp(-age / 190));
+		}
 		return level;
 	};
 
@@ -223,7 +228,8 @@ export function createInterludeRenderer({ document, interlude, readPlan, readPul
 		const W = readPlan().W;
 		const since = time - scene.start;
 		const span = Math.max(1, scene.end - scene.start);
-		const beat = beatLevel(scene, time);
+		const hits = beatsBefore(scene, time, scene.style === "pulse" ? 1800 : 600);
+		const beat = beatLevel(hits, time);
 		const move = (entry, value) => write(entry.cache, "transform", value, (next) => { entry.el.style.transform = next; });
 		const fade = (entry, value) => write(entry.cache, "opacity", round(clamp01(value), 3), (next) => { entry.el.style.opacity = String(next); });
 		switch (scene.style) {
@@ -250,17 +256,18 @@ export function createInterludeRenderer({ document, interlude, readPlan, readPul
 			}
 			case "pulse": {
 				// A ring bursts out from the centre on every beat.
-				const hits = beatsBefore(scene, time, 1800).filter((hit) => hit.strength >= 0.3);
-				state.rings.forEach((ring, index) => {
-					const hit = hits[index];
+				let next = 0;
+				for (const ring of state.rings) {
+					while (next < hits.length && !(hits[next].strength >= 0.3)) next += 1;
+					const hit = hits[next++];
 					if (!hit) {
 						fade(ring, 0);
-						return;
+						continue;
 					}
 					const t = clamp01((time - hit.time) / 1800);
 					fade(ring, (0.4 + 0.5 * clamp01(hit.strength)) * Math.pow(1 - t, 1.4));
 					move(ring, "translate(-50%,-50%) scale(" + round(0.22 + 2.1 * easeOutCubic(t), 3) + ")");
-				});
+				}
 				fade(state.halo, 0.55);
 				move(state.halo, "translate(-50%,-50%) rotate(" + round((since * 0.014) % 360, 2) + "deg) scale(" + round(1 + beat * 0.07, 3) + ")");
 				move(state.core, "translate(-50%,-50%) scale(" + round(0.6 + beat * 0.9, 3) + ")");
@@ -373,7 +380,7 @@ export function createInterludeRenderer({ document, interlude, readPlan, readPul
 		if (!interlude) return;
 		const plan = readPlan();
 		const scenes = plan.interludes || [];
-		const due = new Set();
+		due.clear();
 		for (const scene of scenes) if (time >= scene.start - 30 && time <= scene.end + 30) due.add(scene.index);
 		for (const [index, state] of scenesShown) {
 			if (due.has(index)) continue;

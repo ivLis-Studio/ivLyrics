@@ -1,7 +1,7 @@
 import { plateLevel, revealClip, strokeLevel } from "./motionBackground.mjs";
 import { boardVisibility } from "./motionCamera.mjs";
-import { PERSPECTIVE_PX, viewDepth } from "./motionCameraFraming.mjs";
-import { clamp, clamp01, easeInOutCubic, easeOutBack, easeOutCubic, hashString, lerp, round } from "./motionMath.mjs";
+import { PERSPECTIVE_PX } from "./motionCameraFraming.mjs";
+import { clamp, clamp01, easeInOutCubic, easeOutBack, easeOutCubic, lerp, round } from "./motionMath.mjs";
 import {
 	CHAR_FX, EXIT_MS, HIDDEN, LETTER_EXITS, LETTER_SETTLED, SETTLED, charFrame, easeInCubic,
 	exitCharFrame, exitFrame, floatOffset, fxPaceOf, levelsOn, lineMotion, solidFrame, wordEntrance,
@@ -12,6 +12,29 @@ const NEAR = [240, 660, 0.86];
 const NEAR_THROUGH = [600, 980, 0.97];
 /** Things fade as they come up to the lens instead of filling the screen. */
 const closenessOf = (depth, near) => (depth > PERSPECTIVE_PX * near[2] ? 0 : 1 - clamp01((depth - near[0]) / (near[1] - near[0])));
+
+const writeCharacter = (char, state) => {
+	const { cache, el } = char;
+	const opacity = round(state.opacity, 3);
+	if (cache.opacity !== opacity) {
+		cache.opacity = opacity;
+		el.style.opacity = String(opacity);
+	}
+	if (cache.transform !== state.transform) {
+		cache.transform = state.transform;
+		el.style.transform = state.transform;
+	}
+	const text = state.text || char.text;
+	if (cache.text !== text) {
+		cache.text = text;
+		el.textContent = text;
+	}
+};
+
+const settleCharacters = (chars) => {
+	if (!chars) return;
+	for (const char of chars) writeCharacter(char, LETTER_SETTLED);
+};
 
 export function createBoardPainter({ write, isLite }) {
 	const writeSolid = (word, frameState) => {
@@ -48,25 +71,18 @@ export function createBoardPainter({ write, isLite }) {
 			if (word.pulse) write(word.cache, "pulse", "", (value) => { word.solid.style.scale = value; });
 			write(word.cache, "float", "", (value) => { word.el.style.translate = value; });
 			if (word.flex) writeFlex(word, word.flex.weight, word.flex.wdth ? 100 : null);
-			if (word.chars) {
-				for (const char of word.chars) {
-					write(char.cache, "opacity", 1, (value) => { char.el.style.opacity = String(value); });
-					write(char.cache, "transform", "none", (value) => { char.el.style.transform = value; });
-					write(char.cache, "text", char.text, (value) => { char.el.textContent = value; });
-				}
-			}
+			settleCharacters(word.chars);
 		});
 		if (entry.rule) write(entry.cache, "rule", sung ? 1 : 0, (value) => entry.rule.style.setProperty("--r", String(value)));
 	};
 
-	const paintWords = (plan, entry, time, distance, beat) => {
+	const paintWords = (plan, board, entry, time, distance, beat, fxPace) => {
 		entry.settled = null;
 		const line = entry.line;
-		const board = plan.boards[line.board];
 		const sway = clamp01(1 - (distance - 0.3) / 0.9);
-		const seed = hashString(line.text);
+		const seed = entry.seed;
 		const pace = plan.pace;
-		const exitLength = line.exitLength || EXIT_MS * fxPaceOf(pace);
+		const exitLength = line.exitLength || EXIT_MS * fxPace;
 		const lettered = !!LETTER_EXITS[board.exit];
 		const letterFx = CHAR_FX.has(line.fx);
 		const floating = board.hold === "float";
@@ -89,27 +105,21 @@ export function createBoardPainter({ write, isLite }) {
 				const k = clamp01((time - (line.exitAt + order * line.exitStagger)) / exitLength);
 				write(word.cache, "active", false, (value) => word.el.classList.toggle("is-active", value));
 				// A variable word thins out as it goes.
-				if (word.flex) writeFlex(word, lerp(word.flex.weight, word.flex.thin, easeInCubic(k)), word.flex.wdth ? lerp(100, word.flex.narrow, easeInCubic(k)) : null);
+				if (word.flex) {
+					const eased = easeInCubic(k);
+					writeFlex(word, lerp(word.flex.weight, word.flex.thin, eased), word.flex.wdth ? lerp(100, word.flex.narrow, eased) : null);
+				}
 				if (word.chars && lettered) {
 					// Taken apart letter by letter.
 					writeSolid(word, k >= 1 ? HIDDEN : SETTLED);
 					const context = { count: word.chars.length, seed: seed + word.index * 131 };
 					word.chars.forEach((char, index) => {
-						const state = exitCharFrame(board.exit, k, char.char, index, context);
-						write(char.cache, "opacity", round(state.opacity, 3), (value) => { char.el.style.opacity = String(value); });
-						write(char.cache, "transform", state.transform, (value) => { char.el.style.transform = value; });
-						write(char.cache, "text", state.text || char.text, (value) => { char.el.textContent = value; });
+						writeCharacter(char, exitCharFrame(board.exit, k, char.char, index, context));
 					});
 					return;
 				}
 				writeSolid(word, exitFrame(board.exit, k, seed + word.index * 7919, line.info.rtl));
-				if (word.chars) {
-					for (const char of word.chars) {
-						write(char.cache, "opacity", 1, (value) => { char.el.style.opacity = String(value); });
-						write(char.cache, "transform", "none", (value) => { char.el.style.transform = value; });
-						write(char.cache, "text", char.text, (value) => { char.el.textContent = value; });
-					}
-				}
+				settleCharacters(word.chars);
 				return;
 			}
 			const progress = wordEntrance(line.fx, word.word, time, pace);
@@ -128,7 +138,7 @@ export function createBoardPainter({ write, isLite }) {
 				writeFlex(word, weight, width);
 			}
 			if (word.box) {
-				write(word.cache, "box", round(easeOutCubic(clamp01((time - word.word.start + 40) / (300 * fxPaceOf(pace)))), 3), (value) => word.box.style.setProperty("--b", String(value)));
+				write(word.cache, "box", round(easeOutCubic(clamp01((time - word.word.start + 40) / (300 * fxPace))), 3), (value) => word.box.style.setProperty("--b", String(value)));
 			}
 			if (word.pulse) {
 				const throb = time >= word.word.start ? 1 + beat * 0.09 : 1;
@@ -145,31 +155,29 @@ export function createBoardPainter({ write, isLite }) {
 					write(word.cache, "sparkOpacity", round(1 - k, 3), (value) => { word.spark.style.opacity = String(value); });
 				}
 			}
-			if (word.chars) {
+			if (word.chars && letterFx) {
 				const context = { count: word.chars.length, wordStart: word.word.start, seed: seed + word.index * 131, sway, pace };
-				word.chars.forEach((char, index) => {
-					// Letters set apart only for the exit come in with their word.
-					const state = letterFx ? charFrame(line.fx, char.char, index, time, context) : LETTER_SETTLED;
-					write(char.cache, "opacity", round(state.opacity, 3), (value) => { char.el.style.opacity = String(value); });
-					write(char.cache, "transform", state.transform, (value) => { char.el.style.transform = value; });
-					write(char.cache, "text", state.text || char.text, (value) => { char.el.textContent = value; });
-				});
+				word.chars.forEach((char, index) => writeCharacter(char, charFrame(line.fx, char.char, index, time, context)));
+			} else {
+				// Letters set apart only for the exit come in with their word.
+				settleCharacters(word.chars);
 			}
 		});
 		if (entry.rule) {
-			const k = easeInOutCubic(clamp01((time - line.start + 220) / (900 * fxPaceOf(pace))));
+			const k = easeInOutCubic(clamp01((time - line.start + 220) / (900 * fxPace)));
 			write(entry.cache, "rule", round(k, 3), (value) => entry.rule.style.setProperty("--r", String(value)));
 		}
 	};
 
-	const paintBoard = (plan, entry, time, pose, progress, beat, through) => {
+	const paintBoard = (plan, entry, time, depthOf, progress, beat, through) => {
 		const board = entry.board;
 		const visibility = boardVisibility(board, time);
+		const fxPace = fxPaceOf(plan.pace);
 		const near = through === board.index ? NEAR_THROUGH : NEAR;
 		for (const lineEntry of entry.lines) {
 			const line = lineEntry.line;
 			const distance = progress - line.n;
-			const closeness = closenessOf(viewDepth(pose, line.center), near);
+			const closeness = closenessOf(depthOf(line.center), near);
 			const levels = levelsOn(board, line, distance, time);
 			const ghost = round(levels.ghost * visibility * closeness, 3);
 			const solid = round(levels.solid * visibility * closeness, 3);
@@ -178,21 +186,20 @@ export function createBoardPainter({ write, isLite }) {
 			const shown = ghost > 0.002 || solid > 0.002;
 			write(lineEntry.cache, "visibility", shown ? "visible" : "hidden", (value) => { lineEntry.el.style.visibility = value; });
 			if (shown) write(lineEntry.cache, "hold", lineMotion(board, line, time, beat, plan.F), (value) => { lineEntry.el.style.transform = lineEntry.base + value; });
-			const until = Number.isFinite(line.exitAt) ? Math.max(line.end + 1700, line.exitAt + line.exitSpan + 60) : line.end + 1700;
-			if (time >= line.start - 900 && time <= until) paintWords(plan, lineEntry, time, distance, beat);
+			if (time >= line.start - 900 && time <= lineEntry.animateUntil) paintWords(plan, board, lineEntry, time, distance, beat, fxPace);
 			else settleLine(lineEntry, time > line.end);
 		}
 		for (const item of entry.motifs) {
 			const motif = item.motif;
 			const startAt = motif.line === null ? board.appear + 250 : plan.lines[board.first + motif.line].start - 60;
-			const closeness = closenessOf(viewDepth(pose, motif.center), near);
+			const closeness = closenessOf(depthOf(motif.center), near);
 			if (time < startAt || visibility * closeness <= 0.002) {
 				write(item.cache, "visibility", "hidden", (value) => { item.el.style.visibility = value; });
 				continue;
 			}
 			write(item.cache, "visibility", "visible", (value) => { item.el.style.visibility = value; });
 			const since = time - startAt;
-			const entrance = clamp01(since / (520 * fxPaceOf(plan.pace)));
+			const entrance = clamp01(since / (520 * fxPace));
 			const lineDistance = motif.line === null ? 0 : progress - (board.first + motif.line);
 			const fade = motif.line === null ? 1 : lineDistance > 1.5 ? 0.6 : 1;
 			const scale = Math.max(0, easeOutBack(entrance)) * (1 + beat * 0.12);
@@ -201,7 +208,7 @@ export function createBoardPainter({ write, isLite }) {
 			write(item.cache, "transform",
 				"translate3d(" + round(motif.x) + "px," + round(motif.y) + "px," + round(motif.z) + "px) translate(-50%,-50%) rotate(" + round(rotation, 1) + "deg) scale(" + round(scale, 3) + ")",
 				(value) => { item.el.style.transform = value; });
-			const draw = round(1 - easeOutCubic(clamp01(since / (760 * fxPaceOf(plan.pace)))), 3);
+			const draw = round(1 - easeOutCubic(clamp01(since / (760 * fxPace))), 3);
 			write(item.cache, "draw", draw, (value) => {
 				// Not drawn yet, a round line cap would still show a dot where the stroke starts.
 				for (const path of item.paths) {

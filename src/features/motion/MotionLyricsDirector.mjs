@@ -39,5 +39,3 @@ export const motionDirector = Object.freeze({
 	vocabulary,
 	buildPrompt,
 });
-
-export { singsInto };

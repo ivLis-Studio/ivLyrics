@@ -209,16 +209,27 @@ export const fitHold = (line, board, ctx) => {
 	line.drift.z = Math.min(line.drift.z, deepest - depth);
 };
 
-/** How far in front of the viewer's focal plane a world point is (CSS z after the camera turns). */
-export const viewDepth = (pose, point) => {
-	const radians = (-pose.roll * Math.PI) / 180;
-	const x0 = point.x - pose.x;
-	const y0 = point.y - pose.y;
-	const z0 = point.z - pose.z;
-	const x1 = x0 * Math.cos(radians) - y0 * Math.sin(radians);
-	const y1 = x0 * Math.sin(radians) + y0 * Math.cos(radians);
-	const yaw = ((pose.yaw || 0) * Math.PI) / 180;
-	const pitch = ((pose.pitch || 0) * Math.PI) / 180;
-	const z2 = -x1 * Math.sin(yaw) + z0 * Math.cos(yaw);
-	return y1 * Math.sin(pitch) + z2 * Math.cos(pitch);
+/** Projects points into CSS z, sharing the camera's rotation across the frame. */
+export const createDepthReader = ({ x, y, z, roll, yaw, pitch }) => {
+	const rollAngle = (-roll * Math.PI) / 180;
+	const yawAngle = ((yaw || 0) * Math.PI) / 180;
+	const pitchAngle = ((pitch || 0) * Math.PI) / 180;
+	const rollCos = Math.cos(rollAngle);
+	const rollSin = Math.sin(rollAngle);
+	const yawCos = Math.cos(yawAngle);
+	const yawSin = Math.sin(yawAngle);
+	const pitchCos = Math.cos(pitchAngle);
+	const pitchSin = Math.sin(pitchAngle);
+	return (point) => {
+		const x0 = point.x - x;
+		const y0 = point.y - y;
+		const z0 = point.z - z;
+		const x1 = x0 * rollCos - y0 * rollSin;
+		const y1 = x0 * rollSin + y0 * rollCos;
+		const z2 = -x1 * yawSin + z0 * yawCos;
+		return y1 * pitchSin + z2 * pitchCos;
+	};
 };
+
+/** How far in front of the viewer's focal plane a world point is. */
+export const viewDepth = (pose, point) => createDepthReader(pose)(point);

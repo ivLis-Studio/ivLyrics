@@ -5,7 +5,7 @@ export function createMotionContrast({ document, stage, createImage, readCompute
 	// of our own); the halo round the type is stronger on bright parts, the shade over the frame lighter
 	// on dark ones. A picture that cannot be read (a YouTube player, the apps' own video) leaves both as they are.
 	const CONTRAST_MS = 300;
-	const contrast = { canvas: null, context: null, key: "", image: null, blocked: new Set(), cells: null, columns: 0, rows: 0, mean: null, at: -Infinity, paintedAt: -Infinity, frame: null };
+	const contrast = { canvas: null, context: null, key: "", image: null, blocked: new Set(), buffer: null, cells: null, columns: 0, rows: 0, mean: null, at: -Infinity, paintedAt: -Infinity, frame: null };
 	const contrastSource = (backdrop) => {
 		if (!backdrop || backdrop.querySelector?.("iframe")) return null;
 		const video = backdrop.querySelector?.("video");
@@ -42,8 +42,8 @@ export function createMotionContrast({ document, stage, createImage, readCompute
 			contrast.context = contrast.canvas.getContext("2d", { willReadFrequently: true });
 		}
 		if (!contrast.context) return;
-		contrast.canvas.width = columns;
-		contrast.canvas.height = rows;
+		if (contrast.canvas.width !== columns) contrast.canvas.width = columns;
+		if (contrast.canvas.height !== rows) contrast.canvas.height = rows;
 		const context = contrast.context;
 		const frame = contrast.frame || { rotate: 0, scale: 1, x: 0, y: 0 };
 		// object-fit: cover, then the camera's turn, zoom and shift.
@@ -57,7 +57,8 @@ export function createMotionContrast({ document, stage, createImage, readCompute
 		try {
 			context.drawImage(source.el, (-source.width * cover) / 2, (-source.height * cover) / 2, source.width * cover, source.height * cover);
 			const pixels = context.getImageData(0, 0, columns, rows).data;
-			const cells = new Float32Array(columns * rows);
+			if (contrast.buffer?.length !== columns * rows) contrast.buffer = new Float32Array(columns * rows);
+			const cells = contrast.buffer;
 			let sum = 0;
 			for (let index = 0; index < cells.length; index += 1) {
 				const value = (0.2126 * pixels[index * 4] + 0.7152 * pixels[index * 4 + 1] + 0.0722 * pixels[index * 4 + 2]) / 255;
@@ -75,6 +76,8 @@ export function createMotionContrast({ document, stage, createImage, readCompute
 		} catch {
 			// A picture from another origin cannot be read: left as it is.
 			contrast.blocked.add(source.key);
+			// Sizing resets the canvas's origin-clean flag for the next source.
+			contrast.canvas.width = columns;
 			contrast.cells = null;
 			contrast.mean = null;
 		}
@@ -107,16 +110,21 @@ export function createMotionContrast({ document, stage, createImage, readCompute
 		if (at - contrast.paintedAt < CONTRAST_MS) return;
 		contrast.paintedAt = at;
 		const stageRect = contrast.cells ? stage.getBoundingClientRect() : null;
+		const updates = [];
 		for (const entry of readMountedBoards()) {
 			for (const lineEntry of entry.lines) {
 				const shown = (lineEntry.cache.solid || 0) > 0.05;
 				const value = shown && stageRect ? brightnessBehind(lineEntry.el, stageRect) : null;
 				const level = value === null ? "" : String(round(value, 2));
-				write(lineEntry.cache, "lum", level, (next) => {
-					if (next === "") lineEntry.el.style.removeProperty("--lum");
-					else lineEntry.el.style.setProperty("--lum", next);
-				});
+				if (lineEntry.cache.lum !== level) updates.push({ lineEntry, level });
 			}
+		}
+		// Write the halos after measuring all lines to keep styles clean between reads.
+		for (const { lineEntry, level } of updates) {
+			write(lineEntry.cache, "lum", level, (next) => {
+				if (next === "") lineEntry.el.style.removeProperty("--lum");
+				else lineEntry.el.style.setProperty("--lum", next);
+			});
 		}
 	};
 

@@ -10,6 +10,18 @@ import { placeUnits, runUnits } from "./motionWordGroups.mjs";
 
 const TUNNEL_STEP = 1500;
 
+const stackBoardBlocks = (blocks, xOf, gapBetween) => {
+	let y = 0;
+	const places = blocks.map((block, index) => {
+		if (index) y += gapBetween(blocks[index - 1], block);
+		const place = { x: xOf(block, index), y: y + block.height / 2, z: 0, rot: 0, block };
+		y += block.height;
+		return place;
+	});
+	for (const place of places) place.y -= y / 2;
+	return places;
+};
+
 export const layoutColumn = (lines, ctx, random, look) => {
 	const align = ["left", "left", "center", "right", "stagger"][Math.floor(random() * 5)];
 	const blocks = lines.map((line, index) => layoutBlock(line, ctx, blockOptions(look, line, {
@@ -18,18 +30,12 @@ export const layoutColumn = (lines, ctx, random, look) => {
 		align: align === "stagger" ? (index % 2 ? "right" : "left") : align,
 	})));
 	const columnWidth = Math.max(...blocks.map((block) => block.width));
-	const places = [];
-	let y = 0;
-	blocks.forEach((block, index) => {
-		if (index) y += Math.max(blocks[index - 1].size, block.size) * 0.3;
-		let x = 0;
-		if (align === "left") x = -columnWidth / 2 + block.width / 2;
-		else if (align === "right") x = columnWidth / 2 - block.width / 2;
-		else if (align === "stagger") x = (index % 2 ? 1 : -1) * (columnWidth - block.width) * 0.42;
-		places.push({ x, y: y + block.height / 2, z: 0, rot: 0, block });
-		y += block.height;
-	});
-	places.forEach((place) => { place.y -= y / 2; });
+	const places = stackBoardBlocks(blocks, (block, index) => {
+		if (align === "left") return -columnWidth / 2 + block.width / 2;
+		if (align === "right") return columnWidth / 2 - block.width / 2;
+		if (align === "stagger") return (index % 2 ? 1 : -1) * (columnWidth - block.width) * 0.42;
+		return 0;
+	}, (previous, block) => Math.max(previous.size, block.size) * 0.3);
 	const frames = places.map((place) => ({ x: frameX(place, ctx, 0.55), y: place.y, z: 0, roll: 0 }));
 	return { places, frames, drift: { z: 80, roll: 1.4 } };
 };
@@ -89,20 +95,15 @@ export const layoutWall = (lines, ctx, random, look) => {
 	const width = ctx.W * 0.72;
 	const align = random() < 0.6 ? "left" : "center";
 	const alternate = random() < 0.5;
-	const places = [];
-	let y = 0;
-	lines.forEach((line, index) => {
+	const blocks = lines.map((line, index) => {
 		const options = blockOptions(look, line, { emphScale: 1.12, light: alternate && index % 2 === 1, align });
 		const natural = layoutBlock(line, ctx, { ...options, size: 100, maxLength: Infinity }).leadWidth / 100;
 		const size = clamp(width / Math.max(1, natural), ctx.F * 0.42, ctx.F * 2.3);
 		// The natural width already fits; the slack keeps rounding from wrapping it.
-		const block = layoutBlock(line, ctx, { ...options, size, maxLength: width * 1.02 });
-		if (index) y += Math.min(block.size, places[index - 1].block.size) * 0.07;
-		const x = align === "left" ? -width / 2 + block.width / 2 : 0;
-		places.push({ x, y: y + block.height / 2, z: 0, rot: 0, block });
-		y += block.height;
+		return layoutBlock(line, ctx, { ...options, size, maxLength: width * 1.02 });
 	});
-	places.forEach((place) => { place.y -= y / 2; });
+	const places = stackBoardBlocks(blocks, (block) => align === "left" ? -width / 2 + block.width / 2 : 0,
+		(previous, block) => Math.min(block.size, previous.size) * 0.07);
 	const frames = places.map((place) => ({
 		x: 0,
 		y: place.y,

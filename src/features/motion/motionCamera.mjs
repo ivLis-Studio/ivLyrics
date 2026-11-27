@@ -170,7 +170,7 @@ const movePose = (plan, index, time) => {
  * Also reports the dolly (pull-back) and the move in progress, for the
  * background.
  */
-export const cameraPose = (plan, time, pulses = plan?.pulses) => {
+export const cameraPose = (plan, time, pulses = plan?.pulses, index = lineIndexAt(plan, time)) => {
 	const lines = plan?.lines || [];
 	if (!lines.length) return { x: 0, y: 0, z: 0, roll: 0, yaw: 0, pitch: 0, dolly: 0, sway: null, beat: 0 };
 	let pose;
@@ -183,7 +183,6 @@ export const cameraPose = (plan, time, pulses = plan?.pulses) => {
 		pose.yaw += 24 * (1 - amount);
 		pose.pitch -= 10 * (1 - amount);
 	} else {
-		const index = lineIndexAt(plan, time);
 		const line = lines[index];
 		const next = lines[index + 1];
 		if (next && time > line.leave) {
@@ -255,10 +254,9 @@ export const boardVisibility = (board, time) => {
 };
 
 /** How far the edit is into an interlude, the intro or the outro (0: lyrics on screen, 1: only the video). */
-export const restAt = (plan, time) => {
+export const restAt = (plan, time, index = lineIndexAt(plan, time)) => {
 	const lines = plan?.lines || [];
 	if (!lines.length) return 0;
-	const index = lineIndexAt(plan, time);
 	if (index < 0) return 1 - easeInOutCubic(clamp01((time - plan.boards[0].appear) / 900));
 	const rest = lines[index].rest;
 	if (!rest || time <= rest.start) return 0;

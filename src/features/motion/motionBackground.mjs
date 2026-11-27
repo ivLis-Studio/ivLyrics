@@ -6,17 +6,26 @@ import { fxPaceOf } from "./motionTypeEffects.mjs";
 
 const BG_SWAY = Object.freeze({ slow: 3.4, mid: 4.2, fast: 4.8, rap: 4.4 });
 
+const COVER_CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+const coverScaleOf = (cos, sin, halfWidth, halfHeight, x, y) => {
+	let scale = 0;
+	for (const [cx, cy] of COVER_CORNERS) {
+		const dx = cx * halfWidth - x;
+		const dy = cy * halfHeight - y;
+		const localX = dx * cos - dy * sin;
+		const localY = dx * sin + dy * cos;
+		scale = Math.max(scale, Math.abs(localX) / halfWidth, Math.abs(localY) / halfHeight);
+	}
+	return scale;
+};
+
 /**
  * Smallest scale at which a width x height layer, turned by degrees and
  * moved by (x, y), still covers a screen of the same size.
  */
 export const coverScale = (degrees, width, height, x = 0, y = 0) => {
-	let scale = 0;
-	for (const [cx, cy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-		const local = rotate2d((cx * width) / 2 - x, (cy * height) / 2 - y, -degrees);
-		scale = Math.max(scale, Math.abs(local.x) / (width / 2), Math.abs(local.y) / (height / 2));
-	}
-	return scale;
+	const radians = (-degrees * Math.PI) / 180;
+	return coverScaleOf(Math.cos(radians), Math.sin(radians), width / 2, height / 2, x, y);
 };
 
 /**
@@ -27,7 +36,7 @@ export const coverScale = (degrees, width, height, x = 0, y = 0) => {
  * its own: a slow turn, drift and breath, and a swing past the camera's
  * turn while the camera travels between boards.
  */
-export const backgroundFrame = (plan, pose, time = NaN) => {
+export const backgroundFrame = (plan, pose, time = NaN, rest) => {
 	const timed = Number.isFinite(time);
 	let x = 0;
 	let y = 0;
@@ -55,7 +64,7 @@ export const backgroundFrame = (plan, pose, time = NaN) => {
 	if (timed) {
 		roll += uprightAt(plan, time);
 		// Interludes: the picture comes back upright under the camera's swing.
-		const rest = restAt(plan, time);
+		rest ??= restAt(plan, time);
 		if (rest > 0) roll += (Math.round(roll / 360) * 360 - roll) * rest;
 		const sway = BG_SWAY[plan.tempo] || BG_SWAY.mid;
 		const turn = plan.feel?.turn ?? 1;
@@ -66,8 +75,13 @@ export const backgroundFrame = (plan, pose, time = NaN) => {
 	}
 	// A viewer who turned rotation off never sees the picture turn.
 	if (plan.feel?.turn === 0) roll = 0;
-	const wanted = coverScale(-roll, plan.W, plan.H) * 1.14 * dolly * breath * (1 + (pose.beat || 0) * 0.06);
-	const scale = Math.max(wanted, coverScale(-roll, plan.W, plan.H, x, y) * 1.01);
+	const radians = (roll * Math.PI) / 180;
+	const cos = Math.cos(radians);
+	const sin = Math.sin(radians);
+	const halfWidth = plan.W / 2;
+	const halfHeight = plan.H / 2;
+	const wanted = coverScaleOf(cos, sin, halfWidth, halfHeight, 0, 0) * 1.14 * dolly * breath * (1 + (pose.beat || 0) * 0.06);
+	const scale = Math.max(wanted, coverScaleOf(cos, sin, halfWidth, halfHeight, x, y) * 1.01);
 	return { rotate: -roll, scale, x, y };
 };
 
