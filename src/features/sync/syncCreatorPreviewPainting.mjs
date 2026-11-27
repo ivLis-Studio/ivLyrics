@@ -1,7 +1,6 @@
 import { getSyncCreatorParallelPreviewChars, hasOrderedSyncCreatorTimes } from "./parallelTiming.mjs";
 import { resolveSyncCreatorPaintCharColor } from "./selectionTiming.mjs";
 import {
-    getSyncCreatorCompletedPreviewMarks, getSyncCreatorCompletedPreviewPercent,
     getSyncCreatorPreviewProgressIndex, readSyncCreatorPreviewTime,
 } from "./syncCreatorPlayback.mjs";
 
@@ -39,6 +38,15 @@ export function createSyncCreatorParallelPreviewTargets({
 	return targets;
 }
 
+function getIndependentPreviewPercent(times, position) {
+    let completed = 0;
+    for (const time of times) {
+        const mark = readSyncCreatorPreviewTime(time);
+        if (mark !== null && mark <= position) completed++;
+    }
+    return times.length === 0 ? 0 : completed / times.length * 100;
+}
+
 function createSyncCreatorPreviewPainting({ progressBackground, syncedBackground, getProgressGradient }) {
     function paintGlyphBackground(element, isSynced, isCompleted) {
         element.style.background = isSynced
@@ -47,17 +55,28 @@ function createSyncCreatorPreviewPainting({ progressBackground, syncedBackground
     }
 
     function paintParallelPreviews(previews, position) {
-        for (const preview of previews) {
-            if (preview.lastPosition === position) continue;
+        if (previews.size === 0) return;
+        for (const preview of previews.values()) {
+            const previousPosition = preview.lastPosition;
+            if (previousPosition === position) continue;
             preview.lastPosition = position;
             const { chars, ordered, elements, textRun, direction, color, mutedColor } = preview;
             if (!ordered) {
-                // Overlapping vocals can have independent marks in the rejoined text.
-                const completed = getSyncCreatorCompletedPreviewMarks(chars, position);
                 if (textRun) {
-                    textRun.style.backgroundImage = getProgressGradient(direction, getSyncCreatorCompletedPreviewPercent(completed), color, mutedColor);
+                    const percent = getIndependentPreviewPercent(chars, position);
+                    textRun.style.backgroundImage = getProgressGradient(direction, percent, color, mutedColor);
                 } else {
-                    elements.forEach((element, index) => paintGlyphBackground(element, readSyncCreatorPreviewTime(chars[index]) !== null, completed[index]));
+                    const firstPaint = preview.lastIndex === -2;
+                    preview.lastIndex = -1;
+                    for (let index = 0; index < elements.length; index++) {
+                        const mark = readSyncCreatorPreviewTime(chars[index]);
+                        const completed = mark !== null && mark <= position;
+                        const wasCompleted = mark !== null && mark <= previousPosition;
+                        // Timing changes register a fresh row and reset its first paint.
+                        if (firstPaint || completed !== wasCompleted) {
+                            paintGlyphBackground(elements[index], mark !== null, completed);
+                        }
+                    }
                 }
                 continue;
             }
@@ -80,25 +99,30 @@ function createSyncCreatorPreviewPainting({ progressBackground, syncedBackground
         }
     }
 
+    function paintActiveGlyph(element, color, completed) {
+        if (!element) return;
+        const { ivSyncCreatorRangeColor, ivSyncCreatorBaseColor, ivSyncCreatorSynced } = element.dataset;
+        element.style.color = resolveSyncCreatorPaintCharColor(ivSyncCreatorRangeColor, ivSyncCreatorBaseColor, color);
+        paintGlyphBackground(element, ivSyncCreatorSynced === '1', completed);
+    }
+
     function paintActivePreview({
         nextIndex, position, times, independent, paintedIndex, textRun,
         elements, glyphCount, direction, color, mutedColor,
     }) {
-        function paintTextRun(percent) {
-            textRun.style.backgroundImage = getProgressGradient(direction, percent, color, mutedColor);
-        }
-        function paintGlyph(element, completed) {
-            if (!element) return;
-            const { ivSyncCreatorRangeColor, ivSyncCreatorBaseColor, ivSyncCreatorSynced } = element.dataset;
-            element.style.color = resolveSyncCreatorPaintCharColor(ivSyncCreatorRangeColor, ivSyncCreatorBaseColor, color);
-            paintGlyphBackground(element, ivSyncCreatorSynced === '1', completed);
-        }
-
         if (independent && Number.isFinite(position)) {
             paintedIndex.current = -1;
-            const completed = getSyncCreatorCompletedPreviewMarks(times, position);
-            if (textRun) paintTextRun(getSyncCreatorCompletedPreviewPercent(completed));
-            else elements.forEach((element, index) => paintGlyph(element, completed[index]));
+            if (textRun) {
+                const percent = getIndependentPreviewPercent(times, position);
+                textRun.style.backgroundImage = getProgressGradient(direction, percent, color, mutedColor);
+            } else {
+                // React also paints this editable row. Reapply its current dataset on each
+                // position update, including when a render changed a glyph's range style.
+                for (let index = 0; index < elements.length; index++) {
+                    const mark = readSyncCreatorPreviewTime(times[index]);
+                    paintActiveGlyph(elements[index], color, mark !== null && mark <= position);
+                }
+            }
             return;
         }
 
@@ -111,7 +135,7 @@ function createSyncCreatorPreviewPainting({ progressBackground, syncedBackground
             const percent = glyphCount > 0 && normalizedIndex >= 0
                 ? Math.max(0, Math.min(100, ((normalizedIndex + 1) / glyphCount) * 100))
                 : 0;
-            paintTextRun(percent);
+            textRun.style.backgroundImage = getProgressGradient(direction, percent, color, mutedColor);
             return;
         }
 
@@ -121,7 +145,7 @@ function createSyncCreatorPreviewPainting({ progressBackground, syncedBackground
             ? glyphCount - 1
             : Math.min(glyphCount - 1, Math.max(previousIndex, normalizedIndex));
         for (let index = first; index <= last; index++) {
-            paintGlyph(elements[index], normalizedIndex >= 0 && index <= normalizedIndex);
+            paintActiveGlyph(elements[index], color, normalizedIndex >= 0 && index <= normalizedIndex);
         }
     }
 

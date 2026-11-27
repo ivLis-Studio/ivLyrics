@@ -56,20 +56,22 @@ export function useSyncCreatorPreviewTiming({
 export function createSyncCreatorActiveLinePainter({
     painting, times, line, refs,
 }) {
-    const independent = Array.isArray(times) && !hasOrderedSyncCreatorTimes(times);
-    return (nextIndex, position) => painting.paintActivePreview({
-        nextIndex,
-        position,
+    const input = {
         times,
-        independent,
+        independent: Array.isArray(times) && !hasOrderedSyncCreatorTimes(times),
         paintedIndex: refs.lastPaintedPlaybackIndexRef,
-        textRun: line.useTextRun ? refs.rtlTextRunRef.current : null,
-        elements: refs.charElementsRef.current,
         glyphCount: line.charCount,
         direction: line.direction,
         color: line.color,
         mutedColor: line.mutedColor,
-    });
+    };
+    return (nextIndex, position) => {
+        input.nextIndex = nextIndex;
+        input.position = position;
+        input.elements = refs.charElementsRef.current;
+        input.textRun = line.useTextRun ? refs.rtlTextRunRef.current : null;
+        painting.paintActivePreview(input);
+    };
 }
 
 export function useSyncCreatorEditorPreview({
@@ -98,7 +100,7 @@ export function useSyncCreatorEditorPreview({
                 nextIndex, getActiveRecordingLockIndex(), recordingCharIndexRef.current,
             ),
             getRecordingIndex: () => recordingCharIndexRef.current,
-            onParallelProgress: position => painting.paintParallelPreviews(parallelPreviewElementsRef.current.values(), position),
+            onParallelProgress: position => painting.paintParallelPreviews(parallelPreviewElementsRef.current, position),
             onPlaybackProgress,
             onRecordingProgress: applyRecordingProgressVisual,
             scheduleFrame, cancelFrame,
