@@ -14,9 +14,10 @@ export function syncCompactLyricsViewport({
 	// Auto-follow positions rows with transforms. Native scroll left by
 	// focus/scroll anchoring must not add a second, invisible displacement.
 	const container = containerRef.current;
-	if (container?.clientHeight === 0) return;
+	const height = container?.clientHeight;
+	if (height === 0) return;
 	if (container?.scrollTop) container.scrollTop = 0;
-	const nextOffset = getCompactSyncedOffset(containerRef.current, activeLineRef.current, isScrolling);
+	const nextOffset = getCompactSyncedOffset(container, activeLineRef.current, isScrolling, height);
 	setCompactOffset((prevOffset) => (
 		Math.abs(prevOffset - nextOffset) < 0.5 ? prevOffset : nextOffset
 	));

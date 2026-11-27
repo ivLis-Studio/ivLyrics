@@ -56,10 +56,10 @@ export function createSyncedLyricsEngine({
         // playback clock. Keep scroll styles stable so an unchanged row can retain
         // its memoized text and karaoke children while another row is singing.
         const speakerColors = getSpeakerColors();
-        const creatorSpeakerColorsEnabled = speakerColors?.isCreatorColorEnabled?.()
-            ?? (getVisualSettings()["sync-data-custom-speaker-colors-enabled"] !== false);
-        const configuredCreatorSpeakerColorsEnabled = getVisualSettings()["sync-data-custom-speaker-colors-enabled"] !== false;
-        const textEffectsEnabled = getVisualSettings()["karaoke-text-effects"] !== false;
+        const visual = getVisualSettings();
+        const configuredCreatorSpeakerColorsEnabled = visual["sync-data-custom-speaker-colors-enabled"] !== false;
+        const creatorSpeakerColorsEnabled = speakerColors?.isCreatorColorEnabled?.() ?? configuredCreatorSpeakerColorsEnabled;
+        const textEffectsEnabled = visual["karaoke-text-effects"] !== false;
         const reducedMotion = prefersReducedLyricsMotion();
         const getLinePresentation = useMemo(() => {
             const cache = new WeakMap();
@@ -106,16 +106,17 @@ export function createSyncedLyricsEngine({
             [paddedLyrics, layoutPosition, lineStartIndex]
         );
         const activeLineIndex = useMemo(
-            () => getActiveTimedLineIndex(paddedLyrics, position, lineStartIndex),
-            [paddedLyrics, position, lineStartIndex]
+            () => layoutPosition === position ? layoutActiveLineIndex
+                : getActiveTimedLineIndex(paddedLyrics, position, lineStartIndex),
+            [paddedLyrics, position, layoutPosition, layoutActiveLineIndex, lineStartIndex]
         );
         const shouldPrecenterKaraokeTransitions = isKara
             && (compact || !isScrolling)
-            && getVisualSettings()["karaoke-line-transition"]
-            && !prefersReducedLyricsMotion();
+            && visual["karaoke-line-transition"]
+            && !reducedMotion;
         const usesScriptedCompactLineShift = compact && !isScrolling
-            && (!isKara || getVisualSettings()["karaoke-line-transition"])
-            && !prefersReducedLyricsMotion()
+            && (!isKara || visual["karaoke-line-transition"])
+            && !reducedMotion
             && supportsLineAnimation();
         const visualLineIndex = useMemo(() => {
             return shouldPrecenterKaraokeTransitions
@@ -141,7 +142,7 @@ export function createSyncedLyricsEngine({
             ? display.indexByLineNumber.get(visualLineIndex) ?? Math.min(visualLineIndex, lastDisplayIndex)
             : visualLineIndex;
 
-        const linesBefore = getVisualSettings()["lines-before"];
+        const linesBefore = visual["lines-before"];
         const compactWindowStartIndex = useMemo(() => {
             if (!compact) {
                 return 0;
@@ -210,8 +211,8 @@ export function createSyncedLyricsEngine({
             containerRef, container, activeLineRef, lyricsId, settingsRevision, anchorRevision,
         });
         const lyricMotionDetailsEnabled = (compact || !isScrolling) && (!suppressLayoutShiftAnimation || usesScriptedCompactLineShift)
-            && (!isKara || getVisualSettings()["karaoke-line-transition"])
-            && !prefersReducedLyricsMotion();
+            && (!isKara || visual["karaoke-line-transition"])
+            && !reducedMotion;
         const activeInterlude = trailingInterludeLine
             || (paddedLyrics[layoutActiveLineIndex]?.interludeInfo?.isInterlude ? paddedLyrics[layoutActiveLineIndex] : null);
         const interludeNextStart = activeInterlude ? paddedLyrics[layoutActiveLineIndex + 1]?.startTime : null;
@@ -296,9 +297,9 @@ export function createSyncedLyricsEngine({
         // Plain line sync changes at line boundaries. Its rows do not consume the
         // continuous playhead; all boundary, display and settings inputs stay live.
         const itemPlaybackInterval = isKara ? getSyncedPlaybackBoundaryIndex(playbackBoundaries, position) : 0;
-        const bounceEnabled = getVisualSettings()["karaoke-bounce"] === true;
-        const linesAfter = getVisualSettings()["lines-after"];
-        const keepPreviousDuringInterlude = getVisualSettings()["instrumental-break-keep-previous"] === true;
+        const bounceEnabled = visual["karaoke-bounce"] === true;
+        const linesAfter = visual["lines-after"];
+        const keepPreviousDuringInterlude = visual["instrumental-break-keep-previous"] === true;
         const firstLyricStartTime = lyrics[0]?.startTime || 1;
         const isBeforeFirstLyric = layoutPosition < firstLyricStartTime;
         const isPreludeHandoff = lyricMotionDetailsEnabled && isBeforeFirstLyric

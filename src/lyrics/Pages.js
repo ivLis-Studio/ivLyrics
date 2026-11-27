@@ -424,6 +424,7 @@ export function createLyricsRenderer({
 		renderLyricMainContent: createLyricMainContentRenderer({ react, getKaraokeLine: () => KaraokeLine, hasKaraokeVocalRows }),
 		formatLyricLineToCopy: (...args) => getUtils().formatLyricLineToCopy(...args),
 		actions: lyricLineActions,
+		readSeekTitleLocale: () => window.I18n?.getCurrentLanguage?.(),
 	});
 	const { renderLyricsItems, prepareLiveSyncedRenderItems, advanceLiveSyncedRenderItems } =
 		createSyncedLyricRows({ react, IdlingIndicator, LyricsLineBlock });
@@ -692,6 +693,7 @@ export function createLyricsRenderer({
 
 	const { SyncedLyricsPage, SyncedExpandedLyricsPage, useKaraokeLiveClock } = createSyncedLyricsPages({
 		react, translate: key => I18n.t(key),
+		readInterfaceLanguage: () => I18n.getCurrentLanguage?.(),
 		readKaraokeLineTransition: () => CONFIG.visual["karaoke-line-transition"],
 		prefersReducedLyricsMotion, useLyricsPlaybackPosition, getFrameAlignedLyricsPlaybackPosition,
 		getPseudoKaraokeRenderAdvance, useSyncedLyricsEngine, renderLyricsItems, useLyricsTrackReveal, renderLyricsUnavailable,

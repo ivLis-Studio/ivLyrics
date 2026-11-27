@@ -97,6 +97,7 @@ export function createSyncedLyricRows({ react, IdlingIndicator, LyricsLineBlock 
 	};
 
 	const advanceLiveSyncedRenderItems = (frame, position) => {
+		if (frame.liveIndices.length === 0) return frame.items;
 		let items = frame.items;
 		const indices = [];
 		for (const index of frame.liveIndices) {

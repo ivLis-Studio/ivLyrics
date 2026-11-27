@@ -55,7 +55,7 @@ export function createLyricMainContentRenderer({ react, getKaraokeLine, hasKarao
 export function createLyricsLineBlock({
 	react, InterludeIndicator, getInterludeInfo, hasKaraokeVocalRows,
 	getPhoneticFillUnits, renderPhoneticFillSubLine, renderLyricSubLine, renderLyricMainContent,
-	formatLyricLineToCopy, actions, renderMainHtml = renderAnnotatedLyricHTML,
+	formatLyricLineToCopy, actions, readSeekTitleLocale, renderMainHtml = renderAnnotatedLyricHTML,
 }) {
 	const { useMemo, useCallback } = react;
 	const { createCopyHandler, selectLine, formatLyricsSeekTitle } = actions;
@@ -149,6 +149,10 @@ export function createLyricsLineBlock({
 			return props;
 		}, [mainProps, shouldRenderInterlude, singleLineScroll, mainHtml]);
 
+		const canSeek = !hiddenFromAccessibility && Number.isFinite(seekTime);
+		const titleLocale = canSeek ? readSeekTitleLocale?.() : null;
+		const localizedSeekTitle = useMemo(() => titleLocale ? formatLyricsSeekTitle(seekTime) : null,
+			[titleLocale, seekTime, settingsRevision]);
 		const handleClick = useCallback(event => selectLine(seekTime, isKara, event), [seekTime, isKara]);
 		const handleKeyDown = useCallback((event) => {
 			if (!Number.isFinite(seekTime) || !["Enter", " ", "Spacebar"].includes(event.key)) return;
@@ -234,11 +238,11 @@ export function createLyricsLineBlock({
 				dir,
 				ref: lineRef,
 				"aria-hidden": hiddenFromAccessibility ? true : undefined,
-				onClick: !hiddenFromAccessibility && Number.isFinite(seekTime) ? handleClick : null,
-				...(!hiddenFromAccessibility && Number.isFinite(seekTime) ? {
+				onClick: canSeek ? handleClick : null,
+				...(canSeek ? {
 					role: "button",
 					tabIndex: 0,
-					title: formatLyricsSeekTitle(seekTime),
+					title: localizedSeekTitle ?? formatLyricsSeekTitle(seekTime),
 					"data-lyrics-seek-time": seekTime,
 					onKeyDown: handleKeyDown,
 				} : {}),

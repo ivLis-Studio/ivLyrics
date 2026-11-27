@@ -20,7 +20,7 @@ const plain = value => JSON.parse(JSON.stringify(value, (key, entry) => {
   return typeof entry === 'function' ? { callback: entry.copyArguments || 'handler' } : entry;
 }));
 
-function renderer(source) {
+function renderer(source, readSeekTitleLocale) {
   const slots = [];
   let cursor = 0;
   const memo = (make, dependencies) => {
@@ -72,6 +72,7 @@ function renderer(source) {
       hasKaraokeVocalRows: context.hasKaraokeVocalRows,
       formatLyricLineToCopy: context.Utils.formatLyricLineToCopy,
       actions: { ...actions, createCopyHandler: context.createCopyHandler },
+      readSeekTitleLocale,
     });
   } else {
     vm.runInContext(part('const renderAnnotatedLyricHTML', 'const renderLyricMainContent') +
@@ -148,4 +149,23 @@ test('seekable rows show a localized seek label with minutes and seconds', () =>
   delete next.context.I18n;
   assert.equal(next.render({ ...props, seekTime: 600000 }).props.title, '10:00');
   assert.equal(next.render({ ...props, seekTime: null }).props.title, undefined);
+});
+
+test('playback reuses seek titles and picks up a language change on the next render', () => {
+  let language = 'en';
+  let translations = 0;
+  const next = renderer(current, () => language);
+  next.context.I18n = { t: (key, { time }) => {
+    translations++;
+    return `${language} ${time}`;
+  } };
+  for (let frame = 0; frame < 60; frame++) {
+    assert.equal(next.render({ seekTime: 5000, position: frame }).props.title, 'en 0:05');
+  }
+  assert.equal(translations, 1);
+  language = 'ko';
+  assert.equal(next.render({ seekTime: 5000, position: 60 }).props.title, 'ko 0:05');
+  assert.equal(translations, 2);
+  assert.equal(next.render({ seekTime: 5000, hiddenFromAccessibility: true }).props.title, undefined);
+  assert.equal(translations, 2);
 });

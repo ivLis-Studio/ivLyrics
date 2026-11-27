@@ -1,7 +1,7 @@
 import { observeActiveKaraokeVocalRows } from "./activeKaraokeVocalRows.mjs";
 
 export function createSyncedLyricsPages({
-    react, translate, readKaraokeLineTransition, prefersReducedLyricsMotion,
+    react, translate, readInterfaceLanguage, readKaraokeLineTransition, prefersReducedLyricsMotion,
     useLyricsPlaybackPosition, getFrameAlignedLyricsPlaybackPosition, getPseudoKaraokeRenderAdvance,
     useSyncedLyricsEngine, renderLyricsItems, useLyricsTrackReveal, renderLyricsUnavailable,
     LyricsBackdropLayer, SearchBar,
@@ -83,6 +83,9 @@ export function createSyncedLyricsPages({
             lyrics, trackUri, isKara, karaokeSource, karaokeRenderGranularity, reRenderLyricsPage, trackRevealKey,
         }, { compact: true, activeLineRef, attachActiveLine, anchorRevision });
         const className = "lyrics-lyricsContainer-SyncedLyricsPage";
+        const labelLanguage = page.hasLyrics ? readInterfaceLanguage?.() : null;
+        const localizedLabel = useMemo(() => labelLanguage ? translate("lyricsTitle") : null,
+            [labelLanguage, reRenderLyricsPage]);
         if (!page.hasLyrics) return react.createElement("div", { className }, renderLyricsUnavailable(translate("messages.noLyrics")));
         return react.createElement(
             "div",
@@ -92,7 +95,7 @@ export function createSyncedLyricsPages({
                 onClick: page.handleContainerClick,
                 tabIndex: 0,
                 role: "region",
-                "aria-label": translate("lyricsTitle") || "Synced lyrics",
+                "aria-label": (localizedLabel ?? translate("lyricsTitle")) || "Synced lyrics",
             },
             react.createElement("div", {
                 className: "lyrics-lyricsContainer-SyncedLyrics",

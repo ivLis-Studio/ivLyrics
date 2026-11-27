@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { createLyricsScrollGeometry } from "../src/lyrics/lyricsScrollGeometry.mjs";
 import { syncCompactLyricsViewport } from "../src/lyrics/syncedLyricsViewport.mjs";
 import { createLyricsTrackRevealHook, playLyricsTrackReveal } from "../src/lyrics/lyricsTrackReveal.mjs";
 import { createSyncedLyricsPages } from "../src/lyrics/createSyncedLyricsPages.mjs";
@@ -289,6 +290,23 @@ test("compact auto-follow clears native scroll before measuring its transform of
       "an observer queued before native scrolling is consumed before the corrected measurement");
     assert.equal(h.offset, 280);
   }
+});
+
+test("compact centering reads the container height once for visibility and anchor geometry", () => {
+  let heightReads = 0;
+  const container = { scrollTop: 28, get clientHeight() { heightReads++; return 600; } };
+  const activeLine = { offsetTop: 170, offsetParent: container, clientHeight: 60 };
+  const { getCompactSyncedOffset } = createLyricsScrollGeometry(() => ({ getPropertyValue: () => "0.6" }));
+  let offset = 0;
+  syncCompactLyricsViewport({
+    compact: true, isScrolling: false,
+    containerRef: { current: container }, activeLineRef: { current: activeLine },
+    layoutObserverRef: { current: null }, getCompactSyncedOffset,
+    setCompactOffset(update) { offset = update(offset); },
+  });
+  assert.equal(container.scrollTop, 0);
+  assert.equal(heightReads, 1);
+  assert.equal(offset, 160);
 });
 
 test("manual lyric scrolling keeps its native scroll position when compact offset updates", () => {

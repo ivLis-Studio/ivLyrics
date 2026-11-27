@@ -92,13 +92,13 @@ export function createLyricsScrollGeometry(readComputedStyle) {
 			: 0.5;
 	};
 
-	const getCompactSyncedOffset = (container, activeLine, isScrolling) => {
+	const getCompactSyncedOffset = (container, activeLine, isScrolling, measuredHeight) => {
 		if (!container || !activeLine || isScrolling) {
 			return 0;
 		}
 
 		const anchorRatio = getLyricsAnchorRatio(container);
-		const anchorOffset = container.clientHeight * anchorRatio;
+		const anchorOffset = (measuredHeight ?? container.clientHeight) * anchorRatio;
 		const activeLineTop = getElementOffsetTopWithin(activeLine, container);
 		return anchorOffset - (activeLineTop + getActiveLineAnchorCenter(activeLine));
 	};
