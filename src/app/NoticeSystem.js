@@ -5,6 +5,9 @@ import { waitForAppUpdateDialogClose } from "#ivlyrics/features/updates/updateDi
 // 서버에서 공지사항을 가져와 사용자에게 표시합니다
 import { createNoticeRepository } from "./noticeRepository.mjs";
 import { NOTICE_STYLES } from "./noticeStyles.mjs";
+import { compareDottedVersions } from "../core/compareDottedVersions.mjs";
+import { cycleDialogTabFocus, getNotificationFocusableElements } from "./modal/dialogTabFocus.mjs";
+import { createNotificationIcon, getNotificationTheme, NOTIFICATION_ICON_SHAPES } from "./notificationPresentation.mjs";
 
 export function createNoticeSystem({
     host: window, document, spicetify: Spicetify, i18n: I18n,
@@ -42,28 +45,15 @@ export function createNoticeSystem({
         }
     };
 
-    const getNoticeUiTheme = () => {
-        try {
-            const storedTheme =
-                getPersistence()?.getItem?.("ivLyrics:settings-ui-theme") ??
-                getStorage().getItem("ivLyrics:settings-ui-theme");
-            return storedTheme === "light" ? "light" : "dark";
-        } catch {
-            return "dark";
-        }
-    };
+    const getNoticeUiTheme = () => getNotificationTheme((key) =>
+        getPersistence()?.getItem?.(key) ?? getStorage().getItem(key));
 
     const NOTICE_ICON_SHAPES = {
+        ...NOTIFICATION_ICON_SHAPES,
         info: [
             ["circle", { cx: 12, cy: 12, r: 9 }],
             ["path", { d: "M12 11v5" }],
             ["path", { d: "M12 8h.01" }],
-        ],
-        update: [
-            ["path", { d: "M20 6v5h-5" }],
-            ["path", { d: "M4 18v-5h5" }],
-            ["path", { d: "M6.1 9a7 7 0 0 1 11.7-2.6L20 11" }],
-            ["path", { d: "M4 13l2.2 4.6A7 7 0 0 0 17.9 15" }],
         ],
         warning: [
             ["path", { d: "M10.3 3.7 2.5 17.2A2 2 0 0 0 4.2 20h15.6a2 2 0 0 0 1.7-2.8L13.7 3.7a2 2 0 0 0-3.4 0Z" }],
@@ -77,15 +67,6 @@ export function createNoticeSystem({
             ["path", { d: "M18 8h.01" }],
             ["path", { d: "M18 3l.4 1.5L20 5l-1.6.5L18 7l-.4-1.5L16 5l1.6-.5L18 3Z" }],
             ["path", { d: "M15 13l.4 1.5 1.6.5-1.6.5L15 17l-.4-1.5L13 15l1.6-.5L15 13Z" }],
-        ],
-        close: [
-            ["path", { d: "m18 6-12 12" }],
-            ["path", { d: "m6 6 12 12" }],
-        ],
-        external: [
-            ["path", { d: "M15 3h6v6" }],
-            ["path", { d: "m10 14 11-11" }],
-            ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" }],
         ],
         dismissAll: [
             ["circle", { cx: 12, cy: 12, r: 9 }],
@@ -104,29 +85,9 @@ export function createNoticeSystem({
         ],
     };
 
-    const createNoticeIcon = (name, size = 20) => {
-        const react = getNoticeReact();
-        const shapes = NOTICE_ICON_SHAPES[name] || NOTICE_ICON_SHAPES.info;
-
-        return react.createElement(
-            "svg",
-            {
-                width: size,
-                height: size,
-                viewBox: "0 0 24 24",
-                fill: "none",
-                stroke: "currentColor",
-                strokeWidth: 2,
-                strokeLinecap: "round",
-                strokeLinejoin: "round",
-                "aria-hidden": "true",
-                focusable: "false",
-            },
-            shapes.map(([element, props], index) =>
-                react.createElement(element, { ...props, key: `${name}-${index}` })
-            )
-        );
-    };
+    const createNoticeIcon = (name, size = 20) => createNotificationIcon(
+        getNoticeReact(), name, size, NOTICE_ICON_SHAPES[name] || NOTICE_ICON_SHAPES.info
+    );
 
     /**
      * 공지사항 데이터 구조:
@@ -158,27 +119,6 @@ export function createNoticeSystem({
      */
 
     /**
-     * 버전 문자열 비교 (Utils 로드 전에도 사용 가능)
-     * @param {string} a - 첫 번째 버전 (예: "1.1.0")
-     * @param {string} b - 두 번째 버전 (예: "1.0.9")
-     * @returns {number} - a > b면 1, a < b면 -1, 같으면 0
-     */
-    const compareVersions = (a, b) => {
-        const aParts = a.split(".").map(Number);
-        const bParts = b.split(".").map(Number);
-
-        for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
-            const aPart = aParts[i] || 0;
-            const bPart = bParts[i] || 0;
-
-            if (aPart > bPart) return 1;
-            if (aPart < bPart) return -1;
-        }
-
-        return 0;
-    };
-
-    /**
      * 공지사항의 실제 dismissible 상태를 계산합니다.
      * @param {Object} notice - 공지사항 객체
      * @returns {boolean} - 닫기 가능 여부
@@ -201,7 +141,7 @@ export function createNoticeSystem({
             const minVersion = notice.min_version;
 
             // 현재 버전 >= min_version 이면 닫기 가능
-            const comparison = compareVersions(currentVersion, minVersion);
+            const comparison = compareDottedVersions(currentVersion, minVersion);
             return comparison >= 0;
         } catch (e) {
             console.error("[NoticeSystem] Failed to compare versions:", e);
@@ -257,32 +197,6 @@ export function createNoticeSystem({
             const modal = modalRef.current;
             if (!modal) return undefined;
 
-            const getFocusableElements = () => Array.from(modal.querySelectorAll(
-                'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
-            )).filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
-
-            const handleTabKey = (event) => {
-                const focusable = getFocusableElements();
-                if (!focusable.length) {
-                    event.preventDefault();
-                    modal.focus();
-                    return;
-                }
-
-                const first = focusable[0];
-                const last = focusable[focusable.length - 1];
-                if (event.shiftKey && (document.activeElement === first || document.activeElement === modal)) {
-                    event.preventDefault();
-                    last.focus();
-                } else if (!event.shiftKey && document.activeElement === modal) {
-                    event.preventDefault();
-                    first.focus();
-                } else if (!event.shiftKey && document.activeElement === last) {
-                    event.preventDefault();
-                    first.focus();
-                }
-            };
-
             const handleKeydown = (event) => {
                 if (event.key === "Escape" && isDismissible) {
                     event.preventDefault();
@@ -292,7 +206,10 @@ export function createNoticeSystem({
 
                 if (event.key !== "Tab") return;
 
-                handleTabKey(event);
+                cycleDialogTabFocus(event, document.activeElement, getNotificationFocusableElements(modal), {
+                    fallback: modal,
+                    containerEdge: modal,
+                });
             };
 
             document.addEventListener("keydown", handleKeydown);

@@ -2,6 +2,7 @@ import { getSettingsSurfaceTokenCss } from "../../features/settings/settingsSurf
 import { getSettingsSurfaceTheme } from "../../features/settings/settingsSurfaceTheme.mjs";
 import { canMountReactDom, createReactDomMount, createReactMountBoundary } from "../../spicetify/routeReactDom.mjs";
 import { FLUENT_MODAL_CSS } from "./fluentModalStyles.mjs";
+import { cycleDialogTabFocus } from "./dialogTabFocus.mjs";
 
 export function createFluentModalHost({
   overlayId,
@@ -107,22 +108,7 @@ export function createFluentModalHost({
     }
 
     if (event.key === "Tab" && trapFocus) {
-      const focusable = getFocusableElements();
-      if (!focusable.length) {
-        event.preventDefault();
-        shell.focus();
-        return;
-      }
-
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
+      cycleDialogTabFocus(event, document.activeElement, getFocusableElements(), { fallback: shell });
     }
   };
 
