@@ -1,15 +1,16 @@
-const SPEAKER_PALETTE = [
-    { color: '#a8ccff', fallback: 'MALE 1' },
-    { color: '#ffb8c7', fallback: 'FEMALE 1' },
-    { color: '#e4d8ff', fallback: 'DUET 1' },
-    { color: '#9ae8d4', fallback: 'MALE 2' },
-    { color: '#ffd6b3', fallback: 'FEMALE 2' },
-    { color: '#d6e4ff', fallback: 'DUET 2' }
-];
+import { parsePlainLyrics as parsePlainLyricLines } from "./plainLyrics.mjs";
+import { LYRICS_SPEAKER_PALETTE } from "./lyricsSpeakerPalette.mjs";
+const OPEN_LYRICS_SPEAKER_PALETTE = LYRICS_SPEAKER_PALETTE.slice(0, 6);
 
 export function toMilliseconds(value) {
     const number = Number(value);
     return Number.isFinite(number) ? Math.max(0, Math.round(number)) : null;
+}
+
+export function getStructuredLineStart(line) {
+    return toMilliseconds(line?.timestamp)
+        ?? toMilliseconds(line?.text?.[0]?.timestamp)
+        ?? 0;
 }
 
 const XML_TEXT_ENTITIES = Object.freeze({
@@ -138,7 +139,7 @@ export function getSpeakerPresentation(line, agentOrder) {
     if (index <= 0) {
         return { speaker: 'NORMAL', openLyricsAgent: agent || null };
     }
-    const palette = SPEAKER_PALETTE[(index - 1) % SPEAKER_PALETTE.length];
+    const palette = OPEN_LYRICS_SPEAKER_PALETTE[(index - 1) % OPEN_LYRICS_SPEAKER_PALETTE.length];
     return {
         speaker: 'CUSTOM',
         'speaker-color': palette.color,
@@ -164,11 +165,5 @@ export function createVocalPart(id, role, syllables, presentation) {
 }
 
 export function parsePlainLyrics(value) {
-    const unsynced = String(value || '')
-        .replace(/^\uFEFF/, '')
-        .split(/\r?\n/)
-        .map(line => decodeLyricTextEntities(line).trim())
-        .filter(Boolean)
-        .map(text => ({ text }));
-    return { karaoke: null, synced: null, unsynced };
+    return parsePlainLyricLines(value, decodeLyricTextEntities);
 }

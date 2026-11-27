@@ -1,5 +1,5 @@
 import {
-    createVocalPart, decodeLyricTextEntities, getSpeakerPresentation, parsePlainLyrics,
+    createVocalPart, decodeLyricTextEntities, getSpeakerPresentation, getStructuredLineStart, parsePlainLyrics,
     parseStructuredReferenceLines, parseTimedTokens, toMilliseconds,
 } from "./openLyricsTokens.mjs";
 import { getStructuredLineText, isNoLyricsPlaceholderText } from "./openLyricsMetadata.mjs";
@@ -19,9 +19,7 @@ export function createOpenLyricsStructuredParser({ metadataFilter, readSharedPar
                 ? line.backgroundText.map(item => decodeLyricTextEntities(item?.text)).join('').trim()
                 : decodeLyricTextEntities(line?.backgroundText).trim();
             if (backgroundText) return false;
-            const startTime = toMilliseconds(line?.timestamp)
-                ?? toMilliseconds(line?.text?.[0]?.timestamp)
-                ?? 0;
+            const startTime = getStructuredLineStart(line);
             return isNoLyricsPlaceholderText(getStructuredLineText(line, referenceLines.get(startTime)));
         })) return null;
 
@@ -37,9 +35,7 @@ export function createOpenLyricsStructuredParser({ metadataFilter, readSharedPar
             if (agent && !agentOrder.has(agent)) agentOrder.set(agent, agentOrder.size);
         });
 
-        const rawStarts = rawLines.map(line => (
-            toMilliseconds(line?.timestamp) ?? toMilliseconds(line?.text?.[0]?.timestamp) ?? 0
-        ));
+        const rawStarts = rawLines.map(getStructuredLineStart);
         const syncType = String(payload?.syncType || '').toLowerCase();
         const hasSyllableSync = syncType === 'syllable';
 

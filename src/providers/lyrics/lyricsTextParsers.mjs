@@ -1,14 +1,6 @@
-const SPEAKER_PALETTE = [
-    { color: '#a8ccff', fallback: 'MALE 1' },
-    { color: '#ffb8c7', fallback: 'FEMALE 1' },
-    { color: '#e4d8ff', fallback: 'DUET 1' },
-    { color: '#9ae8d4', fallback: 'MALE 2' },
-    { color: '#ffd6b3', fallback: 'FEMALE 2' },
-    { color: '#d6e4ff', fallback: 'DUET 2' },
-    { color: '#bfe8ff', fallback: 'MALE 3' },
-    { color: '#f6c8ff', fallback: 'FEMALE 3' },
-    { color: '#ffddf2', fallback: 'DUET 3' }
-];
+import { parsePlainLyrics } from "./plainLyrics.mjs";
+import { LYRICS_SPEAKER_PALETTE } from "./lyricsSpeakerPalette.mjs";
+export { parsePlainLyrics };
 
 export function parseTimeMs(value) {
     if (typeof value === 'number' && Number.isFinite(value)) {
@@ -255,7 +247,7 @@ function getSpeakerPresentation(agentId, agentOrder) {
         };
     }
 
-    const palette = SPEAKER_PALETTE[(index - 1) % SPEAKER_PALETTE.length];
+    const palette = LYRICS_SPEAKER_PALETTE[(index - 1) % LYRICS_SPEAKER_PALETTE.length];
     return {
         speaker: 'CUSTOM',
         'speaker-color': palette.color,
@@ -499,14 +491,4 @@ export function parseLrcLyrics(lrc, durationMs = 0) {
         synced,
         unsynced: synced.map(line => ({ text: line.text }))
     };
-}
-
-export function parsePlainLyrics(plain) {
-    const unsynced = String(plain || '')
-        .replace(/^\uFEFF/, '')
-        .split(/\r?\n/)
-        .map(line => line.trim())
-        .filter(Boolean)
-        .map(text => ({ text }));
-    return { karaoke: null, synced: null, unsynced };
 }

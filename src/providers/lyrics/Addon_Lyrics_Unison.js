@@ -16,6 +16,8 @@
 import { writeRuntimeDebug } from "#ivlyrics/spicetify/runtimeDebug.mjs";
 import { registerLyricsAddon } from "./lyricsAddonRegistration.mjs";
 import { getRuntimeService, publishRuntimeService } from "../../spicetify/runtimeServices.mjs";
+import { createAttributedLyricsResult } from "./createAttributedLyricsResult.mjs";
+import { renderLyricsAttributionSettings } from "./renderLyricsAttributionSettings.mjs";
 import { createProviderText } from "../providerText.mjs";
 import {
     parseTimeMs,
@@ -205,35 +207,17 @@ export default function initializeUnisonLyricsAddon() {
         getSettingsUI() {
             const React = Spicetify.React;
             return function UnisonLyricsSettings() {
-                return React.createElement('div', { className: 'ai-addon-settings unison-settings' },
-                    React.createElement('div', { className: 'ai-addon-setting', style: { marginTop: '16px' } },
-                        React.createElement('div', { className: 'ai-addon-info-box' },
-                            React.createElement('p', { style: { fontWeight: 700, marginBottom: '8px' } }, 'Unison'),
-                            React.createElement('p', { style: { marginBottom: '8px' } }, lyricsText('attribution', ATTRIBUTION, { source: 'Unison (https://unison.boidu.dev)' })),
-                            React.createElement('a', {
-                                href: 'https://github.com/better-lyrics/unison',
-                                target: '_blank',
-                                rel: 'noreferrer'
-                            }, 'github.com/better-lyrics/unison')
-                        )
-                    )
-                );
+                return renderLyricsAttributionSettings(React, {
+                    className: 'unison-settings',
+                    title: 'Unison',
+                    attribution: lyricsText('attribution', ATTRIBUTION, { source: 'Unison (https://unison.boidu.dev)' }),
+                    link: { href: 'https://github.com/better-lyrics/unison', text: 'github.com/better-lyrics/unison' }
+                });
             };
         },
 
         async getLyrics(info, { signal } = {}) {
-            const result = {
-                uri: info?.uri || '',
-                provider: ADDON_INFO.id,
-                cacheVersion: CACHE_VERSION,
-                skipCache: true,
-                karaoke: null,
-                synced: null,
-                unsynced: null,
-                karaokeSource: null,
-                copyright: ATTRIBUTION,
-                error: null
-            };
+            const result = createAttributedLyricsResult(info, ADDON_INFO, ATTRIBUTION, { skipCache: true });
 
             const title = String(info?.title || '').trim();
             const artist = String(info?.artist || '').trim();

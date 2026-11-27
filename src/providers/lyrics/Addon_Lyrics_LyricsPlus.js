@@ -18,6 +18,8 @@ import { readTrackIdentityService } from "../../core/trackIdentity.mjs";
  */
 
 import { getRuntimeService } from "../../spicetify/runtimeServices.mjs";
+import { createAttributedLyricsResult } from "./createAttributedLyricsResult.mjs";
+import { renderLyricsAttributionSettings } from "./renderLyricsAttributionSettings.mjs";
 import { createProviderText } from "../providerText.mjs";
 import { registerLyricsAddon } from "./lyricsAddonRegistration.mjs";
 
@@ -94,34 +96,17 @@ export default function initializeLyricsPlusLyricsAddon() {
         getSettingsUI() {
             const React = Spicetify.React;
             return function LyricsPlusLyricsSettings() {
-                return React.createElement('div', { className: 'ai-addon-settings lyricsplus-settings' },
-                    React.createElement('div', { className: 'ai-addon-setting', style: { marginTop: '16px' } },
-                        React.createElement('div', { className: 'ai-addon-info-box' },
-                            React.createElement('p', { style: { fontWeight: 700, marginBottom: '8px' } }, 'LyricsPlus'),
-                            React.createElement('p', { style: { marginBottom: '8px' } }, lyricsText('attribution', ATTRIBUTION, { source: 'LyricsPlus' })),
-                            React.createElement('a', {
-                                href: 'https://github.com/ibratabian17/lyricsplus',
-                                target: '_blank',
-                                rel: 'noreferrer'
-                            }, 'github.com/ibratabian17/lyricsplus')
-                        )
-                    )
-                );
+                return renderLyricsAttributionSettings(React, {
+                    className: 'lyricsplus-settings',
+                    title: 'LyricsPlus',
+                    attribution: lyricsText('attribution', ATTRIBUTION, { source: 'LyricsPlus' }),
+                    link: { href: 'https://github.com/ibratabian17/lyricsplus', text: 'github.com/ibratabian17/lyricsplus' }
+                });
             };
         },
 
         async getLyrics(info, { signal } = {}) {
-            const result = {
-                uri: info?.uri || '',
-                provider: ADDON_INFO.id,
-                cacheVersion: CACHE_VERSION,
-                karaoke: null,
-                synced: null,
-                unsynced: null,
-                karaokeSource: null,
-                copyright: ATTRIBUTION,
-                error: null
-            };
+            const result = createAttributedLyricsResult(info, ADDON_INFO, ATTRIBUTION);
 
             try {
                 const fetched = await fetchLyricsData(info, signal);

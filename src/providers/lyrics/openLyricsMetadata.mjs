@@ -1,5 +1,5 @@
 import { normalizeTitleCore } from "./openLyricsTrackMatch.mjs";
-import { decodeLyricTextEntities, toMilliseconds } from "./openLyricsTokens.mjs";
+import { decodeLyricTextEntities, getStructuredLineStart } from "./openLyricsTokens.mjs";
 
 export function getStructuredLineText(line, referenceText = null) {
     if (typeof referenceText === 'string' && referenceText.trim()) {
@@ -114,19 +114,6 @@ export function isCreditMetadataContinuationText(text) {
     return isContributorNameList(normalized);
 }
 
-function getEarlyCreditAnchorIndex(allLines, _info, referenceLines) {
-    const lookahead = Math.min(allLines.length, 10);
-    for (let index = 0; index < lookahead; index += 1) {
-        const line = allLines[index];
-        const startTime = toMilliseconds(line?.timestamp)
-            ?? toMilliseconds(line?.text?.[0]?.timestamp)
-            ?? 0;
-        const text = getStructuredLineText(line, referenceLines.get(startTime));
-        if (isCreditMetadataText(text)) return index;
-    }
-    return -1;
-}
-
 export function isCopyrightMetadataText(text) {
     return /^(?:©|℗|ⓒ|\(c\)|\(p\)|copyright\b)/iu.test(
         String(text || '').normalize('NFKC').trim()
@@ -171,20 +158,30 @@ export function createOpenLyricsMetadataFilter(structuredProviderId) {
         const metadataIndexes = new Set();
         if (!isTargetStructuredPayload(payload) || !allLines.length) return metadataIndexes;
 
-        const limit = allLines.length;
-        const earlyCreditAnchorIndex = getEarlyCreditAnchorIndex(allLines, info, referenceLines);
+        const readLine = index => {
+            const line = allLines[index];
+            const text = getStructuredLineText(line, referenceLines.get(getStructuredLineStart(line)));
+            return { text, isCredit: isCreditMetadataText(text) };
+        };
+        // A credit in the first ten rows can identify the rows before it as
+        // headers. Reuse the decoded text and classification during the scan.
+        const lookahead = [];
+        let earlyCreditAnchorIndex = -1;
+        for (let index = 0; index < Math.min(allLines.length, 10); index++) {
+            const row = readLine(index);
+            lookahead.push(row);
+            if (row.isCredit) {
+                earlyCreditAnchorIndex = index;
+                break;
+            }
+        }
         let hasStrongMetadataAnchor = false;
         let acceptsCreditContinuation = false;
-        for (let index = 0; index < limit; index += 1) {
-            const line = allLines[index];
-            const startTime = toMilliseconds(line?.timestamp)
-                ?? toMilliseconds(line?.text?.[0]?.timestamp)
-                ?? 0;
-            const text = getStructuredLineText(line, referenceLines.get(startTime));
+        for (let index = 0; index < allLines.length; index++) {
+            const { text, isCredit } = lookahead[index] ?? readLine(index);
             const isTitleHeader = index === 0 && isTitleArtistMetadataHeader(text, info);
             const isEarlyHeaderContinuation = earlyCreditAnchorIndex > 0
                 && index < earlyCreditAnchorIndex;
-            const isCredit = isCreditMetadataText(text);
             const isCreditContinuation = acceptsCreditContinuation
                 && isCreditMetadataContinuationText(text);
             const isCopyright = hasStrongMetadataAnchor && isCopyrightMetadataText(text);

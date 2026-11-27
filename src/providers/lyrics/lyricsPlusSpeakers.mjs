@@ -1,18 +1,8 @@
+import { LYRICS_SPEAKER_PALETTE } from "./lyricsSpeakerPalette.mjs";
 import { normalizeDisplayText } from "./lyricsPlusInput.mjs";
 
 const OBJECT_PROPERTY_IS_ENUMERABLE = Object.prototype.propertyIsEnumerable;
-const SPEAKER_PALETTE = [
-    { color: '#a8ccff', fallback: 'MALE 1' },
-    { color: '#ffb8c7', fallback: 'FEMALE 1' },
-    { color: '#e4d8ff', fallback: 'DUET 1' },
-    { color: '#9ae8d4', fallback: 'MALE 2' },
-    { color: '#ffd6b3', fallback: 'FEMALE 2' },
-    { color: '#d6e4ff', fallback: 'DUET 2' },
-    { color: '#bfe8ff', fallback: 'MALE 3' },
-    { color: '#f6c8ff', fallback: 'FEMALE 3' },
-    { color: '#ffddf2', fallback: 'DUET 3' }
-];
-const GROUP_SPEAKER_PALETTE = SPEAKER_PALETTE.filter(item => item.fallback.startsWith('DUET'));
+const GROUP_SPEAKER_PALETTE = LYRICS_SPEAKER_PALETTE.filter(item => item.fallback.startsWith('DUET'));
 
 function getAgentMetadata(singer, agents = {}) {
     const singerId = String(singer || '').trim();
@@ -71,7 +61,7 @@ export function getSpeakerPresentation(singer, singerOrder, agents = {}, cache =
         return presentation;
     }
 
-    let palette = SPEAKER_PALETTE[(index - 1) % SPEAKER_PALETTE.length];
+    let palette = LYRICS_SPEAKER_PALETTE[(index - 1) % LYRICS_SPEAKER_PALETTE.length];
     if (agent?.type === 'group' && GROUP_SPEAKER_PALETTE.length > 0) {
         const priorGroupCount = Array.from(singerOrder.entries())
             .filter(([candidate, candidateIndex]) => (

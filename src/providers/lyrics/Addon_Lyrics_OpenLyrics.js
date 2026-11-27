@@ -13,6 +13,8 @@
 
 import { writeRuntimeDebug } from "#ivlyrics/spicetify/runtimeDebug.mjs";
 import { getRuntimeService } from "../../spicetify/runtimeServices.mjs";
+import { createAttributedLyricsResult } from "./createAttributedLyricsResult.mjs";
+import { renderLyricsAttributionSettings } from "./renderLyricsAttributionSettings.mjs";
 import { createProviderText } from "../providerText.mjs";
 import { registerLyricsAddon } from "./lyricsAddonRegistration.mjs";
 import { readLyricsTextParser } from "./lyricsParserRuntime.mjs";
@@ -115,29 +117,16 @@ export default function initializeOpenLyricsLyricsAddon() {
         getSettingsUI() {
             const React = Spicetify.React;
             return function OpenLyricsSettings() {
-                return React.createElement('div', { className: 'ai-addon-settings open-lyrics-settings' },
-                    React.createElement('div', { className: 'ai-addon-setting', style: { marginTop: '16px' } },
-                        React.createElement('div', { className: 'ai-addon-info-box' },
-                            React.createElement('p', { style: { fontWeight: 700, marginBottom: '8px' } }, ADDON_INFO.name),
-                            React.createElement('p', { style: { marginBottom: '8px' } }, lyricsText('attribution', ATTRIBUTION, { source: 'Open Lyrics' }))
-                        )
-                    )
-                );
+                return renderLyricsAttributionSettings(React, {
+                    className: 'open-lyrics-settings',
+                    title: ADDON_INFO.name,
+                    attribution: lyricsText('attribution', ATTRIBUTION, { source: 'Open Lyrics' })
+                });
             };
         },
 
         async getLyrics(info, { signal } = {}) {
-            const result = {
-                uri: info?.uri || '',
-                provider: ADDON_INFO.id,
-                cacheVersion: CACHE_VERSION,
-                karaoke: null,
-                synced: null,
-                unsynced: null,
-                karaokeSource: null,
-                copyright: ATTRIBUTION,
-                error: null
-            };
+            const result = createAttributedLyricsResult(info, ADDON_INFO, ATTRIBUTION);
 
             const title = String(info?.title || '').trim();
             const artist = String(info?.artist || '').trim();
