@@ -6,6 +6,7 @@ import {
     fingerprintSyncDataLyricsText,
 } from "../features/sync/syncLyricSourceShape.mjs";
 import { SyncDataSourceCompatibility } from "./syncDataSourceCompatibility.mjs";
+import { buildSyncDataVocalLine } from "./syncRenderVocalLine.mjs";
 import { buildLrclibSyncDataParallelParts } from "./syncLrclibVocalGroups.mjs";
 import { normalizeSyncDataParallelParentheticalRanges } from "./syncRenderVocalRanges.mjs";
 import { normalizeSyncDataInlineStyleRanges, findSyncDataInlineStyleRange } from "./syncRenderInlineStyle.mjs";
@@ -431,10 +432,10 @@ export function createSyncDataRenderer({ getCodec, getPlayer = () => undefined, 
                 // 마지막 글자의 자연스러운 최대 지속 시간 (평균의 2.5배 또는 최대 1.5초)
                 // 너무 짧게 끊기지 않도록 최소 0.5초는 보장
                 const lastCharMaxDuration = Math.max(0.5, Math.min(1.5, avgCharDuration * 2.5));
-                return { lineStartTime, lineEndTime, lineDuration, avgCharDuration, lastCharMaxDuration };
+                return { lineStartTime, lineEndTime, lastCharMaxDuration };
             };
             const lineCharTiming = computeLineCharTiming();
-            const { lineStartTime, lineDuration, avgCharDuration, lastCharMaxDuration } = lineCharTiming;
+            const { lineStartTime, lastCharMaxDuration } = lineCharTiming;
             let lineEndTime = lineCharTiming.lineEndTime;
 
             // 각 글자별 syllable 생성
@@ -608,40 +609,15 @@ export function createSyncDataRenderer({ getCodec, getPlayer = () => undefined, 
                 : []);
 
             if (parallelParts.length > 1) {
-                const leadPart = parallelParts.find(part => part.role === 'lead') || parallelParts[0];
-                const backgroundParts = parallelParts.filter(part => part !== leadPart);
-                const allPartTimes = parallelParts.flatMap(part => [part.startTime, part.endTime]).filter(Number.isFinite);
-                    result.push({
-                        startTime: Math.min(...allPartTimes, lineStartTime),
-                        endTime: Math.max(...allPartTimes, lineEndTime),
-                        text: lineText,
-                        speaker: lineData.speaker || leadPart.speaker || '',
-                        'speaker-color': lineData['speaker-color'] || leadPart['speaker-color'] || '',
-                        'speaker-fallback': lineData['speaker-fallback'] || leadPart['speaker-fallback'] || '',
-                        kind: lineData.kind || leadPart.kind || 'vocal',
-                        vocals: {
-                            lead: {
-                                id: leadPart.id,
-                                role: leadPart.role,
-                                speaker: leadPart.speaker,
-                                'speaker-color': leadPart['speaker-color'] || '',
-                                'speaker-fallback': leadPart['speaker-fallback'] || '',
-                                kind: leadPart.kind,
-                                text: leadPart.text,
-                                syllables: leadPart.syllables
-                            },
-                            background: backgroundParts.map(part => ({
-                                id: part.id,
-                                role: part.role,
-                                speaker: part.speaker,
-                                'speaker-color': part['speaker-color'] || '',
-                                'speaker-fallback': part['speaker-fallback'] || '',
-                                kind: part.kind,
-                                text: part.text,
-                                syllables: part.syllables
-                            }))
-                    }
-                });
+                result.push(buildSyncDataVocalLine({
+                    startTime: lineStartTime,
+                    endTime: lineEndTime,
+                    text: lineText,
+                    speaker: lineData.speaker,
+                    'speaker-color': lineData['speaker-color'],
+                    'speaker-fallback': lineData['speaker-fallback'],
+                    kind: lineData.kind,
+                }, parallelParts));
                 continue;
             }
 

@@ -6,7 +6,7 @@ const countSyncDataRangeChars = (ranges) => (Array.isArray(ranges) ? ranges : []
     return Number.isInteger(start) && Number.isInteger(end) && end >= start ? sum + end - start + 1 : sum;
 }, 0);
 
-const getNormalizedSyncDataHiddenRanges = (ranges) => (
+const normalizeSyncDataHiddenRanges = (ranges) => (
     (Array.isArray(ranges) ? ranges : [])
         .map((range) => {
             const start = Number(range?.start);
@@ -54,7 +54,7 @@ const getNextSyncDataPartId = (usedIds) => {
     return null;
 };
 
-const splitSyncDataHiddenDelimitedParallelPart = (part, hiddenRanges, usedIds) => {
+const splitSyncDataHiddenDelimitedParallelPart = (part, hiddenRanges, usedIds, allowUntimedParts) => {
     if (
         !part
         || typeof part !== 'object'
@@ -65,12 +65,14 @@ const splitSyncDataHiddenDelimitedParallelPart = (part, hiddenRanges, usedIds) =
         || !Array.isArray(part.join)
         || part.join.length !== part.ranges.length - 1
         || !part.join.every(joinMode => Number.isInteger(joinMode) && joinMode >= 0 && joinMode <= 2)
-        || !Array.isArray(part.chars)
-        || part.chars.length !== countSyncDataRangeChars(part.ranges)
     ) {
         return null;
     }
-    if (part.join.some(joinMode => Number(joinMode) === 2)) {
+    const hasSyncedChars = Array.isArray(part.chars);
+    if (hasSyncedChars ? part.chars.length !== countSyncDataRangeChars(part.ranges) : !allowUntimedParts) {
+        return null;
+    }
+    if (part.join.some(joinMode => joinMode === 2)) {
         return null;
     }
 
@@ -97,22 +99,24 @@ const splitSyncDataHiddenDelimitedParallelPart = (part, hiddenRanges, usedIds) =
         const id = index === 0 ? part.id : getNextSyncDataPartId(usedIds);
         if (!id) return null;
 
-        splitParts.push({
-            ...part,
-            id,
-            ranges: [{ ...range }],
-            join: [],
-            chars: part.chars.slice(charOffset, charOffset + charCount)
-        });
+        const splitPart = { ...part, id, ranges: [{ ...range }], join: [] };
+        if (hasSyncedChars) {
+            splitPart.chars = part.chars.slice(charOffset, charOffset + charCount);
+        } else {
+            delete splitPart.chars;
+        }
+        splitParts.push(splitPart);
         charOffset += charCount;
     }
 
     return splitParts;
 };
 
-const splitSyncDataHiddenDelimitedParallelParts = (parallel) => {
+// The renderer needs character timing. The editor can also split a draft
+// before the user has recorded its timing.
+const splitSyncDataHiddenDelimitedParallelParts = (parallel, { allowUntimedParts = false } = {}) => {
     if (!parallel || typeof parallel !== 'object' || !Array.isArray(parallel.parts)) return parallel;
-    const hiddenRanges = getNormalizedSyncDataHiddenRanges(parallel.hiddenRanges);
+    const hiddenRanges = normalizeSyncDataHiddenRanges(parallel.hiddenRanges);
     if (hiddenRanges.length === 0) return parallel;
 
     const usedIds = new Set(parallel.parts
@@ -122,7 +126,7 @@ const splitSyncDataHiddenDelimitedParallelParts = (parallel) => {
     let changed = false;
 
     parallel.parts.forEach((part) => {
-        const splitParts = splitSyncDataHiddenDelimitedParallelPart(part, hiddenRanges, usedIds);
+        const splitParts = splitSyncDataHiddenDelimitedParallelPart(part, hiddenRanges, usedIds, allowUntimedParts);
         if (splitParts) {
             changed = true;
             parts.push(...splitParts);
@@ -132,6 +136,44 @@ const splitSyncDataHiddenDelimitedParallelParts = (parallel) => {
     });
 
     return changed && parts.length <= 16 ? { ...parallel, parts } : parallel;
+};
+
+const trimSyncDataPartParentheticals = (part, sourceChars, onHiddenIndex) => {
+    if (!part || !Array.isArray(part.ranges) || part.ranges.length !== 1 || !Array.isArray(part.chars)) {
+        return part;
+    }
+
+    const range = part.ranges[0];
+    const start = Number(range?.start);
+    const end = Number(range?.end);
+    if (
+        !Number.isInteger(start)
+        || !Number.isInteger(end)
+        || start < 0
+        || end < start
+        || end >= sourceChars.length
+        || part.chars.length !== end - start + 1
+    ) {
+        return part;
+    }
+
+    const localChars = sourceChars.slice(start, end + 1);
+    const hiddenIndexes = onHiddenIndex ? [] : null;
+    const stripped = stripStandaloneParentheticalCharRange(
+        localChars, 0, localChars.length - 1,
+        hiddenIndexes ? index => hiddenIndexes.push(start + index) : undefined
+    );
+    if (!stripped.changed || stripped.start > stripped.end) return part;
+
+    const nextChars = part.chars.slice(stripped.start, stripped.end + 1);
+    if (nextChars.length !== stripped.end - stripped.start + 1) return part;
+
+    if (hiddenIndexes) hiddenIndexes.forEach(index => onHiddenIndex(index));
+    return {
+        ...part,
+        ranges: [{ ...range, start: start + stripped.start, end: start + stripped.end }],
+        chars: nextChars
+    };
 };
 
 const normalizeSyncDataParallelParentheticalRanges = (lines, fullTextChars) => {
@@ -144,42 +186,12 @@ const normalizeSyncDataParallelParentheticalRanges = (lines, fullTextChars) => {
 
         let lineChanged = false;
         const parts = line.parallel.parts.map((part) => {
-            if (!part || !Array.isArray(part.ranges) || part.ranges.length !== 1 || !Array.isArray(part.chars)) {
-                return part;
+            const trimmed = trimSyncDataPartParentheticals(part, sourceChars);
+            if (trimmed !== part) {
+                changed = true;
+                lineChanged = true;
             }
-
-            const range = part.ranges[0];
-            const start = Number(range?.start);
-            const end = Number(range?.end);
-            if (
-                !Number.isInteger(start)
-                || !Number.isInteger(end)
-                || start < 0
-                || end < start
-                || end >= sourceChars.length
-                || part.chars.length !== end - start + 1
-            ) {
-                return part;
-            }
-
-            const localChars = sourceChars.slice(start, end + 1);
-            const stripped = stripStandaloneParentheticalCharRange(
-                localChars,
-                0,
-                localChars.length - 1
-            );
-            if (!stripped.changed || stripped.start > stripped.end) return part;
-
-            const nextChars = part.chars.slice(stripped.start, stripped.end + 1);
-            if (nextChars.length !== stripped.end - stripped.start + 1) return part;
-
-            changed = true;
-            lineChanged = true;
-            return {
-                ...part,
-                ranges: [{ ...range, start: start + stripped.start, end: start + stripped.end }],
-                chars: nextChars
-            };
+            return trimmed;
         });
 
         const normalizedLine = lineChanged ? {
@@ -205,5 +217,6 @@ const normalizeSyncDataParallelParentheticalRanges = (lines, fullTextChars) => {
 };
 
 export {
-    normalizeSyncDataParallelParentheticalRanges,
+    countSyncDataRangeChars, getNextSyncDataPartId, normalizeSyncDataHiddenRanges,
+    splitSyncDataHiddenDelimitedParallelParts, trimSyncDataPartParentheticals, normalizeSyncDataParallelParentheticalRanges,
 };
