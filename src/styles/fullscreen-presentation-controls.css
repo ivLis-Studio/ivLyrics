@@ -556,11 +556,6 @@ html.is-lp-view-switch::view-transition-new(root) {
   animation: fullscreen-vinyl-lyric-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.fullscreen-vinyl-active-lyric.is-outgoing {
-  z-index: 2;
-  animation: fullscreen-vinyl-lyric-out 420ms cubic-bezier(0.4, 0, 0.2, 1) both;
-}
-
 .fullscreen-vinyl-active-lyric > .ivlyrics-active-lyric-renderer {
   width: 100%;
 }
@@ -766,17 +761,6 @@ html.is-lp-view-switch::view-transition-new(root) {
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes fullscreen-vinyl-lyric-out {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-5px);
   }
 }
 

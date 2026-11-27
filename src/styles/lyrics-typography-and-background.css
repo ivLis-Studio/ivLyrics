@@ -1,7 +1,5 @@
 /* Readability on transparent background */
-.lyrics-lyricsContainer-LyricsLine,
-/* Lyrics sub-lines base style (backwards compatibility) */
-.lyrics-lyricsContainer-LyricsLine-sub {
+.lyrics-lyricsContainer-LyricsLine {
   text-shadow: var(--lyrics-text-shadow, 0 0 0 transparent);
   -webkit-text-stroke: 0px rgba(0, 0, 0, 0.35);
   font-family: "Pretendard Variable", Pretendard, -apple-system,
@@ -96,17 +94,6 @@
   color: var(--lyrics-color-active);
   opacity: var(--lyrics-cultural-note-opacity, 0.6);
   transform: translateY(-2px);
-}
-
-/* Legacy support: .lyrics-lyricsContainer-LyricsLine-sub uses translation style */
-.lyrics-lyricsContainer-LyricsLine-sub {
-  font-size: var(--lyrics-translation-font-size,
-      calc(var(--lyrics-font-size) * 0.7));
-  font-weight: var(--lyrics-translation-font-weight, 600);
-  margin-top: var(--lyrics-line-spacing, 8px);
-  opacity: var(--lyrics-translation-opacity, 0.6);
-  text-shadow: var(--lyrics-text-shadow);
-  line-height: calc(var(--lyrics-translation-font-size, calc(var(--lyrics-font-size) * 0.7)) * 1.4);
 }
 
 .lyrics-lyricsContainer-LyricsLine-active {
@@ -366,9 +353,5 @@ ruby rt {
   margin-bottom: var(--lyrics-furigana-spacing, 2px);
   user-select: none;
   -webkit-user-select: none;
-}
-
-.lyrics-lyricsContainer-LyricsLine-sub ruby rt {
-  font-size: calc(var(--lyrics-furigana-font-size, 14px) * 0.85);
 }
 

@@ -77,12 +77,6 @@ body.ivlyrics-page-active .main-topBar-container {
 }
 
 
-.lyrics-lyricsContainer-Loading {
-  align-self: center;
-  grid-area: 1 / 1 / -1 / -1;
-  z-index: 2;
-}
-
 .lyrics-lyricsContainer-LyricsUnavailablePage {
   align-items: center;
   color: var(--lyrics-color-inactive);
@@ -318,20 +312,6 @@ body.ivlyrics-page-active .main-topBar-container {
   pointer-events: none;
 }
 
-.lyrics-lyricsContainer-Provider {
-  align-self: end;
-  color: var(--lyrics-color-inactive);
-  grid-area: 2 / 1 / -1 / -1;
-  justify-self: stretch;
-  height: 25px;
-  overflow: hidden;
-  background: linear-gradient(0deg, transparent 30%, transparent);
-  /* transparent footer */
-  z-index: 3;
-  padding: 60px 20px 30px;
-  pointer-events: none;
-}
-
 @property --iv-karaoke-completed-color {
   syntax: "<color>";
   inherits: true;
@@ -444,8 +424,7 @@ body.ivlyrics-page-active .main-topBar-container {
 }
 
 /* 하이라이트 모드: 현재 가사만 밝게, 나머지는 희미하게 */
-.lyrics-lyricsContainer-LyricsContainer.highlight-mode-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine,
-.lyrics-lyricsContainer-LyricsContainer.highlight-mode-enabled .lyrics-lyricsContainer-SyncedScrollView .lyrics-lyricsContainer-LyricsLine {
+.lyrics-lyricsContainer-LyricsContainer.highlight-mode-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine {
   opacity: var(--highlight-inactive-opacity, 0.3);
   transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
     transform var(--line-shift-duration, var(--iv-lyrics-centering-duration, 300ms))
@@ -512,13 +491,11 @@ body.ivlyrics-page-active .main-topBar-container {
   transform: translateX(4px);
 }
 
-.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:hover,
-.lyrics-lyricsContainer-SyncedScrollView .lyrics-lyricsContainer-LyricsLine:hover {
+.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:hover {
   color: var(--lyrics-color-active);
 }
 
-.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine.lyrics-lyricsContainer-LyricsLine-active,
-.lyrics-lyricsContainer-SyncedScrollView .lyrics-lyricsContainer-LyricsLine.lyrics-lyricsContainer-LyricsLine-active {
+.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine.lyrics-lyricsContainer-LyricsLine-active {
   color: var(--lyrics-color-active);
   opacity: 1;
   filter: none !important;
@@ -721,8 +698,7 @@ body.ivlyrics-page-active .main-topBar-container {
   line-height: calc(var(--lyrics-translation-font-size, calc(var(--lyrics-font-size) * 0.7)) * 1.4);
 }
 
-.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine,
-.lyrics-lyricsContainer-SyncedScrollView .lyrics-lyricsContainer-LyricsLine {
+.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine {
   font-size: var(--lyrics-original-font-size, var(--lyrics-font-size));
   font-weight: var(--lyrics-original-font-weight, 700);
   font-family: var(--lyrics-original-font-family,
@@ -739,8 +715,7 @@ body.ivlyrics-page-active .main-topBar-container {
   /* Remove any bottom margin */
 }
 
-.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine>p,
-.lyrics-lyricsContainer-SyncedScrollView .lyrics-lyricsContainer-LyricsLine>p {
+.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine>p {
   display: block;
   padding: 0;
   white-space: normal;
@@ -759,8 +734,7 @@ body.ivlyrics-page-active .main-topBar-container {
 }
 
 @media (min-width: 1280px) {
-  .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine,
-  .lyrics-lyricsContainer-SyncedScrollView .lyrics-lyricsContainer-LyricsLine {
+  .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine {
     font-weight: var(--lyrics-original-font-weight, 900);
   }
 }
@@ -896,8 +870,7 @@ body.ivlyrics-page-active .main-topBar-container {
 }
 
 /* Phonetic text style for Synced lyrics */
-.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine-phonetic,
-.lyrics-lyricsContainer-SyncedScrollView .lyrics-lyricsContainer-LyricsLine-phonetic {
+.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine-phonetic {
   font-size: var(--lyrics-phonetic-font-size,
       calc(var(--lyrics-font-size) * 0.6));
   font-weight: var(--lyrics-phonetic-font-weight, 400);
@@ -910,8 +883,7 @@ body.ivlyrics-page-active .main-topBar-container {
 }
 
 /* Translation text style for Synced lyrics */
-.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine-translation,
-.lyrics-lyricsContainer-SyncedScrollView .lyrics-lyricsContainer-LyricsLine-translation {
+.lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine-translation {
   font-size: var(--lyrics-translation-font-size,
       calc(var(--lyrics-font-size) * 0.7));
   font-weight: var(--lyrics-translation-font-weight, 600);
@@ -921,27 +893,5 @@ body.ivlyrics-page-active .main-topBar-container {
   opacity: var(--lyrics-translation-opacity, 0.6);
   letter-spacing: var(--lyrics-translation-letter-spacing, 0);
   line-height: calc(var(--lyrics-translation-font-size, calc(var(--lyrics-font-size) * 0.7)) * 1.4);
-}
-
-.lyrics-lyricsContainer-Karaoke-WordActive {
-  color: var(--lyrics-color-active) !important;
-  background-position: top left !important;
-}
-
-.lyrics-lyricsContainer-Karaoke-Word {
-  color: var(--lyrics-color-inactive);
-  background-image: linear-gradient(to right,
-      var(--lyrics-color-active),
-      var(--lyrics-color-active) 45%,
-      var(--lyrics-color-inactive) 55%,
-      var(--lyrics-color-inactive));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-size: 225% 100%;
-  background-position: top left 100%;
-  transition-property: color, background-position;
-  transition-duration: calc(var(--word-duration) + 0.05s);
-  transition-timing-function: linear;
 }
 

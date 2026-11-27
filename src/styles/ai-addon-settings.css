@@ -6,19 +6,6 @@
   margin-bottom: 24px;
 }
 
-.ai-addon-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.ai-addon-title {
-  font-size: 18px;
-  font-weight: 700;
-  margin: 0;
-}
-
 .ai-addon-description {
   font-size: 14px;
   opacity: 0.8;
@@ -109,13 +96,6 @@
 
 .ai-addon-checkbox:hover span {
   text-decoration: underline;
-}
-
-.ai-addon-capabilities-group {
-  margin-top: 20px;
-  padding: 16px;
-  background-color: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
 }
 
 .ai-addon-capabilities-title {

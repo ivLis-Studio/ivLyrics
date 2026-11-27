@@ -84,8 +84,7 @@ body.ivlyrics-fullscreen-container-mounted #main video {
   margin-right: 100px;
 }
 
-.lyrics-lyricsContainer-LyricsContainer.fad-enabled .lyrics-lyricsContainer-LyricsBackground,
-.lyrics-lyricsContainer-LyricsContainer.fad-enabled .lyrics-lyricsContainer-Provider {
+.lyrics-lyricsContainer-LyricsContainer.fad-enabled .lyrics-lyricsContainer-LyricsBackground {
   display: none;
 }
 

@@ -8,27 +8,6 @@
   opacity: 0;
 }
 
-.lyrics-idling-indicator__circle {
-  background-color: var(--lyrics-color-active);
-  border-radius: 50%;
-  display: inline-block;
-  opacity: 0.5;
-  margin-right: calc(var(--lyrics-font-size) / 4);
-
-  transform-origin: center;
-  transition-timing-function: linear;
-  transition-duration: var(--indicator-delay);
-  transition-property: transform, opacity;
-  height: var(--lyrics-font-size);
-  width: var(--lyrics-font-size);
-  transform: scale(0.5);
-}
-
-.lyrics-idling-indicator__circle.active {
-  opacity: 1;
-  transform: scale(0.7);
-}
-
 @keyframes lyricsBreakBarPulse {
   0%,
   100% {

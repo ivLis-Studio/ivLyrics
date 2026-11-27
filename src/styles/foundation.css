@@ -75,18 +75,6 @@
   }
 }
 
-@keyframes ivlyricsPulseDot {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.75;
-  }
-
-  50% {
-    transform: scale(1.45);
-    opacity: 1;
-  }
-}
-
 /* Shared motion layer across settings, community UI, and marketplace */
 #ivLyrics-config-container button,
 #ivLyrics-config-container .btn,

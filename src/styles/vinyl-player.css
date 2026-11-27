@@ -29,19 +29,6 @@
   touch-action: manipulation;
 }
 
-.ivlyrics-vinyl-player--normal {
-  width: min(calc(var(--iv-vinyl-cover-size) * 1.82), 100%);
-}
-
-.ivlyrics-vinyl-player--tv {
-  max-width: none;
-}
-
-.ivlyrics-vinyl-player--portrait {
-  --iv-vinyl-cover-size: clamp(48px, 8svh, 80px);
-  max-width: 46vw;
-}
-
 .ivlyrics-vinyl-player--immersive {
   --iv-vinyl-cover-size: min(42vw, 60svh, calc(72svh * var(--iv-vinyl-safe-scale-factor, 1)));
   width: min(calc(var(--iv-vinyl-cover-size) * 1.82), 88vw);

@@ -403,20 +403,9 @@
   transform: translateY(14px) scale(0.99);
 }
 
-.portrait-mode.fullscreen-no-lyrics .portrait-overlay-top .ivlyrics-vinyl-player--portrait {
-  --iv-vinyl-cover-size: clamp(120px, 28svh, 280px);
-  max-width: 90vw;
-}
-
 @keyframes ivlyrics-vinyl-spin-clock {
   to {
     --iv-vinyl-spin-angle: 1turn;
-  }
-}
-
-@media (orientation: portrait) and (min-width: 768px) {
-  .ivlyrics-vinyl-player--portrait {
-    --iv-vinyl-cover-size: clamp(64px, 10svh, 100px);
   }
 }
 

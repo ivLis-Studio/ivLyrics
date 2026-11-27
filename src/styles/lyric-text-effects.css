@@ -41,8 +41,7 @@
     var(--lyrics-text-shadow, 0 0 0 transparent);
 }
 
-.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) > .lyrics-lyricsContainer-LyricsLine-translation,
-.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) > .lyrics-lyricsContainer-LyricsLine-sub {
+.lyrics-lyricsContainer-LyricsContainer.blur-enabled .lyrics-lyricsContainer-SyncedLyrics .lyrics-lyricsContainer-LyricsLine:not(.lyrics-lyricsContainer-LyricsLine-active) > .lyrics-lyricsContainer-LyricsLine-translation {
   text-shadow:
     var(--lyrics-translation-outline-blurred-shadow, 0 0 0 transparent),
     var(--lyrics-text-shadow, 0 0 0 transparent);
@@ -303,9 +302,7 @@
 }
 
 .lyrics-lyricsContainer-LyricsLine > .lyrics-lyricsContainer-LyricsLine-translation,
-.lyrics-lyricsContainer-LyricsLine > .lyrics-lyricsContainer-LyricsLine-sub,
-.lyrics-lyricsContainer-LyricsLine-translation,
-.lyrics-lyricsContainer-LyricsLine-sub {
+.lyrics-lyricsContainer-LyricsLine-translation {
   text-shadow:
     var(--lyrics-translation-outline-shadow, 0 0 0 transparent),
     var(--lyrics-text-shadow, 0 0 0 transparent);

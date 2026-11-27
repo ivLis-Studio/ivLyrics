@@ -136,38 +136,9 @@
   transform: none;
 }
 
-/* Loading spin animation for regenerate button */
-.lyrics-config-button.loading-spin svg {
-  animation: spin 1s linear infinite;
-}
-
-/* Accent color highlight on specific buttons */
-.lyrics-config-button[data-active="true"] {
-  background: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.16);
-  border-color: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.4);
-}
-
-.lyrics-config-button[data-active="true"]:hover {
-  background: rgba(var(--spice-rgb-accent, 30, 215, 96), 0.2);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(var(--spice-rgb-accent, 30, 215, 96), 0.12);
-}
-
 .lyrics-config-button-container .main-contextMenu-menu {
   color: var(--spice-text);
   padding: 12px 12px 6px;
-}
-
-.lyrics-lyricsContainer-UnsyncedLyricsPage .split {
-  display: flex;
-}
-
-.lyrics-lyricsContainer-UnsyncedLyricsPage .split>div {
-  flex: 50%;
-}
-
-.lyrics-lyricsContainer-UnsyncedLyricsPage .split>div>div:not(.lyrics-versionSelector) {
-  margin-left: 0;
-  margin-right: 0;
 }
 
 .split .lyrics-lyricsContainer-LyricsLine {
