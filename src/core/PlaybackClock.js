@@ -565,14 +565,9 @@ const createSpotifyPlaybackClock = (spicetify, options = {}) => {
 };
 
 export {
-    VERSION,
     createPlaybackClock,
     createSpotifyPlaybackClock,
-    getPlaybackIdentityKey,
-    getPlayerUri,
     resolveStablePlayerItem,
-    isAutomixPlayback,
-    isDjNarrationPlayback,
 };
 
 // The startup bundle keeps this API available to installed add-ons.

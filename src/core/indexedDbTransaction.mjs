@@ -46,7 +46,7 @@ export function putIdbRecord(store, key, value) {
     return store.keyPath == null ? store.put(value, key) : store.put(value);
 }
 
-export function awaitIdbTransaction(tx, abortMessage = "IndexedDB transaction aborted.") {
+function awaitIdbTransaction(tx, abortMessage = "IndexedDB transaction aborted.") {
     return new Promise((resolve, reject) => {
         let requestError;
         tx.oncomplete = () => resolve();

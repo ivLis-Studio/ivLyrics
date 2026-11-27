@@ -1,11 +1,11 @@
-export function escapeHtml(value) {
+function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
 
-export function escapeAttribute(value) {
+function escapeAttribute(value) {
   return escapeHtml(value)
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");

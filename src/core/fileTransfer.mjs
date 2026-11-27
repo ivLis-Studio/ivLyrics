@@ -1,4 +1,4 @@
-export function sanitizeFileName(value, fallback = "ivLyrics", maxBytes = 180) {
+function sanitizeFileName(value, fallback = "ivLyrics", maxBytes = 180) {
   const clean = (input) => String(input || "")
     .normalize("NFC")
     // deno-lint-ignore no-control-regex

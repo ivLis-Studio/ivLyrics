@@ -217,6 +217,6 @@ const normalizeSyncDataParallelParentheticalRanges = (lines, fullTextChars) => {
 };
 
 export {
-    countSyncDataRangeChars, getNextSyncDataPartId, normalizeSyncDataHiddenRanges,
+    countSyncDataRangeChars, getNextSyncDataPartId,
     splitSyncDataHiddenDelimitedParallelParts, trimSyncDataPartParentheticals, normalizeSyncDataParallelParentheticalRanges,
 };
