@@ -215,7 +215,44 @@ function scoreProfileSimilarity(candidate, profile) {
     );
 }
 
-function buildSectionVocalityMap(analysis, scoredSegments) {
+function indexSegmentEnds(segments) {
+    const ends = new Float64Array(segments.length);
+    let previousStart = -Infinity;
+    let latestEnd = -Infinity;
+    for (let index = 0; index < segments.length; index++) {
+        const { segmentStart, segmentEnd } = segments[index];
+        if (!Number.isFinite(segmentStart) || !Number.isFinite(segmentEnd) || segmentStart < previousStart) return null;
+        previousStart = segmentStart;
+        // Overlapping segments can end out of order. Search the latest end
+        // reached so far so an earlier, longer segment is still considered.
+        latestEnd = Math.max(latestEnd, segmentEnd);
+        ends[index] = latestEnd;
+    }
+    return ends;
+}
+
+function findOverlappingSegments(segments, indexedEnds, start, end) {
+    if (!indexedEnds) {
+        return segments.filter(segment => segment.segmentEnd > start && segment.segmentStart < end);
+    }
+
+    let first = 0;
+    let last = segments.length;
+    while (first < last) {
+        const middle = (first + last) >>> 1;
+        if (indexedEnds[middle] <= start) first = middle + 1;
+        else last = middle;
+    }
+
+    const matches = [];
+    for (let index = first; index < segments.length && segments[index].segmentStart < end; index++) {
+        const segment = segments[index];
+        if (segment.segmentEnd > start) matches.push(segment);
+    }
+    return matches;
+}
+
+function buildSectionVocalityMap(analysis, scoredSegments, indexedEnds) {
     if (!Array.isArray(analysis?.sections) || !analysis.sections.length) return [];
 
     const trackEndMs = Array.isArray(analysis?.segments) && analysis.segments.length
@@ -229,10 +266,7 @@ function buildSectionVocalityMap(analysis, scoredSegments) {
         const nextSection = sections[index + 1];
         const nextSectionStart = nextSection ? Math.round((nextSection.start || 0) * 1000) : trackEndMs;
         const bounds = getSectionBoundsMs(section, nextSectionStart);
-        const candidates = scoredSegments.filter((candidate) =>
-            candidate.segmentEnd > bounds.start &&
-            candidate.segmentStart < bounds.end
-        );
+        const candidates = findOverlappingSegments(scoredSegments, indexedEnds, bounds.start, bounds.end);
         const sectionDuration = Math.max(1, bounds.end - bounds.start);
         const strongCount = candidates.filter((candidate) => candidate.baseScore >= 0.56).length;
         const weightedCoverage = clamp01(
@@ -245,7 +279,6 @@ function buildSectionVocalityMap(analysis, scoredSegments) {
         );
         const topAverage = candidates.length
             ? candidates
-                .slice()
                 .sort((left, right) => right.baseScore - left.baseScore)
                 .slice(0, Math.min(6, candidates.length))
                 .reduce((sum, candidate) => sum + candidate.baseScore, 0) / Math.min(6, candidates.length)
@@ -264,6 +297,7 @@ function buildAnalysisHints(analysis) {
     if (!analysis || !Array.isArray(analysis?.segments)) {
         return {
             scoredSegments: [],
+            indexedEnds: null,
             vocalProfile: null,
             sectionVocality: []
         };
@@ -291,8 +325,9 @@ function buildAnalysisHints(analysis) {
     }
 
     const vocalProfile = buildTrackSeedProfile(scoredSegments);
-    const sectionVocality = buildSectionVocalityMap(analysis, scoredSegments);
-    return { scoredSegments, vocalProfile, sectionVocality };
+    const indexedEnds = indexSegmentEnds(scoredSegments);
+    const sectionVocality = buildSectionVocalityMap(analysis, scoredSegments, indexedEnds);
+    return { scoredSegments, indexedEnds, vocalProfile, sectionVocality };
 }
 
 function getAnalysisHints(analysis) {
@@ -364,19 +399,20 @@ function buildRhythmAnchors(startTime, endTime, analysis) {
     );
 }
 
-function buildVocalCandidates(startTime, endTime, analysis) {
-    const analysisHints = getAnalysisHints(analysis);
-    if (!analysisHints.scoredSegments.length) return [];
+function buildVocalCandidates(startTime, endTime, analysisHints) {
+    const { scoredSegments, indexedEnds } = analysisHints;
+    if (!scoredSegments.length) return [];
 
-    const rawCandidates = analysisHints.scoredSegments
-        .filter((candidate) => candidate.segmentEnd > startTime && candidate.segmentStart < endTime)
-        .map((candidate) => ({
-            ...candidate,
+    const rawCandidates = [];
+    for (const candidate of findOverlappingSegments(scoredSegments, indexedEnds, startTime, endTime)) {
+        const segmentStart = Math.round(Math.max(startTime, candidate.segmentStart));
+        const segmentEnd = Math.round(Math.min(endTime, candidate.segmentEnd));
+        if (!(segmentEnd > segmentStart && candidate.baseScore >= 0.18)) continue;
+        rawCandidates.push({
+            ...candidate, segmentStart, segmentEnd,
             time: Math.round(clamp(candidate.time, startTime, endTime)),
-            segmentStart: Math.round(Math.max(startTime, candidate.segmentStart)),
-            segmentEnd: Math.round(Math.min(endTime, candidate.segmentEnd))
-        }))
-        .filter((candidate) => candidate.segmentEnd > candidate.segmentStart && candidate.baseScore >= 0.18);
+        });
+    }
 
     const candidates = rawCandidates.map((candidate, index) => {
         const previous = rawCandidates[index - 1] || null;

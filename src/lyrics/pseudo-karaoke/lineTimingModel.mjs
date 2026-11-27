@@ -218,7 +218,7 @@ function buildSilenceSpans(massCurve, startTime, endTime, confidence) {
 
 export function buildLineTimingModel(startTime, endTime, analysis, unitCount = 1) {
     const analysisHints = getAnalysisHints(analysis);
-    const vocalCandidates = buildVocalCandidates(startTime, endTime, analysis);
+    const vocalCandidates = buildVocalCandidates(startTime, endTime, analysisHints);
     const rhythmAnchors = buildRhythmAnchors(startTime, endTime, analysis);
     const intervalMs = Math.max(1, endTime - startTime);
     const expectedCandidates = Math.max(1, Math.round(intervalMs / 260));
