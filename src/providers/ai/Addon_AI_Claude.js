@@ -164,6 +164,19 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
         return getSetting('model', 'claude-sonnet-4-20250514');
     }
 
+    // The settings assistant marks its long system prompt (rules, settings
+    // catalog, guide index), which only changes with the interface language,
+    // for Anthropic's prompt cache: messages within five minutes of each other
+    // read it at a tenth of the input price. Other requests send plain text.
+    function toClaudeSystem(systemPrompt, cache) {
+        if (!systemPrompt || !cache) return systemPrompt;
+        return [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }];
+    }
+
+    function logClaudeCacheUsage(usage) {
+        if (!usage) return;
+        debug(`[Claude Addon] Prompt cache: ${usage.cache_read_input_tokens || 0} tokens read, ${usage.cache_creation_input_tokens || 0} written, ${usage.input_tokens || 0} uncached`);
+    }
 
     function getAdvancedRequestParams() {
         const params = {};
@@ -195,7 +208,8 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
 
         const model = getSelectedModel();
         const { systemPrompt, userPrompt } = normalizePromptRequest(prompt);
-        return { apiKeys, model, systemPrompt, userPrompt };
+        const system = toClaudeSystem(systemPrompt, prompt?.cacheSystemPrompt === true);
+        return { apiKeys, model, system, userPrompt };
     }
 
     function getClaudeWebSearchTool(model) {
@@ -276,7 +290,7 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
     }
 
     async function callClaudeAPIRaw(prompt, maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3, transformResult = null, signal) {
-        const { apiKeys, model, systemPrompt, userPrompt } = resolveClaudeRequestPreamble(prompt);
+        const { apiKeys, model, system, userPrompt } = resolveClaudeRequestPreamble(prompt);
         let lastError = null;
 
         for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
@@ -297,7 +311,7 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
                         body: JSON.stringify({
                             model,
                             ...getAdvancedRequestParams(),
-                            ...(systemPrompt ? { system: systemPrompt } : {}),
+                            ...(system ? { system } : {}),
                             messages: [
                                 { role: 'user', content: userPrompt }
                             ]
@@ -314,6 +328,7 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
                     }
 
                     const data = await response.json();
+                    if (Array.isArray(system)) logClaudeCacheUsage(data?.usage);
                     const rawText = readClaudeResponseText(data);
 
                     if (!rawText.trim()) {
@@ -436,7 +451,7 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
         requestOverrides = {},
         signal,
     ) {
-        const { apiKeys, model, systemPrompt, userPrompt } = resolveClaudeRequestPreamble(prompt);
+        const { apiKeys, model, system, userPrompt } = resolveClaudeRequestPreamble(prompt);
         let lastError = null;
 
         for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
@@ -463,7 +478,7 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
                             model,
                             ...getAdvancedRequestParams(),
                             ...requestOverrides,
-                            ...(systemPrompt ? { system: systemPrompt } : {}),
+                            ...(system ? { system } : {}),
                             stream: true,
                             messages: [
                                 { role: 'user', content: userPrompt }

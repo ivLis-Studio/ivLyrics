@@ -21,8 +21,9 @@
  *     keep them accurate: a wrong range or option makes the assistant wrong.
  *     How to use features outside these rows (lyrics-page buttons, dialogs,
  *     the Sync Creator, community videos, fullscreen views, ...) is explained
- *     in usageGuide.mjs, which the assistant reads after this catalog. When
- *     such a feature changes, update its topic there as well.
+ *     in usageGuide.mjs: the assistant reads its index after this catalog and
+ *     the full text of the topics a question needs. When such a feature
+ *     changes, update its topic there as well.
  *   - tests/settings_guide.test.mjs renders every settings menu and compares it
  *     with this file. It fails when a row is missing here, an entry no longer
  *     exists in the menus, or a range, option list, default or i18n key differs.

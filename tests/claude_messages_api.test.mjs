@@ -92,3 +92,18 @@ test("Claude completes at message_stop without waiting for the body to close", {
     await cancelled;
     assert.equal(response.body.locked, false);
 });
+
+test("Claude caches the settings assistant's system prompt and sends other system prompts as text", async () => {
+    const { addon, requests } = loadAddon(({ body }) => Response.json({
+        stop_reason: "end_turn",
+        content: [{ type: "text", text: body.messages[0].content === "Question" ? '{"reply":"Done."}' : "Uno\nDos" }],
+        usage: { input_tokens: 40, cache_read_input_tokens: 20000, cache_creation_input_tokens: 0 },
+    }));
+    const prompt = { systemPrompt: " Rules and catalog ", userPrompt: "Question", cacheSystemPrompt: true };
+    assert.deepEqual(await addon.generateSettingsAssistant({ settingsAssistantPrompt: prompt }), { reply: "Done." });
+    assert.deepEqual(requests[0].body.system, [{ type: "text", text: "Rules and catalog", cache_control: { type: "ephemeral" } }]);
+    assert.deepEqual(requests[0].body.messages, [{ role: "user", content: "Question" }]);
+
+    await addon.translateLyrics({ ...lyrics, translationPrompt: { systemPrompt: "Translate.", userPrompt: lyrics.text } });
+    assert.equal(requests[1].body.system, "Translate.");
+});

@@ -6,8 +6,13 @@
  * survives switching menus and closing/reopening the settings window. Each
  * message goes to the user's AI provider; the reply's changes are checked and
  * saved by settingsAssistantCatalog.mjs through the settings registry.
- * The catalog the AI reads is the settings catalog followed by the usage guide
- * (usageGuide.mjs), so it can also explain features outside the settings rows.
+ *
+ * How-to guide (usageGuide.mjs): the system prompt carries the settings
+ * catalog and the guide's index, one line per topic. Each message also
+ * carries the full text of the topics selectUsageGuideTopics() picks for it.
+ * When the AI needs a topic that was not sent, it answers with only
+ * "guide": [topic ids]; send() then repeats the request once with those
+ * topics and keeps the second answer. It never asks a third time.
  *
  * The settings window rebuilds its handlers on every render, so callers pass a
  * fresh `runtime` with each send/undo:
@@ -22,19 +27,25 @@
  *
  * Messages
  *   { id, role: "user", text }
- *   { id, role: "assistant", status, text, changes, rejected, show, undone }
+ *   { id, role: "assistant", status, text, changes, rejected, show, guide, undone }
  *     status   "done" | "invalid" (unreadable reply) | "error" | "stopped"
  *     changes  [{ key, value, previous, adjusted }] saved by this reply
  *     rejected [{ key, reason }] proposed but not saved
  *     show     setting or section keys the reply points to
+ *     guide    how-to topic ids the answering request carried, asked-for
+ *              topics first; the next message carries up to two of them
+ *              again for follow-ups ("and then?")
  */
 import { buildSettingsAssistantPrompt, readSettingsAssistantReply } from "./settingsAssistantPrompt.mjs";
 import {
   applySettingsAssistantChanges, buildSettingsAssistantCatalog, planSettingsAssistantChanges, readChangedSettingsForAssistant,
 } from "./settingsAssistantCatalog.mjs";
-import { buildUsageGuideCatalog } from "./usageGuide.mjs";
+import {
+  buildUsageGuideIndex, renderUsageGuideTopics, selectUsageGuideTopics, USAGE_GUIDE_TOPIC_BY_ID, USAGE_GUIDE_TOPICS_PER_MESSAGE,
+} from "./usageGuide.mjs";
 
 const toRegistryMap = (registry) => new Map(Array.from(registry || [], (entry) => [entry.key, entry]));
+const stopped = () => Object.assign(new Error("Stopped"), { name: "AbortError" });
 
 export function createSettingsAssistantSession({ createId } = {}) {
   let sequence = 0;
@@ -60,7 +71,7 @@ export function createSettingsAssistantSession({ createId } = {}) {
       registryByKey,
       catalog: [
         buildSettingsAssistantCatalog({ translate: runtime.translate, registryByKey }),
-        buildUsageGuideCatalog({ translate: runtime.translate }),
+        buildUsageGuideIndex({ translate: runtime.translate }),
       ].join("\n\n"),
       changedValues: readChangedSettingsForAssistant({
         registryByKey, isSettingChanged: runtime.isSettingChanged, readValue: runtime.readValue,
@@ -80,14 +91,27 @@ export function createSettingsAssistantSession({ createId } = {}) {
     let reply;
     try {
       const context = readContext(runtime);
-      const prompt = buildSettingsAssistantPrompt({
-        catalog: context.catalog, language: runtime.readLanguage(), changedValues: context.changedValues,
-        history, message: question,
-      });
-      const raw = await runtime.request(prompt, ownController?.signal);
-      if (ownController?.signal.aborted) throw Object.assign(new Error("Stopped"), { name: "AbortError" });
-      const parsed = readSettingsAssistantReply(raw);
-      if (!parsed) {
+      const language = runtime.readLanguage();
+      const ask = async (topicIds, guideRequested) => {
+        const prompt = buildSettingsAssistantPrompt({
+          catalog: context.catalog, language, changedValues: context.changedValues, history, message: question,
+          guideTopics: renderUsageGuideTopics(topicIds, { translate: runtime.translate }), guideRequested,
+        });
+        const raw = await runtime.request(prompt, ownController?.signal);
+        if (ownController?.signal.aborted) throw stopped();
+        return readSettingsAssistantReply(raw);
+      };
+      let topics = selectUsageGuideTopics({ message: question, history, translate: runtime.translate });
+      let parsed = await ask(topics, false);
+      const requested = (parsed?.guide || [])
+        .filter((id) => USAGE_GUIDE_TOPIC_BY_ID.has(id) && !topics.includes(id))
+        .slice(0, USAGE_GUIDE_TOPICS_PER_MESSAGE);
+      if (requested.length) {
+        // Once only: the second request tells the AI to answer now.
+        topics = [...requested, ...topics];
+        parsed = await ask(topics, true);
+      }
+      if (!parsed || (!parsed.reply && !parsed.changes.length && !parsed.show.length)) {
         reply = { status: "invalid" };
       } else {
         // Values may have changed while the AI was answering; check and save
@@ -104,6 +128,7 @@ export function createSettingsAssistantSession({ createId } = {}) {
           rejected: [...plan.rejected, ...failed],
           // Rows for settings the AI set to their current value are still useful.
           show: [...new Set([...plan.accepted.filter((change) => change.unchanged).map((change) => change.key), ...parsed.show])],
+          guide: topics,
         };
       }
     } catch (error) {
@@ -117,7 +142,7 @@ export function createSettingsAssistantSession({ createId } = {}) {
     if (!state.messages.some((message) => message.id === userMessage.id)) return false;
     setState({
       messages: [...state.messages, {
-        id: makeId(), role: "assistant", text: "", changes: [], rejected: [], show: [], undone: false, ...reply,
+        id: makeId(), role: "assistant", text: "", changes: [], rejected: [], show: [], guide: [], undone: false, ...reply,
       }],
       pending: false,
     });

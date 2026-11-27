@@ -9,14 +9,19 @@
  *
  * Who reads this file
  *   - The AI settings assistant (the "AI Assistant" menu of the settings
- *     window). settingsAssistantSession.mjs appends buildUsageGuideCatalog()
- *     to the settings catalog in the system prompt, and the rules in
+ *     window). The whole guide is too long to send with every message, so
+ *     settingsAssistantSession.mjs puts only buildUsageGuideIndex() (one line
+ *     per topic) after the settings catalog in the system prompt, and adds
+ *     the full text of the topics chosen by selectUsageGuideTopics() to each
+ *     request. When that choice misses, the AI asks for topics by id ("guide"
+ *     in its reply) and gets them in a second request. The rules in
  *     settingsAssistantPrompt.mjs tell the AI to answer how-to questions
- *     ("How do I add synced lyrics?", "Can I add a video myself?") from it.
- *     The AI only knows what is written here, so a missing or wrong step
- *     becomes a missing or wrong answer.
+ *     ("How do I add synced lyrics?", "Can I add a video myself?") from these
+ *     topics. The AI only knows what is written here, so a missing or wrong
+ *     step becomes a missing or wrong answer.
  *   - tests/usage_guide.test.mjs checks every UI name, setting key and topic
- *     link below against the language files and the settings guide.
+ *     link below against the language files and the settings guide, and that
+ *     typical questions find their topic.
  *
  * Languages
  *   Text is plain English for maintainers and for the AI; the assistant answers
@@ -32,15 +37,17 @@
  *     users reach outside the settings rows, update the matching topic here in
  *     the same change: its access path, steps, needs and limits.
  *   - New feature: add a topic. Keep one task per topic, phrase `questions` the
- *     way users ask (several languages help the AI match them), and link
- *     related topics with `related` and settings rows with `settings`.
+ *     way users ask, in Korean and English (their words decide which messages
+ *     bring the topic to the AI), and link related topics with `related` and
+ *     settings rows with `settings`. Add the new questions to the
+ *     topic-choice table in the test.
  *   - Removed feature: delete or rewrite the topic so the AI stops offering it.
  *   - Settings belong in settingsGuide.mjs. Here, list a setting key in
  *     `settings` only when the user needs that row to do the task; the chat
  *     shows those rows below the answer.
  *   - Run `node --test tests/usage_guide.test.mjs`. A failure names the topic
- *     and the key, setting or link to fix. The test also keeps the rendered
- *     guide within USAGE_GUIDE_MAX_CHARS so every request stays affordable.
+ *     and the key, setting, link or question to fix. The test also keeps the
+ *     rendered guide within USAGE_GUIDE_MAX_CHARS.
  *
  * Topic fields
  *   id         kebab-case id, unique. The AI and `related` refer to topics by it.
@@ -55,7 +62,8 @@
  */
 
 export const USAGE_GUIDE_VERSION = 1;
-// Upper bound for the rendered guide in the system prompt (characters).
+// Upper bound for the whole rendered guide (characters). Requests carry only
+// the index and a few topics, but the guide should stay a quick read.
 export const USAGE_GUIDE_MAX_CHARS = 60000;
 
 export const USAGE_GUIDE_TOPICS = Object.freeze([
@@ -63,7 +71,7 @@ export const USAGE_GUIDE_TOPICS = Object.freeze([
   {
     id: "open-ivlyrics",
     title: "Open the lyrics page and find the ivLyrics menu",
-    questions: ["ivLyrics 어떻게 열어?", "메뉴 버튼이 어디 있어?", "가사 한 줄 복사하는 법", "How do I open ivLyrics?", "Where are the ivLyrics buttons?"],
+    questions: ["ivLyrics 어떻게 열어?", "메뉴 버튼이 어디 있어?", "가사 한 줄 복사하는 법", "How do I open ivLyrics?", "Where are the ivLyrics buttons?", "How do I copy a lyric line?"],
     access: [
       "Spotify sidebar › \"ivLyrics\"",
       "Spotify playback bar › [[playbarButton.label]], while [[settingsAdvanced.playback.replaceButton.label]] is on (the sidebar item is hidden then)",
@@ -208,7 +216,7 @@ export const USAGE_GUIDE_TOPICS = Object.freeze([
   {
     id: "lyrics-sync-offset",
     title: "Fix lyrics that run early or late (sync offset)",
-    questions: ["가사가 늦게 나와", "가사 싱크가 안 맞아", "싱크 조절 어떻게 해?", "블루투스 이어폰이라 가사가 밀려", "The lyrics are out of sync", "How do I shift the lyrics timing?"],
+    questions: ["가사가 늦게 나와", "가사가 너무 빨라", "가사 싱크가 안 맞아", "싱크 조절 어떻게 해?", "블루투스 이어폰이라 가사가 밀려", "The lyrics are out of sync", "How do I shift the lyrics timing?"],
     access: [
       "Lyrics page toolbar › [[menu.syncAdjust]]",
       "Quick sync buttons at the bottom left of the lyrics page and fullscreen",
@@ -231,7 +239,7 @@ export const USAGE_GUIDE_TOPICS = Object.freeze([
   {
     id: "lyrics-provider-per-song",
     title: "Use a different lyrics provider for one song",
-    questions: ["가사가 틀려", "이 곡만 다른 가사로 바꾸고 싶어", "곡별 가사 제공자 변경", "The lyrics are wrong for this song", "How do I change the lyrics source for one song?"],
+    questions: ["가사가 틀려", "이 노래 가사가 이상해", "이 곡만 다른 가사로 바꾸고 싶어", "곡별 가사 제공자 변경", "The lyrics are wrong for this song", "How do I change the lyrics source for one song?"],
     access: ["Lyrics page toolbar › [[menu.currentTrack]] › [[menu.lyricsProviderSelect]]"],
     steps: [
       "Open [[menu.currentTrack]] and choose [[menu.lyricsProviderSelect]].",
@@ -288,7 +296,7 @@ export const USAGE_GUIDE_TOPICS = Object.freeze([
   {
     id: "sync-creator",
     title: "Register karaoke sync for a song (Sync Creator)",
-    questions: ["가사에 싱크를 등록하고 싶은데 어떻게 해?", "노래방 싱크 직접 만들 수 있어?", "싱크 생성기 어디 있어?", "How do I add synced lyrics to a song?", "How do I make karaoke sync?"],
+    questions: ["가사에 싱크를 등록하고 싶은데 어떻게 해?", "노래방 싱크 직접 만들 수 있어?", "직접 만든 싱크 올리는 법", "싱크 생성기 어디 있어?", "How do I add synced lyrics to a song?", "How do I make karaoke sync?"],
     access: [
       "Lyrics page toolbar › [[menu.currentTrack]] › [[syncCreator.buttonTooltip]] (it reads [[syncCreator.clickHereHint]] when the song has no karaoke sync yet)",
     ],
@@ -471,7 +479,7 @@ export const USAGE_GUIDE_TOPICS = Object.freeze([
   {
     id: "video-submit",
     title: "Add a YouTube video for a song yourself",
-    questions: ["영상은 내가 수동으로 등록 못해?", "영상을 직접 등록할 수 있어?", "유튜브 링크로 배경 영상 넣기", "Can I add a background video myself?"],
+    questions: ["영상은 내가 수동으로 등록 못해?", "영상을 직접 등록할 수 있어?", "유튜브 링크로 배경 영상 넣기", "뮤비 직접 올리는 법", "Can I add a background video myself?", "Can I upload my own video?"],
     access: [
       "Lyrics page toolbar › [[menu.currentTrack]] › [[communityVideo.selectVideo]] › [[communityVideo.addVideoNoEmoji]]",
     ],
@@ -590,7 +598,7 @@ export const USAGE_GUIDE_TOPICS = Object.freeze([
   {
     id: "motion-lyrics",
     title: "Motion lyrics (kinetic typography in fullscreen)",
-    questions: ["모션 가사 어떻게 봐?", "모션 그래픽 가사가 안 나와", "How do I open motion lyrics?"],
+    questions: ["모션 가사 어떻게 봐?", "모션 그래픽 가사가 안 나와", "키네틱 타이포그래피 가사", "How do I open motion lyrics?"],
     access: ["In fullscreen: top-center view switcher › [[vinyl.presentation.motionLabel]] (key 5)"],
     steps: [
       "Play a song with karaoke sync, open fullscreen and pick [[vinyl.presentation.motionLabel]] (or press 5).",
@@ -611,7 +619,7 @@ export const USAGE_GUIDE_TOPICS = Object.freeze([
   {
     id: "song-info",
     title: "Read AI research about the current song",
-    questions: ["곡 비하인드 보는 법", "TMI 기능 어디 있어?", "노래 배경 설명", "Where can I read about this song?"],
+    questions: ["곡 비하인드 보는 법", "곡 정보 보기", "TMI 기능 어디 있어?", "노래 배경 설명", "Where can I read about this song?"],
     access: ["In fullscreen: right-click (or press and hold) the album art"],
     steps: [
       "Open fullscreen and right-click or press and hold the album art.",
@@ -629,7 +637,7 @@ export const USAGE_GUIDE_TOPICS = Object.freeze([
   {
     id: "learning-mode",
     title: "Learn a language from the lyrics (AI learning mode)",
-    questions: ["가사로 공부하는 기능", "학습 모드 어떻게 써?", "단어장 어디 있어?", "How do I use learning mode?"],
+    questions: ["가사로 공부하는 기능", "학습 모드 어떻게 써?", "단어장 어디 있어?", "How do I use learning mode?", "Can I study a language with the lyrics?"],
     access: ["Lyrics page toolbar › [[menu.more]] › [[learningMode.button]]"],
     steps: [
       "Open [[menu.more]] › [[learningMode.button]] while the song's lyrics are shown.",
@@ -767,10 +775,10 @@ export const USAGE_GUIDE_TOPICS = Object.freeze([
   {
     id: "ai-provider-setup",
     title: "Set up AI providers (API keys, tasks, order)",
-    questions: ["API 키 어디에 넣어?", "AI 제공자 설정", "무료로 번역 쓸 수 있어?", "Where do I enter my API key?"],
+    questions: ["API 키 어디에 넣어?", "Gemini 키 넣는 곳", "AI 제공자 설정", "무료로 번역 쓸 수 있어?", "Where do I enter my API key?"],
     access: ["[[menu.settings]] › [[tabs.aiProviders]]"],
     steps: [
-      "In [[settingsUi.sections.aiConnections.title]], open a provider, enter its [[settings.aiProviders.apiKey]] and model, and press [[settings.aiProviders.testConnection]].",
+      "In [[settingsUi.sections.aiConnections.title]], open a provider (for example Google Gemini, OpenAI ChatGPT or Anthropic Claude), enter its [[settings.aiProviders.apiKey]] and model, and press [[settings.aiProviders.testConnection]].",
       "In [[settingsUi.sections.aiTasks.title]], turn the provider on and choose its tasks, such as [[settings.aiProviders.supports.translate]] and [[settings.aiProviders.supports.pronunciation]].",
       "Drag providers to set the order: the top one is tried first, and failures fall back to the next.",
       "Local AI: download a model in its card and turn it on; it translates on your computer without a key.",
@@ -874,7 +882,7 @@ export const USAGE_GUIDE_TOPICS = Object.freeze([
   {
     id: "uninstall-ivlyrics",
     title: "Uninstall ivLyrics",
-    questions: ["ivLyrics 삭제 방법", "제거 명령어", "How do I uninstall ivLyrics?"],
+    questions: ["ivLyrics 삭제 방법", "ivLyrics 지우고 싶어", "제거 명령어", "How do I uninstall ivLyrics?", "How do I remove ivLyrics?"],
     access: ["Windows PowerShell", "macOS or Linux Terminal"],
     steps: [
       "Windows (PowerShell): iwr -useb https://raw.githubusercontent.com/ivLis-Studio/ivLyrics/main/updater/uninstall.ps1 | iex",
@@ -904,7 +912,7 @@ export const USAGE_GUIDE_TOPICS = Object.freeze([
   {
     id: "performance",
     title: "Fix a slow or stuttering lyrics page",
-    questions: ["렉 걸려", "가사 화면이 버벅여", "CPU를 너무 많이 먹어", "ivLyrics is lagging"],
+    questions: ["렉 걸려", "가사 화면이 버벅여", "가사가 뚝뚝 끊겨", "앱이 너무 느려", "CPU를 너무 많이 먹어", "ivLyrics is lagging"],
     access: ["[[menu.settings]] › [[tabs.performance]]"],
     steps: [
       "Lower [[settingsAdvanced.performance.frameRate.label]] or turn on [[settings.reduceMotion.label]] in [[tabs.performance]].",
@@ -937,6 +945,8 @@ const UI_NAME_PATTERN = /\[\[([^\]|]+?)(?:\|([^\]]*))?\]\]/g;
 const plainText = (value) => String(value ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 const listOf = (value) => (value === undefined ? [] : [].concat(value)).filter(Boolean);
 
+export const USAGE_GUIDE_TOPIC_BY_ID = new Map(USAGE_GUIDE_TOPICS.map((topic) => [topic.id, topic]));
+
 /** Every [[i18n.key]] a topic uses, with its fallback text when one is given. */
 export function listUsageGuideUiNames(topic) {
   const names = [];
@@ -955,26 +965,177 @@ export function renderUsageGuideText(text, translate) {
   });
 }
 
-/**
- * Plain-text guide for the system prompt, with UI names in the interface
- * language. Like the settings catalog it only changes with the language, so
- * providers that cache prompt prefixes can reuse it.
- */
-export function buildUsageGuideCatalog({ translate }) {
-  const render = (text) => renderUsageGuideText(text, translate);
-  const lines = [
-    "HOW-TO GUIDE (using ivLyrics outside the settings rows; quoted names are exactly what the user sees)",
-  ];
-  for (const topic of USAGE_GUIDE_TOPICS) {
-    lines.push(`## how-to ${topic.id}: ${render(topic.title)}`);
-    if (listOf(topic.questions).length) lines.push(`Asked as: ${listOf(topic.questions).join(" | ")}`);
-    for (const access of listOf(topic.access)) lines.push(`Where: ${render(access)}`);
-    listOf(topic.steps).forEach((step, index) => lines.push(`${index + 1}. ${render(step)}`));
-    for (const need of listOf(topic.needs)) lines.push(`Needs: ${render(need)}`);
-    for (const limit of listOf(topic.limits)) lines.push(`Limit: ${render(limit)}`);
-    if (listOf(topic.settings).length) lines.push(`Related settings: ${listOf(topic.settings).join(", ")}`);
-    if (listOf(topic.related).length) lines.push(`See also: ${listOf(topic.related).join(", ")}`);
-  }
+function renderTopic(topic, render) {
+  const lines = [`## how-to ${topic.id}: ${render(topic.title)}`];
+  if (listOf(topic.questions).length) lines.push(`Asked as: ${listOf(topic.questions).join(" | ")}`);
+  for (const access of listOf(topic.access)) lines.push(`Where: ${render(access)}`);
+  listOf(topic.steps).forEach((step, index) => lines.push(`${index + 1}. ${render(step)}`));
+  for (const need of listOf(topic.needs)) lines.push(`Needs: ${render(need)}`);
+  for (const limit of listOf(topic.limits)) lines.push(`Limit: ${render(limit)}`);
+  if (listOf(topic.settings).length) lines.push(`Related settings: ${listOf(topic.settings).join(", ")}`);
+  if (listOf(topic.related).length) lines.push(`See also: ${listOf(topic.related).join(", ")}`);
   return lines.join("\n");
+}
+
+/** Full text of the given topics, in that order, with UI names in the interface language. */
+export function renderUsageGuideTopics(ids, { translate }) {
+  const render = (text) => renderUsageGuideText(text, translate);
+  return listOf(ids).map((id) => USAGE_GUIDE_TOPIC_BY_ID.get(id)).filter(Boolean)
+    .map((topic) => renderTopic(topic, render)).join("\n");
+}
+
+/**
+ * One line per topic, for the system prompt after the settings catalog. It
+ * only changes with the interface language, so providers that cache prompt
+ * prefixes reuse it together with the catalog.
+ */
+export function buildUsageGuideIndex({ translate }) {
+  const render = (text) => renderUsageGuideText(text, translate);
+  return [
+    "HOW-TO GUIDE INDEX (topics about using ivLyrics outside the settings rows; the request carries the full text of the topics that fit the message under HOW-TO TOPICS)",
+    ...USAGE_GUIDE_TOPICS.map((topic) => `- ${topic.id}: ${render(topic.title)}`),
+  ].join("\n");
+}
+
+/** The whole guide as one text, for size checks and reading; requests carry single topics. */
+export function buildUsageGuideCatalog({ translate }) {
+  return [
+    "HOW-TO GUIDE (using ivLyrics outside the settings rows; quoted names are exactly what the user sees)",
+    renderUsageGuideTopics(USAGE_GUIDE_TOPICS.map((topic) => topic.id), { translate }),
+  ].join("\n");
+}
+
+// ─── Choosing the topics for a message ──────────────────────────────────
+// Plain word overlap, weighted by where a word appears in a topic (its
+// questions count most) and by how rare it is across topics: a word found in
+// half of the topics or more counts for nothing, and question words that
+// say nothing about a topic ("how do I", "어떻게", "싶어") are skipped.
+// Korean, Japanese and Chinese have no reliable word boundaries ("싱크를"
+// should still find "싱크"), so they are compared in character pairs, and a
+// Korean noun also counts without its particle ("렉이" finds "렉"). UI names
+// are read in the interface language, which lets questions in that language
+// match too. When the choice misses, the AI asks for topics by id and the
+// session sends them in a second request (settingsAssistantSession.mjs).
+// To make a question find its topic, add it (or its wording) to the topic's
+// `questions` and to the topic-choice table in tests/usage_guide.test.mjs.
+
+/** Topics chosen from the message itself. */
+export const USAGE_GUIDE_TOPICS_PER_MESSAGE = 3;
+// Topics the previous answer was given, kept for follow-ups ("and then?").
+const CARRIED_TOPICS = 2;
+// A topic is sent when it reaches this share of the best score and this score.
+const RELATIVE_TOPIC_SCORE = 0.4;
+const MIN_TOPIC_SCORE = 4;
+const PREVIOUS_MESSAGE_WEIGHT = 0.5;
+const FIELD_WEIGHTS = Object.freeze([["questions", 3], ["title", 2], ["names", 2], ["text", 1]]);
+// Runs of Korean, Chinese or Japanese letters, or runs of other letters and
+// digits: "ivLyrics가" and "API키" are two words each.
+const WORD_PATTERN = /(?:(?=[\p{L}\p{N}])[\p{scx=Hang}\p{scx=Hani}\p{scx=Hira}\p{scx=Kana}])+|(?:(?![\p{scx=Hang}\p{scx=Hani}\p{scx=Hira}\p{scx=Kana}])[\p{L}\p{N}])+/gu;
+const PAIRED_SCRIPT = /[\p{scx=Hang}\p{scx=Hani}\p{scx=Hira}\p{scx=Kana}]/u;
+// Particles that follow a Korean noun, longest first.
+const KOREAN_PARTICLES = Object.freeze(["에서", "으로", "에게", "한테", "까지", "부터", "처럼", "이랑", "이", "가", "을", "를", "은", "는", "에", "도", "만", "로", "와", "과", "의", "랑"]);
+// Question and filler words, as they are compared: English words before the
+// plural "s" is removed, Korean character pairs and one-character words.
+const STOP_TERMS = new Set([
+  "an", "the", "to", "of", "for", "in", "on", "at", "by", "it", "is", "are", "be", "do", "does", "did", "can", "could", "would",
+  "should", "will", "how", "what", "where", "when", "why", "which", "who", "there", "this", "that", "my", "me", "you", "your",
+  "with", "and", "or", "not", "want", "need", "please", "way", "some", "any",
+  "어떻", "떻게", "어디", "디서", "디에", "싶어", "싶은", "싶다", "은데", "는데", "있어", "있나", "있을", "하는", "하고", "해요",
+  "어요", "나요", "세요", "방법", "알려", "려줘", "뭐야", "려면", "너무",
+  "안", "못", "좀", "더", "다", "잘", "왜", "뭐", "또", "그", "이", "저", "내", "제", "나", "수", "할", "거", "것", "게", "건",
+  "걸", "해", "돼", "법", "곳", "때",
+]);
+
+/** Search terms of a text: words, or character pairs in Korean, Japanese and Chinese. */
+export function readUsageGuideSearchTerms(text) {
+  const terms = new Set();
+  const add = (term) => {
+    if (!STOP_TERMS.has(term)) terms.add(term);
+  };
+  const addPairs = (characters) => {
+    // A one-character word ("렉", "앱", "키") is its own term.
+    if (characters.length === 1) add(characters[0]);
+    for (let index = 0; index + 1 < characters.length; index++) add(characters[index] + characters[index + 1]);
+  };
+  for (const [word] of String(text ?? "").normalize("NFKC").toLowerCase().matchAll(WORD_PATTERN)) {
+    if (PAIRED_SCRIPT.test(word)) {
+      const characters = Array.from(word);
+      addPairs(characters);
+      const particle = KOREAN_PARTICLES.find((ending) => word.length > ending.length && word.endsWith(ending));
+      if (particle) addPairs(characters.slice(0, characters.length - particle.length));
+    } else if (word.length > 1 && !STOP_TERMS.has(word)) {
+      // "videos" and "video", "settings" and "setting" are the same search word.
+      terms.add(word.length > 3 && word.endsWith("s") ? word.slice(0, -1) : word);
+    }
+  }
+  return terms;
+}
+
+function buildSearchIndex(translate) {
+  const render = (text) => renderUsageGuideText(text, translate);
+  const topics = USAGE_GUIDE_TOPICS.map((topic) => {
+    const fields = {
+      questions: listOf(topic.questions).join(" "),
+      title: render(topic.title) + " " + topic.id.replace(/-/g, " "),
+      names: listUsageGuideUiNames(topic).map(({ key, fallback }) => {
+        const value = translate(key);
+        return (typeof value === "string" && plainText(value)) || plainText(fallback);
+      }).join(" "),
+      text: [...listOf(topic.access), ...listOf(topic.steps), ...listOf(topic.needs), ...listOf(topic.limits)].map(render).join(" "),
+    };
+    const weights = new Map();
+    for (const [field, weight] of FIELD_WEIGHTS) {
+      for (const term of readUsageGuideSearchTerms(fields[field])) {
+        if ((weights.get(term) || 0) < weight) weights.set(term, weight);
+      }
+    }
+    return { id: topic.id, weights };
+  });
+  const topicCounts = new Map();
+  for (const { weights } of topics) {
+    for (const term of weights.keys()) topicCounts.set(term, (topicCounts.get(term) || 0) + 1);
+  }
+  // Rarity of a term (BM25's inverse document frequency); 0 for terms that
+  // half of the topics or more contain.
+  const rarity = (term) => {
+    const count = topicCounts.get(term) || 0;
+    return Math.max(0, Math.log((topics.length - count + 0.5) / (count + 0.5)));
+  };
+  return { topics, rarity };
+}
+
+/** Topics that share words with the message, best first, with their scores. */
+export function rankUsageGuideTopics({ message, previousMessage = "", translate }) {
+  const { topics, rarity } = buildSearchIndex(translate);
+  const query = new Map();
+  for (const term of readUsageGuideSearchTerms(previousMessage)) query.set(term, PREVIOUS_MESSAGE_WEIGHT);
+  for (const term of readUsageGuideSearchTerms(message)) query.set(term, 1);
+  return topics.map(({ id, weights }) => {
+    let score = 0;
+    for (const [term, queryWeight] of query) {
+      const weight = weights.get(term);
+      if (weight) score += queryWeight * weight * rarity(term);
+    }
+    return { id, score };
+  }).filter((entry) => entry.score > 0).sort((first, second) => second.score - first.score);
+}
+
+/**
+ * Topic ids to send with a message: the best matches for it (the previous user
+ * message counts as weaker context) followed by the topics the previous answer
+ * was given, so a follow-up such as "what is step 2?" keeps its topic.
+ * @param {{ message: string, history?: Object[], translate: Function }} input
+ *   history holds the chat messages; assistant messages list their topics in `guide`.
+ * @returns {string[]}
+ */
+export function selectUsageGuideTopics({ message, history = [], translate }) {
+  const earlier = [...history].reverse();
+  const previousMessage = earlier.find((item) => item.role === "user")?.text || "";
+  const ranked = rankUsageGuideTopics({ message, previousMessage, translate });
+  const needed = Math.max(MIN_TOPIC_SCORE, (ranked[0]?.score || 0) * RELATIVE_TOPIC_SCORE);
+  const chosen = ranked.filter((entry) => entry.score >= needed).slice(0, USAGE_GUIDE_TOPICS_PER_MESSAGE).map((entry) => entry.id);
+  const carried = listOf(earlier.find((item) => item.role === "assistant")?.guide)
+    .filter((id) => USAGE_GUIDE_TOPIC_BY_ID.has(id) && !chosen.includes(id));
+  return [...chosen, ...carried.slice(0, CARRIED_TOPICS)];
 }
 

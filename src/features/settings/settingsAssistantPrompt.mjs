@@ -2,18 +2,23 @@
  * Settings assistant: prompt and reply format
  * ===========================================
  *
- * The system prompt holds the rules and the settings catalog
- * (settingsAssistantCatalog.mjs) followed by the how-to guide (usageGuide.mjs).
- * It only changes with the interface language,
- * so providers that cache prompt prefixes can reuse it. The user prompt holds
- * what changes per message: current non-default values, the recent
+ * The system prompt holds the rules, the settings catalog
+ * (settingsAssistantCatalog.mjs) and the index of the how-to guide
+ * (usageGuide.mjs, one line per topic). It only changes with the interface
+ * language, so providers that cache prompt prefixes can reuse it; the prompt
+ * also asks for that cache (cacheSystemPrompt), which Claude needs. The user
+ * prompt holds what changes per message: current non-default values, the
+ * full text of the how-to topics chosen for the message, the recent
  * conversation and the new message.
  *
  * The AI answers with one JSON object:
  *   {
  *     "reply":   text for the user, in the user's language,
  *     "changes": [{ "key": setting key, "value": new value }],
- *     "show":    [setting or section keys to show as rows or links]
+ *     "show":    [setting or section keys to show as rows or links],
+ *     "guide":   [how-to topic ids] — only to ask for topics whose text the
+ *                request did not carry; the session then sends the request
+ *                once more with them (settingsAssistantSession.mjs)
  *   }
  * readSettingsAssistantReply accepts small deviations (a changes map, a
  * missing list) and returns null when nothing usable came back.
@@ -26,6 +31,8 @@
 const MAX_REPLY_LENGTH = 4000;
 const MAX_CHANGES = 24;
 const MAX_SHOWN = 12;
+// How-to topics the AI may ask for at once.
+const MAX_GUIDE_TOPICS = 3;
 const HISTORY_MESSAGES = 8;
 const HISTORY_TEXT_LENGTH = 600;
 
@@ -37,7 +44,8 @@ const SETTINGS_ASSISTANT_RULES = [
   "- Write \"reply\" in the language of the user's latest message. Use the interface language named in the request only when that language is unclear.",
   "- Keep replies short and friendly: one to three sentences. Call settings by their quoted names and say where they are (menu › section); do not show keys to the user.",
   "- Act on what the user wants. A request or a how-to question about a result (\"hide the controller\", \"how do I hide the controller in fullscreen?\") means: put the change in \"changes\" and say what you changed. Only questions about what a setting does or where it is are answered without changing anything. If a setting already has the wanted value, say so and show it.",
-  "- Questions about using ivLyrics that a setting cannot answer (how to do something on the lyrics page or in a dialog, where a button or screen is, whether something is possible, why something does not work) are answered from the HOW-TO GUIDE after the settings catalog. Follow the matching topic: give the steps as a numbered list, one short step per line (at most 8 steps; the three-sentence limit does not apply), name buttons, menus and screens exactly as quoted in the guide, and mention what the topic needs and the limits that apply to the question. If the guide says something is not possible, say so and offer the alternative it gives. Never invent buttons, menus, screens or features that are not in the guide or the catalog.",
+  "- Questions about using ivLyrics that a setting cannot answer (how to do something on the lyrics page or in a dialog, where a button or screen is, whether something is possible, why something does not work) are answered from the how-to guide. The HOW-TO GUIDE INDEX after the settings catalog lists its topics, and the request carries the full text of the topics that may fit the message under HOW-TO TOPICS. Follow the matching topic: give the steps as a numbered list, one short step per line (at most 8 steps; the three-sentence limit does not apply), name buttons, menus and screens exactly as quoted in the topic, and mention what the topic needs and the limits that apply to the question. If the topic says something is not possible, say so and offer the alternative it gives. Never invent buttons, menus, screens or features that are not in the guide or the catalog.",
+  "- If the answer needs a topic from the HOW-TO GUIDE INDEX whose full text is not under HOW-TO TOPICS, do not answer from its title. Answer only {\"reply\": \"\", \"changes\": [], \"show\": [], \"guide\": [\"topic-id\"]} with up to 3 topic ids from the index; the request is then sent again with those topics.",
   "- In how-to answers, list a topic's related settings in \"show\" only when the user needs those rows for the task, and change settings only when the user asked for a change.",
   "- When a request has an obvious reading, act on it instead of asking: \"make the lyrics bigger\" raises the original lyric size by a few steps. Ask one short question only when the possible readings lead to clearly different results, and show the candidate settings.",
   "- Values must follow the catalog: toggle true or false; number within its range and step; weight 100 to 900 in steps of 100; select one of the listed values (use the value, not its name); color \"#rrggbb\"; font a font family name or a comma-separated fallback list (Google Fonts load automatically).",
@@ -50,6 +58,7 @@ const SETTINGS_ASSISTANT_RULES = [
   "",
   "Answer with one JSON object and nothing else (no markdown):",
   "{\"reply\": \"...\", \"changes\": [{\"key\": \"...\", \"value\": ...}], \"show\": [\"...\"]}",
+  "Add \"guide\" only to ask for how-to topics, as described above.",
 ].join("\n");
 
 const shorten = (text, length) => {
@@ -75,18 +84,32 @@ function describeHistoryMessage(message) {
 
 /**
  * @param {{ catalog: string, language: { code: string, name: string },
- *   changedValues: Object, history: Object[], message: string }} input
- * @returns {{ systemPrompt: string, userPrompt: string }}
+ *   changedValues: Object, history: Object[], message: string,
+ *   guideTopics?: string, guideRequested?: boolean }} input
+ *   catalog         settings catalog and how-to guide index
+ *   guideTopics     full text of the how-to topics for this message (renderUsageGuideTopics)
+ *   guideRequested  the request repeats with the topics the AI asked for
+ * @returns {{ systemPrompt: string, userPrompt: string, cacheSystemPrompt: boolean }}
+ *   cacheSystemPrompt asks providers with explicit prompt caching (Claude) to
+ *   cache the system prompt; the others cache stable prefixes on their own.
  */
-export function buildSettingsAssistantPrompt({ catalog, language, changedValues, history, message }) {
+export function buildSettingsAssistantPrompt({ catalog, language, changedValues, history, message, guideTopics = "", guideRequested = false }) {
   const recent = (history || []).filter((item) => item.role === "user" || item.role === "assistant").slice(-HISTORY_MESSAGES);
+  const topics = String(guideTopics ?? "").trim();
+  let guide = "HOW-TO TOPICS: none were sent with this message.";
+  if (topics) {
+    guide = guideRequested
+      ? `HOW-TO TOPICS (the topics you asked for and the ones sent before; answer now and do not ask for topics again):\n${topics}`
+      : `HOW-TO TOPICS (full text of the guide topics that may fit this message):\n${topics}`;
+  }
   const userPrompt = [
     `Interface language: ${language?.name || language?.code || "English"} (${language?.code || "en"})`,
     `Current values that differ from the defaults: ${JSON.stringify(changedValues || {})}`,
+    guide,
     recent.length ? "Conversation so far:\n" + recent.map(describeHistoryMessage).join("\n") : "Conversation so far: (none)",
     `New message from the user:\n${String(message ?? "").trim()}`,
   ].join("\n\n");
-  return { systemPrompt: `${SETTINGS_ASSISTANT_RULES}\n\n${catalog}`, userPrompt };
+  return { systemPrompt: `${SETTINGS_ASSISTANT_RULES}\n\n${catalog}`, userPrompt, cacheSystemPrompt: true };
 }
 
 const readKeys = (value) => (Array.isArray(value) ? value : value ? [value] : [])
@@ -96,7 +119,8 @@ const readKeys = (value) => (Array.isArray(value) ? value : value ? [value] : []
 
 /**
  * Normalizes the AI's JSON reply, or returns null when it holds nothing usable.
- * @returns {{ reply: string, changes: {key: string, value: any}[], show: string[] } | null}
+ * `guide` is present only when the AI asked for how-to topics.
+ * @returns {{ reply: string, changes: {key: string, value: any}[], show: string[], guide?: string[] } | null}
  */
 export function readSettingsAssistantReply(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -110,7 +134,11 @@ export function readSettingsAssistantReply(raw) {
     changes = Object.entries(raw.changes).map(([key, value]) => ({ key: key.trim(), value }));
   }
   const show = [...new Set(readKeys(raw.show))];
+  const guide = [...new Set(readKeys(raw.guide))].slice(0, MAX_GUIDE_TOPICS);
   const reply = shorten(replyText, MAX_REPLY_LENGTH);
-  if (!reply && !changes.length && !show.length) return null;
-  return { reply, changes: changes.filter((change) => change.key).slice(0, MAX_CHANGES), show: show.slice(0, MAX_SHOWN) };
+  if (!reply && !changes.length && !show.length && !guide.length) return null;
+  return {
+    reply, changes: changes.filter((change) => change.key).slice(0, MAX_CHANGES), show: show.slice(0, MAX_SHOWN),
+    ...(guide.length ? { guide } : {}),
+  };
 }

@@ -130,8 +130,10 @@ test("the prompt carries the language, changed values and recent turns; replies 
   });
   assert.ok(prompt.systemPrompt.endsWith("CATALOG"));
   assert.match(prompt.systemPrompt, /Answer with one JSON object/);
+  assert.equal(prompt.cacheSystemPrompt, true);
   assert.match(prompt.userPrompt, /Interface language: 한국어 \(ko\)/);
   assert.match(prompt.userPrompt, /"font-size":40/);
+  assert.match(prompt.userPrompt, /HOW-TO TOPICS: none were sent with this message\./);
   assert.match(prompt.userPrompt, /User: 글자 키워 줘/);
   assert.match(prompt.userPrompt, /Assistant: 키웠어요 \[changed, then undone by the user: font-size=40; not changed: x \(unknown-setting\); shown: lyric-layers\]/);
   assert.match(prompt.userPrompt, /New message from the user:\n조금 더$/);
@@ -140,6 +142,9 @@ test("the prompt carries the language, changed values and recent turns; replies 
     { reply: "**완료**", changes: [{ key: "font-size", value: 44 }], show: ["lyric-layers"] });
   assert.deepEqual(readSettingsAssistantReply({ message: "hi", changes: [{ key: "a" }, { key: " b ", value: 1 }] }),
     { reply: "hi", changes: [{ key: "b", value: 1 }], show: [] });
+  // Asking for how-to topics is a usable reply on its own.
+  assert.deepEqual(readSettingsAssistantReply({ reply: "", guide: ["video-submit", "video-submit", " sync-creator ", "a", "b"] }),
+    { reply: "", changes: [], show: [], guide: ["video-submit", "sync-creator", "a"] });
   assert.equal(readSettingsAssistantReply({}), null);
   assert.equal(readSettingsAssistantReply([]), null);
   assert.equal(readSettingsAssistantReply("text"), null);
