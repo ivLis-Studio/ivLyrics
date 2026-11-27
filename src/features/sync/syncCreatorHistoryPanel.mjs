@@ -219,7 +219,7 @@ export function renderSyncCreatorHistoryPanel({
 				role: 'switch',
 				'aria-checked': isSessionAutosaveEnabled,
 				onClick: toggleSessionAutosave,
-				title: translate('syncCreator.historyAutosaveDescription') || '현재 작업을 30초마다 자동 저장합니다.'
+				title: translate('syncCreator.historyAutosaveDescription') || '현재 작업의 변경 사항을 3초 안에 자동 저장합니다.'
 			},
 				react.createElement('span', { style: s.historyAutosaveLabel }, translate('syncCreator.historyAutosaveToggle') || '자동 저장'),
 				react.createElement('span', {
@@ -362,7 +362,7 @@ export function renderSyncCreatorHistoryPanel({
 				sessionHistory.map((entry, index) => renderHistoryEntry(entry, index))
 			)
 			: react.createElement('div', { style: s.historyEmpty },
-				translate('syncCreator.historyEmpty') || '30초 자동 저장 또는 수동 저장 시 작업 상태가 여기에 기록됩니다.'
+				translate('syncCreator.historyEmpty') || '자동 저장 또는 수동 저장 시 작업 상태가 여기에 기록됩니다.'
 			),
 		renderHistoryLiveRegion()
 	);
