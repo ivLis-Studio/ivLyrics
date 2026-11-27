@@ -18,7 +18,7 @@ export function createLrclibSearch({ matcher, request: readRequest, getTrackMeta
     // 동일하게 사용되므로, 호출별 컨텍스트를 받아 runSearchFlow를 돌려주는
     // 팩토리로 공유한다. 기본값은 공식 API이며 재생에서만 호스트/전송을 지정한다.
     function createLrclibSearchFlowRunner({ headers, searchSettings, trackDurationSec, syncDataLineCharCounts, syncDataSource,
-        baseUrl = LRCLIB_API_BASE, request = readRequest, tryWithoutAlbum = false, candidateFilter = () => true }) {
+        baseUrl = LRCLIB_API_BASE, request = readRequest, tryWithoutAlbum = false, candidateFilter = () => true, signal }) {
         const runSearch = async (params, label) => {
             const query = new URLSearchParams();
             if (params.track_name) query.set('track_name', params.track_name);
@@ -68,6 +68,7 @@ export function createLrclibSearch({ matcher, request: readRequest, getTrackMeta
             }
 
             const data = await response.json();
+            signal?.throwIfAborted();
             if (!Array.isArray(data)) {
                 return {
                     fatal: true,

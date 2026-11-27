@@ -6,9 +6,10 @@ export function createLrclibPlaybackTransport() {
     // and share its short backoff across subsequent tracks/metadata matches.
     // The editor and submission transport above intentionally stay independent.
     const playbackHostBackoff = new Map();
-    return function createPlaybackApiRequest(baseUrl, transport, isCustom, shareBackoff = true) {
+    return function createPlaybackApiRequest(baseUrl, transport, isCustom, shareBackoff = true, signal) {
         let failure = null;
-        return async (...args) => {
+        return async (url, options, timeoutMs) => {
+            signal?.throwIfAborted();
             if (failure) throw failure;
             const backoff = shareBackoff && playbackHostBackoff.get(baseUrl);
             if (backoff && backoff.until > Date.now()) {
@@ -19,11 +20,13 @@ export function createLrclibPlaybackTransport() {
 
             let response;
             try {
-                response = await transport(...args);
-            } catch (error) {
-                if (error?.name === 'AbortError' && args[1]?.signal?.aborted) throw error;
+                response = await transport(url, signal ? { ...options, signal } : options, timeoutMs);
+            } catch {
                 response = null;
             }
+            // The public transport resolves null on cancellation as well as
+            // on failure. A retired track must never pause the host.
+            signal?.throwIfAborted();
             const status = Number(response?.status || 0);
             // Custom endpoints can implement only part of the API. Keep their
             // existing bounded lookup/search fallback on unsupported reads.

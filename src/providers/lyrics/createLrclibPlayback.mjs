@@ -27,7 +27,7 @@ export function createLrclibPlayback({
     const { createLrclibSearchFlowRunner, selectLrclibCandidate } = search;
     const { applyCandidateLyricsToResult, buildPlaybackOnlyResult } = results;
 
-    async function getLocalDatabaseLyrics(info, cacheVersion) {
+    async function getLocalDatabaseLyrics(info, cacheVersion, signal) {
         const local = readLocalDatabase();
         if (info?.lrclibOfficialOnly || !local) return null;
         const state = local.getState?.();
@@ -35,8 +35,10 @@ export function createLrclibPlayback({
         try {
             const candidate = await local.lookup({ uri: info.uri, title: info.title, artist: info.artist,
                 album: info.album, duration: info.duration });
+            if (signal?.aborted) return null;
             return buildPlaybackOnlyResult(candidate, info, cacheVersion, 'local');
         } catch {
+            if (signal?.aborted) return null;
             debug('[LR-DEBUG] Local database unavailable; continuing online fallback');
             return null;
         }
@@ -82,38 +84,49 @@ export function createLrclibPlayback({
         return { request, close() { closed = true; for (const cancel of cancellations) cancel(); cancellations.clear(); } };
     }
 
-    async function getCustomApiLyrics(info, cacheVersion, context, endpoint) {
+    async function getCustomApiLyrics(info, cacheVersion, context, endpoint, signal) {
         const transport = createCustomApiRequest(endpoint);
-        let timeoutId;
+        let timeoutId, onAbort;
         try {
             return await Promise.race([
                 getPlaybackFromApi(info, { cacheVersion, context, baseUrl: endpoint,
-                    request: transport.request, isCustom: true, fullLookup: true }),
-                new Promise(resolve => { timeoutId = setTimeout(() => resolve(null), LRCLIB_CUSTOM_API_BUDGET_MS); })
+                    request: transport.request, isCustom: true, fullLookup: true, signal }),
+                new Promise(resolve => {
+                    onAbort = () => resolve(null);
+                    if (signal?.aborted) onAbort();
+                    else signal?.addEventListener('abort', onAbort, { once: true });
+                    timeoutId = setTimeout(onAbort, LRCLIB_CUSTOM_API_BUDGET_MS);
+                })
             ]);
         } finally {
-            clearTimeout(timeoutId); transport.close();
+            signal?.removeEventListener('abort', onAbort);
+            clearTimeout(timeoutId);
+            transport.close();
         }
     }
 
-    async function getLyricsForPlayback(info, cacheVersion) {
-        const localResult = await getLocalDatabaseLyrics(info, cacheVersion);
+    async function getLyricsForPlayback(info, cacheVersion, signal) {
+        signal?.throwIfAborted();
+        const localResult = await getLocalDatabaseLyrics(info, cacheVersion, signal);
+        signal?.throwIfAborted();
         if (localResult) return localResult;
         // Resolve the pinned source BEFORE either network stage, and reuse
         // it for both. Never interleave official lyrics with mirror search.
         const context = await resolveLrclibTrackContext(info);
+        signal?.throwIfAborted();
         const endpoint = info?.lrclibOfficialOnly ? '' : getCustomApiEndpoint();
         if (endpoint) {
-            const customResult = await getCustomApiLyrics(info, cacheVersion, context, endpoint);
+            const customResult = await getCustomApiLyrics(info, cacheVersion, context, endpoint, signal);
+            signal?.throwIfAborted();
             if (customResult && !customResult.error) return customResult;
             debug('[LR-DEBUG] Custom lookup/search exhausted; starting official LRCLIB stage');
         }
-        return getPlaybackFromApi(info, { cacheVersion, context, fullLookup: !!endpoint });
+        return getPlaybackFromApi(info, { cacheVersion, context, fullLookup: !!endpoint, signal });
     }
 
     async function getPlaybackFromApi(info, { cacheVersion, context, baseUrl = LRCLIB_API_BASE,
-        request = fetchWithTimeout, isCustom = false, fullLookup = false }) {
-        request = createPlaybackApiRequest(baseUrl, request, isCustom, !info?.lrclibOfficialOnly);
+        request = fetchWithTimeout, isCustom = false, fullLookup = false, signal }) {
+        request = createPlaybackApiRequest(baseUrl, request, isCustom, !info?.lrclibOfficialOnly, signal);
         const startTotal = performance.now();
         const result = {
             uri: info.uri,
@@ -141,6 +154,7 @@ export function createLrclibPlayback({
         };
 
         try {
+            signal?.throwIfAborted();
             const { title, artist, album, searchSettings, trackDurationSec, expectedArtists } = parseLrclibTrackMetadata(info);
 
             if (!title || !artist || !trackDurationSec) {
@@ -165,11 +179,12 @@ export function createLrclibPlayback({
                 let directCandidate = null;
                 try {
                     directCandidate = decorateDirectCandidate(
-                        await fetchLrclibCandidateById(syncDataSource, headers, { baseUrl, request }),
+                        await fetchLrclibCandidateById(syncDataSource, headers, { baseUrl, request, signal }),
                         syncDataSource, trackDurationSec
                     );
                 } catch (error) {
                     if (error instanceof LrclibPlaybackUnavailableError) throw error;
+                    signal?.throwIfAborted();
                     // An unsupported/malformed direct lookup can still be found by search.
                 }
 
@@ -198,6 +213,7 @@ export function createLrclibPlayback({
                     const response = await request(`${baseUrl}/get?${query}`, { headers }, 35000);
                     if (response?.ok) {
                         const candidate = await response.json();
+                        signal?.throwIfAborted();
                         if (isCustom) {
                             const found = mirrorResult(candidate);
                             if (found) return found;
@@ -212,12 +228,13 @@ export function createLrclibPlayback({
                     }
                 } catch (error) {
                     if (error instanceof LrclibPlaybackUnavailableError) throw error;
+                    signal?.throwIfAborted();
                     // Continue the same host's search ladder for unsupported/malformed lookups.
                 }
             }
 
             const runSearchFlow = createLrclibSearchFlowRunner({ headers, searchSettings, trackDurationSec, syncDataLineCharCounts,
-                syncDataSource, baseUrl, request, tryWithoutAlbum: fullLookup,
+                syncDataSource, baseUrl, request, tryWithoutAlbum: fullLookup, signal,
                 candidateFilter: isCustom ? (candidate, metadata) => !!mirrorResult(candidate, metadata) : () => true });
 
             const primaryMetadata = {
@@ -229,6 +246,7 @@ export function createLrclibPlayback({
 
             const primarySearchFlow = await runSearchFlow(primaryMetadata, { includeAlbum: true });
 
+            signal?.throwIfAborted();
             if (primarySearchFlow.fatal) {
                 result.error = primarySearchFlow.error;
                 logDebug('Failed', {
@@ -241,10 +259,14 @@ export function createLrclibPlayback({
             let { body, selectedFlow, selectedSource, englishSearchFlow, englishMetadata, englishSearchError } = await selectLrclibCandidate({
                 primarySearchFlow, runSearchFlow, syncDataLineCharCounts, syncDataSource, info,
                 // The second host reuses this load's Spotify metadata read.
-                getEnglishMetadata: () => context.englishMetadataPromise
-                    || (context.englishMetadataPromise = getTrackMetadataForAcceptLanguage(info?.uri, LRCLIB_ENGLISH_ACCEPT_LANGUAGE))
+                getEnglishMetadata: () => {
+                    signal?.throwIfAborted();
+                    return context.englishMetadataPromise
+                        || (context.englishMetadataPromise = getTrackMetadataForAcceptLanguage(info?.uri, LRCLIB_ENGLISH_ACCEPT_LANGUAGE));
+                }
             });
 
+            signal?.throwIfAborted();
             if (!body) {
                 if (englishSearchError) {
                     result.error = englishSearchError;
@@ -344,6 +366,7 @@ export function createLrclibPlayback({
             return result;
 
         } catch (e) {
+            signal?.throwIfAborted();
             result.error = e.message;
             logDebug('Fatal Error', { error: e.message });
             return result;

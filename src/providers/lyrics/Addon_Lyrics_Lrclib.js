@@ -119,6 +119,7 @@ export default function initializeLrclibLyricsAddon() {
 
         // Spotify 트랙 ID 없이 제목/아티스트/앨범/재생 시간으로 검색 가능
         supportsLocalTracks: true,
+        supportsAbortSignal: true,
 
         // 【아이콘】 SVG path 데이터 - LRC 파일을 나타내는 문서 아이콘
         icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8 12h8v2H8v-2zm0 4h8v2H8v-2zm0-8h3v2H8V8z'
@@ -318,7 +319,7 @@ export default function initializeLrclibLyricsAddon() {
         debug,
     });
 
-    async function fetchLrclibCandidateById(source, headers, { baseUrl = LRCLIB_API_BASE, request = fetchWithTimeout } = {}) {
+    async function fetchLrclibCandidateById(source, headers, { baseUrl = LRCLIB_API_BASE, request = fetchWithTimeout, signal } = {}) {
         const lrclibId = getSyncDataLrclibId(source);
         if (!lrclibId) return null;
 
@@ -329,6 +330,7 @@ export default function initializeLrclibLyricsAddon() {
         }
 
         const candidate = await response.json();
+        signal?.throwIfAborted();
         if (!candidate || (!candidate.syncedLyrics && !candidate.plainLyrics && !candidate.instrumental)) {
             writeRuntimeDebug(window, `[LR-DEBUG] Direct LRCLIB get returned no lyrics for id=${lrclibId}`);
             return null;
@@ -507,9 +509,16 @@ export default function initializeLrclibLyricsAddon() {
          * 【검색 전략】
          * 구조화 검색 + 자유검색 폴백 + 아티스트/재생시간 검증
          */
-        async getLyrics(info) {
-            await LrclibLyricsAddon.prepareLyricsLookup(info);
-            return getLyricsForPlayback(info, syncAddonCacheVersion());
+        async getLyrics(info, { signal } = {}) {
+            try {
+                signal?.throwIfAborted();
+                await LrclibLyricsAddon.prepareLyricsLookup(info);
+                signal?.throwIfAborted();
+                return await getLyricsForPlayback(info, syncAddonCacheVersion(), signal);
+            } catch (error) {
+                if (signal?.aborted) return { uri: info?.uri, provider: LRCLIB_PROVIDER_ID, error: 'Lyrics request superseded' };
+                throw error;
+            }
         },
 
         _getPlaybackFromApi: getPlaybackFromApi

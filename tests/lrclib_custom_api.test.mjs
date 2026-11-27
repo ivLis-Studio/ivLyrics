@@ -143,7 +143,7 @@ function setup({ endpoint, custom = () => Response.json(record), official = offi
         }
     };
     const context = vm.createContext({
-        window, Spicetify, fetch, URL, URLSearchParams, Headers, AbortController, Date: FakeDate,
+        window, Spicetify, fetch, URL, URLSearchParams, Headers, AbortController, AbortSignal, Date: FakeDate,
         console: { log() {}, info() {}, warn() {}, error() {} }, performance: { now: () => now },
         setTimeout(callback, delay = 0) {
             const id = ++nextTimer;
@@ -180,6 +180,67 @@ function setup({ endpoint, custom = () => Response.json(record), official = offi
         }
     };
 }
+
+test('aborting official playback does not trigger the shared host backoff', async () => {
+    const h = setup({
+        official(url, { signal }, count) {
+            if (count !== 1) return officialResponse(url);
+            return new Promise((_, reject) => {
+                signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+            });
+        }
+    });
+    assert.equal(h.addon.supportsAbortSignal, true);
+    const controller = new AbortController();
+    const pending = h.addon.getLyrics(track, { signal: controller.signal });
+    await flush();
+    assert.equal(h.requests.length, 1);
+    controller.abort(new Error('Track changed'));
+    assert.equal((await pending).error, 'Lyrics request superseded');
+    assert.equal(h.requests[0].options.signal.aborted, true);
+    assert.equal(h.timers.size, 0);
+    assert.equal(h.requests.length, 1, 'retired lookup skips all fallbacks');
+
+    const replay = { ...track, uri: 'spotify:track:next' };
+    assertOfficial(await h.addon.getLyrics(replay, { signal: new AbortController().signal }));
+    assert.equal(h.requests.length, 2, 'the next track can use the same host immediately');
+});
+
+test('aborting custom playback closes its pending body and skips the official fallback', async () => {
+    const body = deferred();
+    let readingBody = false;
+    const h = setup({
+        endpoint: CUSTOM,
+        custom: () => ({
+            ok: true,
+            status: 200,
+            json() { readingBody = true; return body.promise; }
+        })
+    });
+    const controller = new AbortController();
+    const pending = h.addon.getLyrics(track, { signal: controller.signal });
+    await flush();
+    assert.equal(readingBody, true);
+    controller.abort();
+    assert.equal((await pending).error, 'Lyrics request superseded');
+    assert.equal(h.requests[0].options.signal.aborted, true);
+    assert.equal(h.timers.size, 0);
+    body.resolve(record);
+    await flush();
+    assertRequests(h, [metadataGet()]);
+});
+
+test('live playback with a signal keeps its result and complete request order', async () => {
+    const options = { endpoint: CUSTOM, custom: noMatch, savedSyncData: syncData };
+    const baseline = setup(options), current = setup(options);
+    const expected = await baseline.addon.getLyrics(track);
+    const result = await current.addon.getLyrics(track, { signal: new AbortController().signal });
+    assertOfficial(result);
+    assert.deepEqual(plain(result), plain(expected));
+    assertRequests(current, baseline.requests.map(request => request.url));
+    const requestOptions = h => plain(h.requests.map(({ options: { signal, ...request } }) => request));
+    assert.deepEqual(requestOptions(current), requestOptions(baseline));
+});
 
 for (const status of [408, 429, 500, 503]) {
     test(`official pinned lookup HTTP ${status} stops the whole playback search stage`, async () => {
