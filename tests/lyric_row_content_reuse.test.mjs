@@ -13,9 +13,12 @@ const repo = new URL('../', import.meta.url);
 const current = readFileSync(new URL('src/lyrics/Pages.js', repo), 'utf8');
 const baseline = execFileSync('git', ['show', '3353a5d:Pages.js'], { cwd: repo, encoding: 'utf8' });
 // The seek tooltip text changed on purpose (localized "m:ss" label); it is
-// covered by its own test below, so the baseline comparison ignores it.
-const plain = value => JSON.parse(JSON.stringify(value, (key, entry) =>
-  key === 'data-lyrics-seek-time' || key === 'title' ? undefined : typeof entry === 'function' ? { callback: entry.copyArguments || 'handler' } : entry));
+// covered by its own test below. Older renderers also passed unused character
+// tracking props to the mocked content builder.
+const plain = value => JSON.parse(JSON.stringify(value, (key, entry) => {
+  if (['data-lyrics-seek-time', 'title', 'globalCharOffset', 'activeGlobalCharIndex'].includes(key)) return undefined;
+  return typeof entry === 'function' ? { callback: entry.copyArguments || 'handler' } : entry;
+}));
 
 function renderer(source) {
   const slots = [];
