@@ -171,6 +171,30 @@ export function sampleLoudness(segment, position) {
         : segment.amplitudeMax;
 }
 
+// Each bounded density and mirror mode has a fixed pitch-class layout.
+const bandLayouts = [new Map(), new Map()];
+
+function getBandLayout(count, mirror) {
+    const layouts = bandLayouts[mirror ? 1 : 0];
+    let layout = layouts.get(count);
+    if (layout) return layout;
+
+    const left = new Uint8Array(count);
+    const right = new Uint8Array(count);
+    const fractions = new Float64Array(count);
+    const half = count / 2;
+    for (let band = 0; band < count; band++) {
+        const pitchPosition = mirror ? (Math.min(band, count - band) / half * 12) % 12 : (band / count) * 12;
+        const pitchClass = Math.floor(pitchPosition);
+        left[band] = pitchClass;
+        right[band] = (pitchClass + 1) % 12;
+        fractions[band] = smoothstep(pitchPosition - pitchClass);
+    }
+    layout = { left, right, fractions };
+    layouts.set(count, layout);
+    return layout;
+}
+
 // These are twelve pitch-class channels spread around a circle, not FFT bins.
 // Interpolation uses only real adjacent segment values; there is no random,
 // oscillator, timer-based, or fabricated fallback "audio" in the renderer.
@@ -178,26 +202,23 @@ export function sampleLoudness(segment, position) {
 export function sampleSpectrum(analysis, position, density = DEFAULTS.density, sensitivity = DEFAULTS.sensitivity, output, mirror = false) {
     const count = Math.round(settingNumber(density, DEFAULTS.density, 24, 128));
     const values = output?.length === count ? output : new Float32Array(count);
-    values.fill(0);
-    if (!analysis?.segments?.length || !Number.isFinite(position) || position < 0) return values;
+    if (!analysis?.segments?.length || !Number.isFinite(position) || position < 0) return values.fill(0);
     const index = findSegmentIndex(analysis.segments, position);
-    if (index < 0) return values;
+    if (index < 0) return values.fill(0);
     const segment = analysis.segments[index];
     const amplitude = sampleLoudness(segment, position);
-    if (amplitude <= 0) return values;
+    if (amplitude <= 0) return values.fill(0);
     const next = analysis.segments[index + 1];
     const blend = next && Math.abs(next.start - segment.end) < 0.001 && segment.end > segment.peak
         ? smoothstep((position - segment.peak) / (segment.end - segment.peak)) : 0;
     const mean = next ? lerp(segment.pitchMean, next.pitchMean, blend) : segment.pitchMean;
     const gain = settingNumber(sensitivity, DEFAULTS.sensitivity, 25, 200) / 100;
-    const half = count / 2;
+    const { left, right, fractions } = getBandLayout(count, mirror);
     for (let band = 0; band < count; band++) {
-        const pitchPosition = mirror ? (Math.min(band, count - band) / half * 12) % 12 : (band / count) * 12;
-        const left = Math.floor(pitchPosition), right = (left + 1) % 12;
-        const fraction = smoothstep(pitchPosition - left);
-        const leftPitch = next ? lerp(segment.pitches[left], next.pitches[left], blend) : segment.pitches[left];
-        const rightPitch = next ? lerp(segment.pitches[right], next.pitches[right], blend) : segment.pitches[right];
-        const pitch = lerp(leftPitch, rightPitch, fraction) * 0.65 + mean * 0.35;
+        const from = left[band], to = right[band];
+        const leftPitch = next ? lerp(segment.pitches[from], next.pitches[from], blend) : segment.pitches[from];
+        const rightPitch = next ? lerp(segment.pitches[to], next.pitches[to], blend) : segment.pitches[to];
+        const pitch = lerp(leftPitch, rightPitch, fractions[band]) * 0.65 + mean * 0.35;
         // Perceptual compression keeps quiet, valid segments legible without
         // replacing missing analysis with decorative fake activity.
         values[band] = clamp(Math.sqrt(Math.max(0, amplitude * pitch)) * gain, 0, 1);

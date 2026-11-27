@@ -552,15 +552,18 @@ export function createCdVisualizerApi(root) {
                 const delta = clamp(timestamp - lastFrameAt, 0, 200);
                 const jumped = lastPosition !== null && Math.abs(state.position - lastPosition) > 0.35;
                 const snap = reset || jumped || lastPosition === null;
+                const riseSmoothing = snap ? 0 : 1 - Math.exp(-delta / 45);
+                const fallSmoothing = snap ? 0 : 1 - Math.exp(-delta / 140);
+                const peakFall = PEAK_FALL_PER_SECOND * delta / 1000;
                 for (let index = 0; index < values.length; index++) {
-                    const tau = targets[index] > values[index] ? 45 : 140;
-                    values[index] = snap ? targets[index] : lerp(values[index], targets[index], 1 - Math.exp(-delta / tau));
+                    values[index] = snap ? targets[index] : lerp(values[index], targets[index],
+                        targets[index] > values[index] ? riseSmoothing : fallSmoothing);
                     // Peak caps follow the drawn level, hold briefly, then fall.
                     if (snap || values[index] >= peaks[index]) {
                         peaks[index] = values[index];
                         peakTimes[index] = timestamp;
                     } else if (timestamp - peakTimes[index] > PEAK_HOLD_MS) {
-                        peaks[index] = Math.max(values[index], peaks[index] - PEAK_FALL_PER_SECOND * delta / 1000);
+                        peaks[index] = Math.max(values[index], peaks[index] - peakFall);
                     }
                 }
                 lastPosition = state.position;
