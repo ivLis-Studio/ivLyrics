@@ -1051,42 +1051,34 @@ test('structured and manual candidate searches always query official LRCLIB', as
     }
 });
 
-test('the actual creator fallback passes official-only metadata through the manager and legacy provider paths', async () => {
-    for (const path of ['manager', 'legacy']) {
-        const h = setup({ endpoint: CUSTOM });
-        const calls = [], applied = [], errors = [];
-        const load = async info => {
+test('the actual creator fallback passes official-only metadata through the add-on manager', async () => {
+    const h = setup({ endpoint: CUSTOM });
+    const calls = [], applied = [], errors = [];
+    const context = {
+        window: { LyricsAddonManager: { getLyricsFrom: (id, info) => {
+            assert.equal(id, 'lrclib');
             calls.push(info);
-            return path === 'manager'
-                ? h.manager.getLyricsFrom('lrclib', info)
-                : h.addon.getLyrics(info);
-        };
-        const context = {
-            window: { LyricsAddonManager: path === 'manager' ? { getLyricsFrom: (id, info) => {
-                assert.equal(id, 'lrclib');
-                return load(info);
-            } } : undefined },
-            Providers: { lrclib: load },
-            Spicetify: { Player: { data: { item: { duration: { milliseconds: track.duration } } } } },
-            console: { error: (...args) => errors.push(args) }, I18n: { t: key => key },
-            useCallback: fn => fn, SYNC_CREATOR_SOURCE_ADDON_ID: 'lrclib',
-            trackInfo: { uri: track.uri, artists: [{ name: track.artist }], album: { name: track.album } },
-            trackUri: track.uri, trackIsrc: '',
-            lrclibIdInputEditedRef: { current: false }, resolveSyncCreatorLoadedLyricsLrclibId: () => '',
-            trackName: track.title, artistName: track.artist, albumName: track.album,
-            beginSyncCreatorSourceChange: () => 1, isCurrentSyncCreatorSourceChange: () => true,
-            clearLrclibCandidateState() {}, resetSyncCreatorLyricsLoadingState() {},
-            applyLoadedLyricsResult: async result => { applied.push(result); }
-        };
-        await setUpSyncCreatorLrclibActions(context, () => {}).loadLyrics();
-        assert.equal(errors.length, 0, path);
-        assert.equal(calls.length, 1, path);
-        assert.equal(calls[0].lrclibOfficialOnly, true, path);
-        assert.equal(applied.length, 1, path);
-        assertOfficial(applied[0]);
-        assert.equal(h.requests.length, 1, path);
-        assert.equal(h.requests[0].url.startsWith(`${OFFICIAL}/search?`), true, path);
-    }
+            return h.manager.getLyricsFrom('lrclib', info);
+        } } },
+        Spicetify: { Player: { data: { item: { duration: { milliseconds: track.duration } } } } },
+        console: { error: (...args) => errors.push(args) }, I18n: { t: key => key },
+        useCallback: fn => fn, SYNC_CREATOR_SOURCE_ADDON_ID: 'lrclib',
+        trackInfo: { uri: track.uri, artists: [{ name: track.artist }], album: { name: track.album } },
+        trackUri: track.uri, trackIsrc: '',
+        lrclibIdInputEditedRef: { current: false }, resolveSyncCreatorLoadedLyricsLrclibId: () => '',
+        trackName: track.title, artistName: track.artist, albumName: track.album,
+        beginSyncCreatorSourceChange: () => 1, isCurrentSyncCreatorSourceChange: () => true,
+        clearLrclibCandidateState() {}, resetSyncCreatorLyricsLoadingState() {},
+        applyLoadedLyricsResult: async result => { applied.push(result); }
+    };
+    await setUpSyncCreatorLrclibActions(context, () => {}).loadLyrics();
+    assert.equal(errors.length, 0);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].lrclibOfficialOnly, true);
+    assert.equal(applied.length, 1);
+    assertOfficial(applied[0]);
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.requests[0].url.startsWith(`${OFFICIAL}/search?`), true);
 });
 
 test('exported transport remains frozen and official-only with a custom endpoint configured', async () => {

@@ -64,7 +64,7 @@ test('LRCLIB authoring sends the selected track identity and length through all 
     const requested = [];
     const returnedLyrics = { unsynced: [{ text: '1st line' }, { text: '2nd line' }] };
     const request = args => { requested.push(args); return Promise.resolve(returnedLyrics); };
-    for (const path of ['ranked', 'manager', 'legacy']) {
+    for (const path of ['ranked', 'manager']) {
         const state = {
             ...track, useCallback: callback => callback,
             window: { LyricsAddonManager: path === 'ranked'
@@ -72,8 +72,7 @@ test('LRCLIB authoring sends the selected track identity and length through all 
                     requested.push(args);
                     return { success: false, error: 'No lyrics found' };
                 } }) }
-                : path === 'manager' ? { getLyricsFrom: (_id, args) => request(args) } : null },
-            Providers: { lrclib: request },
+                : { getLyricsFrom: (_id, args) => request(args) } },
             Spicetify: { Player: { data: { item: nextSong } } },
             beginSyncCreatorSourceChange: () => 1,
             isCurrentSyncCreatorSourceChange: () => true,
@@ -88,7 +87,7 @@ test('LRCLIB authoring sends the selected track identity and length through all 
         uri: originalUri, title: 'Original song', name: 'Original song', artist: 'Original artist',
         album: 'Original album', duration: 180_000, lrclibOfficialOnly: true, isrc: 'USAAA2600001',
     };
-    assert.deepEqual(requested, [expected, expected, expected]);
+    assert.deepEqual(requested, [expected, expected]);
 });
 
 test('the end-of-track loop ignores the next song while the editor returns to its own track', t => {

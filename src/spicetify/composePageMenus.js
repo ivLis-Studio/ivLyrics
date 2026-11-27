@@ -12,7 +12,7 @@ export function startPageMenus({
   host: window, document, react, spicetify: Spicetify, appName: APP_NAME, i18n: I18n,
   config: CONFIG, storage: StorageManager, utils: Utils, toast: Toast, KaraokeLine,
   speakerColors: ivLyricsSpeakerColors, videoHelper: VideoHelperService, CommunityVideoSelector,
-  lyricRendererPrimitives, thresholdSizeLimit, readReactDom, getLegacyProviders,
+  lyricRendererPrimitives, thresholdSizeLimit, readReactDom,
 }) {
   const { openConfig, ConfigButton, ConfigSlider, getSettingsMotionDurationMs } = createSettingsPage({
     host: window, react, appName: APP_NAME, i18n: I18n, config: CONFIG,
@@ -30,7 +30,6 @@ export function startPageMenus({
     speakerColors: ivLyricsSpeakerColors, services: createSyncCreatorServices(window),
     readVisualSettings: () => CONFIG.visual,
     readLyricRenderer: () => lyricRendererPrimitives,
-    getLegacyProviders,
   });
 
   const {

@@ -24,13 +24,12 @@ const createHarness = ({ snapshot = null, typedId = false, trackIsrc = '' } = {}
 		lrclibIdInputEditedRef: { current: typedId },
 		window: {
 			LyricsService: { getLyricsSnapshot: uri => (uri === TRACK_URI ? snapshot : null) },
-			SyncDataService: { getSyncData: async (...args) => { syncReads.push(args); return null; } }
+			SyncDataService: { getSyncData: async (...args) => { syncReads.push(args); return null; } },
+			LyricsAddonManager: { getLyricsFrom: (_id, info) => context.loadLrclib(info) }
 		},
-		Providers: {
-			lrclib: async info => {
-				providerInfo.push(info);
-				return { provider: 'lrclib', lrclibId: '222', synced: [{ startTime: 0, text: 'line' }] };
-			}
+		loadLrclib: async info => {
+			providerInfo.push(info);
+			return { provider: 'lrclib', lrclibId: '222', synced: [{ startTime: 0, text: 'line' }] };
 		},
 		beginSyncCreatorSourceChange: () => 1,
 		isCurrentSyncCreatorSourceChange: () => true,
@@ -109,7 +108,7 @@ test('loading stays on the addon search: no editor-side pre-load and no previous
 test('metadata lookup failure opens a saved draft and keeps its LRCLIB ID', async () => {
 	const h = createHarness({ snapshot: officialSnapshot });
 	h.context.console = { error() {} };
-	h.context.Providers.lrclib = async () => { throw new Error('fixture offline'); };
+	h.context.loadLrclib = async () => { throw new Error('fixture offline'); };
 	let fallbackCalls = 0;
 	h.context.captureOfflineDraftRecovery = requestId => async () => {
 		assert.equal(requestId, 1);

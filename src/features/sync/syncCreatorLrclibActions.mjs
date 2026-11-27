@@ -14,7 +14,7 @@ export function useSyncCreatorLrclibActions({
 	track: { trackUri, trackIsrc, trackName, artistName, primaryArtist, albumName, trackDurationMs },
 	state: { lyrics, lrclibCandidates, lrclibIdInput, lrclibSearchQuery, lrclibIdInputEditedRef, lrclibIdInputRevisionRef, selectedLrclibSourceRef },
 	services: {
-		debug, logger = console, getLegacyProviders, getLyricsAddonManager, syncCreatorDraftStore,
+		debug, logger = console, getLyricsAddonManager, syncCreatorDraftStore,
 	},
 	client: { getLrclibRecord, searchLrclibRecords, getLoadedLrclibId: resolveSyncCreatorLoadedLyricsLrclibId },
 	sourceChange: {
@@ -316,10 +316,7 @@ export function useSyncCreatorLrclibActions({
 				result = await lyricsAddonManager.getLyricsFrom(SYNC_CREATOR_SOURCE_ADDON_ID, info);
 				if (!isCurrentSyncCreatorSourceChange(sourceChangeRequestId)) return;
 			} else {
-				const legacyProviders = getLegacyProviders();
-				if (!legacyProviders?.[SYNC_CREATOR_SOURCE_ADDON_ID]) throw new Error('LRCLIB provider is unavailable');
-				result = await legacyProviders[SYNC_CREATOR_SOURCE_ADDON_ID](info);
-				if (!isCurrentSyncCreatorSourceChange(sourceChangeRequestId)) return;
+				throw new Error('LRCLIB provider is unavailable');
 			}
 
 			if (result?.error) throw new Error(result.error);
@@ -365,7 +362,7 @@ export function useSyncCreatorLrclibActions({
 		beginSyncCreatorSourceChange,
 		captureOfflineDraftRecovery,
 		clearLrclibCandidateState,
-		isCurrentSyncCreatorSourceChange, debug, getLegacyProviders, getLyricsAddonManager, getSourceSignal, i18n, logger, primaryArtist,
+		isCurrentSyncCreatorSourceChange, debug, getLyricsAddonManager, getSourceSignal, i18n, logger, primaryArtist,
 		resolveSyncCreatorLoadedLyricsLrclibId, resetSyncCreatorLyricsLoadingState, lrclibIdInputEditedRef,
 		searchRequests,
 		setError, setIsLoading, setLrclibIdInput, setLrclibCandidates, setPreviewLrclibCandidateKey,

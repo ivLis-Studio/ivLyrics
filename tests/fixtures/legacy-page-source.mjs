@@ -117,7 +117,7 @@ export function readSyncCreatorFixture() {
         .replace("getSpeakerColors: () => speakerColors,", "getSpeakerColors: () => getEditorRuntimeService('ivLyricsSpeakerColors', window),")
         .replace("prepareSyncCreatorWorkSnapshot, hasSyncCreatorUnsubmittedChanges }", "prepareSyncCreatorWorkSnapshot, hasSyncCreatorUnsubmittedChanges, areSyncCreatorSyncBodiesEqual }")
         .replace("} = services;\n",
-            "} = createSyncCreatorServices(window);\nconst getSyncCreatorLegacyProviders = () => typeof Providers === 'undefined' ? null : Providers;\n");
+            "} = createSyncCreatorServices(window);\n");
     const fixtureServices = "import { getSyncCreatorLrclibTextShape } from '#ivlyrics/features/sync/lrclibSyncSource.mjs';\n"
         + "import { createSyncCreatorServices } from '#ivlyrics/spicetify/syncCreatorServices.mjs';\n"
         + "import { createSyncCreatorActiveLinePainter } from '#ivlyrics/features/sync/syncCreatorEditorPreview.mjs';\n"

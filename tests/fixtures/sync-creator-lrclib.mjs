@@ -50,7 +50,6 @@ export function setUpSyncCreatorLrclibActions(context, setState) {
             },
         },
         services: {
-            getLegacyProviders: () => context.Providers,
             getLyricsAddonManager: () => getRuntimeService('LyricsAddonManager', context.window),
             syncCreatorDraftStore: context.syncCreatorDraftStore,
             logger: context.console,

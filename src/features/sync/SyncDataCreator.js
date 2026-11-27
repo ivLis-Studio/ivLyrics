@@ -113,7 +113,7 @@ import { createSyncCreatorShortcutSettings } from '#ivlyrics/features/sync/syncC
 
 export function createSyncDataCreator({
 	react, host: window, spicetify: Spicetify, i18n: I18n, utils: Utils, toast: Toast,
-	speakerColors, readVisualSettings, readLyricRenderer, services, getLegacyProviders: getSyncCreatorLegacyProviders,
+	speakerColors, readVisualSettings, readLyricRenderer, services,
 }) {
 	/**
 	 * SyncDataCreator - 노래방 싱크 데이터 생성 UI
@@ -508,7 +508,7 @@ export function createSyncDataCreator({
 				state: { lyrics, lrclibCandidates, lrclibIdInput, lrclibSearchQuery, lrclibIdInputEditedRef, lrclibIdInputRevisionRef, selectedLrclibSourceRef },
 				services: {
 					debug: debugSyncCreatorSource,
-					getLegacyProviders: getSyncCreatorLegacyProviders, getLyricsAddonManager: getSyncCreatorLyricsAddonManager,
+					getLyricsAddonManager: getSyncCreatorLyricsAddonManager,
 					syncCreatorDraftStore,
 				},
 				client: syncCreatorLrclibClient,

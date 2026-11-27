@@ -793,7 +793,6 @@ const {
   config: CONFIG, storage: StorageManager, utils: Utils, toast: Toast, KaraokeLine,
   speakerColors: ivLyricsSpeakerColors, videoHelper: VideoHelperService, CommunityVideoSelector,
   lyricRendererPrimitives, thresholdSizeLimit, readReactDom: ensureReactDOM,
-  getLegacyProviders: () => typeof Providers === "undefined" ? null : Providers,
 });
 
 // A deep link can already be the current route on the first callback.
