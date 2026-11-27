@@ -1,5 +1,25 @@
 import { asText, asTextArray, hasValue } from "./researchText.mjs";
 
+const RESEARCH_SECTIONS = {
+    thesis: ["thesis", "research.thesis", "Central thesis", "editorial_thesis"],
+    overview: ["thesis", "research.sections.overview", "Overview", "introduction"],
+    information: ["info", "research.sections.information", "Information", "basic_information"],
+    listening: ["listen", "research.sections.listeningGuide", "Listening guide", "listening_guide"],
+    trivia: ["trivia", "research.sections.trivia", "Fun Facts", "trivia"],
+    title: ["title", "research.sections.title", "Title", "title_analysis"],
+    lyrics: ["lyrics", "research.sections.lyrics", "Lyrics", "lyric_analysis"],
+    chorus: ["chorus", "research.sections.chorus", "Chorus", "chorus_analysis"],
+    ending: ["ending", "research.sections.ending", "Ending", "ending_analysis"],
+    music: ["music", "research.sections.music", "Music", "music_analysis"],
+    artist: ["artist", "research.sections.artist", "Artist", "artist_context"],
+    comparison: ["compare", "research.sections.comparison", "Comparison", "comparative_analysis"],
+    culture: ["culture", "research.sections.culture", "Culture", "cultural_context"],
+    visual: ["visual", "research.sections.visual", "Visual world", "visual_world"],
+    critique: ["critique", "research.sections.critique", "Critique", "final_critique"],
+    sources: ["source", "research.sections.sources", "Sources", "sources"],
+    quality: ["quality", "research.sections.quality", "Research notes", "research_quality"],
+};
+
 export function createSongResearchDocument({ react, host: window, spicetify: Spicetify, utils: Utils, t, getAiManager }) {
     const ICON_PATHS = {
         research: "M21 21l-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z M8.5 11.5l1.7 1.7 3.8-4.2",
@@ -616,28 +636,11 @@ export function createSongResearchDocument({ react, host: window, spicetify: Spi
         );
     };
 
-    const getSectionDefinitions = (info) => {
-        const sections = [
-            ["thesis", "thesis", t("research.thesis", "Central thesis"), info.editorial_thesis],
-            ["overview", "thesis", t("research.sections.overview", "Overview"), info.introduction],
-            ["information", "info", t("research.sections.information", "Information"), info.basic_information],
-            ["listening", "listen", t("research.sections.listeningGuide", "Listening guide"), info.listening_guide?.moments],
-            ["trivia", "trivia", t("research.sections.trivia", "Fun Facts"), info.trivia],
-            ["title", "title", t("research.sections.title", "Title"), info.title_analysis],
-            ["lyrics", "lyrics", t("research.sections.lyrics", "Lyrics"), info.lyric_analysis],
-            ["chorus", "chorus", t("research.sections.chorus", "Chorus"), info.chorus_analysis],
-            ["ending", "ending", t("research.sections.ending", "Ending"), info.ending_analysis],
-            ["music", "music", t("research.sections.music", "Music"), info.music_analysis],
-            ["artist", "artist", t("research.sections.artist", "Artist"), info.artist_context],
-            ["comparison", "compare", t("research.sections.comparison", "Comparison"), info.comparative_analysis],
-            ["culture", "culture", t("research.sections.culture", "Culture"), info.cultural_context],
-            ["visual", "visual", t("research.sections.visual", "Visual world"), info.visual_world],
-            ["critique", "critique", t("research.sections.critique", "Critique"), info.final_critique],
-            ["sources", "source", t("research.sections.sources", "Sources"), info.sources],
-            ["quality", "quality", t("research.sections.quality", "Research notes"), info.research_quality]
-        ];
-        return sections.filter(([, , , content]) => hasValue(content));
-    };
+    const getSectionDefinitions = (info) => Object.entries(RESEARCH_SECTIONS)
+        .map(([id, [icon, key, fallback, field]]) => [
+            id, icon, t(key, fallback), id === "listening" ? info[field]?.moments : info[field],
+        ])
+        .filter(([, , , content]) => hasValue(content));
 
     const ResearchDocument = react.memo(({ info, register, coverUrl }) => {
         const thesis = info.editorial_thesis || {};
@@ -657,33 +660,25 @@ export function createSongResearchDocument({ react, host: window, spicetify: Spi
         const visual = info.visual_world || {};
         const critique = info.final_critique || {};
         const sections = [];
+        const hasTrivia = hasValue(trivia);
+        const renderSection = (id, props, ...children) => {
+            const [icon, key, fallback] = RESEARCH_SECTIONS[id];
+            return react.createElement(Section, { key: id, id, icon, label: t(key, fallback), ...props, register }, ...children);
+        };
 
-        if (hasValue(thesis)) sections.push(react.createElement(Section, {
-            key: "thesis", id: "thesis", icon: "thesis", label: t("research.thesis", "Central thesis"), register
-        }, react.createElement("div", { className: "research-thesis-card" },
+        if (hasValue(thesis)) sections.push(renderSection("thesis", null, react.createElement("div", { className: "research-thesis-card" },
             react.createElement("blockquote", null, react.createElement(InlineText, null, thesis.one_sentence || thesis.expanded)),
             thesis.one_sentence && thesis.expanded && react.createElement("p", null, react.createElement(InlineText, null, thesis.expanded)),
             react.createElement(ResearchHook, { hook: thesis.hook })
         )));
 
-        if (hasValue(intro)) sections.push(react.createElement(Section, {
-            key: "overview", id: "overview", icon: "thesis", label: t("research.sections.overview", "Overview"),
-            headline: intro.headline, note: intro.editorial_note, register
-        }, react.createElement(Paragraphs, { items: intro.paragraphs })));
+        if (hasValue(intro)) sections.push(renderSection("overview", { headline: intro.headline, note: intro.editorial_note }, react.createElement(Paragraphs, { items: intro.paragraphs })));
 
-        if (hasValue(basic)) sections.push(react.createElement(Section, {
-            key: "information", id: "information", icon: "info", label: t("research.sections.information", "Information"), register
-        }, react.createElement(FactGrid, { entries: basic.table }), react.createElement(Paragraphs, { items: basic.paragraphs })));
+        if (hasValue(basic)) sections.push(renderSection("information", null, react.createElement(FactGrid, { entries: basic.table }), react.createElement(Paragraphs, { items: basic.paragraphs })));
 
-        if (Array.isArray(listening.moments) && listening.moments.length > 0) sections.push(react.createElement(Section, {
-            key: "listening", id: "listening", icon: "listen", label: t("research.sections.listeningGuide", "Listening guide"),
-            headline: listening.headline, register
-        }, react.createElement(ListeningGuide, { guide: listening })));
+        if (Array.isArray(listening.moments) && listening.moments.length > 0) sections.push(renderSection("listening", { headline: listening.headline }, react.createElement(ListeningGuide, { guide: listening })));
 
-        if (hasValue(trivia)) sections.push(react.createElement(Section, {
-            key: "trivia", id: "trivia", icon: "trivia", label: t("research.sections.trivia", "Fun Facts"),
-            headline: trivia.headline, note: trivia.editorial_note, register
-        },
+        if (hasTrivia) sections.push(renderSection("trivia", { headline: trivia.headline, note: trivia.editorial_note },
             trivia.introduction && react.createElement(Paragraphs, { items: [trivia.introduction], className: "research-trivia-introduction" }),
             react.createElement(TriviaStories, { trivia }),
             react.createElement(ResearchTimeline, { items: trivia.timeline }),
@@ -697,10 +692,7 @@ export function createSongResearchDocument({ react, host: window, spicetify: Spi
             })
         ));
 
-        if (hasValue(title)) sections.push(react.createElement(Section, {
-            key: "title", id: "title", icon: "title", label: t("research.sections.title", "Title"),
-            headline: title.headline, note: title.editorial_note, register
-        },
+        if (hasValue(title)) sections.push(renderSection("title", { headline: title.headline, note: title.editorial_note },
             react.createElement(DetailGrid, { entries: [
                 { label: t("research.labels.original", "Original"), value: title.original },
                 { label: t("research.labels.reading", "Reading"), value: title.reading },
@@ -713,10 +705,7 @@ export function createSongResearchDocument({ react, host: window, spicetify: Spi
             ] })
         ));
 
-        if (hasValue(lyrics)) sections.push(react.createElement(Section, {
-            key: "lyrics", id: "lyrics", icon: "lyrics", label: t("research.sections.lyrics", "Lyrics"),
-            headline: lyrics.headline, note: lyrics.editorial_note, register
-        },
+        if (hasValue(lyrics)) sections.push(renderSection("lyrics", { headline: lyrics.headline, note: lyrics.editorial_note },
             react.createElement(DetailGrid, { entries: [
                 { label: t("research.labels.speaker", "Speaker"), value: lyrics.narrative?.speaker },
                 { label: t("research.labels.listener", "Listener"), value: lyrics.narrative?.listener },
@@ -756,11 +745,11 @@ export function createSongResearchDocument({ react, host: window, spicetify: Spi
         ));
 
         const leadingGenericSections = [
-            ["chorus", "chorus", t("research.sections.chorus", "Chorus"), chorus, [
+            ["chorus", chorus, () => [
                 [t("research.labels.repeatedPhrases", "Repeated phrases"), asTextArray(chorus.repeated_phrases).join(" · ")],
                 [t("research.labels.change", "Change"), chorus.first_to_last_change]
             ]],
-            ["ending", "ending", t("research.sections.ending", "Ending"), ending, [
+            ["ending", ending, () => [
                 [t("research.labels.finalLyric", "Final lyric"), ending.final_lyric],
                 [t("research.labels.reading", "Reading"), ending.reading],
                 [t("research.labels.meaning", "Meaning"), ending.korean_meaning],
@@ -768,7 +757,7 @@ export function createSongResearchDocument({ react, host: window, spicetify: Spi
                 [t("research.labels.openingConnection", "Opening connection"), ending.opening_connection],
                 [t("research.labels.reinterpretation", "Reinterpretation"), ending.reinterpretation]
             ]],
-            ["music", "music", t("research.sections.music", "Music"), music, [
+            ["music", music, () => [
                 [t("research.labels.genre", "Genre"), asTextArray(music.genre).join(" · ")],
                 ["BPM", music.bpm],
                 [t("research.labels.tempo", "Tempo"), music.tempo],
@@ -782,18 +771,18 @@ export function createSongResearchDocument({ react, host: window, spicetify: Spi
             ]]
         ];
         const trailingGenericSections = [
-            ["culture", "culture", t("research.sections.culture", "Culture"), culture, [
+            ["culture", culture, () => [
                 [t("research.labels.history", "Historical context"), culture.historical_context],
                 [t("research.labels.genreContext", "Genre context"), culture.genre_context],
                 [t("research.labels.popCulture", "Pop culture"), culture.pop_culture_context]
             ]],
-            ["visual", "visual", t("research.sections.visual", "Visual world"), visual, [
+            ["visual", visual, () => [
                 [t("research.labels.aesthetic", "Aesthetic"), asTextArray(visual.aesthetic_keywords).join(" · ")],
                 [t("research.labels.mv", "Music video"), visual.mv_analysis],
                 [t("research.labels.artwork", "Artwork"), visual.album_art_analysis],
                 [t("research.labels.visualInterpretation", "Interpretation"), visual.visual_interpretation]
             ]],
-            ["critique", "critique", t("research.sections.critique", "Critique"), critique, [
+            ["critique", critique, () => [
                 [t("research.labels.core", "Core reading"), critique.core_interpretation],
                 [t("research.labels.literary", "Literary"), critique.literary_interpretation],
                 [t("research.labels.musical", "Musical"), critique.music_interpretation],
@@ -802,12 +791,10 @@ export function createSongResearchDocument({ react, host: window, spicetify: Spi
         ];
 
         const appendGenericSections = (definitions) => {
-            for (const [id, icon, label, data, details] of definitions) {
+            for (const [id, data, getDetails] of definitions) {
                 if (!hasValue(data)) continue;
-                sections.push(react.createElement(Section, {
-                    key: id, id, icon, label, headline: data.headline, note: data.editorial_note, register
-                },
-                    id === "visual" && !hasValue(trivia) && react.createElement(ResearchMedia, {
+                sections.push(renderSection(id, { headline: data.headline, note: data.editorial_note },
+                    id === "visual" && !hasTrivia && react.createElement(ResearchMedia, {
                         coverUrl,
                         metadata: info.metadata,
                         sources: info.sources,
@@ -815,7 +802,7 @@ export function createSongResearchDocument({ react, host: window, spicetify: Spi
                     }),
                     data.one_line && react.createElement("blockquote", { className: "research-one-line" }, react.createElement(InlineText, null, data.one_line)),
                     react.createElement(Paragraphs, { items: data.paragraphs }),
-                    react.createElement(DetailGrid, { entries: details.map(([detailLabel, value]) => ({ label: detailLabel, value })) }),
+                    react.createElement(DetailGrid, { entries: getDetails().map(([detailLabel, value]) => ({ label: detailLabel, value })) }),
                     id === "music" && react.createElement(CreationStory, { story: data.creation_story }),
                     id === "music" && react.createElement(CreatorQuotes, { quotes: data.creator_quotes }),
                     data.ending && react.createElement("p", { className: "research-ending" }, react.createElement(InlineText, null, data.ending))
@@ -825,10 +812,7 @@ export function createSongResearchDocument({ react, host: window, spicetify: Spi
 
         appendGenericSections(leadingGenericSections);
 
-        if (hasValue(artist)) sections.push(react.createElement(Section, {
-            key: "artist", id: "artist", icon: "artist", label: t("research.sections.artist", "Artist"),
-            headline: artist.headline, note: artist.editorial_note, register
-        },
+        if (hasValue(artist)) sections.push(renderSection("artist", { headline: artist.headline, note: artist.editorial_note },
             react.createElement(DetailGrid, { entries: [
                 { label: t("research.labels.background", "Background"), value: artist.background },
                 { label: t("research.labels.ageAtRelease", "Age at release"), value: artist.age_at_release },
@@ -848,10 +832,7 @@ export function createSongResearchDocument({ react, host: window, spicetify: Spi
             )
         ));
 
-        if (hasValue(comparison)) sections.push(react.createElement(Section, {
-            key: "comparison", id: "comparison", icon: "compare", label: t("research.sections.comparison", "Comparison"),
-            headline: comparison.headline, register
-        },
+        if (hasValue(comparison)) sections.push(renderSection("comparison", { headline: comparison.headline },
             react.createElement("div", { className: "research-comparison-list" },
                 (comparison.works || []).filter(hasValue).map((work, index) => react.createElement(EditorialCard, {
                     key: index,
@@ -870,13 +851,9 @@ export function createSongResearchDocument({ react, host: window, spicetify: Spi
 
         appendGenericSections(trailingGenericSections);
 
-        if (hasValue(info.sources)) sections.push(react.createElement(Section, {
-            key: "sources", id: "sources", icon: "source", label: t("research.sections.sources", "Sources"), register
-        }, react.createElement(SourceList, { sources: info.sources })));
+        if (hasValue(info.sources)) sections.push(renderSection("sources", null, react.createElement(SourceList, { sources: info.sources })));
 
-        if (hasValue(info.research_quality)) sections.push(react.createElement(Section, {
-            key: "quality", id: "quality", icon: "quality", label: t("research.sections.quality", "Research notes"), register
-        }, react.createElement(ResearchQuality, { quality: info.research_quality })));
+        if (hasValue(info.research_quality)) sections.push(renderSection("quality", null, react.createElement(ResearchQuality, { quality: info.research_quality })));
 
         return sections;
     });
