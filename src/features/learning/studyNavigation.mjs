@@ -1,5 +1,5 @@
 export function createStudyNavigation({
-    state, document, requestAnimationFrame, enablePlaybackGuard, disablePlaybackGuard,
+    state, document, requestAnimationFrame, enablePlaybackGuard, disablePlaybackGuard, cancelGeneration = () => {},
 }) {
     const notify = () => {
         for (const listener of state.listeners) {
@@ -27,6 +27,7 @@ export function createStudyNavigation({
         const restoreFocus = getLearningPanel()?.contains(document.activeElement);
         state.open = false;
         disablePlaybackGuard();
+        cancelGeneration();
         notify();
         if (restoreFocus && learningReturnFocus?.isConnected) {
             learningReturnFocus.focus?.({ preventScroll: true });
@@ -45,6 +46,7 @@ export function createStudyNavigation({
         state.open = false;
         learningReturnFocus = null;
         disablePlaybackGuard();
+        cancelGeneration();
         notify();
     };
 

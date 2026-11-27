@@ -174,7 +174,7 @@ export function initializeLearningMode({ host, document, ToolbarIcon, readToolti
     };
 
     const repository = createStudyRepository(() => host.indexedDB);
-    const { startGenerationJob, startQuizGenerationJob } = createStudyGeneration({
+    const { startGenerationJob, startQuizGenerationJob, cancelGeneration } = createStudyGeneration({
         getGenerationSnapshot,
         setGenerationState,
         notifyGeneration,
@@ -192,7 +192,7 @@ export function initializeLearningMode({ host, document, ToolbarIcon, readToolti
     const { enablePlaybackGuard, disablePlaybackGuard } = playback;
     const { open, close, toggle, subscribe, dismissForUnmount } = createStudyNavigation({
         state, document, requestAnimationFrame: (callback) => host.requestAnimationFrame(callback),
-        enablePlaybackGuard, disablePlaybackGuard,
+        enablePlaybackGuard, disablePlaybackGuard, cancelGeneration,
     });
 
     const useLearningOpenState = () => {

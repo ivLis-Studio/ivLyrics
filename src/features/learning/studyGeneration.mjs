@@ -18,6 +18,7 @@ export function createStudyGeneration({
 
     const STUDY_CHUNK_RETRY_MIN_LINES = 1;
     const STUDY_CONCURRENT_REQUESTS = 3;
+    let activeJob = null;
 
     const isTimeoutLikeError = (error) => {
         const message = String(error?.message || error || "");
@@ -36,6 +37,7 @@ export function createStudyGeneration({
                 chunkDepth: depth
             });
         } catch (error) {
+            if (params.signal.aborted) return null;
             if (!isTimeoutLikeError(error) || lines.length <= STUDY_CHUNK_RETRY_MIN_LINES) {
                 throw error;
             }
@@ -50,6 +52,28 @@ export function createStudyGeneration({
     const ownsRunningJob = (jobId) => {
         const current = getGenerationSnapshot();
         return current.jobId === jobId && current.status === "loading";
+    };
+
+    const beginJob = (jobId, initialState) => {
+        const previous = activeJob;
+        const controller = new AbortController();
+        activeJob = { jobId, controller };
+        setGenerationState({ jobId, ...initialState });
+        previous?.controller.abort();
+        return controller.signal;
+    };
+
+    const cancelGeneration = () => {
+        if (!activeJob) return;
+        const { jobId, controller } = activeJob;
+        activeJob = null;
+        if (ownsRunningJob(jobId)) {
+            setGenerationState({
+                status: "idle", pack: null, error: "", loadingText: "",
+                progress: { done: 0, total: 0 }, promise: null,
+            });
+        }
+        controller.abort();
     };
 
     const runChunks = async ({ chunks, params, isCurrentJob, onStart, onPart }) => {
@@ -67,29 +91,21 @@ export function createStudyGeneration({
         await Promise.all(Array.from({ length: Math.min(STUDY_CONCURRENT_REQUESTS, chunks.length) }, runNext));
     };
 
-    const buildStudyRequestParams = ({ trackId, title, artist, provider, targetLang, difficulty, lines }) => ({
-        trackId,
-        title,
-        artist,
-        provider,
-        targetLang,
-        difficulty: normalizeStudyDifficulty(difficulty),
-        sourceLang: detectSourceLanguage(lines)
+    const prepareStudyInputs = ({ lines, omittedCount }, {
+        trackId, trackUri, title, artist, provider, targetLang, difficulty = "normal", lyricsHash, cacheKey,
+    }) => ({
+        requestParams: {
+            trackId, title, artist, provider, targetLang,
+            difficulty: normalizeStudyDifficulty(difficulty), sourceLang: detectSourceLanguage(lines),
+        },
+        buildStudyPack: raw => normalizeStudyPack({
+            raw, sourceLines: lines, trackId, trackUri, title, artist, provider, targetLang, difficulty,
+            lyricsHash, cacheKey, omittedCount,
+        }),
     });
 
-    const startGenerationJob = ({
-        normalizedLyrics,
-        trackId,
-        trackUri,
-        title,
-        artist,
-        provider,
-        targetLang,
-        difficulty = "normal",
-        lyricsHash,
-        cacheKey,
-        force = false
-    }) => {
+    const startGenerationJob = (options) => {
+        const { normalizedLyrics, trackId, cacheKey, force = false } = options;
         const activeGeneration = getGenerationSnapshot();
         if (!force && activeGeneration.status === "loading" && activeGeneration.cacheKey === cacheKey && activeGeneration.promise) {
             notifyGeneration();
@@ -98,12 +114,8 @@ export function createStudyGeneration({
 
         const jobId = (Number(activeGeneration.jobId) || 0) + 1;
         const limited = getLimitedLines(normalizedLyrics);
-        const requestParams = buildStudyRequestParams({
-            trackId, title, artist, provider, targetLang, difficulty, lines: limited.lines
-        });
-
-        setGenerationState({
-            jobId,
+        const { requestParams, buildStudyPack } = prepareStudyInputs(limited, options);
+        const signal = beginJob(jobId, {
             cacheKey,
             trackId,
             status: "loading",
@@ -114,29 +126,15 @@ export function createStudyGeneration({
             promise: null
         });
 
-        const buildStudyPack = (raw) => normalizeStudyPack({
-            raw,
-            sourceLines: limited.lines,
-            trackId,
-            trackUri,
-            title,
-            artist,
-            provider,
-            targetLang,
-            difficulty,
-            lyricsHash,
-            cacheKey,
-            omittedCount: limited.omittedCount
-        });
-
         const promise = (async () => {
             try {
-                const isCurrentJob = () => ownsRunningJob(jobId);
+                const isCurrentJob = () => !signal.aborted && ownsRunningJob(jobId);
+                if (!isCurrentJob()) return null;
                 const rawParts = [];
-                const categoryRequests = buildStudyCategoryRequests(limited.lines);
-                const requestTotal = categoryRequests.reduce((sum, item) => (
-                    sum + item.chunks.filter((chunk) => chunk.length > 0).length
-                ), 0);
+                const categoryRequests = buildStudyCategoryRequests(limited.lines).map(request => ({
+                    ...request, chunks: request.chunks.filter(chunk => chunk.length > 0),
+                }));
+                const requestTotal = categoryRequests.reduce((sum, { chunks }) => sum + chunks.length, 0);
                 let completedRequests = 0;
 
                 const publishPartialPack = () => {
@@ -155,9 +153,9 @@ export function createStudyGeneration({
 
                 let offset = 0;
                 for (const categoryRequest of categoryRequests) {
-                    const chunks = categoryRequest.chunks.filter((chunk) => chunk.length > 0);
+                    const { chunks } = categoryRequest;
                     await runChunks({
-                        chunks, isCurrentJob, params: { ...requestParams, category: categoryRequest.category },
+                        chunks, isCurrentJob, params: { ...requestParams, category: categoryRequest.category, signal },
                         onStart(current, total) {
                             setGenerationState({
                                 loadingText: t(categoryRequest.loadingKey, categoryRequest.loadingFallback)
@@ -182,6 +180,7 @@ export function createStudyGeneration({
 
                 if (!isCurrentJob()) return nextPack;
 
+                activeJob = null;
                 setGenerationState({
                     status: "ready",
                     pack: nextPack,
@@ -193,6 +192,7 @@ export function createStudyGeneration({
                 showSuccess("generated", "학습 모드를 생성했습니다.");
                 return nextPack;
             } catch (studyError) {
+                if (signal.aborted) return null;
                 if (getGenerationSnapshot().jobId === jobId) {
                     console.warn("[LearningMode] generation failed:", studyError);
                     setGenerationState({
@@ -207,24 +207,13 @@ export function createStudyGeneration({
             }
         })();
 
-        if (ownsRunningJob(jobId)) setGenerationState({ promise });
+        if (!signal.aborted && ownsRunningJob(jobId)) setGenerationState({ promise });
 
         return promise;
     };
 
-    const startQuizGenerationJob = ({
-        normalizedLyrics,
-        basePack,
-        trackId,
-        trackUri,
-        title,
-        artist,
-        provider,
-        targetLang,
-        difficulty = "normal",
-        lyricsHash,
-        cacheKey
-    }) => {
+    const startQuizGenerationJob = (options) => {
+        const { normalizedLyrics, basePack, trackId, trackUri, difficulty = "normal", cacheKey } = options;
         if (!basePack) return Promise.resolve(null);
 
         const activeGeneration = getGenerationSnapshot();
@@ -235,16 +224,12 @@ export function createStudyGeneration({
 
         const jobId = (Number(activeGeneration.jobId) || 0) + 1;
         const limited = getLimitedLines(normalizedLyrics);
-        const requestParams = buildStudyRequestParams({
-            trackId, title, artist, provider, targetLang, difficulty, lines: limited.lines
-        });
+        const { requestParams, buildStudyPack } = prepareStudyInputs(limited, options);
         const chunks = buildStudyChunks(limited.lines, QUIZ_CHUNK_LINES, QUIZ_CHUNK_CHARS)
             .filter((chunk) => chunk.length > 0);
         const requestTotal = Math.max(1, chunks.length);
         let completedRequests = 0;
-
-        setGenerationState({
-            jobId,
+        const signal = beginJob(jobId, {
             cacheKey,
             trackId,
             status: "loading",
@@ -259,25 +244,13 @@ export function createStudyGeneration({
 
         const promise = (async () => {
             try {
-                const isCurrentJob = () => ownsRunningJob(jobId);
+                const isCurrentJob = () => !signal.aborted && ownsRunningJob(jobId);
+                if (!isCurrentJob()) return null;
                 const rawParts = [];
 
                 const buildPackWithQuiz = (quizParts) => {
                     const raw = mergeStudyResponses(quizParts);
-                    const quizPack = normalizeStudyPack({
-                        raw,
-                        sourceLines: limited.lines,
-                        trackId,
-                        trackUri,
-                        title,
-                        artist,
-                        provider,
-                        targetLang,
-                        difficulty,
-                        lyricsHash,
-                        cacheKey,
-                        omittedCount: limited.omittedCount
-                    });
+                    const quizPack = buildStudyPack(raw);
                     return {
                         ...basePack,
                         trackUri: basePack.trackUri || trackUri,
@@ -302,7 +275,7 @@ export function createStudyGeneration({
                     throw new Error(t("noLyrics", "학습할 가사가 없습니다."));
                 }
                 await runChunks({
-                    chunks, isCurrentJob, params: { ...requestParams, category: "quiz" },
+                    chunks, isCurrentJob, params: { ...requestParams, category: "quiz", signal },
                     onStart(current, total) {
                         setGenerationState({
                             loadingText: t("loadingQuizOnly", "퀴즈만 다시 만드는 중... ({current}/{total})")
@@ -327,6 +300,7 @@ export function createStudyGeneration({
 
                 if (!isCurrentJob()) return nextPack;
 
+                activeJob = null;
                 setGenerationState({
                     status: "ready",
                     pack: nextPack,
@@ -338,6 +312,7 @@ export function createStudyGeneration({
                 showSuccess("quizRegenerated", "새 퀴즈를 만들었습니다.");
                 return nextPack;
             } catch (quizError) {
+                if (signal.aborted) return null;
                 if (getGenerationSnapshot().jobId === jobId) {
                     console.warn("[LearningMode] quiz generation failed:", quizError);
                     setGenerationState({
@@ -353,9 +328,9 @@ export function createStudyGeneration({
             }
         })();
 
-        if (ownsRunningJob(jobId)) setGenerationState({ promise });
+        if (!signal.aborted && ownsRunningJob(jobId)) setGenerationState({ promise });
         return promise;
     };
 
-    return { startGenerationJob, startQuizGenerationJob };
+    return { startGenerationJob, startQuizGenerationJob, cancelGeneration };
 }
