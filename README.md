@@ -130,8 +130,9 @@ Google Translate·Bing Translate는 **번역 전용**이고, **Pronunciation Lab
 
 설정을 보관하려면 설정 검색에서 **설정 내보내기**를 찾아 먼저 저장해 두세요. 내보낸 파일을 공유할 때는 민감한 정보가 포함됐는지 확인하세요.
 
-<details>
-<summary>ivLyrics 삭제하기</summary>
+### ivLyrics 삭제하기
+
+사용 중인 운영체제의 명령을 실행하세요.
 
 **Windows — PowerShell**
 
@@ -145,9 +146,7 @@ iwr -useb https://raw.githubusercontent.com/ivLis-Studio/ivLyrics/main/updater/u
 curl -fsSL https://raw.githubusercontent.com/ivLis-Studio/ivLyrics/main/updater/uninstall.sh | bash
 ```
 
-확인 메시지를 읽고 진행해 주세요. Spicetify 전체 삭제를 추가로 묻는 경우, 다른 테마·확장 프로그램을 계속 사용하려면 동의하지 마세요.
-
-</details>
+공식 저장소의 삭제 스크립트를 내려받아 실행하는 명령입니다. 실행 전에 [Windows 스크립트](updater/uninstall.ps1) 또는 [macOS·Linux 스크립트](updater/uninstall.sh)를 확인할 수 있습니다. 확인 메시지를 읽고 진행해 주세요. Spicetify 전체 삭제를 추가로 묻는 경우, 다른 테마·확장 프로그램을 계속 사용하려면 동의하지 마세요.
 
 ## 잘 안 될 때
 

@@ -69,7 +69,23 @@ For the basic PC lyrics screen, no companion app is required.
 
 Check enabled **Lyrics Providers** if a song has no lyrics. For AI problems, check the provider key, model, supported capabilities, and usage limits. Try another song to see whether the problem is song-specific.
 
-The [full guide](https://github.com/ivLis-Studio/ivLyrics/blob/main/README_EN.md) includes updates, uninstall commands, and troubleshooting. Export settings before resetting or removing the app.
+The [full guide](https://github.com/ivLis-Studio/ivLyrics/blob/main/README_EN.md) covers updates and troubleshooting. Export settings before resetting or removing the app.
+
+To uninstall ivLyrics, run the command for your operating system.
+
+**Windows — PowerShell**
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/ivLis-Studio/ivLyrics/main/updater/uninstall.ps1 | iex
+```
+
+**macOS / Linux — Terminal**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ivLis-Studio/ivLyrics/main/updater/uninstall.sh | bash
+```
+
+These commands run the official repository's uninstaller. Inspect the [Windows](https://github.com/ivLis-Studio/ivLyrics/blob/main/updater/uninstall.ps1) or [macOS / Linux](https://github.com/ivLis-Studio/ivLyrics/blob/main/updater/uninstall.sh) script first if you prefer. Read the confirmation prompts before continuing. If you are also asked to remove Spicetify completely, decline if you want to keep other themes and extensions.
 
 Report issues on [Discord](https://discord.gg/2fu36fUzdE) or [GitHub](https://github.com/ivLis-Studio/ivLyrics/issues) with your versions, song link, and reproduction steps. Remove API keys and account tokens from screenshots and logs.
 

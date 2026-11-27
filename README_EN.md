@@ -130,8 +130,9 @@ Use the update controls in **About**, or run the installation command again. Aut
 
 To keep a backup, search settings for **Export Settings** before making major changes. Check exported files for sensitive information before sharing them.
 
-<details>
-<summary>Uninstall ivLyrics</summary>
+### Uninstall ivLyrics
+
+Run the command for your operating system.
 
 **Windows — PowerShell**
 
@@ -145,9 +146,7 @@ iwr -useb https://raw.githubusercontent.com/ivLis-Studio/ivLyrics/main/updater/u
 curl -fsSL https://raw.githubusercontent.com/ivLis-Studio/ivLyrics/main/updater/uninstall.sh | bash
 ```
 
-Read the confirmation prompts before continuing. If you are also asked to remove Spicetify completely, decline if you want to keep other themes and extensions.
-
-</details>
+These commands download and run the uninstaller from the official repository. You can inspect the [Windows script](updater/uninstall.ps1) or [macOS / Linux script](updater/uninstall.sh) first. Read the confirmation prompts before continuing. If you are also asked to remove Spicetify completely, decline if you want to keep other themes and extensions.
 
 ## When something does not work
 
