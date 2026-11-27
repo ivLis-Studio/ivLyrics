@@ -34,6 +34,35 @@ function getFollowingPreviewLineStarts(timing) {
 	return result;
 }
 
+function toPreviewVocal(part) {
+	return {
+		id: part.id,
+		role: part.role,
+		speaker: part.speaker,
+		'speaker-color': part['speaker-color'] || '',
+		'speaker-fallback': part['speaker-fallback'] || '',
+		kind: part.kind,
+		text: part.text,
+		syllables: part.syllables
+	};
+}
+
+function buildSyncCreatorPreviewVocalLine(syncLine, text, firstMs, lineEndMs, speaker, kind, parts) {
+	const lead = parts.find(part => part.role === 'lead') || parts[0];
+	const background = parts.filter(part => part !== lead);
+	const times = parts.flatMap(part => [part.startTime, part.endTime]).filter(Number.isFinite);
+	return {
+		text,
+		startTime: Math.min(...times, firstMs),
+		endTime: Math.max(...times, lineEndMs),
+		speaker: syncLine.speaker || lead.speaker || speaker,
+		'speaker-color': syncLine['speaker-color'] || lead['speaker-color'] || '',
+		'speaker-fallback': syncLine['speaker-fallback'] || lead['speaker-fallback'] || '',
+		kind: syncLine.kind || lead.kind || kind,
+		vocals: { lead: toPreviewVocal(lead), background: background.map(toPreviewVocal) }
+	};
+}
+
 export function buildSyncCreatorPreviewLines({
 	lyricsLines,
 	lineCharOffsets,
@@ -211,40 +240,7 @@ export function buildSyncCreatorPreviewLines({
 				});
 			}
 			if (builtParts.length > 0) {
-				const leadPart = builtParts.find(part => part.role === 'lead') || builtParts[0];
-				const backgroundParts = builtParts.filter(part => part !== leadPart);
-				const allTimes = builtParts.flatMap(part => [part.startTime, part.endTime]).filter(Number.isFinite);
-				return {
-					text,
-					startTime: Math.min(...allTimes, firstMs),
-					endTime: Math.max(...allTimes, lineEndMs),
-					speaker: syncLine.speaker || leadPart.speaker || speaker,
-					'speaker-color': syncLine['speaker-color'] || leadPart['speaker-color'] || '',
-					'speaker-fallback': syncLine['speaker-fallback'] || leadPart['speaker-fallback'] || '',
-					kind: syncLine.kind || leadPart.kind || kind,
-					vocals: {
-						lead: {
-							id: leadPart.id,
-							role: leadPart.role,
-							speaker: leadPart.speaker,
-							'speaker-color': leadPart['speaker-color'] || '',
-							'speaker-fallback': leadPart['speaker-fallback'] || '',
-							kind: leadPart.kind,
-							text: leadPart.text,
-							syllables: leadPart.syllables
-						},
-						background: backgroundParts.map(part => ({
-							id: part.id,
-							role: part.role,
-							speaker: part.speaker,
-							'speaker-color': part['speaker-color'] || '',
-							'speaker-fallback': part['speaker-fallback'] || '',
-							kind: part.kind,
-							text: part.text,
-							syllables: part.syllables
-						}))
-					}
-				};
+				return buildSyncCreatorPreviewVocalLine(syncLine, text, firstMs, lineEndMs, speaker, kind, builtParts);
 			}
 			return untimedLine();
 		}

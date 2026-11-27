@@ -6,20 +6,15 @@ import {
 const SYNC_CREATOR_PARALLEL_HINT_REGEX = /[()（）/|／｜]/u;
 const SYNC_CREATOR_JAPANESE_KANA_REGEX = /[\u3040-\u30ff\uff66-\uff9f]/u;
 
-const getSyncCreatorFlatLyricsCharsFromText = (text) => (
-	String(text || '')
-		.normalize('NFC')
-		.split('\n')
-		.map(line => line.trim().normalize('NFC'))
-		.filter(Boolean)
-		.flatMap(line => Array.from(line))
-);
-
 const getSyncCreatorFlatLyricsCharsFromLines = (lines) => (
 	(Array.isArray(lines) ? lines : [])
 		.map(line => String(line || '').trim().normalize('NFC'))
 		.filter(Boolean)
 		.flatMap(line => Array.from(line))
+);
+
+const getSyncCreatorFlatLyricsCharsFromText = text => (
+	getSyncCreatorFlatLyricsCharsFromLines(String(text || '').normalize('NFC').split('\n'))
 );
 
 const detectSyncCreatorParallelVocalHints = (text) => {
@@ -136,7 +131,6 @@ export {
     resolveSyncCreatorLyricsLanguage,
     detectSyncCreatorParallelVocalHints,
     getSyncCreatorFlatLyricsCharsFromText,
-    getSyncCreatorFlatLyricsCharsFromLines,
     normalizeSyncCreatorStandaloneParentheticalLines,
     stripSyncCreatorStandaloneParentheticalCharRange,
 };
