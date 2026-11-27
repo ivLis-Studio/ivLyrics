@@ -73,3 +73,22 @@ test("merged continuation progress uses saved marks while the owner follows the 
     assert.equal(isSyncCreatorLineSynced(null, null, true), true);
     assert.equal(isSyncCreatorLineSynced(null, null, false), false);
 });
+
+test('merge lookups stay isolated from preview overrides and caller-owned arrays', () => {
+    const document = createSyncCreatorLyricDocument('A\nB\nC\nD');
+    const saved = { start: 0, end: 1, mergedLineContinuationStarts: [1] };
+    const layout = createSyncCreatorMergedLayout(document, {}, { lines: [saved] });
+    assert.equal(layout.findMergedOwnerLineIndex(1), 0);
+    assert.equal(layout.findMergedOwnerLineIndex(2), -1);
+    const indexes = layout.getMergedLineIndexesForStart(0);
+    indexes.push(2);
+    assert.deepEqual(layout.getMergedLineIndexesForStart(0), [0, 1]);
+
+    const preview = new Map([[1, { start: 1, end: 2, mergedLineContinuationStarts: [2] }]]);
+    assert.equal(layout.findMergedOwnerLineIndex(1, preview), -1);
+    assert.equal(layout.findMergedOwnerLineIndex(2, preview), 1);
+    preview.set(1, { start: 1, end: 3, mergedLineContinuationStarts: [2, 3] });
+    assert.deepEqual(layout.getMergedLineIndexesForStart(1, preview), [1, 2, 3]);
+    assert.equal(layout.findMergedOwnerLineIndex(1), 0);
+    assert.equal(layout.findMergedOwnerLineIndex(2), -1);
+});

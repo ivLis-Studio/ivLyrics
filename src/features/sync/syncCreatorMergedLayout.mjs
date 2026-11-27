@@ -30,10 +30,13 @@ const lineHasParallelRangeOverlapping = (line, lineStart, lineEnd) => (
 export function createSyncCreatorMergedLayout(lyricDocument, mergedLineDrafts, syncData) {
 	const { lyricsLines, lineCharOffsets, lineChars, lineIndexByStart, getLineEndAtIndex } = lyricDocument;
 	const savedLinesByStart = new Map((Array.isArray(syncData?.lines) ? syncData.lines : []).map(line => [line.start, line]));
+	const groups = new Map();
+	const owners = new Map();
 
 	function getIndexesFromMergedStarts(startIndex, mergedStarts) {
-		const starts = normalizeMergedLineDraftStarts(mergedStarts);
 		const indexes = [startIndex];
+		if (mergedStarts === undefined) return indexes;
+		const starts = normalizeMergedLineDraftStarts(mergedStarts);
 		for (let index = startIndex + 1; index < lyricsLines.length && indexes.length < SYNC_CREATOR_MAX_MERGED_LINES; index++) {
 			if (!starts.includes(lineCharOffsets[index])) break;
 			indexes.push(index);
@@ -55,25 +58,48 @@ export function createSyncCreatorMergedLayout(lyricDocument, mergedLineDrafts, s
 		return indexes;
 	}
 
-	function getMergedLineIndexesForStart(startIndex, linesByStartOverride = null) {
+	function resolveMergedLineIndexes(startIndex, linesByStart) {
 		if (startIndex < 0 || startIndex >= lyricsLines.length) return [];
 		const lineStart = lineCharOffsets[startIndex];
 		if (!Number.isInteger(lineStart)) return [startIndex];
 
 		const draftIndexes = getIndexesFromMergedStarts(startIndex, mergedLineDrafts[lineStart]);
-		const savedIndexes = getSavedMergedIndexes(startIndex, (linesByStartOverride || savedLinesByStart).get(lineStart));
+		const savedIndexes = getSavedMergedIndexes(startIndex, linesByStart.get(lineStart));
 		// An older draft may describe fewer rows than the saved timing covers.
 		// The editor only shrinks a group once the saved timing has been split.
 		return draftIndexes.length > savedIndexes.length ? draftIndexes : savedIndexes;
 	}
-	function findMergedOwnerLineIndex(index, linesByStartOverride = null) {
+	// Playback navigation and completion counting traverse the same layout on
+	// each edit. Cache only this layout's saved data; preview and export can
+	// ask about a different set of lines before it is committed.
+	function readMergedLineIndexes(startIndex, linesByStartOverride) {
+		if (linesByStartOverride) return resolveMergedLineIndexes(startIndex, linesByStartOverride);
+		let indexes = groups.get(startIndex);
+		if (!indexes) {
+			indexes = resolveMergedLineIndexes(startIndex, savedLinesByStart);
+			groups.set(startIndex, indexes);
+		}
+		return indexes;
+	}
+
+	function resolveMergedOwnerLineIndex(index, linesByStartOverride) {
 		if (index <= 0 || index >= lyricsLines.length) return -1;
 		const minIndex = Math.max(0, index - SYNC_CREATOR_MAX_MERGED_LINES + 1);
 		for (let ownerIndex = index - 1; ownerIndex >= minIndex; ownerIndex--) {
-			const mergedIndexes = getMergedLineIndexesForStart(ownerIndex, linesByStartOverride);
+			const mergedIndexes = readMergedLineIndexes(ownerIndex, linesByStartOverride);
 			if (mergedIndexes.includes(index)) return ownerIndex;
 		}
 		return -1;
+	}
+
+	function findMergedOwnerLineIndex(index, linesByStartOverride = null) {
+		if (linesByStartOverride) return resolveMergedOwnerLineIndex(index, linesByStartOverride);
+		let owner = owners.get(index);
+		if (owner === undefined) {
+			owner = resolveMergedOwnerLineIndex(index, null);
+			owners.set(index, owner);
+		}
+		return owner;
 	}
 
 	function isLineCoveredByMergedPrevious(index, linesByStartOverride = null) {
@@ -90,7 +116,7 @@ export function createSyncCreatorMergedLayout(lyricDocument, mergedLineDrafts, s
 	function getAutoMergeSplitPointsForLine(lineStart) {
 		const startIndex = lineIndexByStart.get(lineStart) ?? -1;
 		if (startIndex < 0) return [];
-		const mergedIndexes = getMergedLineIndexesForStart(startIndex);
+		const mergedIndexes = readMergedLineIndexes(startIndex, null);
 		if (mergedIndexes.length <= 1) return [];
 
 		const splitPoints = [];
@@ -103,7 +129,10 @@ export function createSyncCreatorMergedLayout(lyricDocument, mergedLineDrafts, s
 	}
 	return {
 		getSavedLineAtIndex: index => savedLinesByStart.get(lineCharOffsets[index]),
-		getMergedLineIndexesForStart,
+		getMergedLineIndexesForStart: (index, override) => {
+			const indexes = readMergedLineIndexes(index, override);
+			return override ? indexes : indexes.slice();
+		},
 		findMergedOwnerLineIndex,
 		isLineCoveredByMergedPrevious,
 		findNavigableLineIndex,

@@ -60,31 +60,25 @@ function getCachedHitIndex(boxes, x, y) {
 }
 
 function getRenderedHitIndex(elements, x, y) {
-	for (let i = 0; i < elements.length; i++) {
-		const rect = elements[i]?.getBoundingClientRect();
-		if (rect && containsPoint(rect, x, y)) return i;
-	}
-
 	const lastIndex = elements.length - 1;
-	const first = elements[0];
-	const last = elements[lastIndex];
-	if (!first || !last) return 0;
-	const firstRect = first.getBoundingClientRect();
-	const lastRect = last.getBoundingClientRect();
-	if (x < firstRect.left) return 0;
-	if (x > lastRect.right) return lastIndex;
-
+	let firstRect;
+	let lastRect;
 	let closestIndex = 0;
 	let closestDistance = Infinity;
 	for (let i = 0; i < elements.length; i++) {
 		const rect = elements[i]?.getBoundingClientRect();
 		if (!rect) continue;
+		if (containsPoint(rect, x, y)) return i;
+		if (i === 0) firstRect = rect;
+		if (i === lastIndex) lastRect = rect;
 		const distance = Math.abs(x - (rect.left + rect.width / 2));
 		if (distance < closestDistance) {
 			closestDistance = distance;
 			closestIndex = i;
 		}
 	}
+	if (!firstRect || !lastRect || x < firstRect.left) return 0;
+	if (x > lastRect.right) return lastIndex;
 	return closestIndex;
 }
 

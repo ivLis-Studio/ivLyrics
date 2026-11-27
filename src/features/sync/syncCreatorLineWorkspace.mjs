@@ -8,13 +8,14 @@ import { SYNC_CREATOR_DEFAULT_KIND } from './syncCreatorVocalStyles.mjs';
 import { countSyncCreatorCompletedLines, isSyncCreatorLineSynced } from './syncCreatorLineCompletion.mjs';
 
 const EMPTY_SYNC_CREATOR_LINE_CHARS = [];
+const EMPTY_SYNC_CREATOR_PARTS = [];
 
 export function useSyncCreatorLineWorkspace({
 	react, lyricDocument, lyricsText, syncData, currentLineIndex, drafts, vocalSelection,
 	readVisualSettings, vocalLayout, vocalStyles,
 }) {
 	const { useMemo, useEffect, useCallback } = react;
-	const { lyricsLines, lineCharOffsets } = lyricDocument;
+	const { lineCharOffsets } = lyricDocument;
 	const {
 		mergedLineDrafts, lineMetaDrafts, lineStyleDrafts, parallelPartMetaDrafts,
 		manualParallelSplitDrafts, parentheticalLayoutDrafts,
@@ -100,10 +101,9 @@ export function useSyncCreatorLineWorkspace({
 	const currentLineStyleRanges = useMemo(() => {
 		const hasDraft = Object.prototype.hasOwnProperty.call(lineStyleDrafts, currentLineStart);
 		const currentLineEnd = currentLineStart + Math.max(0, currentFullLineChars.length - 1);
-		const persistedRanges = (Array.isArray(syncData?.lines) ? syncData.lines : [])
+		const source = hasDraft ? lineStyleDrafts[currentLineStart] : (Array.isArray(syncData?.lines) ? syncData.lines : [])
 			.filter(line => Number(line?.end) >= currentLineStart && Number(line?.start) <= currentLineEnd)
 			.flatMap(line => Array.isArray(line?.styleRanges) ? line.styleRanges : []);
-		const source = hasDraft ? lineStyleDrafts[currentLineStart] : persistedRanges;
 		return normalizeSyncCreatorStyleRanges(
 			source,
 			currentLineStart,
@@ -191,7 +191,7 @@ export function useSyncCreatorLineWorkspace({
 		currentLineStart,
 		currentLineMeta
 	]);
-	const currentParallelParts = currentParallelData?.parts || [];
+	const currentParallelParts = currentParallelData?.parts || EMPTY_SYNC_CREATOR_PARTS;
 	const hasCurrentParallelParts = currentParallelParts.length > 1;
 	const currentParentheticalLayoutCandidate = useMemo(() => {
 		if (
