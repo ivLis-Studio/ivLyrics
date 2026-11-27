@@ -1,37 +1,13 @@
-import { readSyncCreatorFixture } from "./fixtures/legacy-page-source.mjs";
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
-
-const source = readSyncCreatorFixture();
-const slice = (startMarker, endMarker) => {
-	const start = source.indexOf(startMarker);
-	const end = source.indexOf(endMarker, start + startMarker.length);
-	assert.ok(start >= 0 && end > start, `missing source section: ${startMarker}`);
-	return source.slice(start, end);
-};
-
-const context = vm.createContext({});
-vm.runInContext(
-	slice('const normalizeSyncCreatorLockRange =', 'const getSyncCreatorLockedPlaybackProgressIndex =') +
-	'\nglobalThis.__lockHelpers = { normalizeSyncCreatorLockRange, isSyncCreatorIndexLocked, resolveSyncCreatorLockDragRange, buildSyncCreatorLockedCharTimesForRange, getSyncCreatorNextEditableIndex, clampSyncCreatorTimesToLockRange, shiftSyncCreatorSelectionTimes };',
-	context
-);
-const {
-	normalizeSyncCreatorLockRange,
-	isSyncCreatorIndexLocked,
-	resolveSyncCreatorLockDragRange,
-	buildSyncCreatorLockedCharTimesForRange,
-	getSyncCreatorNextEditableIndex,
-	clampSyncCreatorTimesToLockRange,
-	shiftSyncCreatorSelectionTimes,
-} = context.__lockHelpers;
+import {
+	clampSyncCreatorTimesToLockRange, getSyncCreatorNextEditableIndex, isSyncCreatorIndexLocked,
+	normalizeSyncCreatorLockRange, shiftSyncCreatorSelectionTimes,
+} from '../src/features/sync/selectionTiming.mjs';
 
 test('right-drag in either direction normalizes to a single range', () => {
 	assert.deepEqual(JSON.parse(JSON.stringify(normalizeSyncCreatorLockRange(3, 7, 10))), { start: 3, end: 7 });
 	assert.deepEqual(JSON.parse(JSON.stringify(normalizeSyncCreatorLockRange(7, 3, 10))), { start: 3, end: 7 });
-	assert.deepEqual(JSON.parse(JSON.stringify(resolveSyncCreatorLockDragRange(7, 3, 10))), { start: 3, end: 7 });
 });
 
 test('single click stays backward compatible with prefix lock', () => {
@@ -51,12 +27,6 @@ test('middle lock only marks inside the range as locked', () => {
 	assert.equal(isSyncCreatorIndexLocked(5, range), true);
 	assert.equal(isSyncCreatorIndexLocked(6, range), false);
 	assert.equal(isSyncCreatorIndexLocked(0, null), false);
-});
-
-test('locked char times preserve only the locked span', () => {
-	const saved = [1, 2, 3, 4, 5, 6];
-	const times = buildSyncCreatorLockedCharTimesForRange(saved, { start: 2, end: 4 });
-	assert.deepEqual(JSON.parse(JSON.stringify(times)), [null, null, 3, 4, 5, null]);
 });
 
 test('forward drag skips over the locked region, backward stops at its edge', () => {

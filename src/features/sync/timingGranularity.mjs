@@ -1,8 +1,5 @@
-const countSyncCreatorRangeChars = (ranges) => (Array.isArray(ranges) ? ranges : []).reduce((sum, range) => {
-	const start = Number(range?.start);
-	const end = Number(range?.end);
-	return Number.isInteger(start) && Number.isInteger(end) && end >= start ? sum + end - start + 1 : sum;
-}, 0);
+import { countSyncDataRangeChars as countSyncCreatorRangeChars } from '../../lyrics/syncRenderVocalRanges.mjs';
+
 const isFiniteSyncCreatorTime = (value) => typeof value === 'number' && Number.isFinite(value);
 const roundSyncCreatorTime = (value) => Math.round(value * 1000) / 1000;
 const SYNC_CREATOR_GRANULARITIES = new Set(['line', 'word', 'character']);

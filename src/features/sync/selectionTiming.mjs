@@ -22,9 +22,6 @@ const normalizeSyncCreatorLockRange = (startIndex, endIndex, charCount) => {
 	if (min < 0 || max >= count) return null;
 	return { start: safeStart, end: safeEnd };
 };
-const resolveSyncCreatorLockDragRange = (downIndex, upIndex, charCount) => (
-	normalizeSyncCreatorLockRange(downIndex, upIndex, charCount)
-);
 const resolveSyncCreatorOffsetSelectionRange = (downIndex, upIndex, charCount, allowFullLine = false) => {
 	const count = Number(charCount);
 	if (!Number.isFinite(count) || count <= 0) return null;
@@ -108,15 +105,6 @@ const isSyncCreatorIndexLocked = (index, range) => {
 	if (!range || !Number.isInteger(Number(index))) return false;
 	const numericIndex = Number(index);
 	return numericIndex >= range.start && numericIndex <= range.end;
-};
-const buildSyncCreatorLockedCharTimesForRange = (savedChars, range) => {
-	const saved = Array.isArray(savedChars) ? savedChars : [];
-	const next = new Array(saved.length).fill(null);
-	if (!range) return next;
-	for (let i = Math.max(0, range.start); i <= Math.min(range.end, saved.length - 1); i++) {
-		next[i] = saved[i];
-	}
-	return next;
 };
 const getSyncCreatorNextEditableIndex = (index, range, charCount, direction = 1) => {
 	const numericIndex = Number(index);

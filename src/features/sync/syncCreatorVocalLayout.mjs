@@ -146,7 +146,9 @@ export function createSyncCreatorVocalLayout({
 			}
 			sanitizeSpeakerInPlace(nextLine);
 			if (nextLine.parallel) {
-				const normalized = normalizeSyncCreatorParentheticalParallelRanges(nextLine.parallel, fullTextChars);
+				const normalized = normalizeSyncCreatorParentheticalParallelRanges(
+					nextLine.parallel, fullTextChars, sanitizeSyncCreatorParallel
+				);
 				nextLine.parallel = sanitizeSyncCreatorParallel(normalized.parallel);
 				migratedParallelRanges = migratedParallelRanges || normalized.changed;
 			}

@@ -119,6 +119,7 @@ export function readSyncCreatorFixture() {
         .replace("} = services;\n",
             "} = createSyncCreatorServices(window);\n");
     const fixtureServices = "import { getSyncCreatorLrclibTextShape } from '#ivlyrics/features/sync/lrclibSyncSource.mjs';\n"
+        + "import { countSyncDataRangeChars as countSyncCreatorRangeChars } from '#ivlyrics/lyrics/syncRenderVocalRanges.mjs';\n"
         + "import { createSyncCreatorServices } from '#ivlyrics/spicetify/syncCreatorServices.mjs';\n"
         + "import { createSyncCreatorActiveLinePainter } from '#ivlyrics/features/sync/syncCreatorEditorPreview.mjs';\n"
         + "import { areSyncCreatorParallelRangesEqual, getSyncCreatorConcurrentParallelParts, getSyncCreatorParallelPreviewChars, hasOrderedSyncCreatorTimes, hasReusableSyncCreatorParallelChars, isSyncCreatorCharContextMenuEnabled, preserveSyncCreatorParallelTimingRuns, resolveSyncCreatorManualSplitState, selectSyncCreatorParallelTemplate } from '#ivlyrics/features/sync/parallelTiming.mjs';\n"
@@ -130,9 +131,12 @@ export function readSyncCreatorFixture() {
         entryWithoutImports, "from '#ivlyrics/features/sync/selectionTiming.mjs';",
         timingMarker, read("features/sync/selectionTiming.mjs"),
     );
+    // timingGranularity.mjs imports its range counter; the fixture supplies it
+    // with the other bundled imports above.
+    const granularity = read("features/sync/timingGranularity.mjs");
     source = includeSection(
         source, "from '#ivlyrics/features/sync/timingGranularity.mjs';",
-        timingMarker, read("features/sync/timingGranularity.mjs"),
+        timingMarker, granularity.slice(granularity.indexOf("const isFiniteSyncCreatorTime")),
     );
     const validation = read("features/sync/timingValidation.mjs");
     source = includeSection(

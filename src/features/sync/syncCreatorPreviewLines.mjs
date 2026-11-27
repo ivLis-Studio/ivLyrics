@@ -1,4 +1,5 @@
 import { countSyncCreatorRangeChars, normalizeSyncCreatorGranularity } from "./timingGranularity.mjs";
+import { buildSyncDataVocalLine } from "../../lyrics/syncRenderVocalLine.mjs";
 
 function toPreviewMs(value) {
 	if (value === null || value === undefined) return null;
@@ -32,35 +33,6 @@ function getFollowingPreviewLineStarts(timing) {
 		laterStarts.push(first);
 	}
 	return result;
-}
-
-function toPreviewVocal(part) {
-	return {
-		id: part.id,
-		role: part.role,
-		speaker: part.speaker,
-		'speaker-color': part['speaker-color'] || '',
-		'speaker-fallback': part['speaker-fallback'] || '',
-		kind: part.kind,
-		text: part.text,
-		syllables: part.syllables
-	};
-}
-
-function buildSyncCreatorPreviewVocalLine(syncLine, text, firstMs, lineEndMs, speaker, kind, parts) {
-	const lead = parts.find(part => part.role === 'lead') || parts[0];
-	const background = parts.filter(part => part !== lead);
-	const times = parts.flatMap(part => [part.startTime, part.endTime]).filter(Number.isFinite);
-	return {
-		text,
-		startTime: Math.min(...times, firstMs),
-		endTime: Math.max(...times, lineEndMs),
-		speaker: syncLine.speaker || lead.speaker || speaker,
-		'speaker-color': syncLine['speaker-color'] || lead['speaker-color'] || '',
-		'speaker-fallback': syncLine['speaker-fallback'] || lead['speaker-fallback'] || '',
-		kind: syncLine.kind || lead.kind || kind,
-		vocals: { lead: toPreviewVocal(lead), background: background.map(toPreviewVocal) }
-	};
 }
 
 export function buildSyncCreatorPreviewLines({
@@ -240,7 +212,13 @@ export function buildSyncCreatorPreviewLines({
 				});
 			}
 			if (builtParts.length > 0) {
-				return buildSyncCreatorPreviewVocalLine(syncLine, text, firstMs, lineEndMs, speaker, kind, builtParts);
+				// The preview line is timed by the editor; the vocal fields
+				// follow the renderer's rules.
+				return buildSyncDataVocalLine({
+					text, startTime: firstMs, endTime: lineEndMs,
+					speaker: syncLine.speaker, 'speaker-color': syncLine['speaker-color'],
+					'speaker-fallback': syncLine['speaker-fallback'], kind: syncLine.kind,
+				}, builtParts, { speaker, kind });
 			}
 			return untimedLine();
 		}

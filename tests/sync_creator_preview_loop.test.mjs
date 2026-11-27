@@ -1,6 +1,6 @@
 import { rangesToCharRefs, getSyncCreatorParallelPartDisplayItems } from "#ivlyrics/features/sync/syncCreatorVocalLayout.mjs";
 import { buildRecordedSyncCreatorParallelParts } from "#ivlyrics/features/sync/syncCreatorLineCommit.mjs";
-import { projectTimedUnits } from "#ivlyrics/features/sync/timingGranularity.mjs";
+import { countSyncCreatorRangeChars, projectTimedUnits } from "#ivlyrics/features/sync/timingGranularity.mjs";
 import { createSyncCreatorParallelPreviewTargets, createSyncCreatorPreviewPainting } from "#ivlyrics/features/sync/syncCreatorPreviewPainting.mjs";
 import { useSyncCreatorEditorPreview, useSyncCreatorPreviewTiming } from "#ivlyrics/features/sync/syncCreatorEditorPreview.mjs";
 import { renderSyncCreatorParallelPart } from "#ivlyrics/features/sync/syncCreatorParallelPartView.mjs";
@@ -302,8 +302,9 @@ const attachParallelRenderer = (preview, { text = "ABCD", lineStart = 0, selecte
 		getSyncCreatorKindLabel: context.getSyncCreatorKindLabel,
 		normalizeSyncCreatorKind: context.normalizeSyncCreatorKind,
 	};
+	context.countSyncCreatorRangeChars = countSyncCreatorRangeChars;
 	vm.runInContext([
-		slice("const countSyncCreatorRangeChars", "const roundSyncCreatorTime"),
+		slice("const isFiniteSyncCreatorTime", "const roundSyncCreatorTime"),
 		`globalThis.renderPart = (() => { ${slice("\tconst renderParallelPartLine =", "\n\tconst updateCurrentTextEffect =")} return renderParallelPartLine; })();`,
 	].join("\n"), context);
 
