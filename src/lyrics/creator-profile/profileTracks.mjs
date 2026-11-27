@@ -132,13 +132,10 @@ async function findCreatorTrackCover(fetch, title, artist) {
 }
 
 export function createCreatorTrackCover({ react, fetchCover }) {
-	const { useState, useMemo, useEffect } = react;
+	const { useState, useEffect } = react;
 	return react.memo(function CreatorProfileTrackCover({ title, artist }) {
 		const [coverUrl, setCoverUrl] = useState(null);
 		const [failed, setFailed] = useState(false);
-		const cacheKey = useMemo(() => (
-			`${normalizeCreatorCoverText(title)}|${normalizeCreatorCoverText(getCreatorCoverFirstArtist(artist))}`
-		), [artist, title]);
 
 		useEffect(() => {
 			let cancelled = false;
@@ -159,7 +156,7 @@ export function createCreatorTrackCover({ react, fetchCover }) {
 			return () => {
 				cancelled = true;
 			};
-		}, [artist, cacheKey, title]);
+		}, [artist, title]);
 
 		return react.createElement(
 			"div",

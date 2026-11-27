@@ -1,11 +1,12 @@
 export function createCreatorProfileClient({ readLocalStorage, request, translate }) {
-  // Parses a creator-profile account API response, throwing with the same message
-  // precedence (server error -> localized key -> literal fallback) on failure and
-  // returning `data.data` on success. Mirrors the identical validate-and-return
-  // tail duplicated across several creator-profile fetch helpers.
-  const readCreatorProfileApiResponseData = async (response, failureI18nKey, fallbackMessage) => {
-    const data = await response.json();
+  const supportTierCacheKey = "ivLyrics:discord-support-tier-cache";
+  const supportTiers = new Set(["none", "supporter", "monthly"]);
+  const readSupportTierCache = () => {
+    const raw = readLocalStorage().getItem(supportTierCacheKey);
+    return raw ? JSON.parse(raw) : {};
+  };
 
+  const getCreatorProfileApiResponseData = (response, data, failureI18nKey, fallbackMessage) => {
     if (!response.ok || !data.success || !data.data) {
       throw new Error(
         data.error || translate(failureI18nKey) || fallbackMessage
@@ -14,6 +15,9 @@ export function createCreatorProfileClient({ readLocalStorage, request, translat
 
     return data.data;
   };
+
+  const readCreatorProfileApiResponseData = async (response, failureI18nKey, fallbackMessage) =>
+    getCreatorProfileApiResponseData(response, await response.json(), failureI18nKey, fallbackMessage);
 
   return {
     getCreatorDecorationDefaults() {
@@ -29,12 +33,11 @@ export function createCreatorProfileClient({ readLocalStorage, request, translat
     getCachedDiscordSupportTier(discordId, options = {}) {
       if (!this.isDiscordUserHash(discordId)) return null;
       try {
-        const raw = readLocalStorage().getItem("ivLyrics:discord-support-tier-cache");
-        const cache = raw ? JSON.parse(raw) : {};
+        const cache = readSupportTierCache();
         const entry = cache[String(discordId)];
         if (
           entry &&
-          ["none", "supporter", "monthly"].includes(entry.tier) &&
+          supportTiers.has(entry.tier) &&
           (options.allowExpired || Number(entry.expiresAt) > Date.now())
         ) {
           return entry;
@@ -46,13 +49,11 @@ export function createCreatorProfileClient({ readLocalStorage, request, translat
     },
 
     setCachedDiscordSupportTier(discordId, tier) {
-      if (!this.isDiscordUserHash(discordId) || !["none", "supporter", "monthly"].includes(tier)) {
+      if (!this.isDiscordUserHash(discordId) || !supportTiers.has(tier)) {
         return;
       }
       try {
-        const storageKey = "ivLyrics:discord-support-tier-cache";
-        const raw = readLocalStorage().getItem(storageKey);
-        const cache = raw ? JSON.parse(raw) : {};
+        const cache = readSupportTierCache();
         const now = Date.now();
         for (const [key, entry] of Object.entries(cache)) {
           if (!entry || Number(entry.expiresAt) < now - 24 * 60 * 60 * 1000) {
@@ -63,7 +64,7 @@ export function createCreatorProfileClient({ readLocalStorage, request, translat
           tier,
           expiresAt: now + 60 * 60 * 1000,
         };
-        readLocalStorage().setItem(storageKey, JSON.stringify(cache));
+        readLocalStorage().setItem(supportTierCacheKey, JSON.stringify(cache));
       } catch (error) {
         console.warn("[ivLyrics] Failed to update Discord supporter cache:", error);
       }
@@ -316,17 +317,9 @@ export function createCreatorProfileClient({ readLocalStorage, request, translat
           greeting,
         }),
       });
-      const data = await response.json();
-
-      if (!response.ok || !data.success || !data.data) {
-        throw new Error(
-          data.error ||
-            translate("creatorProfile.greetingSaveFailed") ||
-            "Failed to update creator greeting."
-        );
-      }
-
-      return data.data;
+      return getCreatorProfileApiResponseData(
+        response, await response.json(), "creatorProfile.greetingSaveFailed", "Failed to update creator greeting."
+      );
     },
 
     async setSyncCreatorLike(creatorUserHash, liked) {
@@ -347,17 +340,9 @@ export function createCreatorProfileClient({ readLocalStorage, request, translat
           liked: !!liked,
         }),
       });
-      const data = await response.json();
-
-      if (!response.ok || !data.success || !data.data) {
-        throw new Error(
-          data.error ||
-            translate("creatorProfile.likeActionFailed") ||
-            "Failed to update creator like."
-        );
-      }
-
-      return data.data;
+      return getCreatorProfileApiResponseData(
+        response, await response.json(), "creatorProfile.likeActionFailed", "Failed to update creator like."
+      );
     },
   };
 }
