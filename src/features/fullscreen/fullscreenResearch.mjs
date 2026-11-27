@@ -1,4 +1,5 @@
 import { createFullscreenResearchSessionHook } from "./fullscreenResearchSession.mjs";
+import { cycleDialogTabFocus } from "../../app/modal/dialogTabFocus.mjs";
 
 export function createFullscreenResearch({
     react, host: window, document, spicetify: Spicetify, i18n: I18n, toast: Toast,
@@ -48,17 +49,7 @@ export function createFullscreenResearch({
 
                 if (event.key !== "Tab") return;
                 const focusable = Array.from(dialogRef.current?.querySelectorAll?.("button:not(:disabled)") || []);
-                if (focusable.length === 0) return;
-
-                const first = focusable[0];
-                const last = focusable[focusable.length - 1];
-                if (event.shiftKey && document.activeElement === first) {
-                    event.preventDefault();
-                    last.focus();
-                } else if (!event.shiftKey && document.activeElement === last) {
-                    event.preventDefault();
-                    first.focus();
-                }
+                cycleDialogTabFocus(event, document.activeElement, focusable);
             };
 
             window.addEventListener("keydown", handleKeyDown, true);

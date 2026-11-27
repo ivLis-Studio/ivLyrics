@@ -1,4 +1,5 @@
 import bundledBlacklist from '../../../blacklist.json' with { type: 'json' };
+import { compareDottedVersions } from '../../core/compareDottedVersions.mjs';
 
 const GITHUB_TOPIC = 'ivlyrics-addon';
 const GITHUB_SEARCH_URL = `https://api.github.com/search/repositories?q=topic:${encodeURIComponent(GITHUB_TOPIC)}&per_page=100&sort=stars&order=desc`;
@@ -6,19 +7,8 @@ const BLACKLIST_URL_REMOTE = 'https://raw.githubusercontent.com/ivLis-Studio/ivL
 
 const ADDON_LIST_CACHE_TTL = 5 * 60 * 1000;
 
-function compareVersions(a, b) {
-    if (!a || !b) return 0;
-    const pa = String(a).split('.').map(Number);
-    const pb = String(b).split('.').map(Number);
-    const len = Math.max(pa.length, pb.length);
-    for (let i = 0; i < len; i++) {
-        const na = pa[i] || 0;
-        const nb = pb[i] || 0;
-        if (na > nb) return 1;
-        if (na < nb) return -1;
-    }
-    return 0;
-}
+// A missing version on either side never counts as an update.
+const compareVersions = (a, b) => (a && b ? compareDottedVersions(String(a), String(b)) : 0);
 
 export function withMarketplaceInstallState(addon, installed) {
     const installedVersion = installed?.version || null;

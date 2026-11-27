@@ -1,25 +1,13 @@
 import { getAppUpdateInfo, subscribeAppUpdateInfo } from "./updateDialogState.mjs";
 import { APP_UPDATE_PAGE_URL } from "./updateLinks.mjs";
+import { createNotificationIcon, getNotificationTheme, NOTIFICATION_ICON_SHAPES } from "../../app/notificationPresentation.mjs";
+import { cycleDialogTabFocus, getNotificationFocusableElements } from "../../app/modal/dialogTabFocus.mjs";
 
 const UPDATE_BANNER_ICON_SHAPES = {
-  update: [
-    ["path", { d: "M20 6v5h-5" }],
-    ["path", { d: "M4 18v-5h5" }],
-    ["path", { d: "M6.1 9a7 7 0 0 1 11.7-2.6L20 11" }],
-    ["path", { d: "M4 13l2.2 4.6A7 7 0 0 0 17.9 15" }],
-  ],
-  close: [
-    ["path", { d: "m18 6-12 12" }],
-    ["path", { d: "m6 6 12 12" }],
-  ],
+  ...NOTIFICATION_ICON_SHAPES,
   arrow: [
     ["path", { d: "M5 12h14" }],
     ["path", { d: "m13 6 6 6-6 6" }],
-  ],
-  external: [
-    ["path", { d: "M15 3h6v6" }],
-    ["path", { d: "m10 14 11-11" }],
-    ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" }],
   ],
   notes: [
     ["path", { d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" }],
@@ -36,38 +24,11 @@ const formatUpdateVersion = (version) => {
 };
 
 export function createUpdateBanner({ react, host, document, readSetting, translate, ensureReactDOM, dismissUpdate }) {
-  const getUpdateBannerTheme = () => {
-    try {
-      const storedTheme =
-        readSetting("ivLyrics:settings-ui-theme");
-      return storedTheme === "light" ? "light" : "dark";
-    } catch {
-      return "dark";
-    }
-  };
+  const getUpdateBannerTheme = () => getNotificationTheme(readSetting);
 
-  const createUpdateBannerIcon = (name, size = 20) => {
-    const shapes = UPDATE_BANNER_ICON_SHAPES[name] || UPDATE_BANNER_ICON_SHAPES.update;
-
-    return react.createElement(
-      "svg",
-      {
-        width: size,
-        height: size,
-        viewBox: "0 0 24 24",
-        fill: "none",
-        stroke: "currentColor",
-        strokeWidth: 2,
-        strokeLinecap: "round",
-        strokeLinejoin: "round",
-        "aria-hidden": "true",
-        focusable: "false",
-      },
-      shapes.map(([element, props], index) =>
-        react.createElement(element, { ...props, key: `${name}-${index}` })
-      )
-    );
-  };
+  const createUpdateBannerIcon = (name, size = 20) => createNotificationIcon(
+    react, name, size, UPDATE_BANNER_ICON_SHAPES[name] || UPDATE_BANNER_ICON_SHAPES.update,
+  );
 
   // Update notification dialog
   function UpdateDialog({ updateInfo, onDismiss }) {
@@ -80,10 +41,6 @@ export function createUpdateBanner({ react, host, document, readSetting, transla
       const modal = modalRef.current;
       if (!modal) return undefined;
 
-      const getFocusableElements = () => Array.from(modal.querySelectorAll(
-        'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
-      )).filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
-
       const handleKeydown = (event) => {
         if (event.key === "Escape") {
           event.preventDefault();
@@ -92,26 +49,10 @@ export function createUpdateBanner({ react, host, document, readSetting, transla
         }
 
         if (event.key !== "Tab") return;
-
-        const focusable = getFocusableElements();
-        if (!focusable.length) {
-          event.preventDefault();
-          modal.focus();
-          return;
-        }
-
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && (document.activeElement === first || document.activeElement === modal)) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === modal) {
-          event.preventDefault();
-          first.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
+        // The dialog itself takes the initial focus, so Tab cycles from it too.
+        cycleDialogTabFocus(event, document.activeElement, getNotificationFocusableElements(modal), {
+          fallback: modal, containerEdge: modal,
+        });
       };
 
       document.addEventListener("keydown", handleKeydown);

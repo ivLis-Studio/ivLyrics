@@ -1,4 +1,5 @@
 import { writeRuntimeDebug } from "#ivlyrics/spicetify/runtimeDebug.mjs";
+import { compareDottedVersions } from "#ivlyrics/core/compareDottedVersions.mjs";
 import { getAppUpdateInfo, setAppUpdateInfo } from "./updateDialogState.mjs";
 import { APP_UPDATE_PAGE_URL, getAppReleaseUrl } from "./updateLinks.mjs";
 
@@ -190,18 +191,7 @@ export function createAppUpdateMethods({ host, t, getStorage }) {
      * @returns {number} - 1 if a > b, -1 if a < b, 0 if equal
      */
     compareVersions(a, b) {
-      const aParts = a.split(".").map(Number);
-      const bParts = b.split(".").map(Number);
-
-      for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
-        const aPart = aParts[i] || 0;
-        const bPart = bParts[i] || 0;
-
-        if (aPart > bPart) return 1;
-        if (aPart < bPart) return -1;
-      }
-
-      return 0;
+      return compareDottedVersions(a, b);
     },
 
     /**
