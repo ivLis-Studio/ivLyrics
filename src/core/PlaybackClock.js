@@ -67,32 +67,33 @@ const resolveStablePlayerItem = (playerData, playbackSnapshot, candidateItem = n
     return null;
 };
 
-const getRestrictionReasons = (playerData, playerState) => {
-    const restrictions = playerState?.restrictions || playerData?.restrictions || {};
-    return [
-        ...(Array.isArray(restrictions.disallowSeekingReasons)
-            ? restrictions.disallowSeekingReasons
-            : []),
-        ...(Array.isArray(restrictions.disallowSkippingNextReasons)
-            ? restrictions.disallowSkippingNextReasons
-            : []),
-        ...(Array.isArray(restrictions.disallowSkippingPrevReasons)
-            ? restrictions.disallowSkippingPrevReasons
-            : [])
-    ].map(reason => String(reason || "").toLowerCase());
+const SEEK_AND_SKIP_RESTRICTIONS = [
+    "disallowSeekingReasons",
+    "disallowSkippingNextReasons",
+    "disallowSkippingPrevReasons"
+];
+const isNarrationReason = reason => String(reason || "").toLowerCase().includes("narration");
+const normalizePlaybackFlag = value => value ? String(value).trim().toLowerCase() : "";
+
+const hasNarrationRestriction = (restrictions) => {
+    if (!restrictions) return false;
+    for (const key of SEEK_AND_SKIP_RESTRICTIONS) {
+        const reasons = restrictions[key];
+        if (Array.isArray(reasons) && reasons.some(isNarrationReason)) return true;
+    }
+    return false;
 };
 
 const isDjNarrationPlayback = (playerData, playerState = null) => {
-    const item = getPlayerItem(playerData, playerState) || {};
-    const provider = String(item.provider || "").trim().toLowerCase();
-    const type = String(item.type || "").trim().toLowerCase();
-    const uri = String(item.uri || "").trim().toLowerCase();
-    const restrictionReasons = getRestrictionReasons(playerData, playerState);
+    const item = getPlayerItem(playerData, playerState);
+    const provider = normalizePlaybackFlag(item?.provider);
+    const type = normalizePlaybackFlag(item?.type);
+    const uri = normalizePlaybackFlag(item?.uri);
 
     return (
         provider.startsWith("narration") ||
         uri.startsWith("spotify:media:") ||
-        restrictionReasons.some(reason => reason.includes("narration")) ||
+        hasNarrationRestriction(playerState?.restrictions || playerData?.restrictions) ||
         (
             type === "unknown" &&
             !uri.startsWith("spotify:track:") &&
@@ -102,14 +103,14 @@ const isDjNarrationPlayback = (playerData, playerState = null) => {
 };
 
 const isAutomixPlayback = (playerData, playerState = null) => {
-    const itemMetadata = getPlayerItem(playerData, playerState)?.metadata || {};
-    const contextMetadata = playerState?.context?.metadata || playerData?.context?.metadata || {};
-    const itemProductType = String(itemMetadata.agentic_product_type || "").trim().toLowerCase();
-    const contextProductType = String(contextMetadata.agentic_product_type || "").trim().toLowerCase();
-    const itemAutomixMode = String(itemMetadata["audio.automix_mode"] || "").trim().toLowerCase();
-    const contextAutomixMode = String(contextMetadata["automix.mode"] || "").trim().toLowerCase();
-    const lexiconSetType = String(contextMetadata.lexicon_set_type || "").trim().toLowerCase();
-    const mixerEnabled = String(contextMetadata.mixer_enabled || "").trim().toLowerCase();
+    const itemMetadata = getPlayerItem(playerData, playerState)?.metadata;
+    const contextMetadata = playerState?.context?.metadata || playerData?.context?.metadata;
+    const itemProductType = normalizePlaybackFlag(itemMetadata?.agentic_product_type);
+    const contextProductType = normalizePlaybackFlag(contextMetadata?.agentic_product_type);
+    const itemAutomixMode = normalizePlaybackFlag(itemMetadata?.["audio.automix_mode"]);
+    const contextAutomixMode = normalizePlaybackFlag(contextMetadata?.["automix.mode"]);
+    const lexiconSetType = normalizePlaybackFlag(contextMetadata?.lexicon_set_type);
+    const mixerEnabled = normalizePlaybackFlag(contextMetadata?.mixer_enabled);
 
     return (
         itemProductType === "dj" ||
@@ -162,10 +163,10 @@ const createPlaybackClock = (options = {}) => {
     let pollTimer = null;
     let pollPending = false;
     let currentIdentityKey = "";
+    let playbackIdentity = { uri: "", playbackId: "", key: "" };
     let localAnchor = null;
     let lastStateReading = null;
     let pendingStateDiscontinuity = null;
-    let predictedProgress = null;
     let lastSnapshot = null;
     let forceSnap = false;
     let sampleGeneration = 0;
@@ -175,7 +176,10 @@ const createPlaybackClock = (options = {}) => {
         const playerState = options.getPlayerState?.() || null;
         const uri = getPlayerUri(playerData, playerState);
         const playbackId = getPlaybackId(playerData, playerState);
-        const identityKey = getPlaybackIdentityKey(uri, playbackId);
+        if (uri !== playbackIdentity.uri || playbackId !== playbackIdentity.playbackId) {
+            playbackIdentity = { uri, playbackId, key: getPlaybackIdentityKey(uri, playbackId) };
+        }
+        const identityKey = playbackIdentity.key;
         const pausedFromState = playerState?.isPaused;
         const pausedFromData = playerData?.isPaused;
         const isPlaying = typeof pausedFromState === "boolean"
@@ -200,8 +204,6 @@ const createPlaybackClock = (options = {}) => {
             isPlaying,
             duration,
             isLocal: !!options.isLocalPlayback?.(),
-            automix: isAutomixPlayback(playerData, playerState),
-            djNarration: isDjNarrationPlayback(playerData, playerState)
         };
     };
 
@@ -243,28 +245,27 @@ const createPlaybackClock = (options = {}) => {
         }
         lastStateReading = null;
         pendingStateDiscontinuity = null;
-        predictedProgress = null;
         forceSnap = true;
     };
 
-    const observeStateProgress = (context, position, sampledAt, publicProgress) => {
+    const acceptStateReading = (context, position, sampledAt) => {
+        lastStateReading ??= {};
+        lastStateReading.identityKey = context.identityKey;
+        lastStateReading.position = position;
+        lastStateReading.sampledAt = sampledAt;
+        lastStateReading.isPlaying = context.isPlaying;
+        pendingStateDiscontinuity = null;
+        return position;
+    };
+
+    const observeStateProgress = (context, position, sampledAt) => {
         if (!Number.isFinite(position)) {
             pendingStateDiscontinuity = null;
-            return { position, guarded: false };
+            return position;
         }
 
-        if (
-            !lastStateReading ||
-            lastStateReading.identityKey !== context.identityKey
-        ) {
-            lastStateReading = {
-                identityKey: context.identityKey,
-                position,
-                sampledAt,
-                isPlaying: context.isPlaying
-            };
-            pendingStateDiscontinuity = null;
-            return { position, guarded: false };
+        if (lastStateReading?.identityKey !== context.identityKey) {
+            return acceptStateReading(context, position, sampledAt);
         }
 
         const elapsed = Math.max(0, sampledAt - lastStateReading.sampledAt);
@@ -273,14 +274,7 @@ const createPlaybackClock = (options = {}) => {
         );
         const drift = position - expected;
         if (Math.abs(drift) < discontinuityThresholdMs) {
-            lastStateReading = {
-                identityKey: context.identityKey,
-                position,
-                sampledAt,
-                isPlaying: context.isPlaying
-            };
-            pendingStateDiscontinuity = null;
-            return { position, guarded: false };
+            return acceptStateReading(context, position, sampledAt);
         }
 
         const direction = Math.sign(drift);
@@ -300,24 +294,19 @@ const createPlaybackClock = (options = {}) => {
             Number.isFinite(pendingExpected) &&
             Math.abs(position - pendingExpected) < discontinuityThresholdMs
         );
-        const publicCorroborates = Number.isFinite(publicProgress) &&
-            Math.abs(publicProgress - position) < snapThresholdMs;
-        const discontinuityConfirmed = forceSnap || publicCorroborates || (
+        let discontinuityConfirmed = forceSnap || (
             matchesPending && pendingElapsed >= discontinuityConfirmationMs
         );
+        if (!discontinuityConfirmed) {
+            const publicProgress = getPublicProgress(context);
+            discontinuityConfirmed = Number.isFinite(publicProgress) &&
+                Math.abs(publicProgress - position) < snapThresholdMs;
+        }
 
         if (discontinuityConfirmed) {
             localAnchor = null;
-            predictedProgress = null;
             forceSnap = true;
-            lastStateReading = {
-                identityKey: context.identityKey,
-                position,
-                sampledAt,
-                isPlaying: context.isPlaying
-            };
-            pendingStateDiscontinuity = null;
-            return { position, guarded: false };
+            return acceptStateReading(context, position, sampledAt);
         }
 
         pendingStateDiscontinuity = {
@@ -330,7 +319,7 @@ const createPlaybackClock = (options = {}) => {
             direction,
             isPlaying: context.isPlaying
         };
-        return { position: clampToDuration(expected, context.duration), guarded: true };
+        return clampToDuration(expected, context.duration);
     };
 
     const getLocalAnchorProgress = (context, sampledAt) => {
@@ -345,26 +334,13 @@ const createPlaybackClock = (options = {}) => {
 
     const normalizeProgress = (context, measured, sampledAt) => {
         const safeMeasured = clampToDuration(measured, context.duration);
-        if (
-            forceSnap ||
-            !predictedProgress ||
-            predictedProgress.identityKey !== context.identityKey ||
-            !context.isPlaying
-        ) {
+        if (forceSnap || lastSnapshot?.identityKey !== context.identityKey || !context.isPlaying) {
             forceSnap = false;
-            predictedProgress = {
-                identityKey: context.identityKey,
-                position: safeMeasured,
-                sampledAt,
-                isPlaying: context.isPlaying
-            };
             return safeMeasured;
         }
 
-        const elapsed = Math.max(0, sampledAt - predictedProgress.sampledAt);
-        let predicted = predictedProgress.position + (
-            predictedProgress.isPlaying ? elapsed : 0
-        );
+        const elapsed = Math.max(0, sampledAt - lastSnapshot.sampledAt);
+        let predicted = lastSnapshot.position + (lastSnapshot.isPlaying ? elapsed : 0);
         const error = safeMeasured - predicted;
 
         if (Math.abs(error) >= snapThresholdMs) {
@@ -374,21 +350,14 @@ const createPlaybackClock = (options = {}) => {
             const correction = error * alpha;
             // Playing, the position keeps moving forward at a steady pace
             // while it converges; it never stops or runs backwards.
-            const limit = predictedProgress.isPlaying ? elapsed * maxCorrectionRate : Infinity;
+            const limit = lastSnapshot.isPlaying ? elapsed * maxCorrectionRate : Infinity;
             predicted += Math.max(-limit, Math.min(limit, correction));
         }
 
-        predicted = clampToDuration(predicted, context.duration);
-        predictedProgress = {
-            identityKey: context.identityKey,
-            position: predicted,
-            sampledAt,
-            isPlaying: context.isPlaying
-        };
-        return predicted;
+        return clampToDuration(predicted, context.duration);
     };
 
-    const getSnapshot = () => {
+    const updateSnapshot = () => {
         if (!started && options.autoStart !== false) {
             start();
         }
@@ -396,18 +365,14 @@ const createPlaybackClock = (options = {}) => {
         const sampledAt = now();
         const currentWallTime = wallNow();
         const context = readContext();
+        const automix = isAutomixPlayback(context.playerData, context.playerState);
+        const djNarration = isDjNarrationPlayback(context.playerData, context.playerState);
         if (context.identityKey !== currentIdentityKey) {
             resetIdentityState(context.identityKey);
         }
 
         const stateProgress = getStateProgress(context, currentWallTime);
-        const publicProgress = getPublicProgress(context);
-        const stateObservation = observeStateProgress(
-            context,
-            stateProgress,
-            sampledAt,
-            publicProgress
-        );
+        const observedProgress = observeStateProgress(context, stateProgress, sampledAt);
         const localProgress = context.isLocal
             ? getLocalAnchorProgress(context, sampledAt)
             : Number.NaN;
@@ -415,13 +380,13 @@ const createPlaybackClock = (options = {}) => {
         let measured = localProgress;
         let source = "local-position-state";
         if (!Number.isFinite(measured)) {
-            measured = stateObservation.position;
-            source = stateObservation.guarded
+            measured = observedProgress;
+            source = pendingStateDiscontinuity
                 ? "guarded-player-state"
                 : "player-state";
         }
         if (!Number.isFinite(measured)) {
-            measured = publicProgress;
+            measured = getPublicProgress(context);
             source = "public-progress";
         }
         if (!Number.isFinite(measured)) {
@@ -430,22 +395,23 @@ const createPlaybackClock = (options = {}) => {
         }
 
         const position = normalizeProgress(context, measured, sampledAt);
-        lastSnapshot = {
-            version: VERSION,
-            uri: context.uri || null,
-            playbackId: context.playbackId || null,
-            identityKey: context.identityKey,
-            item: context.playerState?.item || null,
-            position,
-            duration: context.duration,
-            isPlaying: context.isPlaying,
-            isLocal: context.isLocal,
-            automix: context.automix,
-            djNarration: context.djNarration,
-            source,
-            sampledAt
-        };
-        return { ...lastSnapshot };
+        const item = context.playerState?.item || null;
+        // The last published position is also the next prediction's anchor.
+        // Snapshot callers receive copies, so the internal record can be reused.
+        lastSnapshot ??= { version: VERSION };
+        lastSnapshot.uri = context.uri || null;
+        lastSnapshot.playbackId = context.playbackId || null;
+        lastSnapshot.identityKey = context.identityKey;
+        lastSnapshot.item = item;
+        lastSnapshot.position = position;
+        lastSnapshot.duration = context.duration;
+        lastSnapshot.isPlaying = context.isPlaying;
+        lastSnapshot.isLocal = context.isLocal;
+        lastSnapshot.automix = automix;
+        lastSnapshot.djNarration = djNarration;
+        lastSnapshot.source = source;
+        lastSnapshot.sampledAt = sampledAt;
+        return lastSnapshot;
     };
 
     const scheduleNextPoll = (delay) => {
@@ -521,7 +487,6 @@ const createPlaybackClock = (options = {}) => {
         localAnchor = null;
         lastStateReading = null;
         pendingStateDiscontinuity = null;
-        predictedProgress = null;
         forceSnap = true;
         if (started) scheduleNextPoll(0);
     };
@@ -539,7 +504,6 @@ const createPlaybackClock = (options = {}) => {
         localAnchor = null;
         lastStateReading = null;
         pendingStateDiscontinuity = null;
-        predictedProgress = null;
         lastSnapshot = null;
     };
 
@@ -550,9 +514,11 @@ const createPlaybackClock = (options = {}) => {
         invalidate,
         handleSongChange,
         getProgress() {
-            return getSnapshot().position;
+            return updateSnapshot().position;
         },
-        getSnapshot,
+        getSnapshot() {
+            return { ...updateSnapshot() };
+        },
         getLastSnapshot() {
             return lastSnapshot ? { ...lastSnapshot } : null;
         }
