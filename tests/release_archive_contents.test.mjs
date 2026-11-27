@@ -170,8 +170,14 @@ test('relative links in packaged guides resolve within the install archive', () 
 const originalLicense = readFileSync(new URL('../third_party/spicetify-visualizer.LICENSE', import.meta.url), 'utf8')
   .replace(/\r\n/g, '\n').trim();
 
+// Each README ends with its unofficial project notice, shown expanded after the license notices.
+const unofficialNoticeHeadings = {
+  'README.md': '## 비공식 프로젝트·저작권·이용 안내',
+  'README_EN.md': '## Unofficial project, copyright, and terms',
+};
+
 for (const path of ['README.md', 'README_EN.md']) {
-  test(`${path} ends with the original visualizer MIT copyright, permission, and warranty notice`, () => {
+  test(`${path} closes its license notices with the original visualizer MIT copyright, permission, and warranty notice`, () => {
     assert.match(originalLicense, /^MIT License\n\nCopyright \(c\) 2026 Konsl\n/);
     assert.match(originalLicense, /Permission is hereby granted, free of charge,/);
     assert.match(originalLicense, /THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,/);
@@ -179,8 +185,11 @@ for (const path of ['README.md', 'README_EN.md']) {
     const readme = archivedFile(path);
     const noticeOffset = readme.indexOf(originalLicense);
     assert.ok(noticeOffset >= 0, `${path} must reproduce the entire original visualizer MIT license verbatim`);
-    const trailingContent = readme.slice(noticeOffset + originalLicense.length).trim();
-    assert.match(trailingContent, /^(?:```|<\/details>|\s)*$/,
-      `${path} must place the license notice at the bottom, followed only by closing Markdown or HTML markup`);
+    // Only closing markup may follow the license text, then the final unofficial project notice section.
+    const [closingMarkup, ...laterSections] = readme.slice(noticeOffset + originalLicense.length).split(/^(?=## )/m);
+    assert.match(closingMarkup, /^(?:```|<\/details>|\s)*$/,
+      `${path} must close the license notice before any other content`);
+    assert.deepEqual(laterSections.map((section) => section.split('\n', 1)[0]), [unofficialNoticeHeadings[path]],
+      `${path} may follow the license notice only with the unofficial project notice`);
   });
 }
