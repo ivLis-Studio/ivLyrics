@@ -1,8 +1,7 @@
+const youtubeSrcPattern = /youtu(be\.com|\.be|be-nocookie\.com|be\.googleapis\.com)/i;
+
 export function createYouTubeBackgroundIframePolicy({ host: window, document, moduleState, registerRestore }) {
-    const sanitizeYoutubeSrc = (src) => {
-        if (!src || !/youtu(be\.com|\.be|be-nocookie\.com|be\.googleapis\.com)/i.test(src)) {
-            return src;
-        }
+    const rewriteYoutubeSrc = (src) => {
         try {
             const url = new URL(src, window.location.origin);
             if (/youtu\.be$/i.test(url.hostname)) {
@@ -30,12 +29,13 @@ export function createYouTubeBackgroundIframePolicy({ host: window, document, mo
         }
     };
 
+    const sanitizeYoutubeSrc = (src) => src && youtubeSrcPattern.test(src) ? rewriteYoutubeSrc(src) : src;
+
     const sanitizeIframe = (iframe) => {
         if (!iframe || iframe.__ytAdBlockSanitized) return;
         const currentSrc = iframe.getAttribute("src");
-        if (!currentSrc) return;
-        if (!/youtu(be\.com|\.be|be-nocookie\.com|be\.googleapis\.com)/i.test(currentSrc)) return;
-        const sanitizedSrc = sanitizeYoutubeSrc(currentSrc);
+        if (!currentSrc || !youtubeSrcPattern.test(currentSrc)) return;
+        const sanitizedSrc = rewriteYoutubeSrc(currentSrc);
         if (sanitizedSrc && sanitizedSrc !== currentSrc) {
             iframe.setAttribute("src", sanitizedSrc);
         }
@@ -52,15 +52,15 @@ export function createYouTubeBackgroundIframePolicy({ host: window, document, mo
         const observer = new window.MutationObserver((mutations) => {
             if (!moduleState.initialized) return;
             for (const mutation of mutations) {
-                mutation.addedNodes?.forEach((node) => {
-                    if (node.nodeType !== window.Node.ELEMENT_NODE) return;
-                    if (node.tagName === "IFRAME") {
-                        sanitizeIframe(node);
-                    }
-                    node.querySelectorAll?.("iframe").forEach(sanitizeIframe);
-                });
-                if (mutation.type === "attributes" && mutation.target.tagName === "IFRAME") {
-                    sanitizeIframe(mutation.target);
+                if (mutation.type === "attributes") {
+                    if (mutation.target.tagName === "IFRAME") sanitizeIframe(mutation.target);
+                    continue;
+                }
+                for (const node of mutation.addedNodes) {
+                    if (node.nodeType !== window.Node.ELEMENT_NODE) continue;
+                    if (node.tagName === "IFRAME") sanitizeIframe(node);
+                    // Most lyric and UI mutations insert leaves. Only subtrees can contain iframes.
+                    if (node.childElementCount) node.querySelectorAll("iframe").forEach(sanitizeIframe);
                 }
             }
         });

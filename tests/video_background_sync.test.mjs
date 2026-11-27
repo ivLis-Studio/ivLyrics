@@ -3,6 +3,9 @@ import test from "node:test";
 import {
     createVideoBackgroundSync, getLyricsStartTimeSeconds, getVideoSyncOffsetSeconds, resolveVideoSyncState,
 } from "../src/features/video/videoBackgroundTiming.mjs";
+import {
+    getVideoSkipSegmentAtTime, mapVideoTimeWithSkipSegments, normalizeVideoSkipSegments,
+} from "../src/features/video/communityVideoTimeline.mjs";
 import { createVideoDriftState, wrapVideoSyncTime } from "../src/features/video/videoDriftCorrection.mjs";
 import { createYouTubeBackgroundTimeline } from "../src/features/video/youTubeBackgroundTimeline.mjs";
 import { startYouTubeBackgroundPlayer } from "../src/features/video/youTubeBackgroundPlayer.mjs";
@@ -15,6 +18,25 @@ const { syncYouTubePlayerTimeline, settleYouTubeHoldPrime } =
 test("converts the first lyric timestamp from milliseconds", () => {
     assert.equal(getLyricsStartTimeSeconds(57440), 57.44);
     assert.equal(getLyricsStartTimeSeconds(null), null);
+});
+
+test("unsorted skip segments preserve input limits, timestamp boundaries, and source values", () => {
+    const segments = [
+        { start: "12.04", end: 16.03 }, , { start: 10.04, end: 12.02 },
+        { start: 30, end: 20 }, { start: 20, end: 30 }, { start: -1, end: 2 },
+        { start: 9, end: 10 },
+    ];
+    const original = structuredClone(segments);
+    const expected = [{ start: 10, end: 16 }, { start: 20, end: 30 }];
+    const normalized = normalizeVideoSkipSegments(segments, 6);
+    assert.deepEqual(normalized, expected);
+    normalized[0].end = 0;
+    assert.deepEqual(segments, original);
+    assert.deepEqual(normalizeVideoSkipSegments(segments, 6), expected);
+    assert.equal(mapVideoTimeWithSkipSegments(17, expected, 12), 31);
+    assert.equal(mapVideoTimeWithSkipSegments(11.998, expected, 12), 11.998);
+    assert.deepEqual(getVideoSkipSegmentAtTime(12, expected, 12), expected[0]);
+    assert.equal(getVideoSkipSegmentAtTime(16, expected, 12), null);
 });
 
 test("holds Nan-Nan at the first video frame during its negative pre-roll", () => {

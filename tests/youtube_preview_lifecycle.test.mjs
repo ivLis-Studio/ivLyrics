@@ -15,6 +15,11 @@ const effectBody = (source, marker, ending) => {
   assert.ok(markerIndex >= 0 && start > markerIndex && end > start);
   return source.slice(start + "useEffect(() => {".length, end);
 };
+// The preview effects use these shared player helpers in the component factory.
+const startPreviewHelpers = previewSource.indexOf("function createYouTubePreview(");
+const endPreviewHelpers = previewSource.indexOf("function usePreviewMedia(", startPreviewHelpers);
+assert.ok(startPreviewHelpers >= 0 && endPreviewHelpers > startPreviewHelpers);
+const previewHelpers = previewSource.slice(startPreviewHelpers, endPreviewHelpers);
 const startWatch = previewSource.indexOf("const watchSync =");
 const endWatch = previewSource.indexOf("// 헬퍼 모드: video 요소 설정", startWatch);
 assert.ok(startWatch >= 0 && endWatch > startWatch);
@@ -69,7 +74,7 @@ const createEnvironment = ({ yt, readyCallback, hidden = false } = {}) => {
         setInterval(callback, delay) { const id = ++nextId; intervals.set(id, { callback, delay }); return id; },
         clearInterval: (id) => intervals.delete(id),
       });
-      return vm.runInContext(`(() => { ${watchSyncSource} ${effects[name]} })()`, context);
+      return vm.runInContext(`(() => { ${previewHelpers} ${watchSyncSource} ${effects[name]} })()`, context);
     },
     loadApi() {
       window.YT = { Player: function Player(id, options) {
