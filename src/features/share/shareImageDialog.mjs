@@ -187,6 +187,29 @@ export function createShareImageModal({
       setPendingAction(() => action);
     };
 
+    const renderExportButton = (action, label, primary = false) => {
+      const noSelection = selectedIndices.length === 0;
+      return react.createElement("button", {
+        onClick: event => requestExport(action, event),
+        className: primary ? "ivlyrics-fluent-btn primary" : "ivlyrics-fluent-btn",
+        disabled: noSelection || isGenerating,
+        style: {
+          padding: '10px 20px',
+          borderRadius: '8px',
+          border: 'none',
+          background: primary
+            ? (noSelection ? 'rgba(29, 185, 84, 0.3)' : '#1db954')
+            : (noSelection ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.15)'),
+          color: primary
+            ? (noSelection ? 'rgba(255,255,255,0.5)' : '#000')
+            : (noSelection ? 'rgba(255,255,255,0.3)' : '#fff'),
+          fontSize: '14px',
+          fontWeight: primary ? '600' : '500',
+          cursor: noSelection ? 'not-allowed' : 'pointer',
+        }
+      }, label);
+    };
+
     return react.createElement("div", {
       className: "share-image-modal",
       style: {
@@ -447,51 +470,9 @@ export function createShareImageModal({
         react.createElement(
           "div",
           { className: "share-image-modal-actions" },
-          react.createElement("button", {
-            onClick: event => requestExport(executeCopy, event),
-            className: "ivlyrics-fluent-btn",
-            disabled: selectedIndices.length === 0 || isGenerating,
-            style: {
-              padding: '10px 20px',
-              borderRadius: '8px',
-              border: 'none',
-              background: selectedIndices.length === 0 ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.15)',
-              color: selectedIndices.length === 0 ? 'rgba(255,255,255,0.3)' : '#fff',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: selectedIndices.length === 0 ? 'not-allowed' : 'pointer',
-            }
-          }, translate("shareImage.actions.copy")),
-          react.createElement("button", {
-            onClick: event => requestExport(executeDownload, event),
-            className: "ivlyrics-fluent-btn",
-            disabled: selectedIndices.length === 0 || isGenerating,
-            style: {
-              padding: '10px 20px',
-              borderRadius: '8px',
-              border: 'none',
-              background: selectedIndices.length === 0 ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.15)',
-              color: selectedIndices.length === 0 ? 'rgba(255,255,255,0.3)' : '#fff',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: selectedIndices.length === 0 ? 'not-allowed' : 'pointer',
-            }
-          }, translate("shareImage.actions.download")),
-          canShare() && react.createElement("button", {
-            onClick: event => requestExport(executeShare, event),
-            className: "ivlyrics-fluent-btn primary",
-            disabled: selectedIndices.length === 0 || isGenerating,
-            style: {
-              padding: '10px 20px',
-              borderRadius: '8px',
-              border: 'none',
-              background: selectedIndices.length === 0 ? 'rgba(29, 185, 84, 0.3)' : '#1db954',
-              color: selectedIndices.length === 0 ? 'rgba(255,255,255,0.5)' : '#000',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: selectedIndices.length === 0 ? 'not-allowed' : 'pointer',
-            }
-          }, translate("shareImage.actions.share"))
+          renderExportButton(executeCopy, translate("shareImage.actions.copy")),
+          renderExportButton(executeDownload, translate("shareImage.actions.download")),
+          canShare() && renderExportButton(executeShare, translate("shareImage.actions.share"), true)
         )
       ),
 
