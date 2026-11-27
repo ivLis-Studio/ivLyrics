@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { KaraokeWordTiming } from '../src/lyrics/karaokeWordTiming.mjs';
+import { createKaraokeLivePainter } from '../src/lyrics/karaokeLivePainter.mjs';
 import { createLyricsViewClock } from '../src/lyrics/lyricsPlaybackView.mjs';
 
 // Reuse the source-extracted KaraokeLine harness, exporting the live painter
@@ -239,4 +240,59 @@ test('off-window glyphs skip fill work while motion clears across a forward or b
   assert.ok(elements[1].values.has('--karaoke-bounce-y'));
   paintKaraokeLiveEntry(entry, -20);
   assert.equal(elements[1].values.has('--karaoke-bounce-y'), false);
+});
+
+test('stable live DOM keeps its bindings and changed glyphs rebind during the same commit', () => {
+  const refs = [];
+  const effects = [];
+  let observer;
+  let refIndex = 0;
+  let position = 120;
+  let queries = 0;
+  const { useKaraokeLivePainting } = createKaraokeLivePainter({
+    useRef: initial => refs[refIndex++] ??= { current: initial },
+    useLayoutEffect: effect => effects.push(effect),
+    useEffect: () => {},
+    motion: {},
+    requestFrame: () => 1,
+    now: () => 0,
+    getKaraokeLiveFill: (position, start, end) => (position - start) / (end - start) * 100,
+    MutationObserver: class {
+      records = [];
+      constructor(callback) { observer = this; this.callback = callback; }
+      observe(root, options) {
+        assert.equal(root, rootRef.current);
+        assert.deepEqual(options.attributeFilter, ['data-karaoke-live']);
+      }
+      takeRecords() { return this.records.splice(0); }
+      disconnect() { this.disconnected = true; }
+    },
+  });
+  const dataRef = { current: { timedChars: [{ char: 'a', startTime: 100, endTime: 200 }] } };
+  let element = createElementDouble('g:0');
+  const rootRef = { current: { querySelectorAll() { queries++; return [element]; } } };
+  const clock = { getPosition: () => position };
+  const commit = (nextClock = clock) => {
+    refIndex = 0;
+    useKaraokeLivePainting(nextClock, null, rootRef, dataRef);
+    effects.shift()();
+  };
+  commit();
+  assert.equal(element.values.get('--karaoke-char-fill'), '20.00%');
+  position = 130;
+  commit();
+  assert.equal(queries, 1);
+  assert.equal(element.values.get('--karaoke-char-fill'), '30.00%');
+
+  element = createElementDouble('g:0');
+  observer.records.push({ type: 'childList' });
+  commit();
+  assert.equal(queries, 2);
+  assert.equal(element.values.get('--karaoke-char-fill'), '30.00%');
+
+  observer.callback();
+  commit();
+  assert.equal(queries, 3, 'a mutation delivered before the React commit also invalidates the bindings');
+  commit(null);
+  assert.equal(observer.disconnected, true);
 });

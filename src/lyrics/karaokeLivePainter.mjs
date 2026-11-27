@@ -19,7 +19,7 @@ const KARAOKE_LIVE_BOUNCE_PROPERTIES = ["--karaoke-bounce-y", "--karaoke-bounce-
 export function createKaraokeLivePainter({
 	useRef, useEffect, useLayoutEffect, getTrackPositionFPS, isSettingsOpen, getVisualSettings,
 	prefersReducedLyricsMotion, getKaraokeLiveFill, splitKaraokeGraphemes, motion,
-	requestFrame,
+	requestFrame, MutationObserver = globalThis.MutationObserver,
 	now = () => performance.now(),
 }) {
 	const { clearKaraokeExpressiveMotion, getKaraokeExpressiveMotion, getKaraokeLiveBounce } = motion;
@@ -162,8 +162,8 @@ export function createKaraokeLivePainter({
 		}
 	};
 
-	// Re-read the row's live elements after every commit. Units survive commits
-	// while their element identities do, keeping their last written values.
+	// Keep each existing unit and its CSS values while timing and DOM identity
+	// permit it. A structural change can replace a node without changing its key.
 	const hasSameKaraokeLiveValues = (before, after) => {
 		if (before === after) return true;
 		if (!before || !after) return false;
@@ -193,12 +193,15 @@ export function createKaraokeLivePainter({
 		return true;
 	};
 
-	const syncKaraokeLiveEntry = (entry, root, clock, mapPosition, data) => {
+	const syncKaraokeLiveEntry = (entry, root, clock, mapPosition, data, structureChanged = true) => {
 		entry.clock = clock;
 		entry.mapPosition = mapPosition;
 		const previousData = entry.data;
 		const dataChanged = previousData !== data;
 		entry.data = data;
+		entry.lastPosition = NaN;
+		if (!structureChanged && !dataChanged) return;
+
 		const elementsByKey = new Map();
 		for (const element of root.querySelectorAll(`[${KARAOKE_LIVE_ATTRIBUTE}]`)) {
 			const key = element.getAttribute(KARAOKE_LIVE_ATTRIBUTE);
@@ -232,7 +235,26 @@ export function createKaraokeLivePainter({
 			unit.elements = elements;
 			entry.units.set(key, unit);
 		}
-		entry.lastPosition = NaN;
+	};
+
+	const hasKaraokeLiveStructureChanged = (entry, root) => {
+		if (typeof MutationObserver !== "function") return true;
+		if (entry.root !== root) {
+			entry.observer?.disconnect();
+			entry.root = root;
+			entry.observer = new MutationObserver(() => { entry.structureDirty = true; });
+			entry.observer.observe(root, {
+				subtree: true, childList: true, attributes: true, attributeFilter: [KARAOKE_LIVE_ATTRIBUTE],
+			});
+			entry.structureDirty = false;
+			return true;
+		}
+		// Layout effects run before observer delivery for the same commit. Inspect
+		// its queued mutations too, so any new glyph is bound before it first paints.
+		const records = entry.observer.takeRecords();
+		const changed = entry.structureDirty || records.length !== 0;
+		entry.structureDirty = false;
+		return changed;
 	};
 
 	const paintKaraokeLiveEntry = (entry, frameTime) => {
@@ -292,6 +314,9 @@ export function createKaraokeLivePainter({
 
 		release(entry) {
 			if (!this.entries.delete(entry)) return;
+			entry.observer?.disconnect();
+			entry.observer = null;
+			entry.root = null;
 			for (const unit of entry.units.values()) resetKaraokeLiveUnit(unit);
 		},
 
@@ -332,7 +357,8 @@ export function createKaraokeLivePainter({
 				return;
 			}
 			const entry = entryRef.current ??= { units: new Map(), data: null, lastPosition: NaN };
-			syncKaraokeLiveEntry(entry, root, liveClock, livePositionMap, data);
+			const structureChanged = hasKaraokeLiveStructureChanged(entry, root);
+			syncKaraokeLiveEntry(entry, root, liveClock, livePositionMap, data, structureChanged);
 			KaraokeLivePainter.attach(entry);
 			// Paint the committed structure before the browser draws it.
 			paintKaraokeLiveEntry(entry, now());
