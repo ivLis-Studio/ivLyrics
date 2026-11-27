@@ -23,22 +23,14 @@ function buildOrderedProviderList(providers, providerOrder) {
   return sortedProviders;
 }
 
-function reorderProviderList(providers, providerOrder, sourceId, targetId, position = "before") {
-  const orderedIds = buildOrderedProviderList(providers, providerOrder).map((provider) => provider.id);
-  if (!sourceId || !targetId || sourceId === targetId) return orderedIds;
+export { buildOrderedProviderList };
 
-  const sourceIndex = orderedIds.indexOf(sourceId);
-  const targetIndex = orderedIds.indexOf(targetId);
-  if (sourceIndex === -1 || targetIndex === -1) return orderedIds;
-  const insertionIndex = targetIndex - (sourceIndex < targetIndex ? 1 : 0) + (position === "after" ? 1 : 0);
-  orderedIds.splice(sourceIndex, 1);
-  orderedIds.splice(insertionIndex, 0, sourceId);
-  return orderedIds;
-}
+const readProviderIds = (manager) =>
+  buildOrderedProviderList(manager.getAddons(), manager.getProviderOrder()).map((provider) => provider.id);
 
-export {
-    buildOrderedProviderList,
-    reorderProviderList,
+const getDropPosition = (event) => {
+  const { top, height } = event.currentTarget.getBoundingClientRect();
+  return event.clientY < top + height / 2 ? "before" : "after";
 };
 
 // Both provider tabs keep the same reorder gestures and persistence contract.
@@ -48,18 +40,16 @@ export const createSettingsProviderOrderControls = ({
   const moveProvider = (providerId, direction) => {
     const manager = readManager();
     if (!manager) return;
-    const currentOrder = buildOrderedProviderList(manager.getAddons(), manager.getProviderOrder()).map(provider => provider.id);
+    const currentOrder = readProviderIds(manager);
     const currentIndex = currentOrder.indexOf(providerId);
     if (currentIndex === -1) return;
 
     const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
     if (newIndex < 0 || newIndex >= currentOrder.length) return;
 
-    const newOrder = [...currentOrder];
-    [newOrder[currentIndex], newOrder[newIndex]] = [newOrder[newIndex], newOrder[currentIndex]];
-
-    manager.setProviderOrder(newOrder);
-    setProviderOrder(newOrder);
+    [currentOrder[currentIndex], currentOrder[newIndex]] = [currentOrder[newIndex], currentOrder[currentIndex]];
+    manager.setProviderOrder(currentOrder);
+    setProviderOrder(currentOrder);
   };
 
   const handleDragStart = (event, providerId) => {
@@ -72,34 +62,37 @@ export const createSettingsProviderOrderControls = ({
     if (!dragState.sourceId || dragState.sourceId === targetId) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const position = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
+    const position = getDropPosition(event);
     if (dragState.targetId !== targetId || dragState.position !== position) {
       setDragState((current) => ({ ...current, targetId, position }));
     }
   };
 
-  const handleDrop = (event, targetId) => {
-    event.preventDefault();
-    const sourceId = dragState.sourceId || event.dataTransfer.getData("text/plain");
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const position = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
-    const manager = readManager();
-    if (manager) {
-      const availableProviders = manager.getAddons();
-      const order = manager.getProviderOrder();
-      const newOrder = reorderProviderList(availableProviders, order, sourceId, targetId, position);
-      const currentOrder = buildOrderedProviderList(availableProviders, order).map(provider => provider.id);
-      if (newOrder.some((id, index) => id !== currentOrder[index])) {
-        manager.setProviderOrder(newOrder);
-        setProviderOrder(newOrder);
-      }
-    }
+  const clearDragState = () => {
     setDragState({ sourceId: null, targetId: null, position: "before" });
   };
 
-  const clearDragState = () => {
-    setDragState({ sourceId: null, targetId: null, position: "before" });
+  const handleDrop = (event, targetId) => {
+    event.preventDefault();
+    const sourceId = dragState.sourceId || event.dataTransfer.getData("text/plain");
+    const position = getDropPosition(event);
+    const manager = readManager();
+    if (manager) {
+      const currentOrder = readProviderIds(manager);
+      const sourceIndex = currentOrder.indexOf(sourceId);
+      const targetIndex = currentOrder.indexOf(targetId);
+      if (sourceId && targetId && sourceIndex !== -1 && targetIndex !== -1 && sourceIndex !== targetIndex) {
+        const insertionIndex = targetIndex - (sourceIndex < targetIndex ? 1 : 0) + (position === "after" ? 1 : 0);
+        const newOrder = [...currentOrder];
+        newOrder.splice(sourceIndex, 1);
+        newOrder.splice(insertionIndex, 0, sourceId);
+        if (newOrder.some((id, index) => id !== currentOrder[index])) {
+          manager.setProviderOrder(newOrder);
+          setProviderOrder(newOrder);
+        }
+      }
+    }
+    clearDragState();
   };
 
   return { moveProvider, handleDragStart, handleDragOver, handleDrop, clearDragState };

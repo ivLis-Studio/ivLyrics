@@ -8,6 +8,54 @@ export function createSettingsProviderCards({
   readAiManager, readLyricsManager, readAiLanguage, readLyricsLanguage, readCurrentLanguage,
 }) {
   const { useMemo } = react;
+  const useProviderSettingsUI = (provider) =>
+    useMemo(() => provider.getSettingsUI ? provider.getSettingsUI() : null, [provider, provider.getSettingsUI]);
+
+  const renderProviderIdentity = (displayName, description, isEnabled, onToggle) => [
+    react.createElement("div", { className: "settings-provider-name" },
+      react.createElement("span", { className: "lyrics-provider-name" }, displayName),
+      description ? react.createElement("span", { className: "lyrics-provider-summary" }, description) : null
+    ),
+    react.createElement("div", { className: "settings-provider-switch" },
+      react.createElement("label", { className: "lyrics-provider-toggle" },
+        react.createElement("input", {
+          type: "checkbox",
+          role: "switch",
+          checked: !!isEnabled,
+          "aria-label": displayName,
+          onChange: (event) => onToggle(event.target.checked),
+        }),
+        react.createElement("span", { className: "toggle-slider" })
+      )
+    ),
+  ];
+
+  const renderProviderCapability = ({ key, enabled, isOwner, label, title, onClick, typeClass = "" }, chip) => {
+    if (!onClick) {
+      return chip ? null : react.createElement("span", { key, className: "settings-cap-cell" },
+        react.createElement("span", { className: "settings-cap-none", "aria-hidden": "true" }));
+    }
+    const control = react.createElement("button", {
+      key,
+      type: "button",
+      className: `${chip ? "settings-cap-chip" : "settings-cap-toggle"}${enabled ? " is-on" : ""}${isOwner ? " is-owner" : ""}${typeClass}`,
+      "aria-pressed": !!enabled,
+      "aria-label": title,
+      title,
+      onClick,
+    }, chip ? label : react.createElement(SettingsUiIcon, { name: "check", size: 13 }));
+    return chip ? control : react.createElement("span", { key, className: "settings-cap-cell" }, control);
+  };
+
+  const providerSearchText = (provider, description, translationPrefix) => [
+    provider.name,
+    provider.author,
+    description,
+    ...Object.keys(provider.supports || {})
+      .filter((key) => provider.supports[key])
+      .map((key) => `${key} ${translate(`${translationPrefix}.${key}`) || ""}`),
+  ].filter(Boolean).join(" ");
+
   const AddonSettingsCard = ({
     addon,
     isEnabled,
@@ -19,10 +67,7 @@ export function createSettingsProviderCards({
     owners,
     onCapabilityChange,
   }) => {
-    const SettingsUI = useMemo(
-      () => addon.getSettingsUI ? addon.getSettingsUI() : null,
-      [addon, addon.getSettingsUI]
-    );
+    const SettingsUI = useProviderSettingsUI(addon);
 
     const toggleCapability = (cap) => {
       const manager = readAiManager();
@@ -76,70 +121,25 @@ export function createSettingsProviderCards({
     const capabilityLabel = (capability) => getSettingsAiCapabilityLabel(translate, capability);
     const connectionLabel = getSettingsText("settingsUi.sections.aiConnections.title", "Connection");
     const firstTriedLabel = getSettingsText("settingsUi.providers.firstTried", "Tried first");
-    const searchText = [
-      addon.name,
-      addon.author,
-      description,
-      ...Object.keys(addon.supports || {})
-        .filter((capability) => addon.supports[capability])
-        .map((capability) =>
-          `${capability} ${translate(`settings.aiProviders.supports.${capability}`) || ""}`
-        ),
-    ].filter(Boolean).join(" ");
-
-    const renderCapability = (cap, chip) => {
-      if (!addon.supports?.[cap]) {
-        return chip ? null : react.createElement("span", { key: cap, className: "settings-cap-cell" },
-          react.createElement("span", { className: "settings-cap-none", "aria-hidden": "true" }));
-      }
-      // Endpoint-own selections live in the connection card; the row toggle is
-      // the provider-level master switch for every provider, per-endpoint or not.
-      const enabled = readAiManager()?.isCapabilityEnabled(addon.id, cap) === true;
-      const isOwner = owners?.[cap] === addon.id;
-      const label = `${displayName} · ${capabilityLabel(cap)}`;
-      const title = isOwner ? `${label} · ${firstTriedLabel}` : label;
-      const className = [
-        chip ? "settings-cap-chip" : "settings-cap-toggle",
-        enabled ? "is-on" : "",
-        isOwner ? "is-owner" : "",
-      ].filter(Boolean).join(" ");
-      const content = chip
-        ? capabilityLabel(cap)
-        : react.createElement(SettingsUiIcon, { name: "check", size: 13 });
-      const control = react.createElement("button", {
-        key: cap,
-        type: "button",
-        className,
-        "aria-pressed": enabled,
-        "aria-label": title,
-        title,
-        onClick: () => toggleCapability(cap),
-      }, content);
-      return chip ? control : react.createElement("span", { key: cap, className: "settings-cap-cell" }, control);
-    };
+    const manager = readAiManager();
+    const capabilities = columns.map((key) => {
+      if (!addon.supports?.[key]) return { key };
+      // The row button is the provider-level master switch. Endpoint settings
+      // remain in the connection card.
+      const enabled = manager?.isCapabilityEnabled(addon.id, key) === true;
+      const isOwner = owners?.[key] === addon.id;
+      const label = capabilityLabel(key);
+      const title = `${displayName} · ${label}${isOwner ? ` · ${firstTriedLabel}` : ""}`;
+      return { key, enabled, isOwner, label, title, onClick: () => toggleCapability(key) };
+    });
 
     return react.createElement("div", {
       className: `lyrics-provider-card settings-provider-row${isExpanded ? " expanded" : ""}${isEnabled ? "" : " disabled"}`,
       "data-setting-key": `ai-provider:${addon.id}`,
-      "data-search-text": searchText,
+      "data-search-text": providerSearchText(addon, description, "settings.aiProviders.supports"),
     },
-      react.createElement("div", { className: "settings-provider-name" },
-        react.createElement("span", { className: "lyrics-provider-name" }, displayName),
-        description ? react.createElement("span", { className: "lyrics-provider-summary" }, description) : null
-      ),
-      react.createElement("div", { className: "settings-provider-switch" },
-        react.createElement("label", { className: "lyrics-provider-toggle" },
-          react.createElement("input", {
-            type: "checkbox",
-            role: "switch",
-            checked: !!isEnabled,
-            "aria-label": displayName,
-            onChange: (e) => onToggle(e.target.checked)
-          }),
-          react.createElement("span", { className: "toggle-slider" })
-        )
-      ),
-      ...columns.map((cap) => renderCapability(cap, false)),
+      ...renderProviderIdentity(displayName, description, isEnabled, onToggle),
+      ...capabilities.map((capability) => renderProviderCapability(capability, false)),
       react.createElement("button", {
         type: "button",
         className: "settings-provider-more",
@@ -149,7 +149,7 @@ export function createSettingsProviderCards({
         onClick: onExpandToggle,
       }, react.createElement(SettingsUiIcon, { name: "right", size: 16 })),
       react.createElement("div", { className: "settings-provider-chips" },
-        ...columns.map((cap) => renderCapability(cap, true))
+        ...capabilities.map((capability) => renderProviderCapability(capability, true))
       )
     );
   };
@@ -157,10 +157,7 @@ export function createSettingsProviderCards({
   // 가사 제공자 카드 컴포넌트 (제공자 표의 한 행)
   const LyricsProviderCard = ({ provider, isEnabled, onToggle, isExpanded, onExpandToggle, owners, onTypeChange }) => {
     const manager = readLyricsManager();
-    const SettingsUI = useMemo(
-      () => provider.getSettingsUI ? provider.getSettingsUI() : null,
-      [provider, provider.getSettingsUI]
-    );
+    const SettingsUI = useProviderSettingsUI(provider);
 
     const handleTypeToggle = (type) => {
       const manager = readLyricsManager();
@@ -177,57 +174,22 @@ export function createSettingsProviderCards({
     const detailLabel = getSettingsText("shareImage.advancedSettings", "Advanced Settings");
     const firstTriedLabel = getSettingsText("settingsUi.providers.firstTried", "Tried first");
 
-    const renderType = (type, chip) => {
-      if (!supportedTypes[type]) {
-        return chip ? null : react.createElement("span", { key: type, className: "settings-cap-cell" },
-          react.createElement("span", { className: "settings-cap-none", "aria-hidden": "true" }));
-      }
-      const enabled = readLyricsProviderTypeSetting(manager, provider.id, type);
-      const isOwner = owners?.[type] === provider.id;
-      const label = `${displayName} · ${typeLabel(type)}${isOwner ? ` · ${firstTriedLabel}` : ""}`;
-      const control = react.createElement("button", {
-        key: type,
-        type: "button",
-        className: `${chip ? "settings-cap-chip" : "settings-cap-toggle"}${enabled ? " is-on" : ""}${isOwner ? " is-owner" : ""} type-${type}`,
-        "aria-pressed": !!enabled,
-        "aria-label": label,
-        title: label,
-        onClick: () => handleTypeToggle(type),
-      }, chip ? typeLabel(type) : react.createElement(SettingsUiIcon, { name: "check", size: 13 }));
-      return chip ? control : react.createElement("span", { key: type, className: "settings-cap-cell" }, control);
-    };
+    const types = LYRICS_PROVIDER_TYPE_COLUMNS.map((key) => {
+      if (!supportedTypes[key]) return { key };
+      const enabled = readLyricsProviderTypeSetting(manager, provider.id, key);
+      const isOwner = owners?.[key] === provider.id;
+      const label = typeLabel(key);
+      const title = `${displayName} · ${label}${isOwner ? ` · ${firstTriedLabel}` : ""}`;
+      return { key, enabled, isOwner, label, title, onClick: () => handleTypeToggle(key), typeClass: ` type-${key}` };
+    });
 
     return react.createElement("div", {
       className: `lyrics-provider-card settings-provider-row${isExpanded ? " expanded" : ""}${isEnabled ? "" : " disabled"}`,
       "data-setting-key": `lyrics-provider:${provider.id}`,
-      "data-search-text": [
-        provider.name,
-        provider.author,
-        description,
-        ...Object.keys(provider.supports || {})
-          .filter((lyricsType) => provider.supports[lyricsType])
-          .map((lyricsType) =>
-            `${lyricsType} ${translate(`settings.lyricsProviders.types.${lyricsType}`) || ""}`
-          ),
-      ].filter(Boolean).join(" "),
+      "data-search-text": providerSearchText(provider, description, "settings.lyricsProviders.types"),
     },
-      react.createElement("div", { className: "settings-provider-name" },
-        react.createElement("span", { className: "lyrics-provider-name" }, displayName),
-        description ? react.createElement("span", { className: "lyrics-provider-summary" }, description) : null
-      ),
-      react.createElement("div", { className: "settings-provider-switch" },
-        react.createElement("label", { className: "lyrics-provider-toggle" },
-          react.createElement("input", {
-            type: "checkbox",
-            role: "switch",
-            checked: !!isEnabled,
-            "aria-label": displayName,
-            onChange: (e) => onToggle(e.target.checked)
-          }),
-          react.createElement("span", { className: "toggle-slider" })
-        )
-      ),
-      ...LYRICS_PROVIDER_TYPE_COLUMNS.map((type) => renderType(type, false)),
+      ...renderProviderIdentity(displayName, description, isEnabled, onToggle),
+      ...types.map((type) => renderProviderCapability(type, false)),
       react.createElement("button", {
         type: "button",
         className: "settings-provider-more is-disclosure",
@@ -238,7 +200,7 @@ export function createSettingsProviderCards({
         onClick: onExpandToggle,
       }, react.createElement(SettingsUiIcon, { name: "down", size: 16 })),
       react.createElement("div", { className: "settings-provider-chips" },
-        ...LYRICS_PROVIDER_TYPE_COLUMNS.map((type) => renderType(type, true))
+        ...types.map((type) => renderProviderCapability(type, true))
       ),
       isExpanded && SettingsUI && react.createElement("div", { className: "lyrics-provider-card-body" },
         react.createElement(SettingsUI)
