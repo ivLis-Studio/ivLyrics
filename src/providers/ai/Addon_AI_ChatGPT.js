@@ -6,13 +6,14 @@
  * @version 1.0.2
  */
 
+import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedAiCapabilities.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
 import { createOpenAiTransport } from "./openAiTransport.mjs";
 import { createOpenAiConnections, ensureRequestTargets, normalizeBaseUrl } from "./openAiConnections.mjs";
 import { createOpenAiModelCatalog } from "./openAiModelCatalog.mjs";
 import { createOpenAiRequestBody, mergeRequestBody } from "./openAiRequestBody.mjs";
-import { extractJSON, parseTextLines } from "./aiResponseParsing.mjs";
+import { extractJSON } from "./aiResponseParsing.mjs";
 import { createOpenAiSettings } from "./openAiSettings.mjs";
 
 export function createOpenAICompatibleAddon(config = {}, services = createBuiltinAiProviderServices(window)) {
@@ -163,82 +164,23 @@ export function createOpenAICompatibleAddon(config = {}, services = createBuilti
             openApiKeyPage: () => services.host.open(ADDON_INFO.apiKeyUrl, '_blank'),
         }),
 
-        async translateLyrics({ text, wantSmartPhonetic, translationPrompt, phoneticPrompt, onLine, onStreamReset, endpointCapability, signal }) {
-            if (!text?.trim()) {
-                throw new Error('No text provided');
-            }
+        ...createPromptedAiCapabilities({
+            provider: 'OpenAI ChatGPT',
+            lineParserName: 'ChatGPT',
+            requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, capability, signal }) => onLine
+                ? requestFromTargets({
+                    prompt, transformResult: parseLines, capability, signal, callbacks: { onLine, onStreamReset },
+                })
+                : callChatGPTAPIRaw(prompt, undefined, parseLines, undefined, capability, signal),
+            forwardLineGenerationSignal: true,
+            requestJson: (prompt, signal, capability) =>
+                callChatGPTAPI(prompt, undefined, undefined, capability, signal),
+        }),
 
-            const sourceLines = String(text).replace(/\r\n?/g, '\n').split('\n');
-            const prompt = wantSmartPhonetic ? phoneticPrompt : translationPrompt;
-            if (!prompt) {
-                throw new Error('[OpenAI ChatGPT] Central lyrics prompt is unavailable.');
-            }
-            const parseLines = rawResponse => parseTextLines(rawResponse, sourceLines, 'ChatGPT');
-            // Word-level gloss/pronunciation reuse this entry point with an
-            // endpointCapability override so per-endpoint chips can gate them;
-            // line pronunciation and translation each follow their own chip.
-            const targetCapability = endpointCapability || (wantSmartPhonetic ? 'pronunciation' : 'translate');
 
-            // Validate inside the provider retry loop so partial/blocked output can retry safely.
-            const lines = onLine ? await requestFromTargets({
-                prompt, transformResult: parseLines, capability: targetCapability, signal, callbacks: { onLine, onStreamReset },
-            }) : await callChatGPTAPIRaw(prompt, undefined, parseLines, undefined, targetCapability, signal);
-
-            // Return in the format expected by LyricsService
-            return wantSmartPhonetic ? { phonetic: lines } : { translation: lines };
-        },
-
-        async generateCharacterPronunciation({ lines, characterPronunciationPrompt, endpointCapability, signal }) {
-            if (!Array.isArray(lines) || lines.length === 0) {
-                throw new Error('No lines provided');
-            }
-
-            const prompt = characterPronunciationPrompt;
-            if (!prompt) {
-                throw new Error('[OpenAI ChatGPT] Central character pronunciation prompt is unavailable.');
-            }
-            // Lyric pronunciation split by unit runs on the pronunciation endpoints.
-            const result = await callChatGPTAPI(prompt, undefined, undefined, endpointCapability || 'characterPronunciation', signal);
-            if (!result || !(Array.isArray(result.l) || Array.isArray(result.lines))) {
-                throw new Error('Invalid character pronunciation response');
-            }
-            return result;
-        },
-
-        async translateMetadata({ title, artist, metadataPrompt, signal }) {
-            if (!title || !artist) {
-                throw new Error('Title and artist are required');
-            }
-
-            const prompt = metadataPrompt;
-            if (!prompt) {
-                throw new Error('[OpenAI ChatGPT] Central metadata translation prompt is unavailable.');
-            }
-            const result = await callChatGPTAPI(prompt, undefined, undefined, 'metadata', signal);
-
-            // Normalize result to match expected format in FullscreenOverlay.js
-            return {
-                translated: {
-                    title: result.translatedTitle || result.title || title,
-                    artist: result.translatedArtist || result.artist || artist
-                },
-                romanized: {
-                    title: result.romanizedTitle || title,
-                    artist: result.romanizedArtist || artist
-                }
-            };
-        },
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
-            signal?.throwIfAborted();
-            if (!title || !artist) {
-                throw new Error('Title and artist are required');
-            }
-
-            const prompt = tmiPrompt;
-            if (!prompt) {
-                throw new Error('[OpenAI ChatGPT] Central TMI prompt is unavailable.');
-            }
+            const prompt = requireResearchPrompt('OpenAI ChatGPT', title, artist, tmiPrompt, signal);
             // Research uses SSE so an upstream proxy receives response bytes
             // while the long document is generated instead of closing an idle
             // non-streaming request before the client-side timeout expires.
@@ -325,48 +267,6 @@ export function createOpenAICompatibleAddon(config = {}, services = createBuilti
                 signal
             );
         },
-
-        async generateMotionDirection(params) {
-            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
-                throw new Error('No lyrics lines provided');
-            }
-            const prompt = params.motionDirectionPrompt;
-            if (!prompt) {
-                throw new Error('[OpenAI ChatGPT] Central motion direction prompt is unavailable.');
-            }
-            return await callChatGPTAPI(prompt, undefined, undefined, 'motionDirection', params.signal);
-        },
-
-        async generateSettingsAssistant(params) {
-            const prompt = params?.settingsAssistantPrompt;
-            if (!prompt || typeof prompt !== 'object' || !prompt.userPrompt) {
-                throw new Error('[OpenAI ChatGPT] Settings assistant prompt is unavailable.');
-            }
-            return await callChatGPTAPI(prompt, undefined, undefined, 'settingsAssistant', params.signal);
-        },
-
-        async generateLyricsStudy(params) {
-            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
-                throw new Error('No lyrics lines provided');
-            }
-
-            const prompt = params.lyricsStudyPrompt;
-            if (!prompt) {
-                throw new Error('[OpenAI ChatGPT] Central lyrics study prompt is unavailable.');
-            }
-            return await callChatGPTAPI(prompt, undefined, undefined, 'lyricsStudy', params.signal);
-        },
-
-        async generateCulturalAnnotations(params) {
-            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
-                throw new Error('No lyrics lines provided');
-            }
-            const prompt = params.culturalAnnotationsPrompt;
-            if (!prompt) {
-                throw new Error('[OpenAI ChatGPT] Central cultural annotations prompt is unavailable.');
-            }
-            return await callChatGPTAPI(prompt, undefined, undefined, 'culturalAnnotations', params.signal);
-        }
     };
 
     // ============================================

@@ -6,12 +6,13 @@
  * @version 1.0.1
  */
 
+import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedAiCapabilities.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
 import { createAiAdvancedParamsSection, readAiAdvancedRequestParams, renderAiConnectionTestRow } from "./aiProviderSettings.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { createChatCompletionsClient } from "./chatCompletionsClient.mjs";
-import { extractJSON, parseTextLines } from "./aiResponseParsing.mjs";
+import { extractJSON } from "./aiResponseParsing.mjs";
 
 export default function initializeGroqAddon(services = createBuiltinAiProviderServices(window)) {
     const { host: window, getManager, getAiRequest, getI18n, getSpicetify, debug, registerAiAddon } = services;
@@ -382,74 +383,19 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
             };
         },
 
-        async translateLyrics({ text, lang, wantSmartPhonetic, translationPrompt, phoneticPrompt, onLine, onStreamReset, signal }) {
-            if (!text?.trim()) {
-                throw new Error('No text provided');
-            }
+        ...createPromptedAiCapabilities({
+            provider: 'Groq',
+            allowNullMetadata: true,
+            requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
+                ? callGroqAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, undefined, signal)
+                : callGroqAPIRaw(prompt, undefined, parseLines, signal),
+            requestJson: (prompt, signal) => callGroqAPI(prompt, undefined, signal),
+        }),
 
-            const sourceLines = String(text).replace(/\r\n?/g, '\n').split('\n');
-            const prompt = wantSmartPhonetic ? phoneticPrompt : translationPrompt;
-            if (!prompt) {
-                throw new Error('[Groq] Central lyrics prompt is unavailable.');
-            }
-            const parseLines = rawResponse => parseTextLines(rawResponse, sourceLines, 'Groq');
 
-            const lines = onLine
-                ? await callGroqAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, undefined, signal)
-                : await callGroqAPIRaw(prompt, undefined, parseLines, signal);
-
-            return wantSmartPhonetic ? { phonetic: lines } : { translation: lines };
-        },
-
-        async generateCharacterPronunciation({ lines, characterPronunciationPrompt, signal }) {
-            if (!Array.isArray(lines) || lines.length === 0) {
-                throw new Error('No lines provided');
-            }
-
-            const prompt = characterPronunciationPrompt;
-            if (!prompt) {
-                throw new Error('[Groq] Central character pronunciation prompt is unavailable.');
-            }
-            const result = await callGroqAPI(prompt, undefined, signal);
-            if (!result || !(Array.isArray(result.l) || Array.isArray(result.lines))) {
-                throw new Error('Invalid character pronunciation response');
-            }
-            return result;
-        },
-
-        async translateMetadata({ title, artist, metadataPrompt, signal }) {
-            if (!title || !artist) {
-                throw new Error('Title and artist are required');
-            }
-
-            const prompt = metadataPrompt;
-            if (!prompt) {
-                throw new Error('[Groq] Central metadata translation prompt is unavailable.');
-            }
-            const result = await callGroqAPI(prompt, undefined, signal);
-
-            return {
-                translated: {
-                    title: result?.translatedTitle || result?.title || title,
-                    artist: result?.translatedArtist || result?.artist || artist
-                },
-                romanized: {
-                    title: result?.romanizedTitle || title,
-                    artist: result?.romanizedArtist || artist
-                }
-            };
-        },
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
-            signal?.throwIfAborted();
-            if (!title || !artist) {
-                throw new Error('Title and artist are required');
-            }
-
-            let prompt = tmiPrompt;
-            if (!prompt) {
-                throw new Error('[Groq] Central TMI prompt is unavailable.');
-            }
+            let prompt = requireResearchPrompt('Groq', title, artist, tmiPrompt, signal);
             if (webSearch !== false) {
                 const findings = await collectGroqWebResearch(title, artist, requestTimeoutMs, signal);
                 prompt = appendGroqWebResearch(prompt, findings);
@@ -482,48 +428,6 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
                 signal
             );
         },
-
-        async generateMotionDirection(params) {
-            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
-                throw new Error('No lyrics lines provided');
-            }
-            const prompt = params.motionDirectionPrompt;
-            if (!prompt) {
-                throw new Error('[Groq] Central motion direction prompt is unavailable.');
-            }
-            return await callGroqAPI(prompt);
-        },
-
-        async generateSettingsAssistant(params) {
-            const prompt = params?.settingsAssistantPrompt;
-            if (!prompt || typeof prompt !== 'object' || !prompt.userPrompt) {
-                throw new Error('[Groq] Settings assistant prompt is unavailable.');
-            }
-            return await callGroqAPI(prompt, undefined, params.signal);
-        },
-
-        async generateLyricsStudy(params) {
-            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
-                throw new Error('No lyrics lines provided');
-            }
-
-            const prompt = params.lyricsStudyPrompt;
-            if (!prompt) {
-                throw new Error('[Groq] Central lyrics study prompt is unavailable.');
-            }
-            return await callGroqAPI(prompt);
-        },
-
-        async generateCulturalAnnotations(params) {
-            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
-                throw new Error('No lyrics lines provided');
-            }
-            const prompt = params.culturalAnnotationsPrompt;
-            if (!prompt) {
-                throw new Error('[Groq] Central cultural annotations prompt is unavailable.');
-            }
-            return await callGroqAPI(prompt, undefined, params.signal);
-        }
     };
 
     // ============================================

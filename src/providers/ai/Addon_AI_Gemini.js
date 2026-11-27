@@ -6,12 +6,13 @@
  * @version 1.0.1
  */
 
+import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedAiCapabilities.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
 import { renderAiConnectionTestRow } from "./aiProviderSettings.mjs";
 import { createProviderText } from "../providerText.mjs";
 import { readProviderApiKeys } from "./aiProviderInputs.mjs";
-import { extractJSON, parseTextLines } from "./aiResponseParsing.mjs";
+import { extractJSON } from "./aiResponseParsing.mjs";
 import {
     DEFAULT_GEMINI_OUTPUT_TOKENS, GEMINI_BASE_URL, createGeminiModelCatalog, getGeminiGenerationConfig,
 } from "./geminiModelCatalog.mjs";
@@ -348,77 +349,19 @@ export default function initializeGeminiAddon(services = createBuiltinAiProvider
             }
         },
 
-        async translateLyrics({ text, lang, wantSmartPhonetic, translationPrompt, phoneticPrompt, onLine, onStreamReset, signal }) {
-            if (!text?.trim()) {
-                throw new Error('No text provided');
-            }
+        ...createPromptedAiCapabilities({
+            provider: 'Google Gemini',
+            lineParserName: 'Gemini',
+            requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
+                ? callGeminiAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, undefined, signal)
+                : callGeminiAPIRaw(prompt, undefined, parseLines, signal),
+            requestJson: (prompt, signal) => callGeminiAPI(prompt, undefined, signal),
+        }),
 
-            const sourceLines = String(text).replace(/\r\n?/g, '\n').split('\n');
-            const prompt = wantSmartPhonetic ? phoneticPrompt : translationPrompt;
-            if (!prompt) {
-                throw new Error('[Google Gemini] Central lyrics prompt is unavailable.');
-            }
-            const parseLines = rawResponse => parseTextLines(rawResponse, sourceLines, 'Gemini');
 
-            // Validate inside the provider retry loop so partial/blocked output can retry safely.
-            const lines = onLine
-                ? await callGeminiAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, undefined, signal)
-                : await callGeminiAPIRaw(prompt, undefined, parseLines, signal);
-
-            // Return in the format expected by LyricsService
-            return wantSmartPhonetic ? { phonetic: lines } : { translation: lines };
-        },
-
-        async generateCharacterPronunciation({ lines, characterPronunciationPrompt, signal }) {
-            if (!Array.isArray(lines) || lines.length === 0) {
-                throw new Error('No lines provided');
-            }
-
-            const prompt = characterPronunciationPrompt;
-            if (!prompt) {
-                throw new Error('[Google Gemini] Central character pronunciation prompt is unavailable.');
-            }
-            const result = await callGeminiAPI(prompt, undefined, signal);
-            if (!result || !(Array.isArray(result.l) || Array.isArray(result.lines))) {
-                throw new Error('Invalid character pronunciation response');
-            }
-            return result;
-        },
-
-        async translateMetadata({ title, artist, metadataPrompt, signal }) {
-            if (!title || !artist) {
-                throw new Error('Title and artist are required');
-            }
-
-            const prompt = metadataPrompt;
-            if (!prompt) {
-                throw new Error('[Google Gemini] Central metadata translation prompt is unavailable.');
-            }
-            const result = await callGeminiAPI(prompt, undefined, signal);
-
-            // Normalize result to match expected format in FullscreenOverlay.js
-            return {
-                translated: {
-                    title: result.translatedTitle || result.title || title,
-                    artist: result.translatedArtist || result.artist || artist
-                },
-                romanized: {
-                    title: result.romanizedTitle || title,
-                    artist: result.romanizedArtist || artist
-                }
-            };
-        },
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
-            signal?.throwIfAborted();
-            if (!title || !artist) {
-                throw new Error('Title and artist are required');
-            }
-
-            const prompt = tmiPrompt;
-            if (!prompt) {
-                throw new Error('[Google Gemini] Central TMI prompt is unavailable.');
-            }
+            const prompt = requireResearchPrompt('Google Gemini', title, artist, tmiPrompt, signal);
             const { onRawChunk, resetProgress } = createResearchStreamCallbacks(getManager, onResearchProgress, signal);
             const requestOverrides = {
                 generationConfig: await getResearchGenerationConfig(),
@@ -442,48 +385,6 @@ export default function initializeGeminiAddon(services = createBuiltinAiProvider
                 throw webSearch === false ? error : markGeminiWebSearchFailure(error);
             }
         },
-
-        async generateMotionDirection(params) {
-            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
-                throw new Error('No lyrics lines provided');
-            }
-            const prompt = params.motionDirectionPrompt;
-            if (!prompt) {
-                throw new Error('[Gemini] Central motion direction prompt is unavailable.');
-            }
-            return await callGeminiAPI(prompt);
-        },
-
-        async generateSettingsAssistant(params) {
-            const prompt = params?.settingsAssistantPrompt;
-            if (!prompt || typeof prompt !== 'object' || !prompt.userPrompt) {
-                throw new Error('[Gemini] Settings assistant prompt is unavailable.');
-            }
-            return await callGeminiAPI(prompt, undefined, params.signal);
-        },
-
-        async generateLyricsStudy(params) {
-            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
-                throw new Error('No lyrics lines provided');
-            }
-
-            const prompt = params.lyricsStudyPrompt;
-            if (!prompt) {
-                throw new Error('[Google Gemini] Central lyrics study prompt is unavailable.');
-            }
-            return await callGeminiAPI(prompt);
-        },
-
-        async generateCulturalAnnotations(params) {
-            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
-                throw new Error('No lyrics lines provided');
-            }
-            const prompt = params.culturalAnnotationsPrompt;
-            if (!prompt) {
-                throw new Error('[Google Gemini] Central cultural annotations prompt is unavailable.');
-            }
-            return await callGeminiAPI(prompt, undefined, params.signal);
-        }
     };
 
     // ============================================

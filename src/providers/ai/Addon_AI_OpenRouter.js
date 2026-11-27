@@ -6,13 +6,14 @@
  * @version 1.0.1
  */
 
+import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedAiCapabilities.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
 import { createAiAdvancedParamsSection, readAiAdvancedRequestParams, renderAiConnectionTestRow } from "./aiProviderSettings.mjs";
 import { createProviderText } from "../providerText.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { createChatCompletionsClient } from "./chatCompletionsClient.mjs";
-import { extractJSON, parseTextLines } from "./aiResponseParsing.mjs";
+import { extractJSON } from "./aiResponseParsing.mjs";
 
 export default function initializeOpenRouterAddon(services = createBuiltinAiProviderServices(window)) {
     const { host: window, getManager, getAiRequest, getI18n, getSpicetify, debug, registerAiAddon } = services;
@@ -370,74 +371,19 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
             };
         },
 
-        async translateLyrics({ text, lang, wantSmartPhonetic, translationPrompt, phoneticPrompt, onLine, onStreamReset, signal }) {
-            if (!text?.trim()) {
-                throw new Error('No text provided');
-            }
+        ...createPromptedAiCapabilities({
+            provider: 'OpenRouter',
+            allowNullMetadata: true,
+            requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
+                ? callOpenRouterAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, undefined, signal)
+                : callOpenRouterAPIRaw(prompt, undefined, parseLines, signal),
+            requestJson: (prompt, signal) => callOpenRouterAPI(prompt, undefined, signal),
+        }),
 
-            const sourceLines = String(text).replace(/\r\n?/g, '\n').split('\n');
-            const prompt = wantSmartPhonetic ? phoneticPrompt : translationPrompt;
-            if (!prompt) {
-                throw new Error('[OpenRouter] Central lyrics prompt is unavailable.');
-            }
-            const parseLines = rawResponse => parseTextLines(rawResponse, sourceLines, 'OpenRouter');
 
-            const lines = onLine
-                ? await callOpenRouterAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, undefined, signal)
-                : await callOpenRouterAPIRaw(prompt, undefined, parseLines, signal);
-
-            return wantSmartPhonetic ? { phonetic: lines } : { translation: lines };
-        },
-
-        async generateCharacterPronunciation({ lines, characterPronunciationPrompt, signal }) {
-            if (!Array.isArray(lines) || lines.length === 0) {
-                throw new Error('No lines provided');
-            }
-
-            const prompt = characterPronunciationPrompt;
-            if (!prompt) {
-                throw new Error('[OpenRouter] Central character pronunciation prompt is unavailable.');
-            }
-            const result = await callOpenRouterAPI(prompt, undefined, signal);
-            if (!result || !(Array.isArray(result.l) || Array.isArray(result.lines))) {
-                throw new Error('Invalid character pronunciation response');
-            }
-            return result;
-        },
-
-        async translateMetadata({ title, artist, metadataPrompt, signal }) {
-            if (!title || !artist) {
-                throw new Error('Title and artist are required');
-            }
-
-            const prompt = metadataPrompt;
-            if (!prompt) {
-                throw new Error('[OpenRouter] Central metadata translation prompt is unavailable.');
-            }
-            const result = await callOpenRouterAPI(prompt, undefined, signal);
-
-            return {
-                translated: {
-                    title: result?.translatedTitle || result?.title || title,
-                    artist: result?.translatedArtist || result?.artist || artist
-                },
-                romanized: {
-                    title: result?.romanizedTitle || title,
-                    artist: result?.romanizedArtist || artist
-                }
-            };
-        },
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
-            signal?.throwIfAborted();
-            if (!title || !artist) {
-                throw new Error('Title and artist are required');
-            }
-
-            const prompt = tmiPrompt;
-            if (!prompt) {
-                throw new Error('[OpenRouter] Central TMI prompt is unavailable.');
-            }
+            const prompt = requireResearchPrompt('OpenRouter', title, artist, tmiPrompt, signal);
             const { onRawChunk, resetProgress } = createResearchStreamCallbacks(getManager, onResearchProgress, signal);
             const requestOverrides = {
                 max_tokens: await getResearchMaxTokens(),
@@ -467,48 +413,6 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
                 signal
             );
         },
-
-        async generateMotionDirection(params) {
-            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
-                throw new Error('No lyrics lines provided');
-            }
-            const prompt = params.motionDirectionPrompt;
-            if (!prompt) {
-                throw new Error('[OpenRouter] Central motion direction prompt is unavailable.');
-            }
-            return await callOpenRouterAPI(prompt);
-        },
-
-        async generateSettingsAssistant(params) {
-            const prompt = params?.settingsAssistantPrompt;
-            if (!prompt || typeof prompt !== 'object' || !prompt.userPrompt) {
-                throw new Error('[OpenRouter] Settings assistant prompt is unavailable.');
-            }
-            return await callOpenRouterAPI(prompt, undefined, params.signal);
-        },
-
-        async generateLyricsStudy(params) {
-            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
-                throw new Error('No lyrics lines provided');
-            }
-
-            const prompt = params.lyricsStudyPrompt;
-            if (!prompt) {
-                throw new Error('[OpenRouter] Central lyrics study prompt is unavailable.');
-            }
-            return await callOpenRouterAPI(prompt);
-        },
-
-        async generateCulturalAnnotations(params) {
-            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
-                throw new Error('No lyrics lines provided');
-            }
-            const prompt = params.culturalAnnotationsPrompt;
-            if (!prompt) {
-                throw new Error('[OpenRouter] Central cultural annotations prompt is unavailable.');
-            }
-            return await callOpenRouterAPI(prompt, undefined, params.signal);
-        }
     };
 
     // ============================================

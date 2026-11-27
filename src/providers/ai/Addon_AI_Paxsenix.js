@@ -6,13 +6,14 @@
  * @version 1.0.1
  */
 
+import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedAiCapabilities.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
 import { renderAiConnectionTestRow } from "./aiProviderSettings.mjs";
 import { createProviderText } from "../providerText.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { createChatCompletionsClient } from "./chatCompletionsClient.mjs";
-import { extractJSON, parseTextLines } from "./aiResponseParsing.mjs";
+import { extractJSON } from "./aiResponseParsing.mjs";
 
 export default function initializePaxsenixAddon(services = createBuiltinAiProviderServices(window)) {
     const { host: window, getManager, getAiRequest, getI18n, getSpicetify, debug, registerAiAddon } = services;
@@ -513,74 +514,20 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
             }
         },
 
-        async translateLyrics({ text, lang, wantSmartPhonetic, translationPrompt, phoneticPrompt, onLine, onStreamReset, signal }) {
-            if (!text?.trim()) {
-                throw new Error('No text provided');
-            }
+        ...createPromptedAiCapabilities({
+            provider: 'paxsenix',
+            lineParserName: 'Paxsenix',
+            allowNullMetadata: true,
+            requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
+                ? callPaxsenixAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, undefined, signal)
+                : callPaxsenixAPIRaw(prompt, undefined, parseLines, undefined, signal),
+            requestJson: (prompt, signal) => callPaxsenixAPI(prompt, undefined, undefined, signal),
+        }),
 
-            const sourceLines = String(text).replace(/\r\n?/g, '\n').split('\n');
-            const prompt = wantSmartPhonetic ? phoneticPrompt : translationPrompt;
-            if (!prompt) {
-                throw new Error('[paxsenix] Central lyrics prompt is unavailable.');
-            }
-            const parseLines = rawResponse => parseTextLines(rawResponse, sourceLines, 'Paxsenix');
 
-            const lines = onLine
-                ? await callPaxsenixAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, undefined, signal)
-                : await callPaxsenixAPIRaw(prompt, undefined, parseLines, undefined, signal);
-
-            return wantSmartPhonetic ? { phonetic: lines } : { translation: lines };
-        },
-
-        async generateCharacterPronunciation({ lines, characterPronunciationPrompt, signal }) {
-            if (!Array.isArray(lines) || lines.length === 0) {
-                throw new Error('No lines provided');
-            }
-
-            const prompt = characterPronunciationPrompt;
-            if (!prompt) {
-                throw new Error('[paxsenix] Central character pronunciation prompt is unavailable.');
-            }
-            const result = await callPaxsenixAPI(prompt, undefined, undefined, signal);
-            if (!result || !(Array.isArray(result.l) || Array.isArray(result.lines))) {
-                throw new Error('Invalid character pronunciation response');
-            }
-            return result;
-        },
-
-        async translateMetadata({ title, artist, metadataPrompt, signal }) {
-            if (!title || !artist) {
-                throw new Error('Title and artist are required');
-            }
-
-            const prompt = metadataPrompt;
-            if (!prompt) {
-                throw new Error('[paxsenix] Central metadata translation prompt is unavailable.');
-            }
-            const result = await callPaxsenixAPI(prompt, undefined, undefined, signal);
-
-            return {
-                translated: {
-                    title: result?.translatedTitle || result?.title || title,
-                    artist: result?.translatedArtist || result?.artist || artist
-                },
-                romanized: {
-                    title: result?.romanizedTitle || title,
-                    artist: result?.romanizedArtist || artist
-                }
-            };
-        },
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
-            signal?.throwIfAborted();
-            if (!title || !artist) {
-                throw new Error('Title and artist are required');
-            }
-
-            let prompt = tmiPrompt;
-            if (!prompt) {
-                throw new Error('[paxsenix] Central TMI prompt is unavailable.');
-            }
+            let prompt = requireResearchPrompt('paxsenix', title, artist, tmiPrompt, signal);
             if (webSearch !== false) {
                 const searchPayload = await fetchPaxsenixWebResearch(title, artist, requestTimeoutMs, signal);
                 prompt = appendPaxsenixWebResearch(prompt, searchPayload);
@@ -598,48 +545,6 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
                 signal
             );
         },
-
-        async generateMotionDirection(params) {
-            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
-                throw new Error('No lyrics lines provided');
-            }
-            const prompt = params.motionDirectionPrompt;
-            if (!prompt) {
-                throw new Error('[Paxsenix] Central motion direction prompt is unavailable.');
-            }
-            return await callPaxsenixAPI(prompt);
-        },
-
-        async generateSettingsAssistant(params) {
-            const prompt = params?.settingsAssistantPrompt;
-            if (!prompt || typeof prompt !== 'object' || !prompt.userPrompt) {
-                throw new Error('[Paxsenix] Settings assistant prompt is unavailable.');
-            }
-            return await callPaxsenixAPI(prompt, undefined, undefined, params.signal);
-        },
-
-        async generateLyricsStudy(params) {
-            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
-                throw new Error('No lyrics lines provided');
-            }
-
-            const prompt = params.lyricsStudyPrompt;
-            if (!prompt) {
-                throw new Error('[paxsenix] Central lyrics study prompt is unavailable.');
-            }
-            return await callPaxsenixAPI(prompt);
-        },
-
-        async generateCulturalAnnotations(params) {
-            if (!Array.isArray(params?.lines) || params.lines.length === 0) {
-                throw new Error('No lyrics lines provided');
-            }
-            const prompt = params.culturalAnnotationsPrompt;
-            if (!prompt) {
-                throw new Error('[Paxsenix] Central cultural annotations prompt is unavailable.');
-            }
-            return await callPaxsenixAPI(prompt, undefined, undefined, params.signal);
-        }
     };
 
     // ============================================
