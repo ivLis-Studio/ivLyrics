@@ -21,12 +21,32 @@ function setup(responder) {
             return responder(request);
         }
     };
-    const context = vm.createContext({ window, console, setTimeout, clearTimeout, TextDecoder });
+    const states = [];
+    const mountEffects = [];
+    let cursor = 0;
+    let mounted = false;
+    const React = {
+        useState(initial) {
+            const index = cursor++;
+            if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial;
+            return [states[index], value => { states[index] = value; }];
+        },
+        useCallback: callback => callback,
+        useEffect(effect) { if (!mounted) mountEffects.push(effect); },
+        createElement: (type, props, ...children) => ({ type, props, children: children.flat(Infinity) }),
+    };
+    const context = vm.createContext({ window, Spicetify: { React }, console, setTimeout, clearTimeout, TextDecoder });
     for (const file of ['Addon_AI_ChatGPT.js', 'Addon_AI_NvidiaNim.js']) {
-        const source = readAiProviderFixture(file).replace('    return ChatGPTAddon;', '    ChatGPTAddon.fetchModelsForTest = getModels; return ChatGPTAddon;');
-        vm.runInContext(source, context);
+        vm.runInContext(readAiProviderFixture(file), context);
     }
-    return { addons, requests };
+    function renderSettings(addon) {
+        cursor = 0;
+        const tree = addon.getSettingsUI()();
+        mounted = true;
+        mountEffects.splice(0).forEach(effect => effect());
+        return tree;
+    }
+    return { addons, requests, renderSettings };
 }
 const reply = text => new Response(JSON.stringify({ choices: [{ message: { content: text }, finish_reason: 'stop' }] }));
 
@@ -55,8 +75,18 @@ test('NIM translation preserves line count and rejects incomplete model response
 
 test('NIM model discovery preserves vendor model IDs and uses NIM credentials', async () => {
     const h = setup(() => Response.json({ data: [{ id: 'z-ai/glm-5.2' }, { id: 'meta/llama-3.3-70b-instruct' }] }));
-    const models = await h.addons['nvidia-nim'].fetchModelsForTest();
-    assert.deepEqual(Array.from(models, model => model.id), ['meta/llama-3.3-70b-instruct', 'z-ai/glm-5.2']);
+    const addon = h.addons['nvidia-nim'];
+    h.renderSettings(addon);
+    await new Promise(resolve => setImmediate(resolve));
+    const tree = h.renderSettings(addon);
+    function findModelSelect(node) {
+        if (!node || typeof node !== 'object') return undefined;
+        if (node.type === 'select' && node.props.id === 'nvidia-nim-primary-models') return node;
+        return node.children.map(findModelSelect).find(Boolean);
+    }
+    const select = findModelSelect(tree);
+    const modelIds = Array.from(select.children, option => option.props.value).filter(Boolean);
+    assert.deepEqual(modelIds, ['meta/llama-3.3-70b-instruct', 'z-ai/glm-5.2']);
     assert.equal(h.requests[0].url, 'https://integrate.api.nvidia.com/v1/models');
     assert.equal(h.requests[0].headers.Authorization, 'Bearer nim-secret');
 });

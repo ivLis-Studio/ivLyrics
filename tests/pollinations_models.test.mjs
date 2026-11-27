@@ -26,7 +26,7 @@ function harness(initial = {}, modelFetch = () => json(fixtureModels)) {
     const React = {
         useState(initial) {
             const index = stateIndex++;
-            if (!(index in states)) states[index] = initial;
+            if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial;
             return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next; }];
         },
         useCallback: fn => fn,

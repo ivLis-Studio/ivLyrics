@@ -438,6 +438,17 @@ export default function initializePerplexityAddon(services = createBuiltinAiProv
     // Main Addon Object
     // ============================================
 
+    const {
+        generateMotionDirection: requestMotionDirection, ...promptedCapabilities
+    } = createPromptedAiCapabilities({
+        provider: 'Perplexity',
+        allowNullMetadata: true,
+        requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
+            ? callPerplexityAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, { signal })
+            : callPerplexityAPIRaw(prompt, undefined, parseLines, signal),
+        requestJson: (prompt, signal) => callPerplexityAPI(prompt, undefined, signal),
+    });
+
     const PerplexityAddon = {
         ...ADDON_INFO,
 
@@ -515,16 +526,11 @@ export default function initializePerplexityAddon(services = createBuiltinAiProv
             };
         },
 
-        ...createPromptedAiCapabilities({
-            provider: 'Perplexity',
-            allowNullMetadata: true,
-            requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
-                ? callPerplexityAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, { signal })
-                : callPerplexityAPIRaw(prompt, undefined, parseLines, signal),
-            requestJson: (prompt, signal) => callPerplexityAPI(prompt, undefined, signal),
-        }),
+        ...promptedCapabilities,
 
-
+        async generateMotionDirection(params) {
+            return requestMotionDirection(params, () => params.motionDirectionPrompt);
+        },
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
             const prompt = requireResearchPrompt('Perplexity', title, artist, tmiPrompt, signal);
@@ -546,9 +552,7 @@ export default function initializePerplexityAddon(services = createBuiltinAiProv
     // Registration
     // ============================================
 
-    const registerAddon = () => registerAiAddon(PerplexityAddon, migrateLegacyModelSetting);
-
-    registerAddon();
+    registerAiAddon(PerplexityAddon, migrateLegacyModelSetting);
 
     debug('[Perplexity Addon] Module loaded');
 }

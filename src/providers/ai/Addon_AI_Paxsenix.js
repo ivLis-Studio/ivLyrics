@@ -261,6 +261,18 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
     // Main Addon Object
     // ============================================
 
+    const {
+        generateMotionDirection: requestMotionDirection, ...promptedCapabilities
+    } = createPromptedAiCapabilities({
+        provider: 'paxsenix',
+        lineParserName: 'Paxsenix',
+        allowNullMetadata: true,
+        requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
+            ? streamText(prompt, { onLine, onStreamReset, transformResult: parseLines, signal })
+            : requestText(prompt, { transformResult: parseLines, signal }),
+        requestJson,
+    });
+
     const PaxsenixAddon = {
         ...ADDON_INFO,
         getModels,
@@ -368,15 +380,11 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
             };
         },
 
-        ...createPromptedAiCapabilities({
-            provider: 'paxsenix',
-            lineParserName: 'Paxsenix',
-            allowNullMetadata: true,
-            requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
-                ? streamText(prompt, { onLine, onStreamReset, transformResult: parseLines, signal })
-                : requestText(prompt, { transformResult: parseLines, signal }),
-            requestJson,
-        }),
+        ...promptedCapabilities,
+
+        async generateMotionDirection(params) {
+            return requestMotionDirection(params, () => params.motionDirectionPrompt);
+        },
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
             let prompt = requireResearchPrompt('paxsenix', title, artist, tmiPrompt, signal);
@@ -396,9 +404,7 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
     // Registration
     // ============================================
 
-    const registerAddon = () => registerAiAddon(PaxsenixAddon);
-
-    registerAddon();
+    registerAiAddon(PaxsenixAddon);
 
     debug('[Paxsenix Addon] Module loaded');
 }

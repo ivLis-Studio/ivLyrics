@@ -455,6 +455,18 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
     // Main Addon Object
     // ============================================
 
+    const {
+        generateMotionDirection: requestMotionDirection, ...promptedCapabilities
+    } = createPromptedAiCapabilities({
+        provider: 'Anthropic Claude',
+        lineParserName: 'Claude',
+        allowNullMetadata: true,
+        requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
+            ? callClaudeAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, undefined, signal)
+            : callClaudeAPIRaw(prompt, undefined, parseLines, signal),
+        requestJson: (prompt, signal) => callClaudeAPI(prompt, undefined, signal),
+    });
+
     const ClaudeAddon = {
         ...ADDON_INFO,
 
@@ -553,17 +565,11 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
             }
         },
 
-        ...createPromptedAiCapabilities({
-            provider: 'Anthropic Claude',
-            lineParserName: 'Claude',
-            allowNullMetadata: true,
-            requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
-                ? callClaudeAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, undefined, signal)
-                : callClaudeAPIRaw(prompt, undefined, parseLines, signal),
-            requestJson: (prompt, signal) => callClaudeAPI(prompt, undefined, signal),
-        }),
+        ...promptedCapabilities,
 
-
+        async generateMotionDirection(params) {
+            return requestMotionDirection(params, () => params.motionDirectionPrompt);
+        },
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
             const prompt = requireResearchPrompt('Anthropic Claude', title, artist, tmiPrompt, signal);
@@ -592,9 +598,7 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
     // Registration
     // ============================================
 
-    const registerAddon = () => registerAiAddon(ClaudeAddon);
-
-    registerAddon();
+    registerAiAddon(ClaudeAddon);
 
     debug('[Claude Addon] Module loaded');
 }

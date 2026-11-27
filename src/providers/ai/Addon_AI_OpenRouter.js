@@ -22,6 +22,7 @@ import {
 import { createProviderText } from "../providerText.mjs";
 import { readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { createChatCompletionRequests, createChatCompletionsClient } from "./chatCompletionsClient.mjs";
+import { sortModelsByPreferredId } from "./aiModelSorting.mjs";
 import { extractJSON } from "./aiResponseParsing.mjs";
 
 export default function initializeOpenRouterAddon(services = createBuiltinAiProviderServices(window)) {
@@ -77,6 +78,7 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
     };
 
     const BASE_URL = 'https://openrouter.ai/api/v1';
+    const MODEL_PRIORITY = ['anthropic/claude', 'openai/gpt-4', 'openai/gpt-3.5', 'google/gemini', 'meta-llama', 'mistralai'];
     const DEFAULT_RESEARCH_MAX_TOKENS = 16_000;
     const openRouterModelCapabilities = new Map();
 
@@ -105,7 +107,7 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
             }
 
             const data = await response.json();
-            const models = (data.data || [])
+            const catalog = (data.data || [])
                 .filter(m => m.id && !m.id.includes('vision') && !m.id.includes('image'))
                 .map(m => ({
                     id: m.id,
@@ -114,17 +116,8 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
                     max_completion_tokens: asPositiveInteger(
                         m.top_provider?.max_completion_tokens ?? m.max_completion_tokens
                     )
-                }))
-                .sort((a, b) => {
-                    // 인기 모델 우선
-                    const priority = ['anthropic/claude', 'openai/gpt-4', 'openai/gpt-3.5', 'google/gemini', 'meta-llama', 'mistralai'];
-                    const aIdx = priority.findIndex(p => a.id.includes(p));
-                    const bIdx = priority.findIndex(p => b.id.includes(p));
-                    const aPri = aIdx === -1 ? 999 : aIdx;
-                    const bPri = bIdx === -1 ? 999 : bIdx;
-                    if (aPri !== bPri) return aPri - bPri;
-                    return a.id.localeCompare(b.id);
-                });
+                }));
+            const models = sortModelsByPreferredId(catalog, MODEL_PRIORITY);
 
             if (models.length > 0) {
                 models[0].default = true;
@@ -197,6 +190,17 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
     // ============================================
     // Main Addon Object
     // ============================================
+
+    const {
+        generateMotionDirection: requestMotionDirection, ...promptedCapabilities
+    } = createPromptedAiCapabilities({
+        provider: 'OpenRouter',
+        allowNullMetadata: true,
+        requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
+            ? streamText(prompt, { onLine, onStreamReset, transformResult: parseLines, signal })
+            : requestText(prompt, { transformResult: parseLines, signal }),
+        requestJson,
+    });
 
     const OpenRouterAddon = {
         ...ADDON_INFO,
@@ -285,14 +289,11 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
             };
         },
 
-        ...createPromptedAiCapabilities({
-            provider: 'OpenRouter',
-            allowNullMetadata: true,
-            requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
-                ? streamText(prompt, { onLine, onStreamReset, transformResult: parseLines, signal })
-                : requestText(prompt, { transformResult: parseLines, signal }),
-            requestJson,
-        }),
+        ...promptedCapabilities,
+
+        async generateMotionDirection(params) {
+            return requestMotionDirection(params, () => params.motionDirectionPrompt);
+        },
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
             const prompt = requireResearchPrompt('OpenRouter', title, artist, tmiPrompt, signal);
@@ -324,9 +325,7 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
     // Registration
     // ============================================
 
-    const registerAddon = () => registerAiAddon(OpenRouterAddon);
-
-    registerAddon();
+    registerAiAddon(OpenRouterAddon);
 
     debug('[OpenRouter Addon] Module loaded');
 }

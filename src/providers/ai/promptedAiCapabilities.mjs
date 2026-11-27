@@ -19,11 +19,11 @@ export function createPromptedAiCapabilities({
     provider, lineParserName = provider, requestLyrics, requestJson, allowNullMetadata = false,
     forwardLineGenerationSignal = false,
 }) {
-    function requestForLines(params, key, description, capability, forwardSignal) {
+    function requestForLines(params, readPrompt, description, capability, forwardSignal) {
         if (!Array.isArray(params?.lines) || params.lines.length === 0) {
             throw new Error('No lyrics lines provided');
         }
-        const prompt = requiredPrompt(params[key], provider, description);
+        const prompt = requiredPrompt(readPrompt(), provider, description);
         return requestJson(prompt, forwardSignal ? params.signal : undefined, capability);
     }
 
@@ -68,16 +68,16 @@ export function createPromptedAiCapabilities({
             };
         },
 
-        async generateMotionDirection(params) {
-            return await requestForLines(params, 'motionDirectionPrompt', 'motion direction', 'motionDirection', forwardLineGenerationSignal);
+        async generateMotionDirection(params, readPrompt) {
+            return await requestForLines(params, readPrompt, 'motion direction', 'motionDirection', forwardLineGenerationSignal);
         },
 
         async generateLyricsStudy(params) {
-            return await requestForLines(params, 'lyricsStudyPrompt', 'lyrics study', 'lyricsStudy', forwardLineGenerationSignal);
+            return await requestForLines(params, () => params.lyricsStudyPrompt, 'lyrics study', 'lyricsStudy', forwardLineGenerationSignal);
         },
 
         async generateCulturalAnnotations(params) {
-            return await requestForLines(params, 'culturalAnnotationsPrompt', 'cultural annotations', 'culturalAnnotations', true);
+            return await requestForLines(params, () => params.culturalAnnotationsPrompt, 'cultural annotations', 'culturalAnnotations', true);
         },
 
         async generateSettingsAssistant(params) {

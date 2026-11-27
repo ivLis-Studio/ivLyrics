@@ -195,6 +195,16 @@ export default function initializePollinationsAddon(services = createBuiltinAiPr
     // Addon Implementation
     // ============================================
 
+    const {
+        generateMotionDirection: requestMotionDirection, ...promptedCapabilities
+    } = createPromptedAiCapabilities({
+        provider: 'Pollinations.ai',
+        requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
+            ? streamText(prompt, { onLine, onStreamReset, transformResult: parseLines, signal })
+            : requestText(prompt, { transformResult: parseLines, signal }),
+        requestJson,
+    });
+
     const PollinationsAddon = {
         ...ADDON_INFO,
 
@@ -456,13 +466,11 @@ export default function initializePollinationsAddon(services = createBuiltinAiPr
             };
         },
 
-        ...createPromptedAiCapabilities({
-            provider: 'Pollinations.ai',
-            requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
-                ? streamText(prompt, { onLine, onStreamReset, transformResult: parseLines, signal })
-                : requestText(prompt, { transformResult: parseLines, signal }),
-            requestJson,
-        }),
+        ...promptedCapabilities,
+
+        async generateMotionDirection(params) {
+            return requestMotionDirection(params, () => params.motionDirectionPrompt);
+        },
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
             const prompt = requireResearchPrompt('Pollinations.ai', title, artist, tmiPrompt, signal);
@@ -481,9 +489,7 @@ export default function initializePollinationsAddon(services = createBuiltinAiPr
     // Registration
     // ============================================
 
-    const registerAddon = () => registerAiAddon(PollinationsAddon);
-
-    registerAddon();
+    registerAiAddon(PollinationsAddon);
 
     debug('[Pollinations Addon] Module loaded');
 }

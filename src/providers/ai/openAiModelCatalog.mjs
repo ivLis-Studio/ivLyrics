@@ -1,4 +1,4 @@
-export function createOpenAiModelCatalog({ defaultBaseUrl, getAiRequest, getApiKeys, getSetting, debug }) {
+export function createOpenAiModelCatalog({ defaultBaseUrl, getAiRequest, debug }) {
     /**
      * OpenAI API에서 사용 가능한 모델 목록을 가져옴 (채팅/텍스트 생성용 모델만)
      */
@@ -116,15 +116,5 @@ export function createOpenAiModelCatalog({ defaultBaseUrl, getAiRequest, getApiK
         }
     }
 
-    /**
-     * 모델 목록 가져오기 (매번 API에서 로드)
-     */
-    async function getModels() {
-        const apiKeys = getApiKeys();
-        const baseUrl = getSetting('base-url', defaultBaseUrl);
-        if (apiKeys.length === 0) return [];
-        return await fetchAvailableModels(apiKeys[0], baseUrl);
-    }
-
-    return { fetchAvailableModels, getModels };
+    return { fetchAvailableModels };
 }

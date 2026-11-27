@@ -131,6 +131,17 @@ export default function initializeGeminiAddon(services = createBuiltinAiProvider
     // Addon Implementation
     // ============================================
 
+    const {
+        generateMotionDirection: requestMotionDirection, ...promptedCapabilities
+    } = createPromptedAiCapabilities({
+        provider: 'Google Gemini',
+        lineParserName: 'Gemini',
+        requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
+            ? callGeminiAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, undefined, signal)
+            : callGeminiAPIRaw(prompt, undefined, parseLines, signal),
+        requestJson: (prompt, signal) => callGeminiAPI(prompt, undefined, signal),
+    });
+
     const GeminiAddon = {
         ...ADDON_INFO,
 
@@ -325,16 +336,11 @@ export default function initializeGeminiAddon(services = createBuiltinAiProvider
             }
         },
 
-        ...createPromptedAiCapabilities({
-            provider: 'Google Gemini',
-            lineParserName: 'Gemini',
-            requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
-                ? callGeminiAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, undefined, signal)
-                : callGeminiAPIRaw(prompt, undefined, parseLines, signal),
-            requestJson: (prompt, signal) => callGeminiAPI(prompt, undefined, signal),
-        }),
+        ...promptedCapabilities,
 
-
+        async generateMotionDirection(params) {
+            return requestMotionDirection(params, () => params.motionDirectionPrompt);
+        },
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
             const prompt = requireResearchPrompt('Google Gemini', title, artist, tmiPrompt, signal);
@@ -367,9 +373,7 @@ export default function initializeGeminiAddon(services = createBuiltinAiProvider
     // Registration
     // ============================================
 
-    const registerAddon = () => registerAiAddon(GeminiAddon);
-
-    registerAddon();
+    registerAiAddon(GeminiAddon);
 
     debug('[Gemini Addon] Module loaded');
 }

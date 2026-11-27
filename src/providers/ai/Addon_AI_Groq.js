@@ -22,6 +22,7 @@ import {
 } from "./aiProviderSettings.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { createChatCompletionRequests, createChatCompletionsClient } from "./chatCompletionsClient.mjs";
+import { sortModelsByPreferredId } from "./aiModelSorting.mjs";
 import { extractJSON } from "./aiResponseParsing.mjs";
 
 export default function initializeGroqAddon(services = createBuiltinAiProviderServices(window)) {
@@ -77,6 +78,7 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
     };
 
     const BASE_URL = 'https://api.groq.com/openai/v1';
+    const MODEL_PRIORITY = ['llama-3.3', 'llama-3.2', 'llama-3.1', 'llama3', 'mixtral', 'gemma2'];
     const DEFAULT_RESEARCH_MAX_TOKENS = 16_000;
     const groqModelCapabilities = new Map();
 
@@ -105,24 +107,15 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
             }
 
             const data = await response.json();
-            const models = (data.data || [])
+            const catalog = (data.data || [])
                 .filter(m => m.id && !m.id.includes('whisper') && !m.id.includes('vision'))
                 .map(m => ({
                     id: m.id,
                     name: m.id,
                     context_length: asPositiveInteger(m.context_window),
                     max_completion_tokens: asPositiveInteger(m.max_completion_tokens)
-                }))
-                .sort((a, b) => {
-                    // 인기 모델 우선
-                    const priority = ['llama-3.3', 'llama-3.2', 'llama-3.1', 'llama3', 'mixtral', 'gemma2'];
-                    const aIdx = priority.findIndex(p => a.id.includes(p));
-                    const bIdx = priority.findIndex(p => b.id.includes(p));
-                    const aPri = aIdx === -1 ? 999 : aIdx;
-                    const bPri = bIdx === -1 ? 999 : bIdx;
-                    if (aPri !== bPri) return aPri - bPri;
-                    return a.id.localeCompare(b.id);
-                });
+                }));
+            const models = sortModelsByPreferredId(catalog, MODEL_PRIORITY);
 
             if (models.length > 0) {
                 models[0].default = true;
@@ -217,6 +210,17 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
     // Main Addon Object
     // ============================================
 
+    const {
+        generateMotionDirection: requestMotionDirection, ...promptedCapabilities
+    } = createPromptedAiCapabilities({
+        provider: 'Groq',
+        allowNullMetadata: true,
+        requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
+            ? streamText(prompt, { onLine, onStreamReset, transformResult: parseLines, signal })
+            : requestText(prompt, { transformResult: parseLines, signal }),
+        requestJson,
+    });
+
     const GroqAddon = {
         ...ADDON_INFO,
 
@@ -283,14 +287,11 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
             };
         },
 
-        ...createPromptedAiCapabilities({
-            provider: 'Groq',
-            allowNullMetadata: true,
-            requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
-                ? streamText(prompt, { onLine, onStreamReset, transformResult: parseLines, signal })
-                : requestText(prompt, { transformResult: parseLines, signal }),
-            requestJson,
-        }),
+        ...promptedCapabilities,
+
+        async generateMotionDirection(params) {
+            return requestMotionDirection(params, () => params.motionDirectionPrompt);
+        },
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
             let prompt = requireResearchPrompt('Groq', title, artist, tmiPrompt, signal);
@@ -322,9 +323,7 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
     // Registration
     // ============================================
 
-    const registerAddon = () => registerAiAddon(GroqAddon);
-
-    registerAddon();
+    registerAiAddon(GroqAddon);
 
     debug('[Groq Addon] Module loaded');
 }

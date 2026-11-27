@@ -536,7 +536,5 @@ export default function initializeLocalModelAddon(services = createBuiltinAiProv
         }
     };
 
-    const registerAddon = () => registerAiAddon(addon);
-
-    registerAddon();
+    registerAiAddon(addon);
 }

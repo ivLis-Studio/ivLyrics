@@ -90,7 +90,7 @@ function createReact() {
         createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
         useState(initial) {
             const index = cursor++;
-            if (!(index in slots)) slots[index] = initial;
+            if (!(index in slots)) slots[index] = typeof initial === "function" ? initial() : initial;
             return [slots[index], (next) => { slots[index] = next; }];
         },
         useCallback: (callback) => callback,

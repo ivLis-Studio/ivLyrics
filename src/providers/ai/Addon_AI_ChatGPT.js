@@ -106,8 +106,8 @@ export function createOpenAICompatibleAddon(config = {}, services = createBuilti
         addonId: ADDON_INFO.id, defaultBaseUrl: DEFAULT_OPENAI_BASE_URL, getManager, getSetting, setSetting,
     });
     const { getRequestTargets, migrateStaleMasterSwitches } = connections;
-    const { fetchAvailableModels, getModels } = createOpenAiModelCatalog({
-        defaultBaseUrl: DEFAULT_OPENAI_BASE_URL, getAiRequest, getApiKeys: connections.getApiKeys, getSetting, debug,
+    const { fetchAvailableModels } = createOpenAiModelCatalog({
+        defaultBaseUrl: DEFAULT_OPENAI_BASE_URL, getAiRequest, debug,
     });
     const { getRequestBodyMergePatch, getDefaultRequestBodyMergeJson } = createOpenAiRequestBody({
         readRequestDefaults: () => config.requestDefaults, getSetting,
@@ -124,6 +124,21 @@ export function createOpenAICompatibleAddon(config = {}, services = createBuilti
     // ============================================
     // Addon Implementation
     // ============================================
+
+    const {
+        generateMotionDirection: requestMotionDirection, ...promptedCapabilities
+    } = createPromptedAiCapabilities({
+        provider: 'OpenAI ChatGPT',
+        lineParserName: 'ChatGPT',
+        requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, capability, signal }) => onLine
+            ? requestFromTargets({
+                prompt, transformResult: parseLines, capability, signal, callbacks: { onLine, onStreamReset },
+            })
+            : callChatGPTAPIRaw(prompt, undefined, parseLines, undefined, capability, signal),
+        forwardLineGenerationSignal: true,
+        requestJson: (prompt, signal, capability) =>
+            callChatGPTAPI(prompt, undefined, undefined, capability, signal),
+    });
 
     const ChatGPTAddon = {
         ...ADDON_INFO,
@@ -164,20 +179,11 @@ export function createOpenAICompatibleAddon(config = {}, services = createBuilti
             openApiKeyPage: () => services.host.open(ADDON_INFO.apiKeyUrl, '_blank'),
         }),
 
-        ...createPromptedAiCapabilities({
-            provider: 'OpenAI ChatGPT',
-            lineParserName: 'ChatGPT',
-            requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, capability, signal }) => onLine
-                ? requestFromTargets({
-                    prompt, transformResult: parseLines, capability, signal, callbacks: { onLine, onStreamReset },
-                })
-                : callChatGPTAPIRaw(prompt, undefined, parseLines, undefined, capability, signal),
-            forwardLineGenerationSignal: true,
-            requestJson: (prompt, signal, capability) =>
-                callChatGPTAPI(prompt, undefined, undefined, capability, signal),
-        }),
+        ...promptedCapabilities,
 
-
+        async generateMotionDirection(params) {
+            return requestMotionDirection(params, () => params.motionDirectionPrompt);
+        },
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
             const prompt = requireResearchPrompt('OpenAI ChatGPT', title, artist, tmiPrompt, signal);

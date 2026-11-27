@@ -32,7 +32,7 @@ function harness(initial = {}, agent = () => json(completed('OK')), models = () 
     const React = {
         useState(value) {
             const index = stateIndex++;
-            if (!(index in states)) states[index] = value;
+            if (!(index in states)) states[index] = typeof value === 'function' ? value() : value;
             return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next; }];
         },
         useCallback: fn => fn,
