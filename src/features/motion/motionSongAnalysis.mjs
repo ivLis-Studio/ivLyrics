@@ -10,11 +10,15 @@ export const screenSpan = (lines, from, to) => {
 	return span;
 };
 
+// One segmenter serves every count: creating one costs several times more
+// than segmenting a word, and directing a song counts its words many times.
+let graphemeSegmenter = null;
 export const graphemeCount = (text) => {
 	const source = String(text ?? "");
 	if (typeof Intl?.Segmenter === "function") {
+		graphemeSegmenter ??= new Intl.Segmenter(undefined, { granularity: "grapheme" });
 		let count = 0;
-		for (const _ of new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(source)) count += 1;
+		for (const _ of graphemeSegmenter.segment(source)) count += 1;
 		return count;
 	}
 	return Array.from(source).length;

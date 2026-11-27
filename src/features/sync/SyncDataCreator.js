@@ -177,6 +177,13 @@ export function createSyncDataCreator({
 		? cancelAnimationFrame(id)
 		: clearTimeout(id);
 	const scheduleSyncCreatorHistoryFrame = (callback) => window.requestAnimationFrame(callback);
+	// The live preview asks on every clock render (about 60 times a second while
+	// playing). A MediaQueryList's matches is live, so one list answers every call.
+	let syncCreatorReducedMotionQuery = null;
+	const prefersSyncCreatorReducedMotion = () => {
+		syncCreatorReducedMotionQuery ??= window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null;
+		return syncCreatorReducedMotionQuery?.matches === true;
+	};
 	const getSyncCreatorUiLanguage = () => (
 		I18n.getCurrentLanguage?.()
 		|| readVisualSettings()?.language
@@ -460,7 +467,7 @@ export function createSyncDataCreator({
 		} = useMemo(() => createSyncCreatorPlaybackViews({
 			getReact: () => react, getPlayer: getEditorPlayer, now: () => performance.now(),
 			hasAnimationFrame: () => typeof requestAnimationFrame === 'function',
-			prefersReducedMotion: () => window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true,
+			prefersReducedMotion: prefersSyncCreatorReducedMotion,
 			requestFrame: callback => requestAnimationFrame(callback), cancelFrame: frame => cancelAnimationFrame(frame),
 			scheduleTimer: (callback, delay) => setTimeout(callback, delay), cancelTimer: timer => clearTimeout(timer),
 		}), [getEditorPlayer]);

@@ -20,6 +20,33 @@ const SYNC_CREATOR_PREVIEW_CONTAINER_VAR_EXCLUSIONS = new Set([
 	'--lyrics-phonetic-opacity'
 ]);
 
+// One karaoke row per voice of a multi-vocal preview line. The karaoke
+// renderer keeps its per-line preparation (timed glyphs, furigana, glyph
+// element cache, live paint data) only while it receives the same line
+// object, and the preview clock renders about every 16 ms. Each row is built
+// once per preview line and voice instead of once per frame. Edited timing,
+// text, voices or source build new preview lines with new part objects, and
+// visual settings reach the renderer through its settings revision.
+const previewVocalRowLines = new WeakMap();
+export function getSyncCreatorPreviewVocalRowLine(sourceLine, part) {
+	const cached = previewVocalRowLines.get(part);
+	if (cached?.sourceLine === sourceLine) return cached.line;
+	const line = {
+		...sourceLine,
+		interludeInfo: undefined,
+		text: part.text,
+		originalText: part.text,
+		syllables: part.syllables,
+		vocals: undefined,
+		speaker: part.speaker,
+		'speaker-color': part['speaker-color'] || '',
+		'speaker-fallback': part['speaker-fallback'] || '',
+		kind: part.kind || sourceLine.kind
+	};
+	previewVocalRowLines.set(part, { sourceLine, line });
+	return line;
+}
+
 export function getSyncCreatorPreviewVariables({
 	visualConfig,
 	getLyricsContainer,
@@ -329,18 +356,7 @@ export function useSyncCreatorLivePreview({
 			: 0;
 		if (!previewBody && hasVocalStack && !displaySourceLine?.interludeInfo?.isInterlude) {
 			try {
-				const buildVocalRowLine = (part) => ({
-					...displaySourceLine,
-					interludeInfo: undefined,
-					text: part.text,
-					originalText: part.text,
-					syllables: part.syllables,
-					vocals: undefined,
-					speaker: part.speaker,
-					'speaker-color': part['speaker-color'] || '',
-					'speaker-fallback': part['speaker-fallback'] || '',
-					kind: part.kind || displaySourceLine.kind
-				});
+				const buildVocalRowLine = (part) => getSyncCreatorPreviewVocalRowLine(displaySourceLine, part);
 				const stackRows = [];
 				const previewPronEntries = showCharacterPronunciations
 					? [...currentParallelPartReadingMaps.values()].filter((entry) => entry && entry.hasPron)

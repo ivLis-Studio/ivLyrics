@@ -6,6 +6,7 @@ import {
     fingerprintSyncDataLyricsText,
 } from "./syncLyricSourceShape.mjs";
 import { SyncDataSourceCompatibility } from "../../lyrics/syncDataSourceCompatibility.mjs";
+import { getLineCharCounts } from "../../providers/lyrics/lrclibSourceMatching.mjs";
 
 const SYNC_CREATOR_SOURCE_ADDON_ID = 'lrclib';
 
@@ -35,8 +36,6 @@ const normalizeSourceLines = (text) => String(text || '')
     .split('\n')
     .map(line => line.trim().normalize('NFC'))
     .filter(Boolean);
-
-const getLineCharCounts = (lines) => lines.map(line => Array.from(line).length);
 
 const getSyncCreatorLineCharCountsFromText = (text) => getLineCharCounts(normalizeSourceLines(text));
 

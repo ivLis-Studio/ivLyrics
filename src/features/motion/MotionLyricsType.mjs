@@ -12,6 +12,7 @@
 // are laid out from the right.
 
 import { motionHost as root } from "./motionHost.mjs";
+import { graphemeCount } from "./motionSongAnalysis.mjs";
 
 // flex: a variable heavy sans whose weight (and width, where the face has the axis) moves as words land and breathe.
 const PERSONALITIES = Object.freeze(["impact", "serif", "round", "flex"]);
@@ -323,14 +324,6 @@ const ensureFonts = (document, needs) => {
 	return Promise.race([Promise.all(jobs).then((results) => results.every(Boolean)), wait]);
 };
 
-const graphemeCount = (text) => {
-	if (typeof Intl?.Segmenter === "function") {
-		let count = 0;
-		for (const _ of new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(String(text))) count += 1;
-		return count;
-	}
-	return Array.from(String(text)).length;
-};
 const WIDE_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
 /** Width of text in a face at a size (canvas, cached; an estimate without a canvas). */
@@ -343,7 +336,7 @@ const createMeasurer = (document) => {
 		const key = safe.key + "\u0001" + text;
 		let width = cache.get(key);
 		if (width === undefined) {
-			const letters = graphemeCount(text);
+			const letters = graphemeCount(String(text));
 			if (context) {
 				context.font = safe.canvasFont;
 				width = context.measureText(text).width;

@@ -1,26 +1,24 @@
-/**
- * The song's beat grid (ms): the audio analysis's beats when there are
- * enough, otherwise a steady grid fitted to when words start (people sing
- * on the beat). Every fourth beat from the bar most lines start on is a
- * downbeat (strength 1). Null when neither gives a steady beat.
- */
-export const beatGridOf = (model, pulses) => {
-	if (pulses?.times?.length >= 16) {
-		const times = Array.from(pulses.times);
-		const gaps = times.slice(1).map((time, index) => time - times[index]).filter((gap) => gap > 200 && gap < 1500).sort((a, b) => a - b);
-		const period = gaps[Math.floor(gaps.length / 2)] || 500;
-		return { period, times, strengths: Array.from(pulses.strengths || times.map(() => 0.6)), source: "analysis", confidence: 1 };
-	}
-	const lines = Array.isArray(model) ? model : [];
-	// Words as onsets, a line's first word and held words weighing more (they fall on the beat more often).
+const analysisGridOf = (pulses) => {
+	const times = Array.from(pulses.times);
+	const gaps = times.slice(1).map((time, index) => time - times[index]).filter((gap) => gap > 200 && gap < 1500).sort((a, b) => a - b);
+	const period = gaps[Math.floor(gaps.length / 2)] || 500;
+	return { period, times, strengths: Array.from(pulses.strengths || times.map(() => 0.6)), source: "analysis", confidence: 1 };
+};
+
+// Words as onsets, a line's first word and held words weighing more (they fall on the beat more often).
+const onsetsOf = (lines) => {
 	const onsets = [];
 	for (const line of lines) {
 		(line.words || []).forEach((word, index) => {
 			if (Number.isFinite(word.start)) onsets.push({ time: word.start, weight: index === 0 ? 2 : word.end - word.start >= 350 ? 1.3 : 1 });
 		});
 	}
-	onsets.sort((a, b) => a.time - b.time);
-	if (onsets.length < 24) return null;
+	return onsets.sort((a, b) => a.time - b.time);
+};
+const lineStartsOf = (lines) => lines.map((line) => line.start).filter(Number.isFinite);
+
+/** The grid fitted to the onsets (at least 24, in time order) and the line starts. */
+const fitWordGrid = (onsets, starts) => {
 	// 1. The grid words fall on (the coarsest that still fits them all: eighths, or the beat itself), over the whole song.
 	const coherenceAt = (period) => {
 		let sx = 0;
@@ -54,7 +52,6 @@ export const beatGridOf = (model, pulses) => {
 	}) || (tatum.step * 2 <= 1000 ? 2 : 1);
 	const period = tatum.step * multiple;
 	const base = ((((tatum.angle / (2 * Math.PI)) * tatum.step) % tatum.step) + tatum.step) % tatum.step;
-	const starts = lines.map((line) => line.start).filter(Number.isFinite);
 	const fitOf = (phase) => starts.reduce((sum, time) => {
 		const off = (((time - phase) % period) + period) % period;
 		return sum + (Math.min(off, period - off) < period * 0.15 ? 1 : 0);
@@ -74,6 +71,45 @@ export const beatGridOf = (model, pulses) => {
 		strengths.push(((beat % 4) + 4) % 4 === downbeat ? 1 : 0.55);
 	}
 	return { period, times, strengths, source: "words", confidence: tatum.r };
+};
+
+const wordGridOf = (model) => {
+	const lines = Array.isArray(model) ? model : [];
+	const onsets = onsetsOf(lines);
+	if (onsets.length < 24) return null;
+	return fitWordGrid(onsets, lineStartsOf(lines));
+};
+
+/**
+ * The song's beat grid (ms): the audio analysis's beats when there are
+ * enough, otherwise a steady grid fitted to when words start (people sing
+ * on the beat). Every fourth beat from the bar most lines start on is a
+ * downbeat (strength 1). Null when neither gives a steady beat.
+ */
+export const beatGridOf = (model, pulses) => (pulses?.times?.length >= 16 ? analysisGridOf(pulses) : wordGridOf(model));
+
+// Fitting the grid to the words takes some 620 passes over every onset, and
+// a song is composed again and again with the same onsets (the built-in take
+// that wins, the AI's draft and the plan shown, every window size and late
+// font). The fit depends on nothing but the onsets (in order) and the line
+// starts, so it is kept for those exact values and each plan gets a grid and
+// arrays of its own.
+const WORD_GRID_CACHE_LIMIT = 8;
+const wordGrids = new Map();
+export const cachedBeatGridOf = (model, pulses) => {
+	if (pulses?.times?.length >= 16) return analysisGridOf(pulses);
+	const lines = Array.isArray(model) ? model : [];
+	const onsets = onsetsOf(lines);
+	if (onsets.length < 24) return null;
+	const starts = lineStartsOf(lines);
+	const key = onsets.map((onset) => onset.time + ":" + onset.weight).join(",") + "|" + starts.join(",");
+	let grid = wordGrids.get(key);
+	if (grid === undefined) {
+		grid = fitWordGrid(onsets, starts);
+		if (wordGrids.size >= WORD_GRID_CACHE_LIMIT) wordGrids.delete(wordGrids.keys().next().value);
+		wordGrids.set(key, grid);
+	}
+	return grid && { ...grid, times: grid.times.slice(), strengths: grid.strengths.slice() };
 };
 
 /** Index of the grid's last beat at or before time (-1 before the first). */

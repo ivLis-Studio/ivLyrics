@@ -1,4 +1,4 @@
-import { beatGridOf } from "./motionBeatGrid.mjs";
+import { cachedBeatGridOf } from "./motionBeatGrid.mjs";
 import { boxesOf, cornersOf, extentOf } from "./motionBoardGeometry.mjs";
 import {
 	layoutArch, layoutCarousel, layoutCollage, layoutColumn, layoutConstellation, layoutCorners,
@@ -448,7 +448,7 @@ export const compose = (sourceModel, sourceDirection, options = {}) => {
 		lines: lines.filter((line) => line.board >= 0),
 		pulses: pulsesInMs(options.analysis),
 		// Where the beats fall (the analysis, or the singing): moves set off and lines leave on them.
-		grid: beatGridOf(model, pulsesInMs(options.analysis)),
+		grid: cachedBeatGridOf(model, pulsesInMs(options.analysis)),
 		comfort,
 		feel: feelFor(tempo, comfort),
 	};

@@ -17,7 +17,7 @@ export const createFontBook = () => {
 		return specs.get(key);
 	};
 };
-export const casedText = (text, script, upper) => motionType?.casedText?.(text, script, upper) ?? String(text);
+export const casedText = motionType.casedText;
 /** The face of a word: a shot's emphasised words may switch to handwriting (the script accent) or the serif. */
 const faceOf = (type, serif, isEmph, accent) => (isEmph && accent === "script" ? "hand" : isEmph && serif ? "serif" : type);
 // How much larger than its line an emphasised word is set, for accents that work by size.

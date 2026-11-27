@@ -1,4 +1,5 @@
 import { wrapBrowserMethod } from "./browserPropertyPatch.mjs";
+import { disableYouTubeCaptions } from "./youTubeBackgroundTimeline.mjs";
 
 export function createYouTubeBackgroundPlayerControls({ document, registerRestore, forgetRestore }) {
     // The iframe API reports content time/duration even while an ad is playing.
@@ -347,24 +348,6 @@ export function createYouTubeBackgroundPlayerControls({ document, registerRestor
                 return original.apply(this, args);
             });
         registerRestore(player, cleanup);
-    };
-
-    const disableYouTubeCaptions = (player) => {
-        if (!player) return;
-
-        try {
-            if (typeof player.unloadModule === "function") {
-                player.unloadModule("captions");
-                player.unloadModule("cc");
-            }
-        } catch (e) { }
-
-        try {
-            if (typeof player.setOption === "function") {
-                player.setOption("captions", "track", {});
-                player.setOption("cc", "track", {});
-            }
-        } catch (e) { }
     };
 
     const scheduleCaptionDisable = (player) => {
