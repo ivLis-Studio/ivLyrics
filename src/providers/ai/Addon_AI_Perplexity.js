@@ -7,7 +7,8 @@
  */
 
 import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedAiCapabilities.mjs";
-import { isSupersededAbort, throwIfAiRequestAborted, waitForAiRetry } from "./aiRequestCancellation.mjs";
+import { throwIfAiRequestAborted } from "./aiRequestCancellation.mjs";
+import { requestWithAiKeys } from "./aiKeyRotation.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
 import {
@@ -351,49 +352,6 @@ export default function initializePerplexityAddon(services = createBuiltinAiProv
         return response;
     }
 
-    async function callPerplexityAPIRaw(prompt, maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3, transformResult = null, signal) {
-        const apiKeys = getApiKeys();
-        if (apiKeys.length === 0) {
-            throw new Error('[Perplexity] API key is required. Please configure your API key in settings.');
-        }
-
-        let lastError = null;
-
-        for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
-            const apiKey = apiKeys[keyIndex];
-
-            for (let attempt = 0; attempt < maxRetries; attempt++) {
-                try {
-                    const response = await postAgentRequest(apiKey, buildAgentRequestBody(prompt), undefined, signal);
-                    const rawText = readAgentResponseText(await response.json());
-
-                    if (!rawText.trim()) {
-                        throw new Error('[Perplexity] Empty response from API');
-                    }
-
-                    return typeof transformResult === 'function'
-                        ? transformResult(rawText)
-                        : rawText;
-
-                } catch (e) {
-                    throwIfAiRequestAborted(signal);
-                    if (isSupersededAbort(e)) throw e;
-                    lastError = e;
-                    debug(`[Perplexity Addon] Key ${keyIndex + 1}, attempt ${attempt + 1} failed:`, e.message);
-
-                    if (PERMANENT_HTTP_STATUSES.has(e.status)) throw e;
-                    if (KEY_LIMIT_HTTP_STATUSES.has(e.status)) break; // Try next key
-
-                    if (attempt < maxRetries - 1) {
-                        await waitForAiRetry(1000 * (attempt + 1), signal);
-                    }
-                }
-            }
-        }
-
-        throw lastError || new Error('[Perplexity] All API keys and retries exhausted');
-    }
-
     async function readPerplexityStream(response, output, transformResult, webSearch) {
         const streamState = createAgentStreamState();
 
@@ -419,48 +377,56 @@ export default function initializePerplexityAddon(services = createBuiltinAiProv
         return output.finish(finalText, transformResult);
     }
 
+    async function requestPerplexity(prompt, { attempts, transformResult, signal, stream, timeoutMs, webSearch = false }) {
+        const apiKeys = getApiKeys();
+        if (apiKeys.length === 0) {
+            throw new Error(stream
+                ? '[Perplexity] API key is required.'
+                : '[Perplexity] API key is required. Please configure your API key in settings.');
+        }
+
+        return requestWithAiKeys({
+            apiKeys, attempts, signal,
+            exhaustedMessage: '[Perplexity] All API keys and retries exhausted',
+            createOutput: stream && (() => createStreamingOutput({
+                ...stream,
+                onResetError: error => debug('[Perplexity Addon] Failed to reset provisional stream:', error?.message),
+            })),
+            async run({ key, output }) {
+                const body = buildAgentRequestBody(prompt, { stream: !!stream, webSearch });
+                const response = await postAgentRequest(key, body, timeoutMs, signal);
+                if (output) return await readPerplexityStream(response, output, transformResult, webSearch);
+                const text = readAgentResponseText(await response.json());
+                if (!text.trim()) throw new Error('[Perplexity] Empty response from API');
+                return typeof transformResult === 'function' ? transformResult(text) : text;
+            },
+            onError(error, { keyNumber, attemptNumber, output, willRetry }) {
+                const permanent = PERMANENT_HTTP_STATUSES.has(error.status);
+                if (output) output.reset(permanent || !willRetry ? 'failed' : 'retry', error);
+                else debug(`[Perplexity Addon] Key ${keyNumber}, attempt ${attemptNumber} failed:`, error.message);
+                if (permanent) return 'stop';
+                if (KEY_LIMIT_HTTP_STATUSES.has(error.status)) return 'rotate';
+            },
+        });
+    }
+
+    async function callPerplexityAPIRaw(prompt, attempts = getManager()?.getProviderRequestAttempts?.() ?? 3, transformResult = null, signal) {
+        return requestPerplexity(prompt, { attempts, transformResult, signal });
+    }
+
     async function callPerplexityAPIStream(
         prompt,
         onLine,
         onStreamReset,
-        maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3,
+        attempts = getManager()?.getProviderRequestAttempts?.() ?? 3,
         transformResult = null,
-        requestTimeoutMs = getAiRequest()?.DEFAULT_TIMEOUT_MS || 90_000,
+        timeoutMs = getAiRequest()?.DEFAULT_TIMEOUT_MS || 90_000,
         onRawChunk = null,
         { webSearch = false, signal } = {}
     ) {
-        const apiKeys = getApiKeys();
-        if (apiKeys.length === 0) throw new Error('[Perplexity] API key is required.');
-        let lastError = null;
-
-        for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
-            const apiKey = apiKeys[keyIndex];
-            for (let attempt = 0; attempt < maxRetries; attempt++) {
-                const output = createStreamingOutput({
-                    onLine, onRawChunk, onStreamReset,
-                    onResetError: error => debug('[Perplexity Addon] Failed to reset provisional stream:', error?.message),
-                });
-
-                try {
-                    const response = await postAgentRequest(
-                        apiKey,
-                        buildAgentRequestBody(prompt, { stream: true, webSearch }),
-                        requestTimeoutMs, signal
-                    );
-                    return await readPerplexityStream(response, output, transformResult, webSearch);
-                } catch (e) {
-                    throwIfAiRequestAborted(signal);
-                    if (isSupersededAbort(e)) throw e;
-                    lastError = e;
-                    const isPermanentError = PERMANENT_HTTP_STATUSES.has(e.status);
-                    output.reset(isPermanentError || attempt >= maxRetries - 1 ? 'failed' : 'retry', e);
-                    if (isPermanentError) throw e;
-                    if (KEY_LIMIT_HTTP_STATUSES.has(e.status)) break; // Try next key
-                    if (attempt < maxRetries - 1) await waitForAiRetry(1000 * (attempt + 1), signal);
-                }
-            }
-        }
-        throw lastError || new Error('[Perplexity] All API keys and retries exhausted');
+        return requestPerplexity(prompt, {
+            attempts, transformResult, signal, timeoutMs, webSearch, stream: { onLine, onStreamReset, onRawChunk },
+        });
     }
 
     async function callPerplexityAPI(prompt, maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3, signal) {

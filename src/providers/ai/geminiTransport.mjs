@@ -1,4 +1,5 @@
-import { isSupersededAbort, throwIfAiRequestAborted, waitForAiRetry } from "./aiRequestCancellation.mjs";
+import { throwIfAiRequestAborted } from "./aiRequestCancellation.mjs";
+import { requestWithAiKeys } from "./aiKeyRotation.mjs";
 import { normalizePromptRequest } from "./aiProviderInputs.mjs";
 import { extractJSON } from "./aiResponseParsing.mjs";
 import { createStreamingOutput } from "./aiStreamingOutput.mjs";
@@ -77,156 +78,87 @@ async function consumeGeminiStream(response, output, transformResult) {
 export function createGeminiTransport({
     getAiRequest, getApiKeys, getBaseUrl, getSelectedModel, getGenerationConfig, readRequestAttempts, debug,
 }) {
-    async function callGeminiAPIRaw(prompt, maxRetries = readRequestAttempts(), transformResult = null, signal) {
+    async function requestGemini(prompt, { attempts, transformResult, signal, stream, timeoutMs, overrides }) {
         const apiKeys = getApiKeys();
         if (apiKeys.length === 0) {
-            throw new Error('[Gemini] API key is required. Please configure your Gemini API key in settings.');
+            throw new Error(stream
+                ? '[Gemini] API key is required.'
+                : '[Gemini] API key is required. Please configure your Gemini API key in settings.');
         }
-
         const model = getSelectedModel();
         if (!model) {
-            throw new Error('[Gemini] Model is not selected. Please select a model in settings.');
+            throw new Error(stream ? '[Gemini] Model is not selected.' : '[Gemini] Model is not selected. Please select a model in settings.');
         }
         const { systemPrompt, userPrompt } = normalizePromptRequest(prompt);
-        let lastError = null;
+        const action = stream ? 'streamGenerateContent?alt=sse&key=' : 'generateContent?key=';
+        const contents = [{ role: 'user', parts: [{ text: userPrompt }] }];
+        const systemInstruction = systemPrompt ? { parts: [{ text: systemPrompt }] } : undefined;
 
-        for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
-            const apiKey = apiKeys[keyIndex];
+        return requestWithAiKeys({
+            apiKeys, attempts, signal,
+            exhaustedMessage: '[Gemini] All API keys and retries exhausted',
+            createOutput: stream && (() => createStreamingOutput({
+                ...stream,
+                onResetError: error => debug('[Gemini Addon] Failed to reset provisional stream:', error?.message),
+            })),
+            async run({ key, keyNumber, output, nextKey }) {
+                throwIfAiRequestAborted(signal);
+                const baseUrl = getBaseUrl();
+                const endpoint = `${baseUrl.replace(/\/$/, '')}/models/${model}:${action}${encodeURIComponent(key)}`;
+                const request = getAiRequest();
+                const options = {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    ...(signal ? { signal } : {}),
+                    body: JSON.stringify({ systemInstruction, contents, generationConfig: getGenerationConfig(), ...overrides }),
+                };
+                const response = stream ? await request(endpoint, options, timeoutMs) : await request(endpoint, options);
 
-            for (let attempt = 0; attempt < maxRetries; attempt++) {
-                try {
-                    throwIfAiRequestAborted(signal);
-                    const baseUrl = getBaseUrl();
-                    const endpoint = `${baseUrl.replace(/\/$/, '')}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-                    const response = await getAiRequest()(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        ...(signal ? { signal } : {}),
-                        body: JSON.stringify({
-                            ...(systemPrompt ? {
-                                systemInstruction: { parts: [{ text: systemPrompt }] }
-                            } : {}),
-                            contents: [{
-                                role: 'user',
-                                parts: [{ text: userPrompt }]
-                            }],
-                            generationConfig: getGenerationConfig()
-                        })
-                    });
-
-                    if (response.status === 429 || response.status === 403) {
-                        debug(`[Gemini Addon] API key ${keyIndex + 1} failed (${response.status}), trying next...`);
-                        break; // Try next key
-                    }
-
-                    if (!response.ok) {
-                        // Try to parse error response for better error messages
-                        let errorMessage = `HTTP ${response.status}`;
-                        try {
-                            const errorData = await response.json();
-                            if (errorData.error?.message) {
-                                errorMessage = errorData.error.message;
-                            }
-                        } catch (parseError) {
-                            // Use default error message if parsing fails
-                        }
-                        throw new Error(`[Gemini] ${errorMessage}`);
-                    }
-
-                    const data = await response.json();
-                    const { text: rawText } = readGeminiResponse(data);
-
-                    if (!rawText.trim()) {
-                        throw new Error('[Gemini] Empty response from API');
-                    }
-
-                    return typeof transformResult === 'function'
-                        ? transformResult(rawText)
-                        : rawText;
-
-                } catch (e) {
-                    throwIfAiRequestAborted(signal);
-                    if (isSupersededAbort(e)) throw e;
-                    lastError = e;
-                    debug(`[Gemini Addon] Attempt ${attempt + 1} failed:`, e.message);
-
-                    if (attempt < maxRetries - 1) {
-                        await waitForAiRetry(1000 * (attempt + 1), signal);
-                    }
+                if (response.status === 429 || response.status === 403) {
+                    if (!stream) debug(`[Gemini Addon] API key ${keyNumber} failed (${response.status}), trying next...`);
+                    return nextKey();
                 }
-            }
-        }
+                if (!response.ok) {
+                    let message = `HTTP ${response.status}`;
+                    try {
+                        const data = await response.json();
+                        if (data.error?.message) message = data.error.message;
+                    } catch {
+                        // Keep the HTTP status if the API did not return a JSON error.
+                    }
+                    throw new Error(`[Gemini] ${message}`);
+                }
+                if (output) return await consumeGeminiStream(response, output, transformResult);
 
-        throw lastError || new Error('[Gemini] All API keys and retries exhausted');
+                const { text } = readGeminiResponse(await response.json());
+                if (!text.trim()) throw new Error('[Gemini] Empty response from API');
+                return typeof transformResult === 'function' ? transformResult(text) : text;
+            },
+            onError(error, { attemptNumber, output, willRetry }) {
+                if (output) output.reset(willRetry ? 'retry' : 'failed', error);
+                else debug(`[Gemini Addon] Attempt ${attemptNumber} failed:`, error.message);
+            },
+        });
+    }
+
+    async function callGeminiAPIRaw(prompt, attempts = readRequestAttempts(), transformResult = null, signal) {
+        return requestGemini(prompt, { attempts, transformResult, signal });
     }
 
     async function callGeminiAPIStream(
         prompt,
         onLine,
         onStreamReset,
-        maxRetries = readRequestAttempts(),
+        attempts = readRequestAttempts(),
         transformResult = null,
-        requestTimeoutMs = getAiRequest()?.DEFAULT_TIMEOUT_MS || 90_000,
+        timeoutMs = getAiRequest()?.DEFAULT_TIMEOUT_MS || 90_000,
         onRawChunk = null,
-        requestOverrides = {},
+        overrides = {},
         signal,
     ) {
-        const apiKeys = getApiKeys();
-        if (apiKeys.length === 0) throw new Error('[Gemini] API key is required.');
-        const model = getSelectedModel();
-        if (!model) throw new Error('[Gemini] Model is not selected.');
-        const { systemPrompt, userPrompt } = normalizePromptRequest(prompt);
-        let lastError = null;
-
-        for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
-            const apiKey = apiKeys[keyIndex];
-            for (let attempt = 0; attempt < maxRetries; attempt++) {
-                const output = createStreamingOutput({
-                    onLine, onRawChunk, onStreamReset,
-                    onResetError: error => debug('[Gemini Addon] Failed to reset provisional stream:', error?.message),
-                });
-
-                try {
-                    throwIfAiRequestAborted(signal);
-                    const baseUrl = getBaseUrl();
-                    const endpoint = `${baseUrl.replace(/\/$/, '')}/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
-
-                    const response = await getAiRequest()(endpoint, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        ...(signal ? { signal } : {}),
-                        body: JSON.stringify({
-                            ...(systemPrompt ? {
-                                systemInstruction: { parts: [{ text: systemPrompt }] }
-                            } : {}),
-                            contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-                            generationConfig: getGenerationConfig(),
-                            ...requestOverrides
-                        })
-                    }, requestTimeoutMs);
-
-                    if (response.status === 429 || response.status === 403) { break; }
-                    if (!response.ok) {
-                        let msg = `HTTP ${response.status}`;
-                        try { const d = await response.json(); if (d.error?.message) msg = d.error.message; } catch (e) { }
-                        throw new Error(`[Gemini] ${msg}`);
-                    }
-
-                    return await consumeGeminiStream(response, output, transformResult);
-
-                } catch (e) {
-                    throwIfAiRequestAborted(signal);
-                    if (isSupersededAbort(e)) throw e;
-                    lastError = e;
-                    output.reset(attempt < maxRetries - 1 ? 'retry' : 'failed', e);
-                    if (attempt < maxRetries - 1) await waitForAiRetry(1000 * (attempt + 1), signal);
-                }
-            }
-        }
-        throw lastError || new Error('[Gemini] All API keys and retries exhausted');
+        return requestGemini(prompt, {
+            attempts, transformResult, signal, timeoutMs, overrides, stream: { onLine, onStreamReset, onRawChunk },
+        });
     }
 
     async function callGeminiAPI(prompt, maxRetries = readRequestAttempts(), signal) {

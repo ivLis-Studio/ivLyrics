@@ -7,7 +7,8 @@
  */
 
 import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedAiCapabilities.mjs";
-import { isSupersededAbort, throwIfAiRequestAborted, waitForAiRetry } from "./aiRequestCancellation.mjs";
+import { throwIfAiRequestAborted } from "./aiRequestCancellation.mjs";
+import { requestWithAiKeys } from "./aiKeyRotation.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
 import {
@@ -290,76 +291,6 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
         throw new Error(`[Claude] ${errorMessage}`);
     }
 
-    async function callClaudeAPIRaw(prompt, maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3, transformResult = null, signal) {
-        const { apiKeys, model, system, userPrompt } = resolveClaudeRequestPreamble(prompt);
-        let lastError = null;
-
-        for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
-            const apiKey = apiKeys[keyIndex];
-
-            for (let attempt = 0; attempt < maxRetries; attempt++) {
-                try {
-                    throwIfAiRequestAborted(signal);
-                    const response = await getAiRequest()(`${BASE_URL}/messages`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'x-api-key': apiKey,
-                            'anthropic-version': '2023-06-01',
-                            'anthropic-dangerous-direct-browser-access': 'true'
-                        },
-                        ...(signal ? { signal } : {}),
-                        body: JSON.stringify({
-                            model,
-                            ...getAdvancedRequestParams(),
-                            ...(system ? { system } : {}),
-                            messages: [
-                                { role: 'user', content: userPrompt }
-                            ]
-                        })
-                    });
-
-                    if (response.status === 429 || response.status === 403) {
-                        debug(`[Claude Addon] API key ${keyIndex + 1} failed (${response.status}), trying next...`);
-                        break; // Try next key
-                    }
-
-                    if (response.status === 401 || !response.ok) {
-                        await throwClaudeApiResponseError(response);
-                    }
-
-                    const data = await response.json();
-                    if (Array.isArray(system)) logClaudeCacheUsage(data?.usage);
-                    const rawText = readClaudeResponseText(data);
-
-                    if (!rawText.trim()) {
-                        throw new Error('[Claude] Empty response from API');
-                    }
-
-                    return typeof transformResult === 'function'
-                        ? transformResult(rawText)
-                        : rawText;
-
-                } catch (e) {
-                    throwIfAiRequestAborted(signal);
-                    if (isSupersededAbort(e)) throw e;
-                    lastError = e;
-                    debug(`[Claude Addon] Attempt ${attempt + 1} failed:`, e.message);
-
-                    if (e.message.includes('Invalid API key') || e.message.includes('permission denied')) {
-                        throw e;
-                    }
-
-                    if (attempt < maxRetries - 1) {
-                        await waitForAiRetry(1000 * (attempt + 1), signal);
-                    }
-                }
-            }
-        }
-
-        throw lastError || new Error('[Claude] All API keys and retries exhausted');
-    }
-
     async function consumeClaudeSse(body, output) {
         let finalStopReason = '';
 
@@ -441,84 +372,78 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
         return output.finish(output.text, transformResult);
     }
 
+    async function requestClaude(prompt, { attempts, transformResult, signal, stream, timeoutMs, overrides }) {
+        const { apiKeys, model, system, userPrompt } = resolveClaudeRequestPreamble(prompt);
+        const messages = [{ role: 'user', content: userPrompt }];
+        return requestWithAiKeys({
+            apiKeys, attempts, signal,
+            exhaustedMessage: '[Claude] All API keys and retries exhausted',
+            createOutput: stream && (() => createStreamingOutput({
+                ...stream,
+                onResetError: error => debug('[Claude Addon] Failed to reset provisional stream:', error?.message),
+            })),
+            async run({ key, keyNumber, output, nextKey }) {
+                throwIfAiRequestAborted(signal);
+                const request = getAiRequest();
+                const options = {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': key,
+                        'anthropic-version': '2023-06-01',
+                        'anthropic-dangerous-direct-browser-access': 'true',
+                    },
+                    ...(signal ? { signal } : {}),
+                    body: JSON.stringify({
+                        model,
+                        ...getAdvancedRequestParams(),
+                        ...overrides,
+                        ...(system ? { system } : {}),
+                        ...(stream ? { stream: true } : {}),
+                        messages,
+                    }),
+                };
+                const endpoint = `${BASE_URL}/messages`;
+                const response = stream ? await request(endpoint, options, timeoutMs) : await request(endpoint, options);
+                if (response.status === 429 || response.status === 403) {
+                    debug(`[Claude Addon] ${stream ? 'Stream: ' : ''}API key ${keyNumber} failed (${response.status}), trying next...`);
+                    return nextKey();
+                }
+                if (response.status === 401 || !response.ok) await throwClaudeApiResponseError(response);
+                if (output) return await readClaudeStream(response, output, transformResult);
+
+                const data = await response.json();
+                if (Array.isArray(system)) logClaudeCacheUsage(data?.usage);
+                const text = readClaudeResponseText(data);
+                if (!text.trim()) throw new Error('[Claude] Empty response from API');
+                return typeof transformResult === 'function' ? transformResult(text) : text;
+            },
+            onError(error, { attemptNumber, output, willRetry, hasNextKey }) {
+                debug(`[Claude Addon] ${output ? 'Stream attempt' : 'Attempt'} ${attemptNumber} failed:`, error.message);
+                output?.reset(willRetry || hasNextKey ? 'retry' : 'failed', error);
+                if (error.message.includes('Invalid API key') || error.message.includes('permission denied')) return 'stop';
+            },
+        });
+    }
+
+    async function callClaudeAPIRaw(prompt, attempts = getManager()?.getProviderRequestAttempts?.() ?? 3, transformResult = null, signal) {
+        return requestClaude(prompt, { attempts, transformResult, signal });
+    }
+
     async function callClaudeAPIStream(
         prompt,
         onLine,
         onStreamReset,
-        maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3,
+        attempts = getManager()?.getProviderRequestAttempts?.() ?? 3,
         transformResult = null,
-        requestTimeoutMs = getAiRequest()?.DEFAULT_TIMEOUT_MS || 90_000,
+        timeoutMs = getAiRequest()?.DEFAULT_TIMEOUT_MS || 90_000,
         onRawChunk = null,
-        requestOverrides = {},
+        overrides = {},
         signal,
     ) {
-        const { apiKeys, model, system, userPrompt } = resolveClaudeRequestPreamble(prompt);
-        let lastError = null;
-
-        for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
-            const apiKey = apiKeys[keyIndex];
-
-            for (let attempt = 0; attempt < maxRetries; attempt++) {
-                const output = createStreamingOutput({
-                    onLine, onRawChunk, onStreamReset,
-                    onResetError: error => debug('[Claude Addon] Failed to reset provisional stream:', error?.message),
-                });
-
-                try {
-                    throwIfAiRequestAborted(signal);
-                    const response = await getAiRequest()(`${BASE_URL}/messages`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'x-api-key': apiKey,
-                            'anthropic-version': '2023-06-01',
-                            'anthropic-dangerous-direct-browser-access': 'true'
-                        },
-                        ...(signal ? { signal } : {}),
-                        body: JSON.stringify({
-                            model,
-                            ...getAdvancedRequestParams(),
-                            ...requestOverrides,
-                            ...(system ? { system } : {}),
-                            stream: true,
-                            messages: [
-                                { role: 'user', content: userPrompt }
-                            ]
-                        })
-                    }, requestTimeoutMs);
-
-                    if (response.status === 429 || response.status === 403) {
-                        debug(`[Claude Addon] Stream: API key ${keyIndex + 1} failed (${response.status}), trying next...`);
-                        break;
-                    }
-
-                    if (response.status === 401 || !response.ok) {
-                        await throwClaudeApiResponseError(response);
-                    }
-
-                    return await readClaudeStream(response, output, transformResult);
-
-                } catch (e) {
-                    throwIfAiRequestAborted(signal);
-                    if (isSupersededAbort(e)) throw e;
-                    lastError = e;
-                    debug(`[Claude Addon] Stream attempt ${attempt + 1} failed:`, e.message);
-
-                    const willRetry = attempt < maxRetries - 1 || keyIndex < apiKeys.length - 1;
-                    output.reset(willRetry ? 'retry' : 'failed', e);
-
-                    if (e.message.includes('Invalid API key') || e.message.includes('permission denied')) {
-                        throw e;
-                    }
-
-                    if (attempt < maxRetries - 1) {
-                        await waitForAiRetry(1000 * (attempt + 1), signal);
-                    }
-                }
-            }
-        }
-
-        throw lastError || new Error('[Claude] All API keys and retries exhausted');
+        return requestClaude(prompt, {
+            attempts, transformResult, signal, timeoutMs, overrides, stream: { onLine, onStreamReset, onRawChunk },
+        });
     }
 
     async function callClaudeAPI(prompt, maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3, signal) {
