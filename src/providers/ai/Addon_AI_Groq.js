@@ -21,7 +21,7 @@ import {
     testAiConnection,
 } from "./aiProviderSettings.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
-import { createChatCompletionsClient } from "./chatCompletionsClient.mjs";
+import { createChatCompletionRequests, createChatCompletionsClient } from "./chatCompletionsClient.mjs";
 import { extractJSON } from "./aiResponseParsing.mjs";
 
 export default function initializeGroqAddon(services = createBuiltinAiProviderServices(window)) {
@@ -180,14 +180,6 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
             || DEFAULT_RESEARCH_MAX_TOKENS;
     }
 
-    function buildPromptMessages(prompt) {
-        const { systemPrompt, userPrompt } = normalizePromptRequest(prompt);
-        return [
-            ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
-            { role: 'user', content: userPrompt }
-        ];
-    }
-
     function appendGroqWebResearch(prompt, findings) {
         const { systemPrompt, userPrompt } = normalizePromptRequest(prompt);
         return {
@@ -197,27 +189,13 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
     }
 
     async function collectGroqWebResearch(title, artist, requestTimeoutMs, signal) {
-        return await callGroqAPIStream(
-            {
-                systemPrompt: 'Use the available web_search and visit_website tools. Return a concise factual source dossier, not the final editorial JSON. Put a complete source URL next to every claim and clearly mark anything uncertain.',
-                userPrompt: `Research the song "${title}" by "${artist}". Find official credits, release context, interviews, creation stories, performances, reception, cultural afterlife, and genuinely interesting facts.`
-            },
-            null,
-            null,
-            1,
-            null,
-            requestTimeoutMs,
-            null,
-            {
-                model: 'groq/compound',
-                body: {
-                    compound_custom: {
-                        tools: { enabled_tools: ['web_search', 'visit_website'] }
-                    }
-                }
-            },
-            signal
-        );
+        return await streamText({
+            systemPrompt: 'Use the available web_search and visit_website tools. Return a concise factual source dossier, not the final editorial JSON. Put a complete source URL next to every claim and clearly mark anything uncertain.',
+            userPrompt: `Research the song "${title}" by "${artist}". Find official credits, release context, interviews, creation stories, performances, reception, cultural afterlife, and genuinely interesting facts.`
+        }, {
+            attempts: 1, timeoutMs: requestTimeoutMs, signal, model: 'groq/compound',
+            body: { compound_custom: { tools: { enabled_tools: ['web_search', 'visit_website'] } } },
+        });
     }
 
     // ============================================
@@ -229,41 +207,11 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
         endpoint: `${BASE_URL}/chat/completions`, getAiRequest, debug,
     });
 
-    function callGroqAPIRaw(prompt, maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3, transformResult = null, signal) {
-        const apiKeys = getApiKeys();
-        const model = apiKeys.length ? getSelectedModel() : null;
-        return chatCompletions.request({
-            apiKeys, attempts: maxRetries, transformResult, signal,
-            buildBody: () => ({ model, messages: buildPromptMessages(prompt), ...getAdvancedRequestParams() }),
-        });
-    }
-
-    function callGroqAPIStream(
-        prompt,
-        onLine,
-        onStreamReset,
-        maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3,
-        transformResult = null,
-        requestTimeoutMs = getAiRequest()?.DEFAULT_TIMEOUT_MS || 90_000,
-        onRawChunk = null,
-        requestOptions = {},
-        signal,
-    ) {
-        const apiKeys = getApiKeys();
-        const model = apiKeys.length ? (requestOptions.model || getSelectedModel()) : null;
-        return chatCompletions.request({
-            apiKeys, attempts: maxRetries, transformResult, signal,
-            timeoutMs: requestTimeoutMs,
-            stream: { onLine, onStreamReset, onRawChunk },
-            buildBody: () => ({
-                model, messages: buildPromptMessages(prompt), ...getAdvancedRequestParams(), ...(requestOptions.body || {}), stream: true,
-            }),
-        });
-    }
-
-    async function callGroqAPI(prompt, maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3, signal) {
-        return await callGroqAPIRaw(prompt, maxRetries, extractJSON, signal);
-    }
+    const { raw: requestText, stream: streamText, json: requestJson } = createChatCompletionRequests({
+        client: chatCompletions, getApiKeys, getSelectedModel, getAdvancedRequestParams, getAiRequest,
+        readAttempts: () => getManager()?.getProviderRequestAttempts?.() ?? 3,
+        parseJsonInAttempt: true,
+    });
 
     // ============================================
     // Main Addon Object
@@ -297,7 +245,7 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
                     setSetting('model', val);
                 };
 
-                const handleTest = () => testAiConnection(callGroqAPIRaw, setTestStatus, aiText);
+                const handleTest = () => testAiConnection(requestText, setTestStatus, aiText);
 
                 const hasApiKey = getApiKeys().length > 0;
 
@@ -339,12 +287,10 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
             provider: 'Groq',
             allowNullMetadata: true,
             requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
-                ? callGroqAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, undefined, signal)
-                : callGroqAPIRaw(prompt, undefined, parseLines, signal),
-            requestJson: (prompt, signal) => callGroqAPI(prompt, undefined, signal),
+                ? streamText(prompt, { onLine, onStreamReset, transformResult: parseLines, signal })
+                : requestText(prompt, { transformResult: parseLines, signal }),
+            requestJson,
         }),
-
-
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
             let prompt = requireResearchPrompt('Groq', title, artist, tmiPrompt, signal);
@@ -365,20 +311,10 @@ export default function initializeGroqAddon(services = createBuiltinAiProviderSe
                     ? { compound_custom: { tools: { enabled_tools: ['code_interpreter'] } } }
                     : {})
             };
-            return await callGroqAPIStream(
-                prompt,
-                null,
-                resetProgress,
-                1,
-                extractJSON,
-                requestTimeoutMs,
-                onRawChunk,
-                {
-                    model: getSelectedModel(),
-                    body: requestBody
-                },
-                signal
-            );
+            return await streamText(prompt, {
+                onStreamReset: resetProgress, attempts: 1, transformResult: extractJSON, timeoutMs: requestTimeoutMs,
+                onRawChunk, model: getSelectedModel(), body: requestBody, signal,
+            });
         },
     };
 

@@ -1,3 +1,5 @@
+import { normalizePromptRequest } from "./aiProviderInputs.mjs";
+import { extractJSON } from "./aiResponseParsing.mjs";
 import { createStreamingOutput } from "./aiStreamingOutput.mjs";
 import { consumeJsonSse, hasBufferedJsonBody } from "./aiEventStream.mjs";
 import { createChatCompletionReader } from "./chatCompletionResponse.mjs";
@@ -139,4 +141,56 @@ export function createChatCompletionsClient({
     }
 
     return { request };
+}
+
+// The compatible providers share a request shape. Research can override
+// model parameters, while regular requests retain the saved advanced options.
+export function createChatCompletionRequests({
+    client, getApiKeys, getSelectedModel, getAdvancedRequestParams, readAttempts, getAiRequest,
+    rawTimeout = false, selectModelBeforeKeys = false, parseJsonInAttempt = false,
+}) {
+    const readTimeout = () => getAiRequest()?.DEFAULT_TIMEOUT_MS || 90_000;
+
+    function request(prompt, { attempts, transformResult, signal, timeoutMs, stream, model: overrideModel, body: overrides }) {
+        let model = selectModelBeforeKeys ? overrideModel || getSelectedModel() : null;
+        const apiKeys = getApiKeys();
+        if (!selectModelBeforeKeys && apiKeys.length) model = overrideModel || getSelectedModel();
+        return client.request({
+            apiKeys, attempts, transformResult, signal, timeoutMs, stream,
+            buildBody() {
+                const { systemPrompt, userPrompt } = normalizePromptRequest(prompt);
+                return {
+                    model,
+                    messages: [
+                        ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+                        { role: 'user', content: userPrompt },
+                    ],
+                    ...getAdvancedRequestParams(),
+                    ...overrides,
+                    ...(stream ? { stream: true } : {}),
+                };
+            },
+        });
+    }
+
+    function raw(prompt, { attempts = readAttempts(), transformResult = null, signal } = {}) {
+        const timeoutMs = rawTimeout ? readTimeout() : undefined;
+        return request(prompt, { attempts, transformResult, signal, timeoutMs });
+    }
+
+    function stream(prompt, {
+        attempts = readAttempts(), transformResult = null, signal, timeoutMs = readTimeout(),
+        onLine, onStreamReset, onRawChunk = null, model, body,
+    } = {}) {
+        return request(prompt, {
+            attempts, transformResult, signal, timeoutMs, model, body, stream: { onLine, onStreamReset, onRawChunk },
+        });
+    }
+
+    async function json(prompt, signal) {
+        if (parseJsonInAttempt) return await raw(prompt, { transformResult: extractJSON, signal });
+        return extractJSON(await raw(prompt, { signal }));
+    }
+
+    return { raw, stream, json };
 }

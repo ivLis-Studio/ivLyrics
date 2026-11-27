@@ -21,7 +21,7 @@ import {
 } from "./aiProviderSettings.mjs";
 import { createProviderText } from "../providerText.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
-import { createChatCompletionsClient } from "./chatCompletionsClient.mjs";
+import { createChatCompletionRequests, createChatCompletionsClient } from "./chatCompletionsClient.mjs";
 import { extractJSON } from "./aiResponseParsing.mjs";
 
 export default function initializePaxsenixAddon(services = createBuiltinAiProviderServices(window)) {
@@ -196,14 +196,6 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
         return error;
     }
 
-    function buildPromptMessages(prompt) {
-        const { systemPrompt, userPrompt } = normalizePromptRequest(prompt);
-        return [
-            ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
-            { role: 'user', content: userPrompt }
-        ];
-    }
-
     function appendPaxsenixWebResearch(prompt, searchPayload) {
         const { systemPrompt, userPrompt } = normalizePromptRequest(prompt);
         return {
@@ -259,52 +251,11 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
             || /invalid api key|permission denied/i.test(cause.message),
     });
 
-    function callPaxsenixAPIRaw(
-        prompt,
-        maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3,
-        transformResult = null,
-        requestTimeoutMs = getAiRequest()?.DEFAULT_TIMEOUT_MS || 90_000,
-        signal,
-    ) {
-        const apiKeys = getApiKeys();
-        const model = apiKeys.length ? getSelectedModel() : null;
-        return chatCompletions.request({
-            apiKeys, attempts: maxRetries, transformResult, signal, timeoutMs: requestTimeoutMs,
-            buildBody: () => ({ model, messages: buildPromptMessages(prompt), ...getAdvancedRequestParams() }),
-        });
-    }
-
-    function callPaxsenixAPIStream(
-        prompt,
-        onLine,
-        onStreamReset,
-        maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3,
-        transformResult = null,
-        requestTimeoutMs = getAiRequest()?.DEFAULT_TIMEOUT_MS || 90_000,
-        onRawChunk = null,
-        requestOverrides = {},
-        signal,
-    ) {
-        const apiKeys = getApiKeys();
-        const model = apiKeys.length ? getSelectedModel() : null;
-        return chatCompletions.request({
-            apiKeys, attempts: maxRetries, transformResult, signal, timeoutMs: requestTimeoutMs,
-            stream: { onLine, onStreamReset, onRawChunk },
-            buildBody: () => ({
-                model, messages: buildPromptMessages(prompt), ...getAdvancedRequestParams(), ...requestOverrides, stream: true,
-            }),
-        });
-    }
-
-    async function callPaxsenixAPI(
-        prompt,
-        maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3,
-        requestTimeoutMs = getAiRequest()?.DEFAULT_TIMEOUT_MS || 90_000,
-        signal,
-    ) {
-        const rawText = await callPaxsenixAPIRaw(prompt, maxRetries, null, requestTimeoutMs, signal);
-        return extractJSON(rawText);
-    }
+    const { raw: requestText, stream: streamText, json: requestJson } = createChatCompletionRequests({
+        client: chatCompletions, getApiKeys, getSelectedModel, getAdvancedRequestParams, getAiRequest,
+        readAttempts: () => getManager()?.getProviderRequestAttempts?.() ?? 3,
+        rawTimeout: true,
+    });
 
     // ============================================
     // Main Addon Object
@@ -368,7 +319,7 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
                     }
                 };
 
-                const handleTest = () => testAiConnection(callPaxsenixAPIRaw, setTestStatus, aiText);
+                const handleTest = () => testAiConnection(requestText, setTestStatus, aiText);
 
                 const isModelInList = availableModels.some(m => m.id === selectedModel);
                 const isUnknownSelectedModel = Boolean(selectedModel) && availableModels.length > 0 && !isModelInList;
@@ -422,12 +373,10 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
             lineParserName: 'Paxsenix',
             allowNullMetadata: true,
             requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
-                ? callPaxsenixAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, undefined, signal)
-                : callPaxsenixAPIRaw(prompt, undefined, parseLines, undefined, signal),
-            requestJson: (prompt, signal) => callPaxsenixAPI(prompt, undefined, undefined, signal),
+                ? streamText(prompt, { onLine, onStreamReset, transformResult: parseLines, signal })
+                : requestText(prompt, { transformResult: parseLines, signal }),
+            requestJson,
         }),
-
-
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
             let prompt = requireResearchPrompt('paxsenix', title, artist, tmiPrompt, signal);
@@ -436,17 +385,10 @@ export default function initializePaxsenixAddon(services = createBuiltinAiProvid
                 prompt = appendPaxsenixWebResearch(prompt, searchPayload);
             }
             const { onRawChunk, resetProgress } = createResearchStreamCallbacks(getManager, onResearchProgress, signal);
-            return await callPaxsenixAPIStream(
-                prompt,
-                null,
-                resetProgress,
-                1,
-                extractJSON,
-                requestTimeoutMs,
-                onRawChunk,
-                await getResearchRequestOverrides(),
-                signal
-            );
+            return await streamText(prompt, {
+                onStreamReset: resetProgress, attempts: 1, transformResult: extractJSON, timeoutMs: requestTimeoutMs,
+                onRawChunk, body: await getResearchRequestOverrides(), signal,
+            });
         },
     };
 

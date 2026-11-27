@@ -20,8 +20,8 @@ import {
     testAiConnection,
 } from "./aiProviderSettings.mjs";
 import { createProviderText } from "../providerText.mjs";
-import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
-import { createChatCompletionsClient } from "./chatCompletionsClient.mjs";
+import { readProviderApiKeys } from "./aiProviderInputs.mjs";
+import { createChatCompletionRequests, createChatCompletionsClient } from "./chatCompletionsClient.mjs";
 import { extractJSON } from "./aiResponseParsing.mjs";
 
 export default function initializeOpenRouterAddon(services = createBuiltinAiProviderServices(window)) {
@@ -178,14 +178,6 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
             || DEFAULT_RESEARCH_MAX_TOKENS;
     }
 
-    function buildPromptMessages(prompt) {
-        const { systemPrompt, userPrompt } = normalizePromptRequest(prompt);
-        return [
-            ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
-            { role: 'user', content: userPrompt }
-        ];
-    }
-
     // ============================================
     // API Call Functions
     // ============================================
@@ -196,41 +188,11 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
         extraHeaders: { 'HTTP-Referer': 'https://github.com/ivLis-STUDIO/ivLyrics', 'X-Title': 'ivLyrics' },
     });
 
-    function callOpenRouterAPIRaw(prompt, maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3, transformResult = null, signal) {
-        const apiKeys = getApiKeys();
-        const model = apiKeys.length ? getSelectedModel() : null;
-        return chatCompletions.request({
-            apiKeys, attempts: maxRetries, transformResult, signal,
-            buildBody: () => ({ model, messages: buildPromptMessages(prompt), ...getAdvancedRequestParams() }),
-        });
-    }
-
-    function callOpenRouterAPIStream(
-        prompt,
-        onLine,
-        onStreamReset,
-        maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3,
-        transformResult = null,
-        requestTimeoutMs = getAiRequest()?.DEFAULT_TIMEOUT_MS || 90_000,
-        onRawChunk = null,
-        requestOverrides = {},
-        signal,
-    ) {
-        const apiKeys = getApiKeys();
-        const model = apiKeys.length ? (getSelectedModel()) : null;
-        return chatCompletions.request({
-            apiKeys, attempts: maxRetries, transformResult, signal,
-            timeoutMs: requestTimeoutMs,
-            stream: { onLine, onStreamReset, onRawChunk },
-            buildBody: () => ({
-                model, messages: buildPromptMessages(prompt), ...getAdvancedRequestParams(), ...requestOverrides, stream: true,
-            }),
-        });
-    }
-
-    async function callOpenRouterAPI(prompt, maxRetries = getManager()?.getProviderRequestAttempts?.() ?? 3, signal) {
-        return await callOpenRouterAPIRaw(prompt, maxRetries, extractJSON, signal);
-    }
+    const { raw: requestText, stream: streamText, json: requestJson } = createChatCompletionRequests({
+        client: chatCompletions, getApiKeys, getSelectedModel, getAdvancedRequestParams, getAiRequest,
+        readAttempts: () => getManager()?.getProviderRequestAttempts?.() ?? 3,
+        parseJsonInAttempt: true,
+    });
 
     // ============================================
     // Main Addon Object
@@ -278,7 +240,7 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
                     }
                 };
 
-                const handleTest = () => testAiConnection(callOpenRouterAPIRaw, setTestStatus, aiText);
+                const handleTest = () => testAiConnection(requestText, setTestStatus, aiText);
 
                 const isModelInList = availableModels.some(m => m.id === selectedModel);
                 const hasApiKey = getApiKeys().length > 0;
@@ -327,12 +289,10 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
             provider: 'OpenRouter',
             allowNullMetadata: true,
             requestLyrics: ({ prompt, onLine, onStreamReset, parseLines, signal }) => onLine
-                ? callOpenRouterAPIStream(prompt, onLine, onStreamReset, undefined, parseLines, undefined, undefined, undefined, signal)
-                : callOpenRouterAPIRaw(prompt, undefined, parseLines, signal),
-            requestJson: (prompt, signal) => callOpenRouterAPI(prompt, undefined, signal),
+                ? streamText(prompt, { onLine, onStreamReset, transformResult: parseLines, signal })
+                : requestText(prompt, { transformResult: parseLines, signal }),
+            requestJson,
         }),
-
-
 
         async generateTMI({ title, artist, tmiPrompt, requestTimeoutMs, onResearchProgress, webSearch = true, signal }) {
             const prompt = requireResearchPrompt('OpenRouter', title, artist, tmiPrompt, signal);
@@ -353,17 +313,10 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
                         tool_choice: 'required'
                     })
             };
-            return await callOpenRouterAPIStream(
-                prompt,
-                null,
-                resetProgress,
-                1,
-                extractJSON,
-                requestTimeoutMs,
-                onRawChunk,
-                requestOverrides,
-                signal
-            );
+            return await streamText(prompt, {
+                onStreamReset: resetProgress, attempts: 1, transformResult: extractJSON, timeoutMs: requestTimeoutMs,
+                onRawChunk, body: requestOverrides, signal,
+            });
         },
     };
 
