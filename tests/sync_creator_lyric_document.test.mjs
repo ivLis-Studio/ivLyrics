@@ -1,3 +1,4 @@
+import { findSyncCreatorIncompleteVocal } from '#ivlyrics/features/sync/syncCreatorLineCompletion.mjs';
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createSyncCreatorLyricDocument } from "#ivlyrics/features/sync/syncCreatorLyricText.mjs";
@@ -91,4 +92,18 @@ test('merge lookups stay isolated from preview overrides and caller-owned arrays
     assert.deepEqual(layout.getMergedLineIndexesForStart(1, preview), [1, 2, 3]);
     assert.equal(layout.findMergedOwnerLineIndex(1), 0);
     assert.equal(layout.findMergedOwnerLineIndex(2), -1);
+});
+
+test('advance reads the just-committed vocal timing before the editor rerenders', () => {
+    const lead = { id: 'a', speaker: 'lead', ranges: [{ start: 0, end: 1 }] };
+    const backing = { id: 'b', speaker: 'backing', ranges: [{ start: 2, end: 3 }] };
+    const savedLead = { ...lead, chars: [0, 1] };
+    const savedBacking = { ...backing, chars: [1, 2] };
+    const isMetaComplete = part => Boolean(part.speaker);
+    const next = (parts, saved) => findSyncCreatorIncompleteVocal(parts, { parallel: { parts: saved } }, isMetaComplete);
+
+    assert.equal(next([lead, backing], [savedLead]), 'b');
+    assert.equal(next([savedLead, backing], [savedLead, savedBacking]), null);
+    assert.equal(next([lead, backing], [{ ...savedLead, ranges: [{ start: 1, end: 2 }] }]), 'a');
+    assert.equal(next([lead, { ...backing, speaker: '' }], [savedLead, savedBacking]), 'b');
 });

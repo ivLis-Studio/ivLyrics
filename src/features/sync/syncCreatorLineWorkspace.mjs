@@ -1,11 +1,11 @@
 import { SYNC_CREATOR_MAX_MERGED_LINES, createSyncCreatorMergedLayout } from './syncCreatorMergedLayout.mjs';
 import {
-	getSyncCreatorConcurrentParallelParts, hasReusableSyncCreatorParallelChars,
+	getSyncCreatorConcurrentParallelParts,
 	resolveSyncCreatorManualSplitState, selectSyncCreatorParallelTemplate,
 } from './parallelTiming.mjs';
 import { formatSyncCreatorParallelPreviewLines, rangesToCharRefs } from './syncCreatorVocalLayout.mjs';
 import { SYNC_CREATOR_DEFAULT_KIND } from './syncCreatorVocalStyles.mjs';
-import { countSyncCreatorCompletedLines, isSyncCreatorLineSynced } from './syncCreatorLineCompletion.mjs';
+import { countSyncCreatorCompletedLines, findSyncCreatorIncompleteVocal, isSyncCreatorLineSynced } from './syncCreatorLineCompletion.mjs';
 
 const EMPTY_SYNC_CREATOR_LINE_CHARS = [];
 const EMPTY_SYNC_CREATOR_PARTS = [];
@@ -288,18 +288,10 @@ export function useSyncCreatorLineWorkspace({
 		}
 		setActiveParallelPartId('full');
 	}, [multiVocalMode, hasCurrentParallelParts, currentParallelParts, activeParallelPartId, currentLineIndex, lyricsText]);
-	const getIncompleteParallelPartId = useCallback((lineData) => {
-		if (!multiVocalMode || !currentParallelData || currentParallelParts.length <= 1) return null;
-		for (const part of currentParallelParts) {
-			if (!hasReusableSyncCreatorParallelChars(part, part)) {
-				return part.id;
-			}
-			if (!isSyncCreatorSpeakerMetaComplete(part) || !(normalizeSyncCreatorKind(part.kind) || SYNC_CREATOR_DEFAULT_KIND)) {
-				return part.id;
-			}
-		}
-		return null;
-	}, [multiVocalMode, currentParallelData, currentParallelParts]);
+	const getIncompleteParallelPartId = useCallback((committedLine) => {
+		if (!multiVocalMode || !hasCurrentParallelParts) return null;
+		return findSyncCreatorIncompleteVocal(currentParallelParts, committedLine, isSyncCreatorSpeakerMetaComplete);
+	}, [multiVocalMode, hasCurrentParallelParts, currentParallelParts, isSyncCreatorSpeakerMetaComplete]);
 	const isCurrentSyncTargetMetaComplete = useMemo(() => {
 		if (!multiVocalMode) return true;
 		if (hasCurrentParallelParts) {

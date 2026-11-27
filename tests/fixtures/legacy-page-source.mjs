@@ -106,10 +106,10 @@ export function readSyncCreatorFixture() {
         .replace("import { useSyncCreatorLineWorkspace } from '#ivlyrics/features/sync/syncCreatorLineWorkspace.mjs';",
             "import { createSyncCreatorMergedLayout, SYNC_CREATOR_MAX_MERGED_LINES } from '#ivlyrics/features/sync/syncCreatorMergedLayout.mjs';\n"
             + "import { rangesToCharRefs, formatSyncCreatorParallelPreviewLines } from '#ivlyrics/features/sync/syncCreatorVocalLayout.mjs';\n"
-            + "import { countSyncCreatorCompletedLines, isSyncCreatorLineSynced } from '#ivlyrics/features/sync/syncCreatorLineCompletion.mjs';")
+            + "import { countSyncCreatorCompletedLines, findSyncCreatorIncompleteVocal, isSyncCreatorLineSynced } from '#ivlyrics/features/sync/syncCreatorLineCompletion.mjs';")
         .replace("} = syncCreatorVocalLayout;\n",
             "} = syncCreatorVocalLayout;\nconst { buildParentheticalParallelTemplate, buildManualParallelTemplate } = syncCreatorVocalLayout;\n"
-            + "const EMPTY_SYNC_CREATOR_LINE_CHARS = [];\n")
+            + "const EMPTY_SYNC_CREATOR_LINE_CHARS = [];\nconst EMPTY_SYNC_CREATOR_PARTS = [];\n")
         .replace(/^\tconst \{\n\t\tcurrentLineStart,[\s\S]+?^\t\} = useSyncCreatorLineWorkspace\(\{[\s\S]+?^\t\}\);/m,
             () => layout.slice(layoutStart, charactersStart))
         .replace("\tscoreInputContextRef.current = {", () => layout.slice(charactersStart) + "\n\tscoreInputContextRef.current = {")

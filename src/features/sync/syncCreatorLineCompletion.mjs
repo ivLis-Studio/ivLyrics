@@ -34,10 +34,22 @@ export function countSyncCreatorCompletedLines({
 	return completed;
 }
 
+function hasVocalTiming(part, line) {
+	if (hasReusableSyncCreatorParallelChars(part, part)) return true;
+	const savedPart = line?.parallel?.parts?.find(entry => entry.id === part.id);
+	return hasReusableSyncCreatorParallelChars(part, savedPart);
+}
+
+export function findSyncCreatorIncompleteVocal(parts, committedLine, isMetaComplete) {
+	for (const part of parts) {
+		// A recording completes before the next render replaces the editor's parts.
+		if (!hasVocalTiming(part, committedLine) || !isMetaComplete(part)) return part.id;
+	}
+	return null;
+}
+
 export function isSyncCreatorLineSynced(line, activePart, coveredByPrevious) {
 	if (coveredByPrevious) return true;
 	if (!line) return false;
-	if (!activePart || hasReusableSyncCreatorParallelChars(activePart, activePart)) return true;
-	const savedPart = line.parallel?.parts?.find(part => part.id === activePart.id);
-	return hasReusableSyncCreatorParallelChars(activePart, savedPart);
+	return !activePart || hasVocalTiming(activePart, line);
 }
