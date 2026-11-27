@@ -91,7 +91,7 @@ const getKaraokeFillSoftEdge = (fillValue, maximumEdge) => {
 
 export function createKaraokeFill(getVisualSettings) {
 	let karaokeFillCorrectionCurveCacheKey = null;
-	let karaokeFillCorrectionCurveCachePoints = KARAOKE_FILL_CORRECTION_DEFAULT_POINTS;
+	let karaokeFillCorrectionCurveCachePoints = null;
 
 	const getKaraokeFillCorrectionPoints = () => {
 		const configuredValue = getVisualSettings()?.["karaoke-fill-correction-curve"] ||
@@ -101,7 +101,9 @@ export function createKaraokeFill(getVisualSettings) {
 		}
 
 		karaokeFillCorrectionCurveCacheKey = configuredValue;
-		karaokeFillCorrectionCurveCachePoints = normalizeKaraokeFillCorrectionPoints(configuredValue);
+		const points = normalizeKaraokeFillCorrectionPoints(configuredValue);
+		karaokeFillCorrectionCurveCachePoints =
+			points.every((point) => Math.abs(point.y - point.x) < 0.000001) ? null : points;
 		return karaokeFillCorrectionCurveCachePoints;
 	};
 
@@ -111,10 +113,7 @@ export function createKaraokeFill(getVisualSettings) {
 		if (normalizedValue >= 1) return 1;
 
 		const points = getKaraokeFillCorrectionPoints();
-		if (points.every((point) => Math.abs(point.y - point.x) < 0.000001)) {
-			return normalizedValue;
-		}
-		return evaluateKaraokeFillCurve(points, normalizedValue);
+		return points ? evaluateKaraokeFillCurve(points, normalizedValue) : normalizedValue;
 	};
 
 	const getKaraokeCharFill = (position, _isActive, startTime, endTime, isComplete = false) => {

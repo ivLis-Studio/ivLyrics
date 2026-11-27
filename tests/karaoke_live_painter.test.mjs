@@ -212,3 +212,31 @@ test('rows outside the visible window stop painting after their fade-out', () =>
   assert.match(transitions, /420ms, 0s !important;/);
   assert.match(transitions, /0s, 0s, 420ms !important;/);
 });
+
+test('off-window glyphs skip fill work while motion clears across a forward or backward seek', () => {
+  const harness = createHarness();
+  const { paintKaraokeLiveEntry } = harness.context.api;
+  const { entry, elements } = createLiveFixture(harness, { bounce: true });
+  let fillReads = 0;
+  // Count the same reads as the live painter without changing its fill curve.
+  for (const unit of entry.units.values()) {
+    const { startTime } = unit.fill;
+    Object.defineProperty(unit.fill, 'startTime', { get() { fillReads++; return startTime; } });
+  }
+  paintKaraokeLiveEntry(entry, 80);
+  fillReads = 0;
+  paintKaraokeLiveEntry(entry, 100);
+  assert.equal(fillReads, 1);
+  assert.ok(elements[0].values.has('--karaoke-bounce-y'));
+
+  paintKaraokeLiveEntry(entry, 3000);
+  assert.equal(elements[0].values.has('--karaoke-bounce-y'), false);
+  fillReads = 0;
+  paintKaraokeLiveEntry(entry, 3008);
+  assert.equal(fillReads, 0);
+
+  paintKaraokeLiveEntry(entry, 420);
+  assert.ok(elements[1].values.has('--karaoke-bounce-y'));
+  paintKaraokeLiveEntry(entry, -20);
+  assert.equal(elements[1].values.has('--karaoke-bounce-y'), false);
+});

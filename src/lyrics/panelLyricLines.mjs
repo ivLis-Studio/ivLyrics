@@ -90,6 +90,9 @@ export function createPanelLyricLines({
             if (!wordRef.current) return;
 
             let lastShouldBeSung = null;
+            const fillStartTime = Number.isFinite(syllable?.karaokeFillStartTime)
+                ? syllable.karaokeFillStartTime
+                : syllable.startTime;
 
             const updateSungState = () => {
                 const el = wordRef.current;
@@ -103,9 +106,6 @@ export function createPanelLyricLines({
                 }
 
                 const currentTime = readPlaybackPosition() || 0;
-                const fillStartTime = Number.isFinite(syllable?.karaokeFillStartTime)
-                    ? syllable.karaokeFillStartTime
-                    : syllable.startTime;
                 const shouldBeSung = currentTime >= fillStartTime;
                 if (shouldBeSung === lastShouldBeSung) return;
 
@@ -169,7 +169,10 @@ export function createPanelLyricLines({
             if (!segmentRef.current || !text || segment?.type === "space") return;
 
             let lastState = null;
+            let lastPositionFill = null;
             let lastFill = null;
+            let lastSoftStart = null;
+            let lastSoftEnd = null;
 
             const updateSegmentState = () => {
                 const el = segmentRef.current;
@@ -183,10 +186,10 @@ export function createPanelLyricLines({
                 const isActive = fill > 0 && fill < 100;
                 const state = isDone ? "done" : (isActive ? "active" : "pending");
                 const stateChanged = state !== lastState;
-                if (!stateChanged && (!isActive || fill === lastFill)) return;
+                if (!stateChanged && (!isActive || fill === lastPositionFill)) return;
 
                 lastState = state;
-                lastFill = fill;
+                lastPositionFill = fill;
 
                 if (stateChanged) {
                     el.classList.toggle("sung", isDone);
@@ -198,9 +201,21 @@ export function createPanelLyricLines({
                     if (stateChanged) {
                         el.style.setProperty("--ivlyrics-panel-karaoke-gradient-direction", gradientDirection);
                     }
-                    el.style.setProperty("--ivlyrics-panel-karaoke-fill", formatKaraokePercent(fill));
-                    el.style.setProperty("--ivlyrics-panel-karaoke-fill-soft-start", formatKaraokePercent(Math.max(0, fill - softEdge)));
-                    el.style.setProperty("--ivlyrics-panel-karaoke-fill-soft-end", formatKaraokePercent(Math.min(100, fill + softEdge)));
+                    const fillPercent = formatKaraokePercent(fill);
+                    const softStart = formatKaraokePercent(Math.max(0, fill - softEdge));
+                    const softEnd = formatKaraokePercent(Math.min(100, fill + softEdge));
+                    if (stateChanged || fillPercent !== lastFill) {
+                        el.style.setProperty("--ivlyrics-panel-karaoke-fill", fillPercent);
+                        lastFill = fillPercent;
+                    }
+                    if (stateChanged || softStart !== lastSoftStart) {
+                        el.style.setProperty("--ivlyrics-panel-karaoke-fill-soft-start", softStart);
+                        lastSoftStart = softStart;
+                    }
+                    if (stateChanged || softEnd !== lastSoftEnd) {
+                        el.style.setProperty("--ivlyrics-panel-karaoke-fill-soft-end", softEnd);
+                        lastSoftEnd = softEnd;
+                    }
                 } else if (stateChanged) {
                     el.style.removeProperty("--ivlyrics-panel-karaoke-gradient-direction");
                     el.style.removeProperty("--ivlyrics-panel-karaoke-fill");

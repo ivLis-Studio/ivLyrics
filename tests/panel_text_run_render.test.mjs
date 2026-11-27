@@ -2,18 +2,25 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { formatKaraokePercent, getKaraokeTextRunFill } from "../src/lyrics/panelKaraokeText.mjs";
 
 const source = readFileSync(new URL("../src/lyrics/panelLyricLines.mjs", import.meta.url), "utf8");
 const start = source.indexOf("    const KaraokeTextRunSegment = memo(");
 const end = source.indexOf("    // ============================================", start);
 assert.ok(start >= 0 && end > start);
 
-const createRenderer = () => {
+const createRenderer = (element = null) => {
   const speakerCalls = [];
+  const host = new EventTarget();
+  let position = 0;
   const context = vm.createContext({
     memo: (component) => component,
-    useRef: () => ({ current: null }),
-    useLayoutEffect: () => {},
+    useRef: () => ({ current: element }),
+    useLayoutEffect: (effect) => effect(),
+    readPlaybackPosition: () => position,
+    formatKaraokePercent,
+    getKaraokeTextRunFill,
+    host,
     getKaraokeTextDirection: (text) => /[\u0600-\u06ff]/.test(text) ? "rtl" : null,
     getPanelSpeakerPresentation: (...args) => {
       speakerCalls.push(args);
@@ -29,6 +36,10 @@ const createRenderer = () => {
       segment, idx: 2, isLinePast: false, isLineActive: false, ...extra,
     }),
     speakerCalls,
+    advance(nextPosition) {
+      position = nextPosition;
+      host.dispatchEvent(new Event("ivlyrics-panel-time-update"));
+    },
   };
 };
 
@@ -65,4 +76,34 @@ test("NowPlaying empty and space text runs do not need speaker presentation", ()
   assert.equal(result.text, " ");
   assert.equal(result.props.className, "ivlyrics-panel-karaoke-text-run-space");
   assert.deepEqual(speakerCalls, []);
+});
+
+test("shaped panel fill only rewrites changed CSS values and clears them at the end", () => {
+  const values = new Map();
+  const classes = new Set();
+  const writes = [];
+  const { render, advance } = createRenderer({
+    classList: { toggle: (key, on) => on ? classes.add(key) : classes.delete(key) },
+    style: {
+      setProperty: (key, value) => { writes.push(key); values.set(key, value); },
+      removeProperty: (key) => values.delete(key),
+    },
+  });
+  render({ text: "مرحبا", type: "text", startTime: 100, endTime: 10100 }, { isLineActive: true });
+  advance(2101.23);
+  assert.deepEqual(Object.fromEntries(values), {
+    "--ivlyrics-panel-karaoke-gradient-direction": "to left",
+    "--ivlyrics-panel-karaoke-fill": "20.01%",
+    "--ivlyrics-panel-karaoke-fill-soft-start": "10.01%",
+    "--ivlyrics-panel-karaoke-fill-soft-end": "30.01%",
+  });
+  writes.length = 0;
+  advance(2101.24);
+  assert.deepEqual(writes, [], "two samples format to the same CSS values");
+  advance(10100);
+  assert.deepEqual([...classes], ["sung"]);
+  assert.equal(values.size, 0);
+  advance(500);
+  assert.deepEqual([...classes], ["active"]);
+  assert.equal(values.get("--ivlyrics-panel-karaoke-fill"), "4%");
 });

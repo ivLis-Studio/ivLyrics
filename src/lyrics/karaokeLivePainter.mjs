@@ -1,6 +1,6 @@
 import { getKaraokeFillSoftEdge } from "./karaokeFill.mjs";
 import {
-	createKaraokeMotionProfile, getKaraokeMotionProfile,
+	createKaraokeMotionProfile, getKaraokeMotionProfile, KARAOKE_EXPRESSIVE_SETTLE_MS,
 	getKaraokeExpressiveWordWindow, isKaraokeExpressiveEmphasisUnit,
 } from "./karaokeMotion.mjs";
 
@@ -110,6 +110,30 @@ export function createKaraokeLivePainter({
 	const resetKaraokeLiveUnit = (unit) => {
 		if (unit.expressive) clearKaraokeExpressiveMotion(unit);
 		for (const name of KARAOKE_LIVE_BOUNCE_PROPERTIES) setKaraokeLiveValue(unit, name, null);
+	};
+
+	// A unit outside both samples cannot change fill or motion. Keep the exit
+	// sample so motion properties and expressive spring state are cleared, and
+	// run a full paint after a DOM rebind or for unrecognized timing data.
+	const getKaraokeLivePaintWindow = ({ fill, expressive, profile }) => {
+		let start = Infinity;
+		let end = -Infinity;
+		if (fill) {
+			if (!Number.isFinite(fill.startTime) || !Number.isFinite(fill.endTime)) return null;
+			start = fill.startTime;
+			end = fill.endTime;
+		}
+		const motion = expressive || profile;
+		if (motion) {
+			const releaseEnd = expressive
+				? Math.max(motion.startTime, motion.endTime) + KARAOKE_EXPRESSIVE_SETTLE_MS
+				: motion.endTime + motion.releaseDuration;
+			if (!Number.isFinite(motion.startTime) || !Number.isFinite(motion.endTime)
+				|| !Number.isFinite(releaseEnd)) return null;
+			start = Math.min(start, motion.startTime);
+			end = Math.max(end, releaseEnd);
+		}
+		return { start, end };
 	};
 
 	const paintKaraokeLiveUnit = (unit, position, frameTime) => {
@@ -226,15 +250,30 @@ export function createKaraokeLivePainter({
 		if (expressive && Number.isFinite(frameTime)) entry.lastMotionFrameTime = frameTime;
 		// Expressive settings also apply to a paused live row before React commits
 		// its next structure. Classic retains its existing clock-only fast path.
-		const bounce = expressive ? getVisualSettings()["karaoke-bounce"] : null;
-		const effects = expressive ? getVisualSettings()["karaoke-text-effects"] : null;
-		const style = expressive ? getVisualSettings()["karaoke-motion-style"] : null;
+		const settings = expressive ? getVisualSettings() : null;
+		const bounce = settings?.["karaoke-bounce"];
+		const effects = settings?.["karaoke-text-effects"];
+		const style = settings?.["karaoke-motion-style"];
 		const reduced = expressive ? prefersReducedLyricsMotion() : null;
 		if (Object.is(position, entry.lastPosition) && (!expressive
 			|| (entry.bounce === bounce && entry.effects === effects && entry.style === style && entry.reduced === reduced))) return false;
+		const previousPosition = entry.lastPosition;
 		entry.lastPosition = position;
-		if (expressive) Object.assign(entry, { bounce, effects, style, reduced });
-		for (const unit of entry.units.values()) paintKaraokeLiveUnit(unit, position, frameTime);
+		if (expressive) {
+			entry.bounce = bounce;
+			entry.effects = effects;
+			entry.style = style;
+			entry.reduced = reduced;
+		}
+		const canSkipIdle = Number.isFinite(previousPosition) && Number.isFinite(position);
+		for (const unit of entry.units.values()) {
+			if (unit.paintWindow === undefined) unit.paintWindow = getKaraokeLivePaintWindow(unit);
+			const window = unit.paintWindow;
+			if (canSkipIdle && window
+				&& (position < window.start || position > window.end)
+				&& (previousPosition < window.start || previousPosition > window.end)) continue;
+			paintKaraokeLiveUnit(unit, position, frameTime);
+		}
 		return true;
 	};
 
