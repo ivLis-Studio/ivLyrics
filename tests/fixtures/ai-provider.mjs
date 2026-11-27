@@ -25,7 +25,9 @@ export function readAiProviderFixture(file) {
     const moduleImports = (source.match(importPattern) || [])
         .filter(statement => !statement.includes("builtinAiProviderServices.mjs"))
         .filter(statement => !openAiFactory || !statement.includes("Addon_AI_ChatGPT.js"))
-        .join("").replaceAll('from "./', 'from "#ivlyrics/providers/ai/');
+        .join("")
+        .replaceAll('from "./', 'from "#ivlyrics/providers/ai/')
+        .replaceAll('from "../', 'from "#ivlyrics/providers/');
     return bundleFixtureImports(moduleImports + `(() => {
     const createBuiltinAiProviderServices = (host) => ({
         host,

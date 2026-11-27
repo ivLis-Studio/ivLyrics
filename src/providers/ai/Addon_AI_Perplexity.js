@@ -12,6 +12,7 @@ import { requestWithAiKeys } from "./aiKeyRotation.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
 import {
+    createAiAddonSettingAccess,
     createAiAdvancedParamsSection,
     renderAiConnectionTestRow,
     useAiApiKeyValue,
@@ -21,6 +22,7 @@ import {
     useAiModelPicker,
     testAiConnection,
 } from "./aiProviderSettings.mjs";
+import { createProviderText } from "../providerText.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { createStreamingOutput } from "./aiStreamingOutput.mjs";
 import { consumeJsonSse, hasBufferedJsonBody } from "./aiEventStream.mjs";
@@ -156,19 +158,8 @@ export default function initializePerplexityAddon(services = createBuiltinAiProv
     // Helper Functions
     // ============================================
 
-    function aiText(key, fallback) {
-        const path = `settings.aiProviders.${key}`;
-        const value = getI18n()?.t?.(path);
-        return value && value !== path ? value : fallback;
-    }
-
-    function getSetting(key, defaultValue = null) {
-        return getManager()?.getAddonSetting(ADDON_INFO.id, key, defaultValue) ?? defaultValue;
-    }
-
-    function setSetting(key, value) {
-        getManager()?.setAddonSetting(ADDON_INFO.id, key, value);
-    }
+    const aiText = createProviderText(getI18n, 'settings.aiProviders.');
+    const { getSetting, setSetting } = createAiAddonSettingAccess(getManager, ADDON_INFO.id);
 
     const getApiKeys = () => readProviderApiKeys(getSetting);
 

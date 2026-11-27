@@ -10,6 +10,7 @@ import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedA
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
 import {
+    createAiAddonSettingAccess,
     createAiAdvancedParamsSection,
     readAiAdvancedRequestParams,
     renderAiConnectionTestRow,
@@ -138,14 +139,7 @@ export default function initializeOpenRouterAddon(services = createBuiltinAiProv
     // ============================================
 
     const aiText = createProviderText(getI18n, 'settings.aiProviders.');
-
-    function getSetting(key, defaultValue = null) {
-        return getManager()?.getAddonSetting(ADDON_INFO.id, key, defaultValue) ?? defaultValue;
-    }
-
-    function setSetting(key, value) {
-        getManager()?.setAddonSetting(ADDON_INFO.id, key, value);
-    }
+    const { getSetting, setSetting } = createAiAddonSettingAccess(getManager, ADDON_INFO.id);
 
     const getApiKeys = () => readProviderApiKeys(getSetting);
 

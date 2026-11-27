@@ -12,7 +12,8 @@ import { requestWithAiKeys } from "./aiKeyRotation.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
 import {
-    renderAiAdvancedParams,
+    createAiAddonSettingAccess,
+    createAiAdvancedParamsSection,
     readAiAdvancedRequestParams,
     renderAiConnectionTestRow,
     useAiApiKeyValue,
@@ -22,6 +23,7 @@ import {
     useAiModelPicker,
     testAiConnection,
 } from "./aiProviderSettings.mjs";
+import { createProviderText } from "../providerText.mjs";
 import { normalizePromptRequest, readProviderApiKeys } from "./aiProviderInputs.mjs";
 import { createStreamingOutput } from "./aiStreamingOutput.mjs";
 import { consumeSseFrames, hasBufferedJsonBody } from "./aiEventStream.mjs";
@@ -151,19 +153,8 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
     // Helper Functions
     // ============================================
 
-    function aiText(key, fallback) {
-        const path = `settings.aiProviders.${key}`;
-        const value = getI18n()?.t?.(path);
-        return value && value !== path ? value : fallback;
-    }
-
-    function getSetting(key, defaultValue = null) {
-        return getManager()?.getAddonSetting(ADDON_INFO.id, key, defaultValue) ?? defaultValue;
-    }
-
-    function setSetting(key, value) {
-        getManager()?.setAddonSetting(ADDON_INFO.id, key, value);
-    }
+    const aiText = createProviderText(getI18n, 'settings.aiProviders.');
+    const { getSetting, setSetting } = createAiAddonSettingAccess(getManager, ADDON_INFO.id);
 
     const getApiKeys = () => readProviderApiKeys(getSetting);
 
@@ -472,7 +463,8 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
 
         getSettingsUI() {
             const React = getSpicetify().React;
-            const { useState, useCallback } = React;
+            const { useState } = React;
+            const AdvancedParamsSection = createAiAdvancedParamsSection({ React, getSetting, setSetting, aiText, temperature: null });
 
             return function ClaudeSettings() {
                 const [apiKeys, setApiKeys] = useAiApiKeyValue(React, getSetting);
@@ -531,38 +523,6 @@ export default function initializeClaudeAddon(services = createBuiltinAiProvider
                     renderTestRow()
                 );
             };
-
-            function AdvancedParamsSection() {
-                const [expanded, setExpanded] = useState(() => getSetting('adv-expanded', false));
-                const [maxTokensEnabled, setMaxTokensEnabled] = useState(() => getSetting('adv-maxTokens-enabled', true));
-                const [maxTokensValue, setMaxTokensValue] = useState(() => getSetting('adv-maxTokens-value', 16000));
-
-                const toggleExpanded = useCallback(() => {
-                    const next = !expanded;
-                    setExpanded(next);
-                    setSetting('adv-expanded', next);
-                }, [expanded]);
-
-                return renderAiAdvancedParams(React, { aiText, expanded, toggleExpanded },
-                    expanded && React.createElement('div', { className: 'ai-addon-advanced-body' },
-                        React.createElement('div', { className: 'ai-addon-advanced-row' },
-                            React.createElement('label', { className: 'ai-addon-advanced-check' },
-                                React.createElement('input', {
-                                    type: 'checkbox', checked: maxTokensEnabled,
-                                    onChange: (e) => { setMaxTokensEnabled(e.target.checked); setSetting('adv-maxTokens-enabled', e.target.checked); }
-                                }),
-                                React.createElement('span', null, aiText('maxTokens', 'Max Tokens'))
-                            ),
-                            React.createElement('input', {
-                                type: 'number', value: maxTokensValue, disabled: !maxTokensEnabled,
-                                'aria-label': aiText('maxTokens', 'Max Tokens'),
-                                onChange: (e) => { const v = parseInt(e.target.value) || 16000; setMaxTokensValue(v); setSetting('adv-maxTokens-value', v); }
-                            })
-                        ),
-                        React.createElement('small', null, aiText('advancedParamsDesc', 'Uncheck to exclude parameter from API request.'))
-                    )
-                );
-            }
         },
 
         ...promptedCapabilities,

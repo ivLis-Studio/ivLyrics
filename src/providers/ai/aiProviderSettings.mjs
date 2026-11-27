@@ -1,6 +1,15 @@
 // Settings shared by several AI providers. Each provider passes its own
 // setting accessors and text, so keys stay per provider.
 
+// One provider's own stored settings. The manager is looked up on every call
+// because built-in providers are created before it is installed.
+export function createAiAddonSettingAccess(getManager, addonId) {
+    return {
+        getSetting: (key, defaultValue = null) => getManager()?.getAddonSetting(addonId, key, defaultValue) ?? defaultValue,
+        setSetting: (key, value) => { getManager()?.setAddonSetting?.(addonId, key, value); },
+    };
+}
+
 // Request parameters from the "Advanced API Parameters" section below.
 export function readAiAdvancedRequestParams(getSetting, { maxTokens = 16000, temperature = true } = {}) {
     const params = {};
@@ -16,14 +25,17 @@ export function readAiAdvancedRequestParams(getSetting, { maxTokens = 16000, tem
 }
 
 // Max tokens and temperature, each of which can be left out of the request.
+// A provider that never sends a temperature passes temperature: null and
+// shows no temperature row.
 export function createAiAdvancedParamsSection({ React, getSetting, setSetting, aiText, maxTokens = 16000, temperature = true }) {
     const { useState, useCallback } = React;
+    const showTemperature = temperature !== null;
     return function AdvancedParamsSection() {
         const [expanded, setExpanded] = useState(() => getSetting('adv-expanded', false));
         const [maxTokensEnabled, setMaxTokensEnabled] = useState(() => getSetting('adv-maxTokens-enabled', true));
         const [maxTokensValue, setMaxTokensValue] = useState(() => getSetting('adv-maxTokens-value', maxTokens));
-        const [temperatureEnabled, setTemperatureEnabled] = useState(() => getSetting('adv-temperature-enabled', temperature));
-        const [temperatureValue, setTemperatureValue] = useState(() => getSetting('adv-temperature-value', 0.3));
+        const [temperatureEnabled, setTemperatureEnabled] = useState(() => showTemperature && getSetting('adv-temperature-enabled', temperature));
+        const [temperatureValue, setTemperatureValue] = useState(() => (showTemperature ? getSetting('adv-temperature-value', 0.3) : 0.3));
 
         const toggleExpanded = useCallback(() => {
             const next = !expanded;
@@ -40,13 +52,13 @@ export function createAiAdvancedParamsSection({ React, getSetting, setSetting, a
                     ),
                     React.createElement('input', { type: 'number', value: maxTokensValue, disabled: !maxTokensEnabled, 'aria-label': aiText('maxTokens', 'Max Tokens'), onChange: (e) => { const v = parseInt(e.target.value) || maxTokens; setMaxTokensValue(v); setSetting('adv-maxTokens-value', v); } })
                 ),
-                React.createElement('div', { className: 'ai-addon-advanced-row' },
+                ...(showTemperature ? [React.createElement('div', { className: 'ai-addon-advanced-row' },
                     React.createElement('label', { className: 'ai-addon-advanced-check' },
                         React.createElement('input', { type: 'checkbox', checked: temperatureEnabled, onChange: (e) => { setTemperatureEnabled(e.target.checked); setSetting('adv-temperature-enabled', e.target.checked); } }),
                         React.createElement('span', null, aiText('temperature', 'Temperature'))
                     ),
                     React.createElement('input', { type: 'number', value: temperatureValue, disabled: !temperatureEnabled, 'aria-label': aiText('temperature', 'Temperature'), step: '0.1', min: '0', max: '2', onChange: (e) => { const v = parseFloat(e.target.value) || 0.3; setTemperatureValue(v); setSetting('adv-temperature-value', v); } })
-                ),
+                )] : []),
                 React.createElement('small', null, aiText('advancedParamsDesc', 'Uncheck to exclude parameter from API request.'))
             )
         );

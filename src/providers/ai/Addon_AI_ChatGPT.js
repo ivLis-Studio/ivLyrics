@@ -9,6 +9,7 @@
 import { createPromptedAiCapabilities, requireResearchPrompt } from "./promptedAiCapabilities.mjs";
 import { createResearchStreamCallbacks } from "./researchStreamCallbacks.mjs";
 import { createBuiltinAiProviderServices } from "./builtinAiProviderServices.mjs";
+import { createAiAddonSettingAccess } from "./aiProviderSettings.mjs";
 import { createOpenAiTransport } from "./openAiTransport.mjs";
 import { createOpenAiConnections, ensureRequestTargets, normalizeBaseUrl } from "./openAiConnections.mjs";
 import { createOpenAiModelCatalog } from "./openAiModelCatalog.mjs";
@@ -86,15 +87,7 @@ export function createOpenAICompatibleAddon(config = {}, services = createBuilti
     // Helper Functions
     // ============================================
 
-    function getSetting(key, defaultValue = null) {
-        return getManager()?.getAddonSetting(ADDON_INFO.id, key, defaultValue) ?? defaultValue;
-    }
-
-    function setSetting(key, value) {
-        if (typeof getManager()?.setAddonSetting === 'function') {
-            getManager().setAddonSetting(ADDON_INFO.id, key, value);
-        }
-    }
+    const { getSetting, setSetting } = createAiAddonSettingAccess(getManager, ADDON_INFO.id);
 
     function t(key, fallback, params) {
         const value = getI18n()?.t?.(key, params);
