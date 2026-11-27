@@ -8,7 +8,7 @@ const PLAYBAR_MOUNT = Symbol.for("ivLyrics.playbarButtons");
 const RETRY_INITIAL_DELAY = 300;
 const isEnabledValue = value => value === true || value === "true";
 
-export function mountPlaybarButtons({
+function mountPlaybarButtons({
 	host, document, readSpicetify, readStoredSetting, translate, createEvent, createObserver, scheduleTimer, cancelTimer, warn,
 }) {
 	const existingMount = host[PLAYBAR_MOUNT];
