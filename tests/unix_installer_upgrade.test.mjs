@@ -365,6 +365,86 @@ test('a redundant Unix update does not probe or stop Spotify', { skip: !canRun }
     assert.deepEqual(fx.readEvents(), []);
 });
 
+// Stands in for Spotify for Linux, whose main process ignores SIGTERM. A stop request
+// (MPRIS Quit or pkill) starts the shutdown, and the client stays visible for `exitProbes`
+// more probes, like one that is still writing a crash dump after pkill stopped its helpers.
+function simulateRunningSpotify(fx, { mpris = 'unavailable', exitProbes = 0, exitsOnKill = true } = {}) {
+    const stub = (name, code) => writeFileSync(join(fx.root, 'bin', name), '#!/bin/bash\n' + code, { mode: 0o755 });
+    const stop = `[ -f "$IVL_TEST_ROOT/spotify-stopping" ] || printf '%s\\n' ${exitProbes} > "$IVL_TEST_ROOT/spotify-stopping"\n`;
+    stub('pgrep', String.raw`
+printf 'probe\n' >> "$IVL_TEST_ROOT/events"
+[ "$*" = '-x spotify' ] && [ ! -f "$IVL_TEST_ROOT/spotify-exited" ] || exit 1
+[ -f "$IVL_TEST_ROOT/spotify-stopping" ] || exit 0
+read -r left < "$IVL_TEST_ROOT/spotify-stopping"
+if [ "$left" -le 0 ]; then
+    touch "$IVL_TEST_ROOT/spotify-exited"
+    exit 1
+fi
+printf '%s\n' "$((left - 1))" > "$IVL_TEST_ROOT/spotify-stopping"
+`);
+    stub('pkill', String.raw`
+printf 'pkill %s\n' "$*" >> "$IVL_TEST_ROOT/events"
+[ "$*" = '-x spotify' ] || exit 1
+` + (exitsOnKill ? stop : ''));
+    const quit = { unavailable: 'exit 1\n', ignored: 'exit 0\n', accepted: stop }[mpris];
+    const mprisClient = (name, expected) => stub(name, String.raw`
+if [ "$*" != '${expected}' ]; then
+    printf 'unexpected ${name} %s\n' "$*" >> "$IVL_TEST_ROOT/events"
+    exit 1
+fi
+printf 'mpris-quit:${name}\n' >> "$IVL_TEST_ROOT/events"
+` + quit);
+    mprisClient('busctl', '--user --timeout=5 call org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2 Quit');
+    mprisClient('dbus-send', '--session --print-reply --reply-timeout=5000 --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Quit');
+}
+
+const spotifyStopEvents = events => events.filter(event => event !== 'probe');
+const linuxQuitAttempts = process.platform === 'linux' ? ['mpris-quit:busctl', 'mpris-quit:dbus-send'] : [];
+
+test('a Unix upgrade asks Spotify to quit over MPRIS before killing it', { skip: !canRun || process.platform !== 'linux' }, context => {
+    const fx = installerFixture(context);
+    simulateRunningSpotify(fx, { mpris: 'accepted', exitProbes: 2 });
+    const result = fx.run();
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /Spotify closed/);
+    assert.equal(readFileSync(join(fx.app, 'version.txt'), 'utf8').trim(), latest);
+    assert.deepEqual(spotifyStopEvents(fx.readEvents()), ['mpris-quit:busctl', `apply:${latest}`, 'register']);
+});
+
+test('a Unix upgrade kills Spotify when it accepts the MPRIS request but keeps running', { skip: !canRun || process.platform !== 'linux' }, context => {
+    const fx = installerFixture(context);
+    simulateRunningSpotify(fx, { mpris: 'ignored', exitProbes: 1 });
+    const result = fx.run();
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(readFileSync(join(fx.app, 'version.txt'), 'utf8').trim(), latest);
+    assert.deepEqual(spotifyStopEvents(fx.readEvents()),
+        ['mpris-quit:busctl', 'pkill -x Spotify', 'pkill -x spotify', `apply:${latest}`, 'register']);
+});
+
+test('a Unix upgrade waits for a killed Spotify that is still shutting down', { skip: !canRun }, context => {
+    const fx = installerFixture(context);
+    simulateRunningSpotify(fx, { exitProbes: 5 });
+    const result = fx.run();
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /Spotify closed/);
+    assert.equal(readFileSync(join(fx.app, 'version.txt'), 'utf8').trim(), latest);
+    assert.deepEqual(spotifyStopEvents(fx.readEvents()),
+        [...linuxQuitAttempts, 'pkill -x Spotify', 'pkill -x spotify', `apply:${latest}`, 'register']);
+});
+
+test('a Unix upgrade leaves the installation alone when Spotify cannot be closed', { skip: !canRun }, context => {
+    const fx = installerFixture(context);
+    simulateRunningSpotify(fx, { exitsOnKill: false });
+    const result = fx.run();
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /Could not close Spotify/);
+    assert.equal(readFileSync(join(fx.app, 'version.txt'), 'utf8'), previous);
+    assert.equal(readFileSync(join(fx.app, 'index.js'), 'utf8'), 'original app');
+    assert.equal(fx.readApps(), 'other|ivLyrics');
+    assert.deepEqual(spotifyStopEvents(fx.readEvents()), [...linuxQuitAttempts, 'pkill -x Spotify', 'pkill -x spotify']);
+    assert.ok(!existsSync(join(fx.apps, '.ivLyrics-install.lock')));
+});
+
 test('a failed Unix upgrade preserves existing registration when Spicetify lists one app per line', { skip: !canRun }, context => {
     const fx = installerFixture(context, { multilineApps: true, failApply: true });
     const result = fx.run();

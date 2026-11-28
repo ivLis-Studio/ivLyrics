@@ -240,20 +240,50 @@ check_network() {
     return 1
 }
 
+spotify_is_running() {
+    pgrep -x "Spotify" > /dev/null 2>&1 || pgrep -x "spotify" > /dev/null 2>&1
+}
+
+wait_for_spotify_exit() {
+    local remaining=$1
+    while spotify_is_running; do
+        [ "$remaining" -gt 0 ] || return 1
+        sleep 1
+        remaining=$((remaining - 1))
+    done
+    return 0
+}
+
+# The main Spotify for Linux process ignores SIGTERM. pkill only stops its
+# helper processes, and the client then aborts and writes a core dump, which
+# can take several seconds. Ask it to quit through MPRIS first.
+request_spotify_quit() {
+    [ "$(uname -s)" = Linux ] || return 1
+    if command -v busctl > /dev/null 2>&1 &&
+        busctl --user --timeout=5 call org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 \
+            org.mpris.MediaPlayer2 Quit > /dev/null 2>&1; then
+        return 0
+    fi
+    command -v dbus-send > /dev/null 2>&1 &&
+        dbus-send --session --print-reply --reply-timeout=5000 --dest=org.mpris.MediaPlayer2.spotify \
+            /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Quit > /dev/null 2>&1
+}
+
 close_spotify() {
-    if pgrep -x "Spotify" > /dev/null 2>&1 || pgrep -x "spotify" > /dev/null 2>&1; then
-        print_substep "Spotify is running, closing..." "warning"
+    if ! spotify_is_running; then
+        print_substep "Spotify is not running" "success"
+        return 0
+    fi
+    print_substep "Spotify is running, closing..." "warning"
+    if ! { request_spotify_quit && wait_for_spotify_exit 10; }; then
         pkill -x "Spotify" 2>/dev/null || true
         pkill -x "spotify" 2>/dev/null || true
-        sleep 2
-        if pgrep -x "Spotify" >/dev/null 2>&1 || pgrep -x "spotify" >/dev/null 2>&1; then
+        if ! wait_for_spotify_exit 15; then
             print_substep "Could not close Spotify. Close it and retry." "error"
             return 1
         fi
-        print_substep "Spotify closed" "success"
-        return 0
     fi
-    print_substep "Spotify is not running" "success"
+    print_substep "Spotify closed" "success"
     return 0
 }
 
